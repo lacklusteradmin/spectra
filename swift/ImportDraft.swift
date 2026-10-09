@@ -162,7 +162,7 @@ final class WalletImportDraft {
         case .watchViewKey: .watchViewKey(
             address: watchOnlyInput.trimmingCharacters(in: .whitespacesAndNewlines),
             viewKey: viewKeyInput.trimmingCharacters(in: .whitespacesAndNewlines))
-        case .watchMultisig: .watchMultisig(descriptor: descriptorInput.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .watchMultisig: .watchMultisig(policy: descriptorInput.trimmingCharacters(in: .whitespacesAndNewlines))
         case .createPhrase, .importPhrase, nil: .phrase
         }
     }
@@ -198,7 +198,7 @@ final class WalletImportDraft {
         case .watchAccountXpub(let xpub): guard !xpub.isEmpty else { return nil }
         case .watchViewKey(let address, let viewKey):
             guard !address.isEmpty, !viewKey.isEmpty, isRestoreHeightValid else { return nil }
-        case .watchMultisig(let descriptor): guard !descriptor.isEmpty else { return nil }
+        case .watchMultisig(let policy): guard !policy.isEmpty else { return nil }
         case .phrase, .privateKey: guard isSecretComplete else { return nil }
         }
         guard var commit = importCommit(name: "") else { return nil }
@@ -214,7 +214,7 @@ final class WalletImportDraft {
         case .watchAddresses(let addresses): return !addresses.isEmpty
         case .watchAccountXpub(let xpub): return !xpub.isEmpty
         case .watchViewKey(let address, let viewKey): return !address.isEmpty && !viewKey.isEmpty && isRestoreHeightValid
-        case .watchMultisig(let descriptor): return !descriptor.isEmpty
+        case .watchMultisig(let policy): return !policy.isEmpty
         case .phrase, .privateKey: break
         }
         return isSecretComplete && (!requiresBackupVerification || isBackupVerificationComplete)

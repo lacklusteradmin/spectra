@@ -165,7 +165,7 @@ extension WalletSetupMethod {
         case .watchAddresses: AppLocalization.string("Track public addresses without adding private keys.")
         case .watchAccountXpub: AppLocalization.string("Track a whole account from its extended public key.")
         case .watchViewKey: AppLocalization.string("Scan what a wallet receives from its address and private view key.")
-        case .watchMultisig: AppLocalization.string("Watch a multisig account from its descriptor; add a cosigner's phrase to sign.")
+        case .watchMultisig: AppLocalization.string("Watch a multisig account from the policy its address derives from.")
         }
     }
     var icon: String {
@@ -199,7 +199,11 @@ extension WalletSecretFormat {
         case .address: AppLocalization.string("Addresses, one per line")
         case .accountXpub: AppLocalization.string("Account public key")
         case .moneroViewKey: AppLocalization.string("Private view key, 64 hex digits")
-        case .multisigDescriptor: AppLocalization.string("Output descriptor, wsh(sortedmulti(…))")
+        case .multisigDescriptor: AppLocalization.string("Output descriptor, sortedmulti(…)")
+        case .suiMultisigPublicKey: AppLocalization.string("Threshold and weighted public keys, as Sui's SDK takes them")
+        case .aptosMultiKey: AppLocalization.string("Signatures required and public keys, as Aptos's SDK takes them")
+        case .cardanoNativeScript: AppLocalization.string("Native script, as cardano-cli writes it")
+        case .substrateMultisig: AppLocalization.string("Threshold and signatory addresses")
         }
     }
 }

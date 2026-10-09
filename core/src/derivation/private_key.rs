@@ -72,7 +72,7 @@ pub(super) fn derive(
                 )),
                 Chain::Polkadot | Chain::Bittensor => super::primitives::encode_ss58(
                     &public,
-                    if chain == Chain::Polkadot { 0 } else { 42 },
+                    chain.ss58_prefix().expect("a Substrate network"),
                 ),
                 _ => unreachable!("public seed key only exists for these protocols"),
             })

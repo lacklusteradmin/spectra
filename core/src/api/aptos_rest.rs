@@ -236,6 +236,29 @@ impl AptosClient {
         Ok((sequence, 0))
     }
 
+    /// An account's next sequence number and its authentication key, or
+    /// `None` for an account not yet on the network.
+    pub(crate) async fn fetch_account_auth(
+        &self,
+        address: &str,
+    ) -> Result<Option<(u64, String)>, ApiError> {
+        let resp: Value = match self.get(&format!("/accounts/{address}")).await {
+            Err(ApiError::Status { status: 404, .. }) => return Ok(None),
+            read => read?,
+        };
+        let sequence: u64 = resp
+            .get("sequence_number")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
+            .or_decode("account: missing sequence_number")?;
+        let key = resp
+            .get("authentication_key")
+            .and_then(|v| v.as_str())
+            .or_decode("account: missing authentication_key")?
+            .to_ascii_lowercase();
+        Ok(Some((sequence, key)))
+    }
+
     pub async fn fetch_ledger_info(&self) -> Result<(u64, String), ApiError> {
         let resp: Value = self.get("/").await?;
         let chain_id: u64 = resp
@@ -266,6 +289,49 @@ impl AptosClient {
 }
 
 impl AptosClient {
+    /// Submit a signed transaction in BCS, as the REST API takes one whose
+    /// authenticator its JSON form does not name; the hash it answers.
+    pub(crate) async fn submit_signed_bcs(
+        &self,
+        signed: &[u8],
+    ) -> Result<AptosSendResult, ApiError> {
+        let body = signed.to_vec();
+        let response: Value = race(&self.endpoints, |base| {
+            let client = self.client.clone();
+            let url = format!("{}/transactions", base.trim_end_matches('/'));
+            let body = body.clone();
+            async move {
+                let (status, bytes) = client
+                    .post_bytes(
+                        &url,
+                        "application/x.aptos.signed_transaction+bcs",
+                        body,
+                        RetryProfile::ChainWrite,
+                    )
+                    .await?;
+                if !(200..300).contains(&status) {
+                    return Err(ApiError::Status {
+                        status,
+                        body: String::from_utf8_lossy(&bytes).into_owned(),
+                    });
+                }
+                serde_json::from_slice(&bytes)
+                    .map_err(|e| ApiError::Decode(format!("Aptos submit: {e}")))
+            }
+        })
+        .await?;
+        let txid = response["hash"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .or_decode("Aptos submit: missing hash")?
+            .to_string();
+        Ok(AptosSendResult {
+            txid,
+            version: None,
+            signed_body_json: hex::encode(signed),
+        })
+    }
+
     pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, ApiError> {
         let body: Value = serde_json::from_str(signed_json)
             .map_err(|e| ApiError::InvalidInput(format!("invalid Aptos transaction: {e}")))?;

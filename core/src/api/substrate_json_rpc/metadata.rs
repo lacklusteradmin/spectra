@@ -3,6 +3,8 @@
 //! `state_getMetadata`. Unknown versions and extensions are refused.
 
 use super::*;
+mod multisig;
+pub(crate) use multisig::decode_pending;
 mod pools;
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed, v14::*};
 use parity_scale_codec::{Compact, Decode};

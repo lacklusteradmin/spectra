@@ -12,7 +12,7 @@ pub(crate) use history_pagination::*;
 mod history_query;
 pub(crate) use history_query::*;
 mod keypool;
-mod psbt;
+mod multisig;
 mod state;
 mod wallets;
 pub use addresses::*;
@@ -21,7 +21,7 @@ pub(crate) use connection::now_secs;
 use connection::with_conn;
 pub use history::*;
 pub use keypool::*;
-pub(crate) use psbt::*;
+pub(crate) use multisig::*;
 pub use state::*;
 pub use wallets::*;
 #[cfg(test)]

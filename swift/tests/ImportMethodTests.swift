@@ -21,7 +21,11 @@ struct ImportMethodTests {
         #expect(!methods(.bitcoin).contains(.watchViewKey))
         #expect(methods(.bitcoin).contains(.watchMultisig))
         #expect(methods(.bitcoinSignet).contains(.watchMultisig))
-        #expect(!methods(.litecoin).contains(.watchMultisig))
+        for chain in [Chain.litecoin, .bitcoinCash, .dogecoin, .sui, .aptos, .cardano, .polkadot, .bittensor] {
+            #expect(methods(chain).contains(.watchMultisig), "\(chain.id)")
+        }
+        // A Safe, a Tron account or a TON multisig is watched at its address.
+        #expect(!methods(.ethereum).contains(.watchMultisig))
         #expect(methods(.bitcoin).contains(.watchAccountXpub))
         #expect(methods(.litecoin).contains(.watchAccountXpub))
         #expect(methods(.kaspa).contains(.watchAccountXpub))
@@ -68,7 +72,7 @@ struct ImportMethodTests {
         draft.configure(chain: .bitcoin, method: .watchMultisig)
         #expect(!draft.canImportWallet)
         draft.descriptorInput = "\n wsh(sortedmulti(2,…)) \n"
-        #expect(draft.importKind == .watchMultisig(descriptor: "wsh(sortedmulti(2,…))"))
+        #expect(draft.importKind == .watchMultisig(policy: "wsh(sortedmulti(2,…))"))
         #expect(draft.canImportWallet)
     }
 

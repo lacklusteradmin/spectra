@@ -91,7 +91,7 @@ import Foundation
             ? position.withdrawableAmountSmallestUnit : position.stakedAmountSmallestUnit
         amount =
             stakingInputRules(chain: chain, action: action).amountAllowed
-            ? formatStakingAmount(chain: chain, smallestUnit: units) ?? "" : ""
+            ? formatNativeAmount(chain: chain, smallestUnit: units) ?? "" : ""
         lockupSeconds = ""
         password = ""
         error = nil

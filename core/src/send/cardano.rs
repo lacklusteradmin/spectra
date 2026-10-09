@@ -38,13 +38,27 @@ pub(crate) struct CardanoOutput {
 }
 
 /// A transfer as reviewed: its inputs, the recipient's output and then the
-/// change, if any, its fee and TTL.
+/// change, if any, its fee and TTL; and when it spends a native script's
+/// outputs, that script.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct PreparedCardanoTransaction {
     pub inputs: Vec<CardanoInput>,
     pub outputs: Vec<CardanoOutput>,
     pub fee: u64,
     pub ttl: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<CardanoScriptSpend>,
+}
+
+/// What spending a native script's outputs adds: the script, which the
+/// witness set carries; how many keys may sign, which the fee is sized for;
+/// and the first slot the spend is valid in, where the script names one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct CardanoScriptSpend {
+    /// The script's CBOR, hex.
+    pub script: String,
+    pub signers: usize,
+    pub validity_start: Option<u64>,
 }
 
 /// What a transfer delivers.
@@ -173,6 +187,7 @@ impl PreparedCardanoTransaction {
         recipient: &str,
         transfer: &CardanoTransfer,
         ttl: u64,
+        script: Option<&CardanoScriptSpend>,
     ) -> Result<Self, SendError> {
         let recipient_output = match transfer {
             CardanoTransfer::Ada(lovelace) => {
@@ -239,7 +254,7 @@ impl PreparedCardanoTransaction {
         let mut last_shortfall = None;
         for candidate in candidates {
             selected.push(candidate.clone());
-            match Self::balance(&selected, &recipient_output, sender, params, ttl)? {
+            match Self::balance(&selected, &recipient_output, sender, params, ttl, script)? {
                 Ok(transaction) => return transaction.within_limits(params),
                 Err(shortfall) => last_shortfall = Some(shortfall),
             }
@@ -259,6 +274,7 @@ impl PreparedCardanoTransaction {
         sender: &str,
         params: &CardanoProtocolParams,
         ttl: u64,
+        script: Option<&CardanoScriptSpend>,
     ) -> Result<Result<Self, Shortfall>, SendError> {
         let held = tally(inputs.iter().flat_map(|input| input.assets.clone()))?;
         let mut change_assets = held.clone();
@@ -295,6 +311,7 @@ impl PreparedCardanoTransaction {
                     outputs: vec![recipient.clone()],
                     fee: available,
                     ttl,
+                    script: script.cloned(),
                 }
             } else if stands {
                 Self {
@@ -302,6 +319,7 @@ impl PreparedCardanoTransaction {
                     outputs: vec![recipient.clone(), change_output],
                     fee,
                     ttl,
+                    script: script.cloned(),
                 }
             } else {
                 // The change holds assets but not the ADA to carry them.
@@ -319,9 +337,17 @@ impl PreparedCardanoTransaction {
         Err(refused("Cardano fee did not settle"))
     }
 
-    /// The protocol's fee for this transaction signed by one key.
+    /// Stand-in witnesses for sizing: one key's, or every key a script
+    /// spend may carry.
+    fn sizing_witnesses(&self) -> Vec<([u8; 32], [u8; 64])> {
+        let count = self.script.as_ref().map_or(1, |spend| spend.signers.max(1));
+        vec![([0; 32], [0; 64]); count]
+    }
+
+    /// The protocol's fee for this transaction signed by every key it may
+    /// carry.
     pub(crate) fn minimum_fee(&self, params: &CardanoProtocolParams) -> Result<u64, SendError> {
-        let size = self.encode_signed(&[0; 32], &[0; 64])?.len() as u64;
+        let size = self.encode_signed(&self.sizing_witnesses())?.len() as u64;
         params
             .fee_per_byte
             .checked_mul(size)
@@ -343,7 +369,7 @@ impl PreparedCardanoTransaction {
                 ));
             }
         }
-        if self.encode_signed(&[0; 32], &[0; 64])?.len() as u64 > params.max_tx_size {
+        if self.encode_signed(&self.sizing_witnesses())?.len() as u64 > params.max_tx_size {
             return Err(refused(
                 "The Cardano transaction would be too large; send from fewer outputs",
             ));
@@ -401,20 +427,51 @@ impl PreparedCardanoTransaction {
             .iter()
             .map(encode_output)
             .collect::<Result<Vec<_>, SendError>>()?;
-        // {0: inputs, 1: outputs, 2: fee, 3: ttl}
-        Ok(cbor_map(&[
+        // {0: inputs, 1: outputs, 2: fee, 3: ttl, 8: validity start}
+        let mut entries = vec![
             (cbor_uint(0), cbor_tagged_set(&inputs)),
             (cbor_uint(1), cbor_array(&outputs)),
             (cbor_uint(2), cbor_uint(self.fee)),
             (cbor_uint(3), cbor_uint(self.ttl)),
-        ]))
+        ];
+        if let Some(start) = self.script.as_ref().and_then(|spend| spend.validity_start) {
+            entries.push((cbor_uint(8), cbor_uint(start)));
+        }
+        Ok(cbor_map(&entries))
     }
 
-    /// `[body, {0: [[vkey, signature]]}, true, null]`.
-    fn encode_signed(&self, public: &[u8; 32], signature: &[u8; 64]) -> Result<Vec<u8>, SendError> {
+    /// The body, CBOR: what each witness signs the hash of.
+    #[cfg(test)]
+    pub(crate) fn body(&self) -> Result<Vec<u8>, SendError> {
+        self.encode_body()
+    }
+
+    /// `{0: [[vkey, signature], …]}`, and a script spend's `1: [script]`.
+    pub(crate) fn witness_set(
+        &self,
+        witnesses: &[([u8; 32], [u8; 64])],
+    ) -> Result<Vec<u8>, SendError> {
+        let vkeys: Vec<Vec<u8>> = witnesses
+            .iter()
+            .map(|(vkey, signature)| cbor_array(&[cbor_bytes(vkey), cbor_bytes(signature)]))
+            .collect();
+        let mut entries = vec![(cbor_uint(0), cbor_tagged_set(&vkeys))];
+        if let Some(spend) = &self.script {
+            let script =
+                hex::decode(&spend.script).map_err(|_| refused("A Cardano script is hex CBOR"))?;
+            entries.push((cbor_uint(1), cbor_tagged_set(&[script])));
+        }
+        Ok(cbor_map(&entries))
+    }
+
+    /// `[body, witness set, true, null]`.
+    pub(crate) fn encode_signed(
+        &self,
+        witnesses: &[([u8; 32], [u8; 64])],
+    ) -> Result<Vec<u8>, SendError> {
         Ok(cbor_array(&[
             self.encode_body()?,
-            encode_witness_set(public, signature),
+            self.witness_set(witnesses)?,
             cbor_bool(true),
             cbor_null(),
         ]))
@@ -434,7 +491,7 @@ impl PreparedCardanoTransaction {
         self.conserves()?;
         let signature = sign_extended(signing_key, verification_key, &self.transaction_hash()?)?;
         Ok(hex::encode(
-            self.encode_signed(verification_key, &signature)?,
+            self.encode_signed(&[(*verification_key, signature)])?,
         ))
     }
 
@@ -498,6 +555,7 @@ pub(crate) fn ada_preview(
             outputs,
             fee,
             ttl: u64::from(u32::MAX),
+            script: None,
         }
         .minimum_fee(params)?;
         if required <= fee {
@@ -582,12 +640,6 @@ pub(crate) fn sign_extended(
     signature[..32].copy_from_slice(&r);
     signature[32..].copy_from_slice(&s.to_bytes());
     Ok(signature)
-}
-
-fn encode_witness_set(vkey: &[u8], sig: &[u8]) -> Vec<u8> {
-    // {0: [[vkey_bytes, sig_bytes]]}
-    let vkey_sig = cbor_array(&[cbor_bytes(vkey), cbor_bytes(sig)]);
-    cbor_map(&[(cbor_uint(0), cbor_tagged_set(&[vkey_sig]))])
 }
 
 // ── Minimal CBOR encoder

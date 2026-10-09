@@ -489,5 +489,19 @@ impl WalletService {
 }
 
 mod monero_wallet;
-mod psbt;
+mod multisig;
+pub use multisig::{
+    MultisigAccount, MultisigInput, MultisigOutput, MultisigPermission, MultisigScheme,
+    MultisigSession, MultisigSigner, MultisigSpend,
+};
+mod multisig_aptos;
+mod multisig_cardano;
+mod multisig_psbt;
+mod multisig_safe;
+mod multisig_stellar;
+mod multisig_substrate;
+mod multisig_sui;
+mod multisig_ton;
+mod multisig_tron;
+mod multisig_xrp;
 pub use monero_wallet::MoneroSyncStatus;

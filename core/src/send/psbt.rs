@@ -1,4 +1,5 @@
-//! A multisig account's partially signed transactions (BIP-174): built from
+//! A P2WSH multisig account's partially signed transactions (BIP-174), on
+//! Bitcoin and Litecoin, which sign the same SegWit scripts: built from
 //! the account's outputs, read from another coordinator, signed with one
 //! cosigner's key, combined with the other cosigners' signatures and
 //! finalized once the threshold has signed every input.
@@ -17,8 +18,8 @@ use bitcoin::psbt::Psbt;
 use bitcoin::secp256k1::{Message, Secp256k1};
 use bitcoin::sighash::{EcdsaSighashType, SighashCache};
 use bitcoin::{
-    Address, Amount, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness,
-    absolute::LockTime, transaction::Version,
+    Amount, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness, absolute::LockTime,
+    transaction::Version,
 };
 
 use crate::derivation::multisig::{MultisigPolicy, Place};
@@ -75,10 +76,9 @@ impl Review {
     }
 }
 
-/// The account's address at `place` as a script.
+/// The account's address at `place` as a script, and its witness script.
 fn script_at(policy: &MultisigPolicy, place: Place) -> Result<(ScriptBuf, ScriptBuf), SendError> {
-    let witness = policy.witness_script(place)?;
-    Ok((ScriptBuf::new_p2wsh(&witness.wscript_hash()), witness))
+    Ok((policy.script_pubkey(place)?, policy.witness_script(place)?))
 }
 
 /// The unsigned transaction spending `inputs` (outpoint, amount, place) to
@@ -193,9 +193,26 @@ pub(crate) fn review(
     chain: Chain,
     psbt: &Psbt,
 ) -> Result<Review, SendError> {
-    let network = chain
-        .bitcoin_network()
-        .ok_or_else(|| SendError::invalid("PSBTs are Bitcoin transactions"))?;
+    if policy.script != crate::derivation::multisig::UtxoMultisigScript::Wsh {
+        return Err(SendError::invalid(
+            "Only a P2WSH multisig account spends through PSBTs.",
+        ));
+    }
+    // Litecoin's MWEB fields (0x90 to 0x9C) exist only in PSBTv2, which a
+    // plain P2WSH spend never is; one carrying them pays or spends MWEB.
+    let mweb = |unknown: &std::collections::BTreeMap<bitcoin::psbt::raw::Key, Vec<u8>>| {
+        unknown
+            .keys()
+            .any(|key| (0x90..=0x9c).contains(&key.type_value))
+    };
+    if mweb(&psbt.unknown)
+        || psbt.inputs.iter().any(|input| mweb(&input.unknown))
+        || psbt.outputs.iter().any(|output| mweb(&output.unknown))
+    {
+        return Err(SendError::invalid(
+            "The PSBT carries MWEB fields; a multisig account spends and pays only transparent outputs.",
+        ));
+    }
     let tx = &psbt.unsigned_tx;
     if tx.input.is_empty() || tx.output.is_empty() {
         return Err(SendError::invalid(
@@ -279,9 +296,11 @@ pub(crate) fn review(
             outpoint: txin.previous_output,
             value: utxo.value.to_sat(),
             place,
-            address: Address::from_script(&script_pubkey, network)
-                .map_err(SendError::invalid)?
-                .to_string(),
+            address: crate::derivation::utxo_address::script_address(
+                chain,
+                script_pubkey.as_bytes(),
+            )
+            .ok_or_else(|| SendError::invalid("The network has no address for this script."))?,
             signed_by: {
                 signed_by.sort_unstable();
                 signed_by
@@ -308,9 +327,11 @@ pub(crate) fn review(
             None => None,
         };
         outputs.push(ReviewedOutput {
-            address: Address::from_script(&txout.script_pubkey, network)
-                .map(|address| address.to_string())
-                .unwrap_or_else(|_| format!("script {}", txout.script_pubkey.to_hex_string())),
+            address: crate::derivation::utxo_address::script_address(
+                chain,
+                txout.script_pubkey.as_bytes(),
+            )
+            .unwrap_or_else(|| format!("script {}", txout.script_pubkey.to_hex_string())),
             value: txout.value.to_sat(),
             change,
         });

@@ -80,15 +80,6 @@ pub struct StakingPosition {
     pub available_actions: Vec<StakingAction>,
 }
 
-/// Render exact native balances without doing money arithmetic in a platform view.
-#[uniffi::export]
-pub fn format_staking_amount(
-    chain: crate::registry::Chain,
-    smallest_unit: String,
-) -> Option<String> {
-    crate::decimal::from_unit_digits(&smallest_unit, u32::from(chain.native_decimals()))
-}
-
 /// Form requirements are protocol facts. They guide rendering; builders still
 /// resolve authority, balances and valid actions against current chain state.
 #[derive(Debug, Clone, uniffi::Record)]

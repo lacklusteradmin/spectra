@@ -76,6 +76,7 @@ fn extended_witness_matches_independent_emurgo_transaction() {
         }],
         fee: 170_000,
         ttl: 100,
+        script: None,
     };
     assert_eq!(
         hex::encode(transaction.encode_body().unwrap()),
@@ -131,6 +132,7 @@ fn native_asset_transactions_match_csl() {
                 .collect(),
             fee: number(&case["fee"]),
             ttl: number(&case["ttl"]),
+            script: None,
         };
         let name = &case["name"];
         assert_eq!(
@@ -194,7 +196,7 @@ fn plan(
     utxos: &[CardanoInput],
     transfer: CardanoTransfer,
 ) -> Result<PreparedCardanoTransaction, SendError> {
-    PreparedCardanoTransaction::plan(utxos, &params(), SENDER, &recipient(), &transfer, 100)
+    PreparedCardanoTransaction::plan(utxos, &params(), SENDER, &recipient(), &transfer, 100, None)
 }
 
 /// ADA held beside tokens can pay: the token-bearing input is spent and its

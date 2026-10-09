@@ -19,7 +19,7 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
             matches!(service.monero_sync_status(id).await, Ok(Some(_)))
         }
         // Only a multisig wallet keeps PSBTs.
-        WalletAction::Psbts => service.psbt_sessions(id).await.is_ok(),
+        WalletAction::Multisig => service.multisig_sessions(id).await.is_ok(),
         // Some network takes the copy; the copy's own test asks every one.
         WalletAction::AddToNetwork => {
             let targets = service.wallet_copy_targets(id.clone()).await.unwrap();
@@ -190,7 +190,7 @@ const ACTIONS: [WalletAction; 27] = [
     WalletAction::RevealPhrase,
     WalletAction::ExportKeys,
     WalletAction::Delete,
-    WalletAction::Psbts,
+    WalletAction::Multisig,
 ];
 
 /// Each action's place in [`ACTIONS`]. A new action does not compile here
@@ -224,7 +224,7 @@ fn position(action: WalletAction) -> usize {
         WalletAction::RevealPhrase => 23,
         WalletAction::ExportKeys => 24,
         WalletAction::Delete => 25,
-        WalletAction::Psbts => 26,
+        WalletAction::Multisig => 26,
     }
 }
 

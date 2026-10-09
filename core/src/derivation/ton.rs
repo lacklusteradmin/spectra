@@ -378,15 +378,7 @@ impl TonWalletVersion {
         chain: Chain,
     ) -> Result<String, DerivationError> {
         let account_id = self.state_init(public_key, chain)?.hash_depth().0;
-        // tag 0x11 = bounceable, not-test; workchain 0x00 = basic workchain.
-        let mut buf = [0u8; 36];
-        buf[0] = 0x11;
-        buf[1] = 0x00;
-        buf[2..34].copy_from_slice(&account_id);
-        let crc = crc16_xmodem(&buf[..34]);
-        buf[34..36].copy_from_slice(&crc.to_be_bytes());
-        use base64::Engine;
-        Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf))
+        Ok(friendly_address(0, &account_id, true))
     }
 
     /// The version whose account on `chain` `address` is for `public_key`,
@@ -407,12 +399,13 @@ struct ParsedCell {
     d2: u8,
     data: Vec<u8>,
     refs: Vec<usize>,
+    library: bool,
 }
 
-/// Minimal parser for BOC v0 (`b5ee9c72`) carrying ordinary (non-exotic,
-/// level-0) cells. Supports the index and crc32c flags but validates
-/// neither; the parser's correctness is instead locked by a cell-hash
-/// self-test.
+/// Minimal parser for BOC v0 (`b5ee9c72`) carrying level-0 cells, ordinary
+/// or library references (a contract's code may name a library). Supports
+/// the index and crc32c flags but validates neither; the parser's
+/// correctness is instead locked by cell-hash tests.
 fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), DerivationError> {
     if bytes.len() < 6 || bytes[0..4] != [0xb5, 0xee, 0x9c, 0x72] {
         return Err(DerivationError::Invalid("TON BOC: missing magic".into()));
@@ -470,44 +463,64 @@ fn parse_boc(bytes: &[u8]) -> Result<(Vec<ParsedCell>, usize), DerivationError> 
         let refs_count = (d1 & 0x07) as usize;
         let exotic = (d1 & 0x08) != 0;
         let level = (d1 >> 5) & 0x03;
-        if exotic || level != 0 {
-            return Err(DerivationError::Invalid(
-                "TON BOC: exotic or leveled cells not supported".into(),
-            ));
-        }
         let data_len = (d2 as usize).div_ceil(2);
         if cursor + data_len > bytes.len() {
             return Err(DerivationError::Invalid("TON BOC: cell data EOF".into()));
         }
         let data = bytes[cursor..cursor + data_len].to_vec();
+        // The one exotic cell read: a library reference, tag 2 and a hash.
+        let library = exotic && refs_count == 0 && d2 == 0x42 && data.first() == Some(&2);
+        if (exotic && !library) || level != 0 {
+            return Err(DerivationError::Invalid(
+                "TON BOC: exotic or leveled cells not supported".into(),
+            ));
+        }
         cursor += data_len;
         let mut refs = Vec::with_capacity(refs_count);
         for _ in 0..refs_count {
             refs.push(read_uint(bytes, cursor, ref_size)? as usize);
             cursor += ref_size;
         }
-        cells.push(ParsedCell { d2, data, refs });
+        cells.push(ParsedCell {
+            d2,
+            data,
+            refs,
+            library,
+        });
     }
     Ok((cells, root_idx))
 }
 
+/// The tree under row `i`, at most `MAX_CELLS` cells once shared subtrees
+/// are expanded, so a hostile BOC cannot make it explode.
 fn cell_from_rows(cells: &[ParsedCell], i: usize) -> Result<Cell, DerivationError> {
-    let row = cells
-        .get(i)
-        .ok_or_else(|| DerivationError::Invalid("TON: invalid embedded reference".into()))?;
-    if row.refs.iter().any(|r| *r <= i) {
-        return Err(DerivationError::Invalid(
-            "TON: invalid embedded cell order".into(),
-        ));
-    }
-    Cell::from_padded(
-        row.data.clone(),
-        row.d2,
-        row.refs
+    const MAX_CELLS: usize = 4096;
+    fn expand(cells: &[ParsedCell], i: usize, budget: &mut usize) -> Result<Cell, DerivationError> {
+        *budget = budget
+            .checked_sub(1)
+            .ok_or_else(|| DerivationError::Invalid("TON BOC: too many cells".into()))?;
+        let row = cells
+            .get(i)
+            .ok_or_else(|| DerivationError::Invalid("TON: invalid cell reference".into()))?;
+        if row.refs.iter().any(|r| *r <= i) {
+            return Err(DerivationError::Invalid("TON: invalid cell order".into()));
+        }
+        if row.library {
+            return Cell::library(
+                row.data[1..].try_into().map_err(|_| {
+                    DerivationError::Invalid("TON BOC: invalid library cell".into())
+                })?,
+            );
+        }
+        let refs = row
+            .refs
             .iter()
-            .map(|r| cell_from_rows(cells, *r))
-            .collect::<Result<_, _>>()?,
-    )
+            .map(|r| expand(cells, *r, budget))
+            .collect::<Result<_, _>>()?;
+        Cell::from_padded(row.data.clone(), row.d2, refs)
+    }
+    let mut budget = MAX_CELLS;
+    expand(cells, i, &mut budget)
 }
 
 /// CRC-16/XMODEM (poly=0x1021, init=0x0000, no reflection, no xor-out),
@@ -624,6 +637,26 @@ pub fn derive_ton_testnet(
         want_public_key,
         want_private_key,
     )
+}
+
+/// A BOC's single root cell, as read from a node: level-0 cells, each
+/// reference pointing forward.
+pub(crate) fn cell_from_boc(bytes: &[u8]) -> Result<Cell, DerivationError> {
+    let (cells, root) = parse_boc(bytes)?;
+    cell_from_rows(&cells, root)
+}
+
+/// A user-friendly address: bounceable or not, base64url, as wallets show
+/// one on the basic or master workchain.
+pub(crate) fn friendly_address(workchain: i8, account: &[u8; 32], bounceable: bool) -> String {
+    let mut buf = [0u8; 36];
+    buf[0] = if bounceable { 0x11 } else { 0x51 };
+    buf[1] = workchain as u8;
+    buf[2..34].copy_from_slice(account);
+    let crc = crc16_xmodem(&buf[..34]);
+    buf[34..36].copy_from_slice(&crc.to_be_bytes());
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf)
 }
 
 /// Root representation hash of a locally built external-message BOC. This

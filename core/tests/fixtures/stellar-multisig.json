@@ -1,0 +1,227 @@
+{
+  "provenance": "@stellar/stellar-base 14.1.0, bip39 3.1.0, ed25519-hd-key 2.0.0",
+  "notes": [
+    "Keys: BIP-39 phrase, empty passphrase, SLIP-10 ed25519 at derivation_path (SEP-0005); secret_seed is the raw 32-byte ed25519 seed, public_key the raw 32-byte key.",
+    "TransactionBuilder charges its fee option per operation: builder_fee 200 with one operation puts 200 in the XDR fee field. Stellar fees do not grow with the number of signatures.",
+    "seq_num is the source account sequence plus one. unsigned_envelope_xdr is a TransactionEnvelope (ENVELOPE_TYPE_TX) with no signatures; hash is SHA-256 of the signature base for network_passphrase.",
+    "A DecoratedSignature is hint (the last 4 bytes of the signer public key) and the 64-byte ed25519 signature of hash. envelope_p0_p1_xdr carries P0 then P1; envelope_p1_only_xdr carries P1 alone (weight 1, below the medium threshold 2).",
+    "Thresholds and signer weights: https://developers.stellar.org/docs/learn/fundamentals/transactions/signatures-multisig",
+    "Horizon account: https://developers.stellar.org/docs/data/apis/horizon/api-reference/resources/accounts/object and https://developers.stellar.org/docs/data/apis/horizon/api-reference/retrieve-an-account (example: stellar/stellar-docs openapi/horizon/components/examples/responses/Accounts/RetrieveAnAccount.yml). Field order, the string sequence and omitempty fields follow protocols/horizon Account in stellar/go-stellar-sdk; signers are ordered by key and include the master key while its weight is above zero (stellar-horizon internal/db2/history/account_signers.go, internal/resourceadapter/account_entry.go), and paging_token is the account ID there although the docs example shows \"\".",
+    "Horizon ledger numbers, times and the balance are placeholders, not real ledger data. subentry_count 2 is the two added signers."
+  ],
+  "derivation_path": "m/44'/148'/0'",
+  "network_passphrase": "Test SDF Network ; September 2015",
+  "keys": {
+    "p0": {
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "address": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX",
+      "public_key": "7691d85048acc4ed085d9061ce0948bbdf7de6a92b790aaf241d31b7dcaa4238",
+      "secret_seed": "695db2365365e06159f13cc752a5d3b0c7376c45012b2f695e3a4da2434948bc"
+    },
+    "p1": {
+      "phrase": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+      "address": "GAFOIIMIXWLSN66RYL32JHCI7AMKWZ3TYYSZTOXSTLPHJWPMZDERMXUO",
+      "public_key": "0ae42188bd9726fbd1c2f7a49c48f818ab6773c62599baf29ade74d9ecc8c916",
+      "secret_seed": "ee749a9a6dac6e9e46958269c3a5ef1a18b4016847be1a1327cf010f3eb54b4d"
+    },
+    "p2": {
+      "phrase": "letter advice cage absurd amount doctor acoustic avoid letter advice cage above",
+      "address": "GBBWHEZC4L5ATI7RHDC7QEY5MMY7Z7BJUNA5VEI67GLGZQLBR3HJPKQI",
+      "public_key": "43639322e2fa09a3f138c5f8131d6331fcfc29a341da911ef9966cc1618ece97",
+      "secret_seed": "79feb4fa93bae652688d4d7d79e78bcdee443d45deb939a4874346bbbd532788"
+    }
+  },
+  "source_account": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX",
+  "policy": {
+    "master_weight": 1,
+    "signers": [
+      {
+        "key": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX",
+        "weight": 1,
+        "role": "master"
+      },
+      {
+        "key": "GAFOIIMIXWLSN66RYL32JHCI7AMKWZ3TYYSZTOXSTLPHJWPMZDERMXUO",
+        "weight": 1,
+        "role": "signer"
+      },
+      {
+        "key": "GBBWHEZC4L5ATI7RHDC7QEY5MMY7Z7BJUNA5VEI67GLGZQLBR3HJPKQI",
+        "weight": 1,
+        "role": "signer"
+      }
+    ],
+    "thresholds": {
+      "low": 1,
+      "medium": 2,
+      "high": 3
+    }
+  },
+  "transactions": [
+    {
+      "name": "payment",
+      "memo": {
+        "type": "none"
+      },
+      "source_account_sequence": "123456789012",
+      "seq_num": "123456789013",
+      "builder_fee": "200",
+      "operation_count": 1,
+      "xdr_fee": 200,
+      "time_bounds": {
+        "minTime": 0,
+        "maxTime": 1760003600
+      },
+      "payment": {
+        "destination": "GAYOLLLUIZE4DZMBB2ZBKGBUBZLIOYU6XFLW37GBP2VZD3ABNXCW4BVA",
+        "asset": "native",
+        "amount": "10",
+        "amount_stroops": "100000000"
+      },
+      "unsigned_envelope_xdr": "AAAAAgAAAAB2kdhQSKzE7QhdkGHOCUi7333mqSt5Cq8kHTG33KpCOAAAAMgAAAAcvpkaFQAAAAEAAAAAAAAAAAAAAABo54YQAAAAAAAAAAEAAAAAAAAAAQAAAAAw5a10RknB5YEOshUYNA5Wh2KeuVdt/MF+q5HsAW3FbgAAAAAAAAAABfXhAAAAAAAAAAAA",
+      "hash": "22a1563a3161e3a3a66941c282b251b63991a2c005bb15ce268d7affeaf04611",
+      "signatures": [
+        {
+          "signer": "p0",
+          "address": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX",
+          "hint": "dcaa4238",
+          "signature": "14a13efb0c4c0dc8172fd290cf3cae00ae55f03b1a499ca805640f9a50a47f81d55ed4db5192b1e55fcd4df715e1f547d6eb54a07da68adf843b96993e867808"
+        },
+        {
+          "signer": "p1",
+          "address": "GAFOIIMIXWLSN66RYL32JHCI7AMKWZ3TYYSZTOXSTLPHJWPMZDERMXUO",
+          "hint": "ecc8c916",
+          "signature": "09fba3e4c82cd0c7f49384b19ffce70286b5871d78c7c057e77e163bf7e5c29ffb9e780abf6dff5d68063e34cf2269622c9a5021e5360bcd94a6f4ddafafac04"
+        }
+      ],
+      "envelope_p0_p1_xdr": "AAAAAgAAAAB2kdhQSKzE7QhdkGHOCUi7333mqSt5Cq8kHTG33KpCOAAAAMgAAAAcvpkaFQAAAAEAAAAAAAAAAAAAAABo54YQAAAAAAAAAAEAAAAAAAAAAQAAAAAw5a10RknB5YEOshUYNA5Wh2KeuVdt/MF+q5HsAW3FbgAAAAAAAAAABfXhAAAAAAAAAAAC3KpCOAAAAEAUoT77DEwNyBcv0pDPPK4ArlXwOxpJnKgFZA+aUKR/gdVe1NtRkrHlX81N9xXh9UfW61SgfaaK34Q7lpk+hngI7MjJFgAAAEAJ+6PkyCzQx/SThLGf/OcChrWHHXjHwFfnfhY79+XCn/ueeAq/bf9daAY+NM8iaWIsmlAh5TYLzZSm9N2vr6wE",
+      "envelope_p1_only_xdr": "AAAAAgAAAAB2kdhQSKzE7QhdkGHOCUi7333mqSt5Cq8kHTG33KpCOAAAAMgAAAAcvpkaFQAAAAEAAAAAAAAAAAAAAABo54YQAAAAAAAAAAEAAAAAAAAAAQAAAAAw5a10RknB5YEOshUYNA5Wh2KeuVdt/MF+q5HsAW3FbgAAAAAAAAAABfXhAAAAAAAAAAAB7MjJFgAAAEAJ+6PkyCzQx/SThLGf/OcChrWHHXjHwFfnfhY79+XCn/ueeAq/bf9daAY+NM8iaWIsmlAh5TYLzZSm9N2vr6wE"
+    },
+    {
+      "name": "payment_memo_text",
+      "memo": {
+        "type": "text",
+        "value": "rent"
+      },
+      "source_account_sequence": "123456789012",
+      "seq_num": "123456789013",
+      "builder_fee": "200",
+      "operation_count": 1,
+      "xdr_fee": 200,
+      "time_bounds": {
+        "minTime": 0,
+        "maxTime": 1760003600
+      },
+      "payment": {
+        "destination": "GAYOLLLUIZE4DZMBB2ZBKGBUBZLIOYU6XFLW37GBP2VZD3ABNXCW4BVA",
+        "asset": "native",
+        "amount": "10",
+        "amount_stroops": "100000000"
+      },
+      "unsigned_envelope_xdr": "AAAAAgAAAAB2kdhQSKzE7QhdkGHOCUi7333mqSt5Cq8kHTG33KpCOAAAAMgAAAAcvpkaFQAAAAEAAAAAAAAAAAAAAABo54YQAAAAAQAAAARyZW50AAAAAQAAAAAAAAABAAAAADDlrXRGScHlgQ6yFRg0DlaHYp65V238wX6rkewBbcVuAAAAAAAAAAAF9eEAAAAAAAAAAAA=",
+      "hash": "f6f338030272820a6e8f0734a6faf649f94928b53a74a3e8a88fa5ef46c0bef2",
+      "signatures": [
+        {
+          "signer": "p0",
+          "address": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX",
+          "hint": "dcaa4238",
+          "signature": "9e85e0fd09ba7a782a9d5ced465c624035f49fe4f317e057e88072778ac365ab82b26f70eee0ac9ac2e61997779701c97d7e08e8efe29594eba0109493e30b03"
+        },
+        {
+          "signer": "p1",
+          "address": "GAFOIIMIXWLSN66RYL32JHCI7AMKWZ3TYYSZTOXSTLPHJWPMZDERMXUO",
+          "hint": "ecc8c916",
+          "signature": "3e72a33e0b9c57848097d68cc46a731b94b5ab5140ae5f7ba443abfd6ca60ea928aa54fc7291a5753cdccab4955cdd83a4cae656bf5a874e924933c5c26cc003"
+        }
+      ],
+      "envelope_p0_p1_xdr": "AAAAAgAAAAB2kdhQSKzE7QhdkGHOCUi7333mqSt5Cq8kHTG33KpCOAAAAMgAAAAcvpkaFQAAAAEAAAAAAAAAAAAAAABo54YQAAAAAQAAAARyZW50AAAAAQAAAAAAAAABAAAAADDlrXRGScHlgQ6yFRg0DlaHYp65V238wX6rkewBbcVuAAAAAAAAAAAF9eEAAAAAAAAAAALcqkI4AAAAQJ6F4P0Junp4Kp1c7UZcYkA19J/k8xfgV+iAcneKw2WrgrJvcO7grJrC5hmXd5cByX1+COjv4pWU66AQlJPjCwPsyMkWAAAAQD5yoz4LnFeEgJfWjMRqcxuUtatRQK5fe6RDq/1spg6pKKpU/HKRpXU83Mq0lVzdg6TK5la/WodOkkkzxcJswAM=",
+      "envelope_p1_only_xdr": "AAAAAgAAAAB2kdhQSKzE7QhdkGHOCUi7333mqSt5Cq8kHTG33KpCOAAAAMgAAAAcvpkaFQAAAAEAAAAAAAAAAAAAAABo54YQAAAAAQAAAARyZW50AAAAAQAAAAAAAAABAAAAADDlrXRGScHlgQ6yFRg0DlaHYp65V238wX6rkewBbcVuAAAAAAAAAAAF9eEAAAAAAAAAAAHsyMkWAAAAQD5yoz4LnFeEgJfWjMRqcxuUtatRQK5fe6RDq/1spg6pKKpU/HKRpXU83Mq0lVzdg6TK5la/WodOkkkzxcJswAM="
+    }
+  ],
+  "horizon": {
+    "account_request": "GET https://horizon-testnet.stellar.org/accounts/GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX",
+    "account_response": {
+      "_links": {
+        "self": {
+          "href": "https://horizon-testnet.stellar.org/accounts/GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX"
+        },
+        "transactions": {
+          "href": "https://horizon-testnet.stellar.org/accounts/GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX/transactions{?cursor,limit,order}",
+          "templated": true
+        },
+        "operations": {
+          "href": "https://horizon-testnet.stellar.org/accounts/GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX/operations{?cursor,limit,order}",
+          "templated": true
+        },
+        "payments": {
+          "href": "https://horizon-testnet.stellar.org/accounts/GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX/payments{?cursor,limit,order}",
+          "templated": true
+        },
+        "effects": {
+          "href": "https://horizon-testnet.stellar.org/accounts/GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX/effects{?cursor,limit,order}",
+          "templated": true
+        },
+        "offers": {
+          "href": "https://horizon-testnet.stellar.org/accounts/GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX/offers{?cursor,limit,order}",
+          "templated": true
+        },
+        "trades": {
+          "href": "https://horizon-testnet.stellar.org/accounts/GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX/trades{?cursor,limit,order}",
+          "templated": true
+        },
+        "data": {
+          "href": "https://horizon-testnet.stellar.org/accounts/GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX/data/{key}",
+          "templated": true
+        }
+      },
+      "id": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX",
+      "account_id": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX",
+      "sequence": "123456789012",
+      "sequence_ledger": 1234000,
+      "sequence_time": "1760000000",
+      "subentry_count": 2,
+      "last_modified_ledger": 1234000,
+      "last_modified_time": "2025-10-09T08:53:20Z",
+      "thresholds": {
+        "low_threshold": 1,
+        "med_threshold": 2,
+        "high_threshold": 3
+      },
+      "flags": {
+        "auth_required": false,
+        "auth_revocable": false,
+        "auth_immutable": false,
+        "auth_clawback_enabled": false
+      },
+      "balances": [
+        {
+          "balance": "100.0000000",
+          "buying_liabilities": "0.0000000",
+          "selling_liabilities": "0.0000000",
+          "asset_type": "native"
+        }
+      ],
+      "signers": [
+        {
+          "weight": 1,
+          "key": "GAFOIIMIXWLSN66RYL32JHCI7AMKWZ3TYYSZTOXSTLPHJWPMZDERMXUO",
+          "type": "ed25519_public_key"
+        },
+        {
+          "weight": 1,
+          "key": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX",
+          "type": "ed25519_public_key"
+        },
+        {
+          "weight": 1,
+          "key": "GBBWHEZC4L5ATI7RHDC7QEY5MMY7Z7BJUNA5VEI67GLGZQLBR3HJPKQI",
+          "type": "ed25519_public_key"
+        }
+      ],
+      "data": {},
+      "num_sponsoring": 0,
+      "num_sponsored": 0,
+      "paging_token": "GB3JDWCQJCWMJ3IILWIGDTQJJC5567PGVEVXSCVPEQOTDN64VJBDQBYX"
+    }
+  }
+}

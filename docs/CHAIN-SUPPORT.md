@@ -150,26 +150,9 @@ indexer does not say when it matures. Zcash shields transparent funds at the
 addresses librustzcash's own gap window tracks; transparent sends spend
 every address the scan found.
 
-Bitcoin and its test networks also hold multisig accounts: a
-`wsh(sortedmulti(k, …))` output descriptor (BIP-380/383, `<0;1>` or `/0/*`
-keys) whose keys name their origin, watched as one wallet. Its addresses are
-the P2WSH of the k-of-n script over the cosigners' keys at each index,
-sorted (BIP-67); discovery, the balance, history and receive rotation are an
-account's like any other. Spending is a PSBT (BIP-174): created from the
-account's largest confirmed outputs with key origins on every input and on
-the change, or read from another coordinator, where every input must pay
-the wallet's script at the place its key origins name, change must be the
-wallet's script, and every signature must verify. A cosigner's BIP-39 phrase,
-imported bound to the watched wallet, lets it sign its share at the
-cosigner's origin; it signs only the transaction it reviewed (the digest of
-the unsigned transaction and its input amounts), only after the indexer
-confirms each input is unspent and of the amount the PSBT claims, and only
-`SIGHASH_ALL`. Copies of one transaction join their signatures; one whose
-inputs or outputs differ is refused. Finalizing places the threshold's
-signatures in the script's key order. P2SH-wrapped, Taproot and
-non-sorted multisig, and PSBTs for single-key wallets, are not supported.
 A custom Bitcoin or Litecoin indexer broadcasts only once it names its
-network's genesis block at height 0.
+network's genesis block at height 0. Multisig accounts are
+[their own section](#multisig-accounts).
 
 Fees follow each network's rule for the transaction's size: Bitcoin's and
 Litecoin's sat/vB rate over the estimated virtual size, Peercoin's per
@@ -203,6 +186,58 @@ Peercoin minting requires an online node and is outside this transfer integratio
 the app does not advertise a minting/staking action. The [dated audit](audits/peercoin-2026-10-04.md)
 records protocol sources, verified keyless reads and submission-route checks;
 no funded live transaction was broadcast during verification.
+
+## Multisig accounts
+
+A multisig account is one wallet whose spends several signers sign. Core
+owns each network's scheme: it reads the policy from the network or derives
+the account from it, shows the signers with their weights and thresholds,
+and keeps each spend as a session (`multisig_sessions`) that survives a
+restart. Every session has a review digest a signature names; every
+signature is verified before it counts; what the network holds (inputs,
+nonces, sequences, signer sets, deadlines) is read again before a signature
+and before a submission; and data read from another signer or coordinator
+is decoded and encoded again, refused unless it comes out byte for byte the
+same. Signatures travel between signers as data in the network's own form:
+no coordination service is used.
+
+| Networks | Account | Policy | Signers sign with | Reaches the network |
+|---|---|---|---|---|
+| Bitcoin, Litecoin (and test networks) | P2WSH `sortedmulti` | `wsh(sortedmulti(k, …))` descriptor (`<0;1>` or `/0/*` keys with origins), up to 20 keys | a cosigner's phrase added to the account wallet | PSBT (BIP-174), finalized and broadcast |
+| Bitcoin Cash, Dogecoin | P2SH `sortedmulti` | `sh(sortedmulti(k, …))` descriptor, up to 15 keys | a cosigner's phrase added to the account wallet | BCHN PSBT (SIGHASH_ALL\|FORKID); Dogecoin Core's partially signed transaction (legacy digest) |
+| EVM networks | Safe 1.3.0 / 1.4.1 proxy | read from the contract: owners, threshold, nonce, modules, guard | owner wallets (EIP-712 `SafeTx`) | an owner wallet executes it and pays the gas |
+| Tron | account permissions | read: owner and active permissions, weighted keys | wallets holding the keys | the transaction names the permission (`Permission_id`) |
+| XRP Ledger | signer list | read: signers, weights, quorum | signer accounts' master keys | multi-signed payment, fee N+1 base fees, `LastLedgerSequence` |
+| Stellar | account signers | read: signers, weights, low/medium/high thresholds | signer keys' wallets | envelope with every signature and time bounds |
+| Sui | `MultiSig` address | `{"threshold", "publicKeys": [{"publicKey", "weight"}]}`, up to 10 keys | Ed25519 wallets | one combined `MultiSig` signature |
+| Aptos | `MultiKey` account | `{"signaturesRequired", "publicKeys": ["ed25519-pub-0x…", …]}`, up to 32 keys | Ed25519 wallets | one MultiKey authenticator, submitted as BCS |
+| Cardano | native script address | cardano-cli's native-script JSON (`sig`, `all`, `any`, `atLeast`, `after`, `before`) | phrase wallets' CIP-1854 keys (`m/1854'/1815'/0'/0/i`) | transaction carrying the script and every vkey witness |
+| Polkadot Asset Hub, Bittensor | `pallet-multisig` account | `{"threshold", "signatories": [SS58 …]}`, threshold at least 2 | signatories' wallets, each submitting its approval | the approval meeting the threshold executes the call |
+| TON | multisig v2 contract | read from the contract (its code hash checked): signers, threshold | signers' wallets: the first proposes the order, the others approve it | the approval meeting the threshold executes the order |
+
+On a UTXO network the account's addresses are derived per index (BIP-67
+sorted keys), so discovery, the balance, history and receive rotation are an
+account's; a spend uses its largest confirmed outputs not held by another
+open session, returns change to its next change address, and signs only
+after the indexer confirms each input unspent and of the amount reviewed. A
+Dogecoin transaction carries no amounts, so a session read from elsewhere
+must spend the account's unspent outputs. A custom Bitcoin Cash or Dogecoin
+indexer cannot prove its network (Bitcoin Cash shares Bitcoin's genesis), so
+a session is submitted only through a catalog endpoint.
+
+An ordinary send from a Tron, XRP Ledger or Stellar account is refused before
+signing when the wallet's key alone cannot authorize it, saying why: no
+permission it meets alone covers the contract, the master key is disabled, or
+its weight is below the operation's threshold. A Safe shows its modules and
+guard, which can move or block funds outside the threshold.
+
+Not supported: setting up or changing a signer set (Safe deployment, Tron's
+`AccountPermissionUpdate`, `SignerListSet`, Stellar's `SetOptions`, TON's
+`update_multisig_params`), multisig spends of tokens, Safe delegate calls,
+P2SH-wrapped, Taproot and non-sorted Bitcoin multisig, Bitcoin Cash Schnorr
+multisig signatures, Aptos's on-chain `0x1::multisig_account`, a Substrate
+threshold of one, cancelling a pending Substrate operation
+(`cancel_as_multi`), and TON multisigs that take orders by arbitrary number.
 
 ## Fungible assets
 

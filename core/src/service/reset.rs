@@ -90,7 +90,7 @@ mod tests {
             hidden_holdings: Vec::new(),
             icp_principal: None,
             near_account_key: None,
-            multisig_descriptor: None,
+            multisig_policy: None,
         };
         service
             .apply_state_command(StateCommand::UpsertWallet {

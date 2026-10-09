@@ -7,6 +7,7 @@ publish = false
 [dependencies]
 bip39 = { version = "2", features = ["all-languages"] }
 unicode-normalization = "0.1"
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 secp256k1 = { version = "0.29", features = ["alloc", "global-context", "hashes", "recovery", "rand"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["alloc", "digest", "fast", "pkcs8", "rand_core", "zeroize"] }
 curve25519-dalek = { version = "4", default-features = false, features = ["alloc", "precomputed-tables", "zeroize"] }

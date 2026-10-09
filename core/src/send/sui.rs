@@ -53,32 +53,45 @@ pub(crate) fn prepare_transfer(
             "insufficient SUI for amount plus gas budget".into(),
         ));
     }
+    Ok(PreparedSuiTransfer {
+        sender,
+        bytes: encode_transfer(&sender, &to, amount, coins, gas_price, gas_budget),
+        objects: coins.to_vec(),
+        gas_budget,
+    })
+}
+
+/// The `TransactionData` of a SUI transfer: `amount` split from the gas
+/// coin to `to`, gas paid with `coins` by `sender`.
+pub(crate) fn encode_transfer(
+    sender: &[u8; 32],
+    to: &[u8; 32],
+    amount: u64,
+    coins: &[GasCoin],
+    gas_price: u64,
+    gas_budget: u64,
+) -> Vec<u8> {
     let mut bytes = vec![0, 0]; // TransactionData::V1, TransactionKind::ProgrammableTransaction
     bcs::uleb(2, &mut bytes); // inputs: Pure(amount), Pure(recipient)
     bytes.push(0);
     bcs::bytes(&amount.to_le_bytes(), &mut bytes);
     bytes.push(0);
-    bcs::bytes(&to, &mut bytes);
+    bcs::bytes(to, &mut bytes);
     bcs::uleb(2, &mut bytes); // commands
     bytes.extend_from_slice(&[2, 0, 1, 1, 0, 0]); // SplitCoins(GasCoin, [Input(0)])
     bytes.extend_from_slice(&[1, 1, 3, 0, 0, 0, 0, 1, 1, 0]); // TransferObjects([NestedResult(0,0)], Input(1))
-    bytes.extend_from_slice(&sender);
+    bytes.extend_from_slice(sender);
     bcs::uleb(coins.len(), &mut bytes);
     for coin in coins {
         bytes.extend_from_slice(&coin.id);
         bytes.extend_from_slice(&coin.version.to_le_bytes());
         bcs::bytes(&coin.digest, &mut bytes);
     }
-    bytes.extend_from_slice(&sender); // gas owner
+    bytes.extend_from_slice(sender); // gas owner
     bytes.extend_from_slice(&gas_price.to_le_bytes());
     bytes.extend_from_slice(&gas_budget.to_le_bytes());
     bytes.push(0); // TransactionExpiration::None
-    Ok(PreparedSuiTransfer {
-        sender,
-        bytes,
-        objects: coins.to_vec(),
-        gas_budget,
-    })
+    bytes
 }
 impl PreparedSuiTransfer {
     pub(crate) fn transaction_digest(&self) -> String {

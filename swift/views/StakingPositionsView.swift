@@ -92,7 +92,7 @@ struct StakingPositionsView: View {
             Spacer()
             Text(
                 verbatim:
-                    "\(formatStakingAmount(chain: vm.chain, smallestUnit: units).map(AmountPresentation.localizedDecimal) ?? "—") \(vm.chain.gasTokenSymbol)"
+                    "\(formatNativeAmount(chain: vm.chain, smallestUnit: units).map(AmountPresentation.localizedDecimal) ?? "—") \(vm.chain.gasTokenSymbol)"
             )
             .multilineTextAlignment(.trailing).monospacedDigit()
         }.font(.caption)

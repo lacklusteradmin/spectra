@@ -1,0 +1,220 @@
+{
+  "provenance": "tronweb 6.0.4 official protobuf and crypto, generated offline (scripts/generate-tron-multisig-vectors.cjs)",
+  "sources": [
+    "https://github.com/tronprotocol/java-tron/blob/develop/protocol/src/main/protos/core/Tron.proto",
+    "https://github.com/tronprotocol/java-tron/blob/develop/chainbase/src/main/java/org/tron/common/utils/WalletUtil.java",
+    "https://github.com/tronprotocol/java-tron/blob/develop/chainbase/src/main/java/org/tron/core/capsule/TransactionCapsule.java",
+    "https://github.com/tronprotocol/java-tron/blob/develop/framework/src/main/java/org/tron/core/services/http/JsonFormat.java",
+    "https://developers.tron.network/docs/multi-signature"
+  ],
+  "phrases": [
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "legal winner thank year wave sausage worth useful legal winner thank yellow",
+    "letter advice cage absurd amount doctor acoustic avoid letter advice cage above"
+  ],
+  "path": "m/44'/195'/0'/0/0",
+  "keys": [
+    {
+      "address": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+      "hex": "41c8599111f29c1e1e061265b4af93ea1f274ad78a",
+      "private_key": "b5a4cea271ff424d7c31dc12a3e43e401df7a40d7412a15750f3f0b6b5449a28"
+    },
+    {
+      "address": "TUJ2YbSDGtCqzRz7quPQidRCMC98jDAPXc",
+      "hex": "41c901705cc4cbfdecf051f779d0de8b22759dd260",
+      "private_key": "abde94314a030ae8860a58db8adde7fc962cca2455db9d2979e480038c49dcbc"
+    },
+    {
+      "address": "TBke9PQ4W98MV6SN6Xs8mMedDTwfXge3jh",
+      "hex": "41138fd537273aa89e01653f01ccc6eec6389e0bd1",
+      "private_key": "b811253dfa038e677768fa8dcf710a979480dfd53dc1be3f8aadcbdcb880012d"
+    }
+  ],
+  "account": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+  "block": {
+    "number": 66000000,
+    "id": "0000000003ef14807c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c",
+    "timestamp_ms": 1760000000000
+  },
+  "reference": {
+    "ref_block_bytes": "1480",
+    "ref_block_hash": "7c7c7c7c7c7c7c7c"
+  },
+  "recipient": "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf",
+  "trc20_contract": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+  "permission_id_encoding": "Transaction.Contract field 5 (int32 Permission_id) as a varint after field 2 (parameter): tag 0x28, then the id (0x28 0x02 for 2). Proto3 omits a zero, so Permission_id 0 (owner) serializes exactly as a contract without one.",
+  "operations": {
+    "contract_types": {
+      "TransferContract": 1,
+      "TransferAssetContract": 2,
+      "TriggerSmartContract": 31
+    },
+    "rule": "contract type n is bit (n % 8), least significant first, of byte n / 8 of 32 (java-tron WalletUtil.checkPermissionOperations)",
+    "hex": "0600008000000000000000000000000000000000000000000000000000000000"
+  },
+  "getaccount_note": "Only the fields these vectors need; balance and create_time are illustrative. A live response carries more (account_resource, frozenV2, ...), also in field-number order.",
+  "getaccount": {
+    "address": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+    "balance": 50000000,
+    "create_time": 1750000000000,
+    "owner_permission": {
+      "permission_name": "owner",
+      "threshold": 2,
+      "keys": [
+        {
+          "address": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+          "weight": 1
+        },
+        {
+          "address": "TUJ2YbSDGtCqzRz7quPQidRCMC98jDAPXc",
+          "weight": 1
+        },
+        {
+          "address": "TBke9PQ4W98MV6SN6Xs8mMedDTwfXge3jh",
+          "weight": 1
+        }
+      ]
+    },
+    "active_permission": [
+      {
+        "type": "Active",
+        "id": 2,
+        "permission_name": "active",
+        "threshold": 2,
+        "operations": "0600008000000000000000000000000000000000000000000000000000000000",
+        "keys": [
+          {
+            "address": "TUJ2YbSDGtCqzRz7quPQidRCMC98jDAPXc",
+            "weight": 1
+          },
+          {
+            "address": "TBke9PQ4W98MV6SN6Xs8mMedDTwfXge3jh",
+            "weight": 1
+          }
+        ]
+      }
+    ]
+  },
+  "transactions": [
+    {
+      "name": "trx_active",
+      "permission_id": 2,
+      "raw_data": {
+        "ref_block_bytes": "1480",
+        "ref_block_hash": "7c7c7c7c7c7c7c7c",
+        "expiration": 1760003600000,
+        "contract": [
+          {
+            "type": "TransferContract",
+            "parameter": {
+              "value": {
+                "owner_address": "41c8599111f29c1e1e061265b4af93ea1f274ad78a",
+                "to_address": "41eca9bc828a3005b9a3b909f2cc5c2a54794de05f",
+                "amount": 1000000
+              },
+              "type_url": "type.googleapis.com/protocol.TransferContract"
+            },
+            "Permission_id": 2
+          }
+        ],
+        "timestamp": 1760000000000
+      },
+      "raw_data_hex": "0a02148022087c7c7c7c7c7c7c7c4080dd8ec39c335a69080112630a2d747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e5472616e73666572436f6e747261637412320a1541c8599111f29c1e1e061265b4af93ea1f274ad78a121541eca9bc828a3005b9a3b909f2cc5c2a54794de05f18c0843d2802708080b3c19c33",
+      "txID": "f480796f16852f208e3368a57c58987d78369ea604641c4b13f5687ec57b6677",
+      "signatures": [
+        {
+          "address": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+          "signature": "9ec2a83dc6279acdc09b6efc117d3dfe0384d6591a7ec65ce0915c2c708d4c324ad130c5613db38ae4ab5c51a05950b6f703d2d5a6d977a52dd972d52c464a961c"
+        },
+        {
+          "address": "TUJ2YbSDGtCqzRz7quPQidRCMC98jDAPXc",
+          "signature": "b96755222d4370dfe5cc29b629931890e437351452c1e2a7d7496f4a1ae222ab543c81449d7d77e37d9a45b5821ab7c23ac586175baef919836928efcc41e9f31b"
+        },
+        {
+          "address": "TBke9PQ4W98MV6SN6Xs8mMedDTwfXge3jh",
+          "signature": "4b7eb2e22e305ddb0276f3096742050c3e4615cc32b30628b74321d9998fa3633a3f1f2d571b89f74d259326032fa506394a09861d6ddcd1580c9d4dbfee16d01c"
+        }
+      ]
+    },
+    {
+      "name": "trx_owner",
+      "permission_id": 0,
+      "raw_data": {
+        "ref_block_bytes": "1480",
+        "ref_block_hash": "7c7c7c7c7c7c7c7c",
+        "expiration": 1760086400000,
+        "contract": [
+          {
+            "type": "TransferContract",
+            "parameter": {
+              "value": {
+                "owner_address": "41c8599111f29c1e1e061265b4af93ea1f274ad78a",
+                "to_address": "41eca9bc828a3005b9a3b909f2cc5c2a54794de05f",
+                "amount": 1000000
+              },
+              "type_url": "type.googleapis.com/protocol.TransferContract"
+            }
+          }
+        ],
+        "timestamp": 1760000000000
+      },
+      "raw_data_hex": "0a02148022087c7c7c7c7c7c7c7c4080b8ccea9c335a67080112630a2d747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e5472616e73666572436f6e747261637412320a1541c8599111f29c1e1e061265b4af93ea1f274ad78a121541eca9bc828a3005b9a3b909f2cc5c2a54794de05f18c0843d708080b3c19c33",
+      "txID": "be713e232d1aac3c56f129880a5ad88603259ee1d208ddca982c1a8049228e95",
+      "signatures": [
+        {
+          "address": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+          "signature": "242eeb84a1c71d78d68792d5bf5e6f47c7cccad8b3df1ab520fc1edc575a8d647296bcb8c393c36c50909cb68f2fc3848370b609720b7a45accbd3c9b04ec92e1b"
+        },
+        {
+          "address": "TUJ2YbSDGtCqzRz7quPQidRCMC98jDAPXc",
+          "signature": "a5527037d3470284164bf00a160ce5a9217e671abf6f7db2348d8a7ffc7fe8354bff5157c9c451fdb48121cdf7ae4df03a38ab069e0f66c4f1b4831fa86e87ee1b"
+        },
+        {
+          "address": "TBke9PQ4W98MV6SN6Xs8mMedDTwfXge3jh",
+          "signature": "5ccbe2692ad3935e09a330ee703577163be74b0684b9f0bb5aaa8ed005162155382dc5cb73c76befafce900b123a82672153da2667c94c9b6aa4442d6b72ca101c"
+        }
+      ]
+    },
+    {
+      "name": "trc20_active",
+      "permission_id": 2,
+      "raw_data": {
+        "ref_block_bytes": "1480",
+        "ref_block_hash": "7c7c7c7c7c7c7c7c",
+        "expiration": 1760003600000,
+        "contract": [
+          {
+            "type": "TriggerSmartContract",
+            "parameter": {
+              "value": {
+                "owner_address": "41c8599111f29c1e1e061265b4af93ea1f274ad78a",
+                "contract_address": "41a614f803b6fd780986a42c78ec9c7f77e6ded13c",
+                "data": "a9059cbb000000000000000000000000eca9bc828a3005b9a3b909f2cc5c2a54794de05f000000000000000000000000000000000000000000000000000000000012d687"
+              },
+              "type_url": "type.googleapis.com/protocol.TriggerSmartContract"
+            },
+            "Permission_id": 2
+          }
+        ],
+        "timestamp": 1760000000000,
+        "fee_limit": 100000000
+      },
+      "raw_data_hex": "0a02148022087c7c7c7c7c7c7c7c4080dd8ec39c335ab001081f12a9010a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412740a1541c8599111f29c1e1e061265b4af93ea1f274ad78a121541a614f803b6fd780986a42c78ec9c7f77e6ded13c2244a9059cbb000000000000000000000000eca9bc828a3005b9a3b909f2cc5c2a54794de05f000000000000000000000000000000000000000000000000000000000012d6872802708080b3c19c33900180c2d72f",
+      "txID": "729bf4d104c3d6acf2276c9b7b26dd2940133d83cb217790819c0f41ca3c5e41",
+      "signatures": [
+        {
+          "address": "TUEZSdKsoDHQMeZwihtdoBiN46zxhGWYdH",
+          "signature": "c4317b5242a44d741ca3b150ccb6809ae7b40b130dc6af0613df15d70318812e490bbcfe1d4fe7925a9c5a9b811bad9f8e00483dcb52417c519ff6ff003b753f1b"
+        },
+        {
+          "address": "TUJ2YbSDGtCqzRz7quPQidRCMC98jDAPXc",
+          "signature": "cb893b9e16d279343c4bda9ecbf96ab43f57f8d3e30f7892110b264067304238688e92bcba5a2ce02d95eb9abe5192af2759ffd8fe58230f08f0d4c9847843171c"
+        },
+        {
+          "address": "TBke9PQ4W98MV6SN6Xs8mMedDTwfXge3jh",
+          "signature": "ab3470e7ee271bec2d545b8519251bf8ff2351f21ccfb31f47bcd19952641c541bb1d978ce231a5cba49fdef20472bb4f54cdbb02411130240a107c60e7bd4fb1c"
+        }
+      ]
+    }
+  ]
+}

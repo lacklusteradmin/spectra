@@ -256,6 +256,44 @@ fn cardano_icarus_derive_child(
     Ok(child_xprv)
 }
 
+/// The cosigner keys a phrase holds for shared (multisig) wallets, per
+/// CIP-1854: `m/1854'/1815'/0'/0/index` for `index` from 0 up to, not
+/// including, `count`, each with its key hash.
+pub(crate) fn cosigner_keys(
+    seed_phrase: &str,
+    passphrase: &str,
+    count: u32,
+) -> Result<Vec<(Zeroizing<[u8; 64]>, [u8; 32], [u8; 28])>, DerivationError> {
+    let root = derive_cardano_icarus_xprv_root(seed_phrase, passphrase, None, 0)?;
+    (0..count)
+        .map(|index| {
+            let (private, public) = derive_icarus_child_key(
+                &root,
+                &[1854 | HARDENED, 1815 | HARDENED, HARDENED, 0, index],
+            )?;
+            Ok((Zeroizing::new(private), public, key_hash(&public)))
+        })
+        .collect()
+}
+
+/// A CIP-19 Shelley enterprise address of a script credential (type 7):
+/// the script's hash alone.
+pub(crate) fn script_enterprise_address(
+    script_hash: &[u8; 28],
+    is_mainnet: bool,
+) -> Result<String, DerivationError> {
+    let mut payload = vec![7 << 4 | u8::from(is_mainnet)];
+    payload.extend_from_slice(script_hash);
+    let hrp = bech32::Hrp::parse(if is_mainnet { "addr" } else { "addr_test" })
+        .map_err(DerivationError::invalid)?;
+    bech32::encode::<bech32::Bech32>(hrp, &payload).map_err(DerivationError::invalid)
+}
+
+/// Blake2b-224 of a public key: the key hash a vkey witness proves.
+pub(crate) fn verification_key_hash(public_key: &[u8; 32]) -> [u8; 28] {
+    key_hash(public_key)
+}
+
 // Blake2b-224 of a public key: the key hash a Shelley address carries.
 fn key_hash(public_key: &[u8; 32]) -> [u8; 28] {
     use blake2::Blake2b;

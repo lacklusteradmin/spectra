@@ -27,7 +27,7 @@ pub enum WalletSetupMethod {
     WatchAccountXpub,
     /// Scan a Monero wallet from its address and private view key.
     WatchViewKey,
-    /// Watch a Bitcoin multisig account from its descriptor.
+    /// Watch a multisig account from its policy.
     WatchMultisig,
 }
 
@@ -85,9 +85,19 @@ pub enum WalletSecretFormat {
     AccountXpub,
     /// A Monero private view key, 64 hex digits.
     MoneroViewKey,
-    /// A `wsh(sortedmulti(k, …))` output descriptor whose keys name their
-    /// origin.
+    /// A `wsh(sortedmulti(k, …))` or, without SegWit, `sh(sortedmulti(k,
+    /// …))` output descriptor whose keys name their origin.
     MultisigDescriptor,
+    /// Sui's multisig public key as its SDK takes it: a threshold and
+    /// weighted keys in Sui's base64 form.
+    SuiMultisigPublicKey,
+    /// An Aptos MultiKey as its SDK takes it: the signatures required and
+    /// AIP-80 public keys.
+    AptosMultiKey,
+    /// A Cardano native script as cardano-cli writes it.
+    CardanoNativeScript,
+    /// A Substrate multisig: a threshold and its signatories' addresses.
+    SubstrateMultisig,
 }
 
 /// A value a method asks for beside its secret or addresses.
@@ -205,10 +215,10 @@ pub fn wallet_setup_descriptor(chain: Chain) -> WalletSetupDescriptor {
             fields: Vec::new(),
         });
     }
-    if chain.supports_multisig() {
+    if let Some(format) = chain.multisig_policy_format() {
         options.push(WalletSetupOption {
             method: WalletSetupMethod::WatchMultisig,
-            formats: vec![WalletSecretFormat::MultisigDescriptor],
+            formats: vec![format],
             profiles: Vec::new(),
             fields: Vec::new(),
         });
@@ -387,8 +397,8 @@ pub(crate) mod tests {
                 WalletImportKind::WatchMultisig {
                     // Bitcoin's own where the network has none, which it
                     // must refuse.
-                    descriptor: crate::derivation::multisig::tests::descriptor_of_phrases(
-                        if chain.supports_multisig() {
+                    policy: crate::derivation::multisig_policy::tests::policy_of_phrases(
+                        if chain.multisig_policy_format().is_some() {
                             chain
                         } else {
                             Chain::Bitcoin

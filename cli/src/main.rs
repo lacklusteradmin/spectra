@@ -89,9 +89,9 @@ enum Command {
     /// A wallet's receive/change index pool.
     #[command(subcommand)]
     Pool(cmd::address_pool::PoolCommand),
-    /// A multisig wallet's partially signed transactions.
+    /// A multisig account's signers and the spends they sign.
     #[command(subcommand)]
-    Psbt(cmd::psbt::PsbtCommand),
+    Multisig(cmd::multisig::MultisigCommand),
     /// Price alerts.
     #[command(subcommand)]
     Alert(cmd::alert::AlertCommand),
@@ -143,7 +143,7 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Refresh(args) => cmd::refresh::refresh(ctx, out, args),
         Command::Rescan(args) => cmd::rescan::rescan(ctx, out, args),
         Command::Pool(command) => cmd::address_pool::run(ctx, out, command),
-        Command::Psbt(command) => cmd::psbt::run(ctx, out, command),
+        Command::Multisig(command) => cmd::multisig::run(ctx, out, command),
         Command::Alert(command) => cmd::alert::run(ctx, out, command),
     }
 }

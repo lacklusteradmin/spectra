@@ -223,6 +223,107 @@ fn chain_parameter(parameters: &Value, name: &str) -> Result<u64, ApiError> {
     }
 }
 
+/// What a Tron account's policy read finds.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TronAccountPolicy {
+    pub permissions: TronPermissions,
+    pub balance_sun: u64,
+    /// What the network charges a transaction signed by more than one key;
+    /// 0 when it was not read.
+    pub multi_sign_fee_sun: u64,
+}
+
+/// `wallet/getaccount`'s permissions (`visible: true`), as java-tron
+/// writes them: a default value left out, so the owner's has no `type` or
+/// `id`. An empty answer is an account not yet on the network, and one
+/// without permissions an account that never set any.
+pub(crate) fn account_permissions(
+    account: &Value,
+    address: &str,
+) -> Result<TronPermissions, ApiError> {
+    if account
+        .as_object()
+        .is_some_and(|account| account.is_empty())
+    {
+        return Ok(TronPermissions::single(address));
+    }
+    if account.get("address").and_then(Value::as_str) != Some(address) {
+        return Err(ApiError::decode(
+            "Tron account answer names another account",
+        ));
+    }
+    // An account that never set its permissions holds java-tron's defaults:
+    // its own key alone.
+    if account.get("owner_permission").is_none() {
+        return Ok(TronPermissions::single(address));
+    }
+    let permission = |value: &Value, owner: bool| -> Result<TronPermission, ApiError> {
+        let number = |name: &str| match value.get(name) {
+            None => Ok(0),
+            Some(value) => value.as_u64().or_decode("Tron permission number"),
+        };
+        let id = u8::try_from(number("id")?).map_err(|_| ApiError::decode("Tron permission id"))?;
+        let keys = value
+            .get("keys")
+            .and_then(Value::as_array)
+            .or_decode("Tron permission keys")?
+            .iter()
+            .map(|key| {
+                let address = key
+                    .get("address")
+                    .and_then(Value::as_str)
+                    .or_decode("Tron permission key address")?;
+                tron_base58_to_evm_hex(address).map_err(ApiError::decode)?;
+                Ok(TronKey {
+                    address: address.to_string(),
+                    weight: key.get("weight").and_then(Value::as_u64).unwrap_or(0),
+                })
+            })
+            .collect::<Result<Vec<_>, ApiError>>()?;
+        let operations = match value.get("operations").and_then(Value::as_str) {
+            _ if owner => None,
+            Some(hex) if hex.len() == 64 && hex::decode(hex).is_ok() => {
+                Some(hex.to_ascii_lowercase())
+            }
+            _ => return Err(ApiError::decode("Tron active permission operations")),
+        };
+        Ok(TronPermission {
+            id,
+            name: value
+                .get("permission_name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            threshold: number("threshold")?,
+            operations,
+            keys,
+        })
+    };
+    let owner = permission(
+        account
+            .get("owner_permission")
+            .or_decode("Tron owner permission missing")?,
+        true,
+    )?;
+    if owner.id != 0 {
+        return Err(ApiError::decode("Tron owner permission id"));
+    }
+    let actives = account
+        .get("active_permission")
+        .and_then(Value::as_array)
+        .map(|actives| {
+            actives
+                .iter()
+                .map(|active| permission(active, false))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+    TronPermissions { owner, actives }
+        .checked()
+        .map_err(|error| ApiError::decode(error.to_string()))
+}
+
 impl TronHttpClient {
     pub(crate) async fn transfer_reference_for(
         &self,
@@ -485,6 +586,35 @@ impl TronHttpClient {
         .await
     }
 
+    /// An account's owner and active permissions and its balance, read
+    /// from one verified node; `multi_sign` also reads the fee the network
+    /// charges a transaction signed by several keys. An account not yet on
+    /// the network is its own key alone.
+    pub(crate) async fn fetch_permissions(
+        &self,
+        chain: crate::registry::Chain,
+        address: &str,
+        multi_sign: bool,
+    ) -> Result<TronAccountPolicy, ApiError> {
+        race(&self.endpoints, |endpoint| async move {
+            let node = Self::new(std::sync::Arc::new(vec![endpoint]));
+            node.verify_network(chain).await?;
+            let account = node.account_at(address).await?;
+            let multi_sign_fee_sun = if multi_sign {
+                let parameters = node.post("/wallet/getchainparameters", &json!({})).await?;
+                chain_parameter(&parameters, "getMultiSignFee")?
+            } else {
+                0
+            };
+            Ok(TronAccountPolicy {
+                permissions: account_permissions(&account, address)?,
+                balance_sun: account.get("balance").and_then(Value::as_u64).unwrap_or(0),
+                multi_sign_fee_sun,
+            })
+        })
+        .await
+    }
+
     pub fn new(endpoints: std::sync::Arc<Vec<String>>) -> Self {
         Self {
             metadata_cache: None,
@@ -545,6 +675,7 @@ impl TronHttpClient {
 use serde_json::json;
 
 use crate::derivation::tron::tron_base58_to_evm_hex;
+use crate::send::tron_multisig::{TronKey, TronPermission, TronPermissions};
 
 impl TronHttpClient {
     pub(crate) async fn verify_network(

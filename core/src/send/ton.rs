@@ -45,26 +45,31 @@ pub(crate) fn build_transfer_for_address(
     valid_until: u32,
     send_mode: u8,
 ) -> Result<Vec<u8>, SendError> {
-    let payload = if let Some(text) = comment.filter(|t| !t.is_empty()) {
-        if text.len() > 4096 {
-            return Err(SendError::invalid("TON: comment exceeds 4096 UTF-8 bytes"));
-        }
-        let mut bytes = vec![0u8; 4];
-        bytes.extend_from_slice(text.as_bytes());
-        let mut tail = None;
-        for chunk in bytes.chunks(127).rev() {
-            let mut cell = Cell::default();
-            cell.bytes(chunk)?;
-            if let Some(next) = tail {
-                cell.reference(next)?;
-            }
-            tail = Some(cell);
-        }
-        tail
-    } else {
-        None
-    };
+    let payload = comment
+        .filter(|t| !t.is_empty())
+        .map(comment_cell)
+        .transpose()?;
     build_transfer_with_body(signer, to, nanotons, seqno, payload, valid_until, send_mode)
+}
+
+/// A text comment: op 0, then the text, 127 bytes to a cell, each cell
+/// referencing the next.
+pub(crate) fn comment_cell(text: &str) -> Result<Cell, SendError> {
+    if text.len() > 4096 {
+        return Err(SendError::invalid("TON: comment exceeds 4096 UTF-8 bytes"));
+    }
+    let mut bytes = vec![0u8; 4];
+    bytes.extend_from_slice(text.as_bytes());
+    let mut tail = None;
+    for chunk in bytes.chunks(127).rev() {
+        let mut cell = Cell::default();
+        cell.bytes(chunk)?;
+        if let Some(next) = tail {
+            cell.reference(next)?;
+        }
+        tail = Some(cell);
+    }
+    Ok(tail.expect("at least the op"))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -112,7 +117,9 @@ pub(crate) fn build_jetton_transfer(
     )
 }
 
-fn build_transfer_with_body(
+/// An external message from the signer's wallet sending `nanotons` and
+/// `payload` to `to`, bounceable as `to` says.
+pub(crate) fn build_transfer_with_body(
     signer: &TonSigner<'_>,
     to: TonAddress,
     nanotons: u64,

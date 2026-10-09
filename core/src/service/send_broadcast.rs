@@ -163,6 +163,12 @@ impl WalletService {
             }
             Api::AptosRest => {
                 let val: serde_json::Value = serde_json::from_str(&payload)?;
+                // A multi-key transaction travels as BCS.
+                if let Some(signed) = val["signed_bcs_hex"].as_str() {
+                    let client = AptosClient::new(eps);
+                    let res = client.submit_signed_bcs(&hex::decode(signed)?).await?;
+                    return Ok(serde_json::to_string(&res)?);
+                }
                 let body_json = val["signed_body_json"]
                     .as_str()
                     .ok_or_else(|| {

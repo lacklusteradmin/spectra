@@ -26,6 +26,34 @@ impl WalletService {
         stored: &StoredSend,
     ) -> Result<(), SpectraBridgeError> {
         let now = crate::store::now_unix() as u64;
+        // The account's master key, which the wallet holds, may have been
+        // disabled since the review.
+        if matches!(
+            stored.prepared,
+            PreparedPayload::Xrp { .. }
+                | PreparedPayload::XrpIssuedPayment(_)
+                | PreparedPayload::XrpTrustSet(_)
+                | PreparedPayload::XrpAccountDelete { .. }
+        ) {
+            self.validate_xrp_master_key(chain, &stored.view.sender)
+                .await?;
+        }
+        // So may a Stellar account's master key's weight, or its thresholds.
+        let stellar_needs = match &stored.prepared {
+            PreparedPayload::Stellar { .. }
+            | PreparedPayload::StellarAssetPayment(_)
+            | PreparedPayload::StellarChangeTrust(_) => {
+                Some(super::multisig_stellar::StellarThreshold::Medium)
+            }
+            PreparedPayload::StellarAccountMerge { .. } => {
+                Some(super::multisig_stellar::StellarThreshold::High)
+            }
+            _ => None,
+        };
+        if let Some(needs) = stellar_needs {
+            self.validate_stellar_master_key(chain, &stored.view.sender, needs)
+                .await?;
+        }
         if matches!(
             stored.prepared,
             PreparedPayload::Xrp { .. }
@@ -248,6 +276,8 @@ impl WalletService {
                     .as_deref()
                     .is_some_and(|id| chain.token_standard_for_identifier(id) == "TRC-10") =>
             {
+                self.validate_tron_permission(chain, prepared, &stored.view.sender)
+                    .await?;
                 let fee = self
                     .validate_trc10_funds(chain, prepared, &stored.request, &stored.view.sender)
                     .await?;
@@ -263,6 +293,12 @@ impl WalletService {
                         "TRC-10 fee budget changed; review again",
                     ));
                 }
+            }
+            // The account's permissions again: a key taken out of them since
+            // the review would be refused only at broadcast.
+            PreparedPayload::Tron(prepared) => {
+                self.validate_tron_permission(chain, prepared, &stored.view.sender)
+                    .await?;
             }
             // Every prerequisite again, from the ledger as it is now: a
             // trust line, a freeze, an authorization or an issuer's rate may
@@ -800,6 +836,7 @@ impl WalletService {
                 }
             }
             Chain::Xrp => {
+                self.validate_xrp_master_key(chain, sender).await?;
                 let client = XrplClient::new(eps);
                 let fee_drops =
                     XrplClient::new(self.endpoints_for(chain, &[EndpointCapability::Fee]).await)
@@ -836,6 +873,12 @@ impl WalletService {
                 }
             }
             Chain::Stellar if request.contract_address.is_some() => {
+                self.validate_stellar_master_key(
+                    chain,
+                    sender,
+                    super::multisig_stellar::StellarThreshold::Medium,
+                )
+                .await?;
                 PreparedPayload::StellarAssetPayment(
                     crate::send::stellar_issued::PreparedStellarAssetPayment::plan(
                         &HorizonClient::new(
@@ -864,6 +907,12 @@ impl WalletService {
                 )
             }
             Chain::Stellar => {
+                self.validate_stellar_master_key(
+                    chain,
+                    sender,
+                    super::multisig_stellar::StellarThreshold::Medium,
+                )
+                .await?;
                 let client = HorizonClient::new(eps);
                 PreparedPayload::Stellar {
                     sequence: client
@@ -930,6 +979,7 @@ impl WalletService {
                         .await?
                         .checked_add(7200)
                         .ok_or_else(|| SpectraBridgeError::failure("Slot overflow"))?,
+                    None,
                 )?)
             }
             Chain::Solana => PreparedPayload::Solana(
@@ -959,7 +1009,7 @@ impl WalletService {
                 .await?,
             ),
             Chain::Tron => {
-                use crate::send::tron::{Transfer, prepare_transfer};
+                use crate::send::tron::{Transfer, prepare_transfer_under};
                 let trc10 = request
                     .contract_address
                     .as_deref()
@@ -989,7 +1039,16 @@ impl WalletService {
                 } else {
                     client.transfer_reference().await?
                 };
-                let prepared = prepare_transfer(sender, transfer, reference)?;
+                let contract_type = match &transfer {
+                    Transfer::Native { .. } => crate::send::tron_multisig::TRANSFER_CONTRACT,
+                    Transfer::Trc10 { .. } => crate::send::tron_multisig::TRANSFER_ASSET_CONTRACT,
+                    Transfer::Token { .. } => crate::send::tron_multisig::TRIGGER_SMART_CONTRACT,
+                };
+                let permission = self
+                    .tron_permission_alone(chain, sender, contract_type)
+                    .await?;
+                let prepared =
+                    prepare_transfer_under(sender, transfer, reference, permission, 60_000)?;
                 if trc10 {
                     let fee = self
                         .validate_trc10_funds(chain, &prepared, request, sender)

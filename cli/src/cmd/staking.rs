@@ -152,17 +152,17 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
                         "  {} {:?} stake {} · unlocking {} · withdrawable {} {}",
                         p.id,
                         p.status,
-                        spectra_core::staking::format_staking_amount(
+                        spectra_core::decimal::format_native_amount(
                             chain,
                             p.staked_amount_smallest_unit.clone()
                         )
                         .unwrap_or_else(|| "—".into()),
-                        spectra_core::staking::format_staking_amount(
+                        spectra_core::decimal::format_native_amount(
                             chain,
                             p.unbonding_amount_smallest_unit.clone()
                         )
                         .unwrap_or_else(|| "—".into()),
-                        spectra_core::staking::format_staking_amount(
+                        spectra_core::decimal::format_native_amount(
                             chain,
                             p.withdrawable_amount_smallest_unit.clone()
                         )

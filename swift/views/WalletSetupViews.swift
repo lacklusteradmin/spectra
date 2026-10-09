@@ -151,12 +151,16 @@ struct SetupView: View {
                             .autocorrectionDisabled().font(.system(.footnote, design: .monospaced))
                             .padding(SpectraLayout.Space.m).spectraInputFieldStyle().foregroundStyle(Color.primary)
                     } else if draft.method == .watchMultisig {
-                        Text(AppLocalization.string("Descriptor")).font(.headline).foregroundStyle(Color.primary)
-                        TextField("wsh(sortedmulti(…))", text: $draft.descriptorInput, axis: .vertical).lineLimit(4...10)
+                        Text(AppLocalization.string("Multisig Policy")).font(.headline).foregroundStyle(Color.primary)
+                        TextField(
+                            walletSetupDescriptor(chain: chain).options.first { $0.method == .watchMultisig }?
+                                .formats.first?.title ?? "",
+                            text: $draft.descriptorInput, axis: .vertical
+                        ).lineLimit(4...10)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .font(.system(.footnote, design: .monospaced))
                             .padding(SpectraLayout.Space.m).spectraInputFieldStyle().foregroundStyle(Color.primary)
-                        Text(AppLocalization.string("Spectra watches the account and builds its PSBTs. To sign, add one cosigner's phrase to the wallet afterwards."))
+                        Text(AppLocalization.string("Spectra watches the account and builds its transactions for its signers to sign."))
                             .font(.caption).foregroundStyle(.secondary)
                     } else if draft.method == .watchViewKey {
                         Text(AppLocalization.string("Primary Address")).font(.headline).foregroundStyle(Color.primary)

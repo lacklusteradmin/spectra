@@ -97,6 +97,8 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                     json!({"hash":hash})
                 },
                 "/wallet/getnowblock" => json!({"blockID":format!("0000000000000007{}","33".repeat(24)),"block_header":{"raw_data":{"number":7}}}),
+                // An account that never set its permissions: its own key.
+                "/wallet/getaccount" => json!({"address":body["address"],"balance":10_000_000_000u64}),
                 "/wallet/getblockbynum" => {
                     assert_eq!(body,json!({"num":0}));
                     json!({"blockID":Chain::Tron.tron_genesis_block_id().unwrap()})

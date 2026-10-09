@@ -1,21 +1,46 @@
-//! A Bitcoin multisig account: `wsh(sortedmulti(k, …))`, the policy its
-//! output descriptor names (BIP-380, BIP-383, BIP-389's `<0;1>` for the
-//! receive and change branches). Each cosigner is an account public key with
-//! the fingerprint and path it was derived along, which a PSBT names so each
-//! signer finds its key. Every address of the account pays the P2WSH of the
-//! k-of-n script over the cosigners' keys at one receive or change index,
-//! sorted (BIP-67).
+//! A UTXO network's multisig account: `sortedmulti`, the policy its output
+//! descriptor names (BIP-380, BIP-383, BIP-389's `<0;1>` for the receive and
+//! change branches), inside `wsh` where the network has SegWit (Bitcoin,
+//! Litecoin) and `sh` where it does not (Bitcoin Cash, Dogecoin). Each
+//! cosigner is an account public key with the fingerprint and path it was
+//! derived along, which a partially signed transaction names so each signer
+//! finds its key. Every address of the account pays the k-of-n script over
+//! the cosigners' keys at one receive or change index, sorted (BIP-67).
 
 use bitcoin::bip32::{ChildNumber, DerivationPath, Fingerprint, Xpriv, Xpub};
 use bitcoin::secp256k1::{PublicKey, Secp256k1};
-use bitcoin::{Address, KnownHrp, NetworkKind, ScriptBuf};
+use bitcoin::{NetworkKind, ScriptBuf};
 use std::str::FromStr;
 
 use crate::derivation::error::DerivationError;
 use crate::registry::Chain;
 
-/// `OP_CHECKMULTISIG`'s limit, and Bitcoin Core's for `sortedmulti` in `wsh`.
-pub(crate) const MAX_COSIGNERS: usize = 20;
+/// The script a multisig account's outputs pay its `sortedmulti` through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UtxoMultisigScript {
+    /// P2WSH (BIP-141): the witness carries the script.
+    Wsh,
+    /// P2SH (BIP-16): the scriptSig carries it.
+    Sh,
+}
+
+impl UtxoMultisigScript {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Wsh => "wsh",
+            Self::Sh => "sh",
+        }
+    }
+
+    /// `OP_CHECKMULTISIG`'s 20 keys in a witness script; a P2SH redeem
+    /// script stops at 15, its 520-byte push limit.
+    fn max_cosigners(self) -> usize {
+        match self {
+            Self::Wsh => 20,
+            Self::Sh => 15,
+        }
+    }
+}
 
 /// One cosigner: an account public key and where it was derived from.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,9 +50,10 @@ pub(crate) struct Cosigner {
     pub key: Xpub,
 }
 
-/// A k-of-n P2WSH account over sorted keys.
+/// A k-of-n account over sorted keys.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MultisigPolicy {
+    pub script: UtxoMultisigScript,
     pub threshold: usize,
     pub cosigners: Vec<Cosigner>,
 }
@@ -36,14 +62,25 @@ pub(crate) struct MultisigPolicy {
 /// branch, and its index.
 pub(crate) type Place = (u32, u32);
 
+/// The key version a descriptor on `chain` writes its keys in: `xpub`
+/// on a mainnet, `tpub` on a test network, as every descriptor wallet
+/// writes them.
+fn network_kind(chain: Chain) -> NetworkKind {
+    if chain.is_testnet() {
+        NetworkKind::Test
+    } else {
+        NetworkKind::Main
+    }
+}
+
 impl MultisigPolicy {
     /// `text` as a multisig account on `chain`: a `wsh(sortedmulti(…))`
-    /// descriptor whose keys carry their origin and the network's version
-    /// (`xpub` on mainnet, `tpub` on a test network), each followed by
-    /// `/<0;1>/*` or `/0/*`. A checksum, when present, must be the
-    /// descriptor's.
+    /// descriptor, or `sh(sortedmulti(…))` on a network without SegWit,
+    /// whose keys carry their origin and the network's version (`xpub` on
+    /// mainnet, `tpub` on a test network), each followed by `/<0;1>/*` or
+    /// `/0/*`. A checksum, when present, must be the descriptor's.
     pub(crate) fn parse(chain: Chain, text: &str) -> Result<Self, DerivationError> {
-        let network = chain.bitcoin_network().ok_or_else(|| {
+        let script = chain.utxo_multisig_script().ok_or_else(|| {
             DerivationError::refused("%@ has no multisig wallets.", [chain.chain_display_name()])
         })?;
         let text: String = text.split_whitespace().collect();
@@ -59,12 +96,14 @@ impl MultisigPolicy {
             ));
         }
         let not_one = || {
-            DerivationError::invalid(
-                "A multisig wallet is a wsh(sortedmulti(…)) descriptor whose keys name their origin.",
+            DerivationError::refused(
+                "A multisig wallet on %@ is a %@(sortedmulti(…)) descriptor whose keys name their origin.",
+                [chain.chain_display_name(), script.name()],
             )
         };
         let inner = body
-            .strip_prefix("wsh(sortedmulti(")
+            .strip_prefix(script.name())
+            .and_then(|rest| rest.strip_prefix("(sortedmulti("))
             .and_then(|rest| rest.strip_suffix("))"))
             .ok_or_else(not_one)?;
         let mut parts = inner.split(',');
@@ -73,11 +112,13 @@ impl MultisigPolicy {
             .and_then(|k| k.parse().ok())
             .ok_or_else(not_one)?;
         let cosigners = parts
-            .map(|key| parse_key(key, network).ok_or_else(not_one))
+            .map(|key| parse_key(key, network_kind(chain)).ok_or_else(not_one))
             .collect::<Result<Vec<_>, _>>()?;
-        if threshold == 0 || threshold > cosigners.len() || cosigners.len() > MAX_COSIGNERS {
-            return Err(DerivationError::invalid(
-                "A multisig wallet needs between 1 and 20 keys, and a threshold no larger than its keys.",
+        if threshold == 0 || threshold > cosigners.len() || cosigners.len() > script.max_cosigners()
+        {
+            return Err(DerivationError::refused(
+                "A multisig wallet needs between 1 and %@ keys, and a threshold no larger than its keys.",
+                [script.max_cosigners()],
             ));
         }
         for (index, cosigner) in cosigners.iter().enumerate() {
@@ -91,6 +132,7 @@ impl MultisigPolicy {
             }
         }
         Ok(Self {
+            script,
             threshold,
             cosigners,
         })
@@ -115,7 +157,12 @@ impl MultisigPolicy {
                 format!("[{origin}]{}/<0;1>/*", cosigner.key)
             })
             .collect();
-        let body = format!("wsh(sortedmulti({},{}))", self.threshold, keys.join(","));
+        let body = format!(
+            "{}(sortedmulti({},{}))",
+            self.script.name(),
+            self.threshold,
+            keys.join(",")
+        );
         let checksum = descriptor_checksum(&body).unwrap_or_default();
         format!("{body}#{checksum}")
     }
@@ -152,7 +199,8 @@ impl MultisigPolicy {
             .collect()
     }
 
-    /// The k-of-n script over the keys at `place`, sorted.
+    /// The k-of-n script over the keys at `place`, sorted: the witness
+    /// script of a P2WSH account, the redeem script of a P2SH one.
     pub(crate) fn witness_script(&self, place: Place) -> Result<ScriptBuf, DerivationError> {
         let mut keys: Vec<[u8; 33]> = self
             .keys(place)?
@@ -170,12 +218,22 @@ impl MultisigPolicy {
             .into_script())
     }
 
+    /// The output script the account's address at `place` pays.
+    pub(crate) fn script_pubkey(&self, place: Place) -> Result<ScriptBuf, DerivationError> {
+        let script = self.witness_script(place)?;
+        Ok(match self.script {
+            UtxoMultisigScript::Wsh => ScriptBuf::new_p2wsh(&script.wscript_hash()),
+            UtxoMultisigScript::Sh => ScriptBuf::new_p2sh(&script.script_hash()),
+        })
+    }
+
     /// The address at `place` on `chain`.
     pub(crate) fn address(&self, chain: Chain, place: Place) -> Result<String, DerivationError> {
-        let network = chain
-            .bitcoin_network()
-            .ok_or_else(|| DerivationError::invalid("Multisig addresses are Bitcoin addresses"))?;
-        Ok(Address::p2wsh(&self.witness_script(place)?, KnownHrp::from(network)).to_string())
+        crate::derivation::utxo_address::script_address(
+            chain,
+            self.script_pubkey(place)?.as_bytes(),
+        )
+        .ok_or_else(|| DerivationError::invalid("The network has no address for this script."))
     }
 
     /// Where `path`, from the cosigner `fingerprint` names, sits in the
@@ -214,13 +272,10 @@ impl MultisigPolicy {
         phrase: &str,
         passphrase: &str,
     ) -> Result<(usize, Xpriv), DerivationError> {
-        let network = chain
-            .bitcoin_network()
-            .ok_or_else(|| DerivationError::invalid("Multisig wallets are Bitcoin wallets"))?;
         let seed =
             crate::derivation::primitives::derive_bip39_seed(phrase, passphrase, 0, None, None)?;
         let secp = Secp256k1::new();
-        let master = Xpriv::new_master(NetworkKind::from(network), seed.as_ref())
+        let master = Xpriv::new_master(network_kind(chain), seed.as_ref())
             .map_err(DerivationError::invalid)?;
         let fingerprint = master.fingerprint(&secp);
         let index = self
@@ -246,8 +301,8 @@ impl MultisigPolicy {
 }
 
 /// `[fingerprint/path]key/<0;1>/*` or `[fingerprint/path]key/0/*`, the key
-/// on `network`'s version, its depth and child number its origin's.
-fn parse_key(text: &str, network: bitcoin::Network) -> Option<Cosigner> {
+/// in `network`'s version, its depth and child number its origin's.
+fn parse_key(text: &str, network: NetworkKind) -> Option<Cosigner> {
     let (origin, rest) = text.strip_prefix('[')?.split_once(']')?;
     let key = rest
         .strip_suffix("/<0;1>/*")
@@ -269,8 +324,7 @@ fn parse_key(text: &str, network: bitcoin::Network) -> Option<Cosigner> {
         })
         .collect::<Option<Vec<_>>>()?;
     let key = Xpub::from_str(key).ok()?;
-    let network_kind = NetworkKind::from(network);
-    if key.network != network_kind
+    if key.network != network
         || usize::from(key.depth) != origin.len()
         || origin.last().is_some_and(|last| *last != key.child_number)
     {
