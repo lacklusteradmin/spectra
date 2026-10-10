@@ -46,8 +46,7 @@ struct WalletNetworkAccountView: View {
             bandwidthPrice, energyPrice, transferBurn, tokenTransferBurn, tokenTransferCeiling):
             if !activated {
                 notice(
-                    AppLocalization.string("Not on the network yet: the first TRX sent to this address creates the account. Tokens alone do not."),
-                    systemImage: "exclamationmark.circle")
+                    AppLocalization.string("Not on the network yet: the first TRX sent to this address creates the account. Tokens alone do not."))
             }
             Section {
                 resource(available: bandwidthAvailable, limit: bandwidthLimit)
@@ -73,8 +72,7 @@ struct WalletNetworkAccountView: View {
             if !exists {
                 notice(
                     AppLocalization.format(
-                        "Not on the network yet: a payment of at least %@ %@ creates the account.", baseReserve, symbol),
-                    systemImage: "exclamationmark.circle")
+                        "Not on the network yet: a payment of at least %@ %@ creates the account.", baseReserve, symbol))
             }
             Section {
                 amountRow(AppLocalization.string("Balance"), balance, symbol)
@@ -119,8 +117,7 @@ struct WalletNetworkAccountView: View {
         case let .cardano(stakeAddress, registered, rewards, delegatedPool, delegatedDrep):
             if !registered {
                 notice(
-                    AppLocalization.string("The stake key is not registered: this account delegates to no pool and earns no rewards."),
-                    systemImage: "exclamationmark.circle")
+                    AppLocalization.string("The stake key is not registered: this account delegates to no pool and earns no rewards."))
             }
             Section {
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
@@ -164,9 +161,9 @@ struct WalletNetworkAccountView: View {
         }
     }
 
-    private func notice(_ text: String, systemImage: String) -> some View {
+    private func notice(_ text: String) -> some View {
         Section {
-            Label(text, systemImage: systemImage).font(.subheadline).foregroundStyle(Color.spectraWarning)
+            Label(text, systemImage: "exclamationmark.circle").font(.subheadline).foregroundStyle(Color.spectraWarning)
         }
     }
 

@@ -14,13 +14,7 @@ extension AppState {
     }
     /// Log a failure on this side of the boundary — a platform API, or a call
     /// into core that threw. Core logs the work it performs itself.
-    func appendOperationalLog(
-        _ level: DiagnosticLogLevel, category: String, message: String, chain: Chain? = nil, walletId: String? = nil,
-        transactionHash: String? = nil, source: String? = nil, metadata: String? = nil
-    ) {
-        diagnostics.appendOperationalLog(
-            level, category: category, message: message, chain: chain, walletId: walletId, transactionHash: transactionHash,
-            source: source, metadata: metadata
-        )
+    func appendOperationalLog(category: String, message: String, chain: Chain? = nil, source: String? = nil) {
+        diagnostics.appendOperationalLog(category: category, message: message, chain: chain, source: source)
     }
 }

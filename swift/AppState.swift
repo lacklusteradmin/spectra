@@ -306,7 +306,7 @@ final class AppState {
         } catch {
             secretStoreRegistrationError = userErrorMessage(error)
             appendOperationalLog(
-                .error, category: "Secret Store", message: "Secret store registration failed: \(String(describing: error))",
+                category: "Secret Store", message: "Secret store registration failed: \(String(describing: error))",
                 source: "WalletServiceBridge.service")
         }
     }

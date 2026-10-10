@@ -9,7 +9,7 @@ extension AppState {
             let result = try await self.bridge.ready().refreshApp(intent: intent, conditions: deviceConditions())
             return await adoptRefreshResult(result)
         } catch {
-            appendOperationalLog(.error, category: "Refresh", message: error.localizedDescription)
+            appendOperationalLog(category: "Refresh", message: error.localizedDescription)
             return false
         }
     }

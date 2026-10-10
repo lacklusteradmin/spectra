@@ -29,7 +29,6 @@ bip39 = "2"
 secp256k1 = { version = "0.29", features = ["global-context"] }
 tonic = "0.14"
 tonic-prost = "0.14"
-prost = "0.14"
 http = "1"
 tower = "0.5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
@@ -38,4 +37,3 @@ futures = "0.3"
 rand = "0.8"
 hex = "0.4"
 serde_json = "1"
-blake2b_simd = "1.0"

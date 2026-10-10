@@ -12,7 +12,7 @@ private struct SpectraInputFieldChrome: ViewModifier {
     }
 }
 extension View {
-    func spectraBubbleFill(alignment: Alignment = .leading) -> some View { frame(maxWidth: .infinity, alignment: alignment) }
+    func spectraBubbleFill() -> some View { frame(maxWidth: .infinity, alignment: .leading) }
     func spectraInputFieldStyle(cornerRadius: CGFloat = SpectraLayout.Radius.inner, borderColor: Color? = nil) -> some View {
         modifier(SpectraInputFieldChrome(cornerRadius: cornerRadius, borderColor: borderColor))
     }
@@ -103,23 +103,23 @@ struct SpectraShimmer: View {
     /// A placeholder bar's own rounding, not a step on
     /// `SpectraLayout.Radius`: the scale describes surfaces in the
     /// hierarchy, and this is a 12-14pt bar standing in for a line of text.
-    var cornerRadius: CGFloat = 6
+    private static let cornerRadius: CGFloat = 6
     var height: CGFloat = 16
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase: CGFloat = -1
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(Color.primary.opacity(0.08))
+                RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous).fill(Color.primary.opacity(0.08))
                 if !reduceMotion {
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(
+                    RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous).fill(
                         LinearGradient(colors: [.clear, Color.white.opacity(0.18), .clear], startPoint: .leading, endPoint: .trailing)
                     ).offset(x: geo.size.width * (phase + 1))
                 }
             }
         }
         .frame(height: height)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .onAppear {
             guard !reduceMotion else { return }
             withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) { phase = 1 }
@@ -163,11 +163,10 @@ struct SpectraLoadingGlyph: View {
 struct SpectraLoadingRow: View {
     let title: String
     var subtitle: String? = nil
-    var tint: Color = .accentColor
 
     var body: some View {
         HStack(spacing: SpectraLayout.Space.m) {
-            SpectraLoadingGlyph(size: 30, tint: tint)
+            SpectraLoadingGlyph(size: 30)
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
                 Text(AppLocalization.string(title))
                     .font(.subheadline.weight(.semibold))

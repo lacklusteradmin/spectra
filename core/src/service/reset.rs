@@ -48,7 +48,7 @@ impl WalletService {
                 this.apply_transaction_command(crate::service::types::TransactionCommand::Clear)
                     .await?;
                 this.clear_operational_events(None).await?;
-                this.reset_history(crate::service::history_cursor::HistoryScope::All);
+                this.history_pagination.reset_all();
                 this.status_trackers.write().await.clear();
                 *this.refresh_clock.write().await = Default::default();
                 crate::diagnostics::diagnostics_clear_all();

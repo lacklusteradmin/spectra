@@ -11,7 +11,7 @@ extension AppState {
             applyPortfolioSnapshot(snapshot)
             return true
         } catch {
-            appendOperationalLog(.error, category: "Portfolio", message: error.localizedDescription)
+            appendOperationalLog(category: "Portfolio", message: error.localizedDescription)
             return false
         }
     }

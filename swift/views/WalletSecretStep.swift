@@ -18,11 +18,7 @@ struct WalletSecretStep: View {
     @State private var focusedVerificationSlot: Int?
 
     private var isCreateMode: Bool { draft.isCreateMode }
-    private var isEditingWallet: Bool { draft.isEditingWallet }
     private var isPrivateKeyImportMode: Bool { draft.isPrivateKeyImportMode }
-    private var canContinueFromSecretStep: Bool {
-        draft.isSecretComplete && !store.walletImport.isBusy
-    }
 
     var body: some View {
         Group {

@@ -107,7 +107,7 @@ extension Date {
     /// This date in the app's language and the reader's region. The words
     /// around a date are in the app's language, which need not be the
     /// system's, so the date's month names and order are too.
-    func appFormatted(date: Date.FormatStyle.DateStyle, time: Date.FormatStyle.TimeStyle) -> String {
-        formatted(Date.FormatStyle(date: date, time: time).locale(AppLocalization.locale))
+    func appFormatted(time: Date.FormatStyle.TimeStyle) -> String {
+        formatted(Date.FormatStyle(date: .abbreviated, time: time).locale(AppLocalization.locale))
     }
 }

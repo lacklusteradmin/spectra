@@ -121,13 +121,6 @@ impl IcpClient {
         Ok(IcpBalance { e8s })
     }
 
-    pub async fn fetch_history(
-        &self,
-        account_address: &str,
-    ) -> Result<Vec<IcpHistoryEntry>, ApiError> {
-        Ok(self.fetch_history_page(account_address, None).await?.items)
-    }
-
     pub async fn fetch_history_page(
         &self,
         account_address: &str,

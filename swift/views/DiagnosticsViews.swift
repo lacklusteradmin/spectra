@@ -101,7 +101,7 @@ struct DiagnosticsHubView: View {
                 }
                 let payload = try store.importDiagnosticsBundle(from: fileURL)
                 diagnosticsNotice = AppLocalization.format(
-                    "Imported diagnostics bundle (%@).", payload.generatedAtDate.appFormatted(date: .abbreviated, time: .shortened))
+                    "Imported diagnostics bundle (%@).", payload.generatedAtDate.appFormatted(time: .shortened))
             } catch {
                 diagnosticsNotice = AppLocalization.format("Import failed: %@", userErrorMessage(error))
             }
@@ -266,7 +266,7 @@ struct StandardChainDiagnosticsView: View {
     private var historySources: [DiagnosticsSourceCount] { recorded?.historySources ?? [] }
     private var endpoints: [EndpointProbe] { recorded?.endpoints ?? [] }
     private func formattedTime(_ unix: Double) -> String {
-        Date(timeIntervalSince1970: unix).appFormatted(date: .abbreviated, time: .shortened)
+        Date(timeIntervalSince1970: unix).appFormatted(time: .shortened)
     }
     /// An endpoint nothing knows how to probe is unchecked, not a pass.
     private func endpointStatusIconName(for row: EndpointProbe) -> String {

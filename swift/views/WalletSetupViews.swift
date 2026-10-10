@@ -88,10 +88,9 @@ struct SetupView: View {
     }
     @ViewBuilder
     private func watchedAddressSection(
-        text: Binding<String>, caption: String? = nil, validationMessage: String? = nil, validationColor: Color? = nil
+        text: Binding<String>, validationMessage: String? = nil, validationColor: Color? = nil
     ) -> some View {
         watchedAddressEditor(text: text)
-        if let caption { Text(caption).font(.caption).foregroundStyle(.secondary) }
         if let validationMessage, !validationMessage.isEmpty {
             Text(validationMessage).font(.caption).foregroundStyle(validationColor ?? Color.secondary)
         }

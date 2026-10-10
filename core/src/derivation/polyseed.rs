@@ -9,7 +9,7 @@
 //! coin, birthday and features. Ported from the reference implementation
 //! (tevador/polyseed dd998e2), whose wordlists `core/data/wordlists/polyseed`
 //! copies; vectors from that implementation are in
-//! `core/tests/fixtures/phrase-formats.json`.
+//! `core/tests/fixtures/monero-phrases.json`.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;

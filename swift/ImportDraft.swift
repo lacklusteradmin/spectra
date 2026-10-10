@@ -121,9 +121,6 @@ final class WalletImportDraft {
     var backupVerificationEntries: [String] = []
     var isCreateMode: Bool { method == .createPhrase }
     var isPrivateKeyImportMode: Bool { method == .importPrivateKey }
-    var isWatchOnlyMode: Bool {
-        method == .watchAddresses || method == .watchAccountXpub || method == .watchViewKey || method == .watchMultisig
-    }
     /// The pages this draft's form walks through.
     var setupFlow: SetupFlow {
         switch mode {

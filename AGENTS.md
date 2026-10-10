@@ -88,8 +88,8 @@ including `ethereumTestNetworksExposeExpectedContextsAndEndpoints`.
 
 - Check APIs, syntax and generated bindings against **UniFFI 0.31 and Swift 6**
   before changing FFI or Swift code. See [FFI-BOUNDARY.md](docs/FFI-BOUNDARY.md).
-- Never hand-edit `swift/generated/`. Change the Rust API or generator patch
-  and regenerate the bindings.
+- Never hand-edit `swift/generated/`. Change the Rust API and regenerate the
+  bindings.
 - iOS `reqwest` must use `rustls-tls-webpki-roots`. Native roots are empty on
   iOS and cause HTTPS `UnknownIssuer` failures.
 - [docs/IOS-UI.md](docs/IOS-UI.md) is the authority for Liquid Glass,
@@ -153,8 +153,8 @@ After adding or editing library icons, normalize and export:
 scripts/normalize-icons.sh && scripts/export-swift-icons.sh
 ```
 
-- `crypto/` and `fiat/` share a 64×64 SVG style and export to matching asset
-  groups; only `fiat/` uses a namespace. Keep source and asset group names aligned.
+- `crypto/` is a 64×64 SVG library and exports to the matching `crypto` asset
+  group, without a namespace. Keep source and asset group names aligned.
 - Use a full-disc `<circle cx="32" cy="32" r="32" fill="…"/>` as the first
   drawable (after any `<defs>`). `usd1` is the exception: its rings form the disc.
 - Formatting is owned by `scripts/svgo.config.mjs`; use

@@ -170,7 +170,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
     @Test func ethereumTestNetworksExposeExpectedContextsAndEndpoints() {
         for chain in [Chain.ethereumSepolia, .ethereumHoodi] {
             #expect(chain.isEVM, "\(chain.id)")
-            #expect(chain.isTestnet, "\(chain.id)")
+            #expect(!Chain.mainnets.contains(chain), "\(chain.id)")
             #expect(chain.mainnetCounterpart == .ethereum, "\(chain.id)")
         }
         #expect(AppEndpointDirectory.groupedSettingsEntries(for: Chain.ethereumSepolia).flatMap(\.endpoints) == ["https://ethereum-sepolia-rpc.publicnode.com", "https://1rpc.io/sepolia", "https://eth-sepolia.blockscout.com"])

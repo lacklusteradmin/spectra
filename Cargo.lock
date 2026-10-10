@@ -5841,7 +5841,6 @@ name = "spectra_zcash_fixture"
 version = "0.1.0"
 dependencies = [
  "bip39",
- "blake2b_simd",
  "bls12_381",
  "futures",
  "hex",
@@ -5849,7 +5848,6 @@ dependencies = [
  "incrementalmerkletree",
  "jubjub",
  "orchard",
- "prost",
  "rand 0.8.5",
  "sapling-crypto",
  "secp256k1",

@@ -66,7 +66,7 @@ struct WalletMultisigView: View {
         .task { await load() }
         .navigationDestination(item: $opened) { session in
             if let account {
-                MultisigSessionView(store: store, wallet: wallet, account: account, session: session) { await load() }
+                MultisigSessionView(store: store, account: account, session: session) { await load() }
             }
         }
     }
@@ -190,7 +190,6 @@ private struct MultisigSignerRow: View {
 /// done with it now.
 private struct MultisigSessionView: View {
     let store: AppState
-    let wallet: WalletView
     let account: MultisigAccount
     @State var session: MultisigSession
     let changed: () async -> Void

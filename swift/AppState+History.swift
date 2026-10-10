@@ -24,7 +24,7 @@ extension AppState {
                 await refreshTransactionProjection()
             }
         } catch {
-            appendOperationalLog(.error, category: "History", message: String(describing: error))
+            appendOperationalLog(category: "History", message: String(describing: error))
         }
     }
     @discardableResult

@@ -34,8 +34,6 @@ extension Chain: Identifiable {
     /// One spelling per chain: the registry has a test that says so.
     var displayName: String { identity?.name ?? "" }
 
-    var isTestnet: Bool { identity?.isTestnet ?? false }
-
     // ── Columns of the identity table ─────────────────────────────────────
 
     /// Which chain's slot this chain's address is stored under. The EVM family

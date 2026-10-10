@@ -46,7 +46,6 @@ final class WalletDiagnosticsState {
         guard let state = try? await bridge.ready().diagnosticState(), started == revision else { return }
         adopt(state)
     }
-    func reset() { enqueue(.reset) }
     private var lastGoodSyncByChain: [Chain: Date] { snapshot.lastGoodUnix.mapValues { Date(timeIntervalSince1970: $0) } }
     /// One banner per degraded chain, ordered by name. Core keys both maps by chain.
     var chainDegradedBanners: [ChainDegradedBanner] {
@@ -72,19 +71,15 @@ final class WalletDiagnosticsState {
             ]
             if let source = event.source, !source.isEmpty { parts.append("source=\(source)") }
             if let chain = event.chainId { parts.append("chain=\(chain.id)") }
-            if let walletId = event.walletId { parts.append("wallet=\(walletId)") }
             if let transactionHash = event.transactionHash, !transactionHash.isEmpty { parts.append("tx=\(transactionHash)") }
-            if let metadata = event.metadata, !metadata.isEmpty { parts.append("meta=\(metadata)") }
             return parts.joined(separator: " | ")
         }
         return (header + lines).joined(separator: "\n")
     }
-    func appendOperationalLog(
-        _ level: DiagnosticLogLevel, category: String, message: String, chain: Chain? = nil, walletId: String? = nil,
-        transactionHash: String? = nil, source: String? = nil, metadata: String? = nil
-    ) {
-        enqueue(.append(input: DiagnosticLogInput(level: level, category: category, message: message,
-            chainId: chain, walletId: walletId, transactionHash: transactionHash, source: source, metadata: metadata)))
+    /// Every line this side writes is a failure; core logs the rest itself.
+    func appendOperationalLog(category: String, message: String, chain: Chain? = nil, source: String? = nil) {
+        enqueue(.append(input: DiagnosticLogInput(level: .error, category: category, message: message,
+            chainId: chain, transactionHash: nil, source: source)))
     }
     /// Core stores why a chain is stale; the sentence is worded here.
     private func localizedDegradedMessage(_ reason: ChainDegradation, chain: Chain) -> String {
@@ -104,7 +99,7 @@ final class WalletDiagnosticsState {
         let copy = DiagnosticsContentCopy.current
         if let lastGood = lastGoodSyncByChain[chain] {
             return String(
-                format: copy.degradedLastGoodSyncFormat, lastGood.appFormatted(date: .abbreviated, time: .shortened)
+                format: copy.degradedLastGoodSyncFormat, lastGood.appFormatted(time: .shortened)
             )
         }
         return copy.degradedNoPriorSuccessfulSyncYet

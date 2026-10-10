@@ -29,7 +29,7 @@ struct PlatformNotifications {
         content.sound = .default
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         do { try await UNUserNotificationCenter.current().add(request) }
-        catch { diagnostics.appendOperationalLog(.error, category: "Notifications", message: error.localizedDescription) }
+        catch { diagnostics.appendOperationalLog(category: "Notifications", message: error.localizedDescription) }
     }
 
     func deliverPriceAlerts(_ notifications: [PriceAlertNotification], amounts: AmountPresentation) async {

@@ -66,8 +66,8 @@ struct AmountPresentation {
     /// The reverse: a decimal core wrote, as a decimal field holds it, so a
     /// figure filled in for the user — a shortcut, a position, a scanned
     /// amount — edits with the separator the decimal pad types.
-    static func decimalFieldText(_ canonical: String, locale: Locale = .current) -> String {
-        let separator = locale.decimalSeparator ?? "."
+    static func decimalFieldText(_ canonical: String) -> String {
+        let separator = Locale.current.decimalSeparator ?? "."
         return separator == "." ? canonical : canonical.replacingOccurrences(of: ".", with: separator)
     }
     /// The amount alone, as a compact row shows it: core picks the places
@@ -95,12 +95,6 @@ struct AmountPresentation {
     /// A fee in the chain's gas token, exactly as core stated it.
     func formattedNetworkFee(_ fee: String, chain: Chain) -> String {
         "\(Self.localizedDecimal(fee)) \(chain.gasTokenSymbol)"
-    }
-    /// The fee with its display-currency value beside it, when core had one.
-    func formattedNetworkFee(_ fee: String, value: Double?, chain: Chain) -> String {
-        let native = formattedNetworkFee(fee, chain: chain)
-        guard let fiat = formattedFiatIfAvailable(value) else { return native }
-        return "\(native) (~\(fiat))"
     }
     /// A fee as a compact row shows it: core's significant-digit policy at
     /// the gas token's precision, with its display-currency value when core

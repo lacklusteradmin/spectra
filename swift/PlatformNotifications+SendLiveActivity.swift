@@ -178,7 +178,7 @@ extension PlatformNotifications {
                     await SendLiveActivityStore.end(transactionId: id, state: nil, lingering: false)
                 }
             }, failed: {
-                diagnostics.appendOperationalLog(.error, category: "Live Activity", message: $0.localizedDescription)
+                diagnostics.appendOperationalLog(category: "Live Activity", message: $0.localizedDescription)
             })
     }
 }

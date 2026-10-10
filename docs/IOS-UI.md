@@ -78,7 +78,7 @@ Official references:
 - **Hashes and payloads:** shown with `breakableAnywhere`, so a wrap never adds
   a hyphen that is not in the value, and copied whole from a `CopyButton`.
 - **Dates and numbers:** format them in `AppLocalization.locale` —
-  `Date.appFormatted(date:time:)`, or `.locale(AppLocalization.locale)` on a
+  `Date.appFormatted(time:)`, or `.locale(AppLocalization.locale)` on a
   format style — never the system locale, which need not be the language of
   the words around them.
 - **Glass variant:** Always `.regular`. Apple's other variant, `.clear`, is for
@@ -117,7 +117,6 @@ Every padding, stack spacing and spacer minimum is a step on one scale,
 | `m` | 12pt | Between cards, between groups inside a card, row badge gap |
 | `l` | 16pt | Card padding, screen horizontal inset |
 | `xl` | 24pt | Large artwork insets |
-| `xxl` | 32pt | Rare full-page gaps |
 
 The named values are steps too: `screenHorizontal` 16, `screenTop` 8,
 `screenBottom` 16, `sectionSpacing` 12, `cardPadding` 16, `rowVertical` 8.

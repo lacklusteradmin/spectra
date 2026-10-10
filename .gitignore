@@ -10,6 +10,9 @@ xcuserdata/
 # Rust
 target/
 
+# Python bytecode
+__pycache__/
+
 # UniFFI-generated Swift bindings (regenerated from the Rust core)
 swift/generated/
 

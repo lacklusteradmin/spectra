@@ -331,7 +331,7 @@ struct TransactionDetailView: View {
             )
         ]
 
-        if let transactionHash = nonEmptyAddress(displayedTransaction.transactionHash) {
+        if nonEmptyAddress(displayedTransaction.transactionHash) != nil {
             items.append(
                 TransactionTimelineItem(
                     id: "network-hash",

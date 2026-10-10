@@ -509,11 +509,6 @@ pub struct TokenPreferenceEntry {
 }
 
 impl TokenPreferenceEntry {
-    /// Identity: a token *is* its contract on its chain.
-    pub fn id(&self) -> String {
-        self.token.deployment_id.clone()
-    }
-
     /// The chain hosting this token.
     pub fn hosting_chain(&self) -> Option<crate::registry::Chain> {
         Some(self.token.chain_id).filter(|c| c.hosts_tokens())
@@ -579,42 +574,6 @@ pub struct DashboardPinOption {
     pub artwork_name: Option<String>,
     /// Whether this asset is in the saved dashboard pin selection.
     pub is_pinned: bool,
-}
-
-#[cfg(test)]
-mod token_preference_tests {
-    use super::*;
-
-    #[test]
-    fn an_entry_is_identified_by_its_deployment() {
-        let entry = TokenPreferenceEntry {
-            is_built_in: true,
-            token: crate::tokens::TokenDeploymentEntry {
-                deployment_id: "bnb:bep-20:0x1111111111111111111111111111111111111111".into(),
-                token_id: "fixture:token".into(),
-                kind: crate::tokens::TokenKind::Protocol {
-                    standard: "BEP-20".into(),
-                    identifier: "0x1111111111111111111111111111111111111111".into(),
-                },
-                chain_id: crate::registry::Chain::BnbChain,
-                name: "Tether USD".to_string(),
-                symbol: "USDT".to_string(),
-                token_standard: "BEP-20".to_string(),
-                contract: "0x1111111111111111111111111111111111111111".to_string(),
-                coingecko_id: "tether".to_string(),
-                coinpaprika_id: String::new(),
-                decimals: 18,
-                tags: vec![crate::tokens::TokenTag::Stablecoin],
-                color: Some(crate::chains::CatalogColor::Green),
-                artwork_name: "usdt".to_string(),
-            },
-        };
-        // Identity is the token's, not a stored string.
-        assert_eq!(
-            entry.id(),
-            "bnb:bep-20:0x1111111111111111111111111111111111111111"
-        );
-    }
 }
 
 #[cfg(test)]

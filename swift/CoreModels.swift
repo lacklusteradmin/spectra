@@ -183,7 +183,6 @@ extension TransactionRecord: Identifiable {
             ? assetDisplayName : String(format: copy.assetOnChainFormat, assetDisplayName, chainName)
         return String(format: copy.transactionSubtitleFormat, asset, walletName)
     }
-    var statusText: String { status.localizedTitle }
     var badgeColor: Color {
         switch kind {
         case .send, .stake: return .red

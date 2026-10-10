@@ -157,9 +157,6 @@ impl HistoryPaginationStore {
         });
         Ok(())
     }
-    pub fn reset(&self, chain: Chain, wallet: &str) {
-        report(self.delete(Some(chain), Some(wallet)));
-    }
     pub fn reset_all_for_wallet(&self, wallet: &str) {
         report(self.delete(None, Some(wallet)));
     }
@@ -267,39 +264,6 @@ mod tests {
             .advance_cursor_checked(crate::registry::Chain::Bitcoin, "wallet-1", None)
             .unwrap();
         assert!(store.is_exhausted(crate::registry::Chain::Bitcoin, "wallet-1"));
-    }
-
-    #[test]
-    fn reset_clears_single_entry() {
-        let store = HistoryPaginationStore::new();
-        store
-            .advance_cursor_checked(
-                crate::registry::Chain::Bitcoin,
-                "wallet-1",
-                Some("tx1".to_string()),
-            )
-            .unwrap();
-        store
-            .advance_cursor_checked(
-                crate::registry::Chain::Bitcoin,
-                "wallet-2",
-                Some("tx2".to_string()),
-            )
-            .unwrap();
-
-        store.reset(crate::registry::Chain::Bitcoin, "wallet-1");
-
-        assert!(
-            store
-                .cursor(crate::registry::Chain::Bitcoin, "wallet-1")
-                .is_none()
-        );
-        assert_eq!(
-            store
-                .cursor(crate::registry::Chain::Bitcoin, "wallet-2")
-                .as_deref(),
-            Some("tx2")
-        );
     }
 
     #[test]

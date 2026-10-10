@@ -3,17 +3,16 @@
 #
 #   icons/appicon/ → AppIcon.appiconset/ (SVG → 1024×1024 PNG)
 #   icons/crypto/  → crypto/             (SVG imageset, no namespace)
-#   icons/fiat/    → fiat/               (SVG imageset, provides-namespace)
 #
-# Rules (crypto + fiat):
+# Rules (crypto):
 #   - Creates a new .imageset for every SVG not yet in the catalog.
 #   - Updates the SVG inside an existing .imageset when the source has changed.
 #   - Removes .imageset folders that no longer have a matching source SVG.
-#   - Removes an asset group when its source directory has no SVGs.
+#   - Removes the asset group when its source directory has no SVGs.
 #
 # Rules (appicon):
 #   - Converts each SVG to a 1024×1024 PNG using ImageMagick.
-#   - Only writes the PNG when the source SVG has changed (MD5 sentinel).
+#   - Only writes the PNG when the source SVG is newer than it.
 #   - Never touches Contents.json.
 set -euo pipefail
 
@@ -22,11 +21,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 APPICON_SRC="$REPO_ROOT/icons/appicon"
 CRYPTO_SRC="$REPO_ROOT/icons/crypto"
-FIAT_SRC="$REPO_ROOT/icons/fiat"
 
 APPICON_DEST="$REPO_ROOT/swift/Assets.xcassets/AppIcon.appiconset"
 CRYPTO_DEST="$REPO_ROOT/swift/Assets.xcassets/crypto"
-FIAT_DEST="$REPO_ROOT/swift/Assets.xcassets/fiat"
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -43,23 +40,10 @@ require_convert() {
 }
 
 ensure_group_contents() {
-  local dir="$1" namespace="$2"
+  local dir="$1"
   mkdir -p "$dir"
   if [[ ! -f "$dir/Contents.json" ]]; then
-    if [[ "$namespace" == "true" ]]; then
-      cat > "$dir/Contents.json" <<'JSON'
-{
-  "info": {
-    "author": "xcode",
-    "version": 1
-  },
-  "properties": {
-    "provides-namespace": true
-  }
-}
-JSON
-    else
-      cat > "$dir/Contents.json" <<'JSON'
+    cat > "$dir/Contents.json" <<'JSON'
 {
   "info" : {
     "author" : "xcode",
@@ -67,7 +51,6 @@ JSON
   }
 }
 JSON
-    fi
   fi
 }
 
@@ -94,7 +77,7 @@ JSON
 
 # Sync a flat directory of SVGs into an xcassets group folder.
 sync_svg_group() {
-  local src="$1" dest="$2" namespace="$3" label="$4"
+  local src="$1" dest="$2" label="$3"
   local added=0 updated=0 removed=0
 
   if ! compgen -G "$src/*.svg" >/dev/null; then
@@ -105,7 +88,7 @@ sync_svg_group() {
     return
   fi
 
-  ensure_group_contents "$dest" "$namespace"
+  ensure_group_contents "$dest"
 
   for svg_path in "$src"/*.svg; do
     [[ -e "$svg_path" ]] || continue
@@ -144,7 +127,7 @@ sync_svg_group() {
 }
 
 # Convert SVGs in icons/appicon/ to 1024×1024 PNGs in AppIcon.appiconset/.
-# Uses an MD5 sentinel file alongside each PNG to detect source changes.
+# A PNG newer than its source SVG is up to date and is skipped.
 sync_appicon() {
   local src="$1" dest="$2"
   require_convert
@@ -178,7 +161,4 @@ echo "syncing appicon..."
 sync_appicon "$APPICON_SRC" "$APPICON_DEST"
 
 echo "syncing crypto..."
-sync_svg_group "$CRYPTO_SRC" "$CRYPTO_DEST" "false" "crypto"
-
-echo "syncing fiat..."
-sync_svg_group "$FIAT_SRC" "$FIAT_DEST" "true" "fiat"
+sync_svg_group "$CRYPTO_SRC" "$CRYPTO_DEST" "crypto"

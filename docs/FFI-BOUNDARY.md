@@ -59,7 +59,7 @@ record: scrub its owned strings on the receiving call path.
 ## Callers and coverage
 
 Search both Rust names and generated camelCase names before deleting an export.
-`SecretStore` and `BalanceObserver` are foreign callback protocols: their Swift
+`SecretStore` and `RefreshObserver` are foreign callback protocols: their Swift
 implementations need no Swift caller. A dead Swift wrapper does not prove that
 the export behind it is unused.
 

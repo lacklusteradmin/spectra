@@ -24,7 +24,7 @@ struct ReceiveView: View {
     /// its network, what it holds and whether Spectra only watches it — so
     /// the one to receive into is told apart without opening each.
     private var walletList: some View {
-        ReceiveScreen(title: "Receive") {
+        ReceiveScreen {
             FlowPageHeading(
                 title: "Choose a wallet to receive into",
                 subtitle: "Each wallet has its own address on its network.")
@@ -111,7 +111,7 @@ private struct ReceiveAddressView: View {
         let encoded = request ?? address
         // Rendered once per pass, for the code on screen and for sharing.
         let qrImage = encoded.flatMap { QRCodeRenderer.makeImage(from: $0) }
-        ReceiveScreen(title: "Receive") {
+        ReceiveScreen {
             if selectedWallet?.signing.isWatchOnly == true { watchOnlyNotice }
             receiveAddressHero(address: address, qrImage: qrImage, isRequest: request != nil)
             if let chain = selectedCoin?.chain, selectedCoin?.isNativeCoin == true, paymentRequestsSupported(chain: chain) {
@@ -324,7 +324,6 @@ private struct ReceiveAddressView: View {
 /// The backdrop and scrolling column both receive pages share. The pages are
 /// pushed, so the navigation bar's back button is their one way out.
 private struct ReceiveScreen<Content: View>: View {
-    let title: String
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -336,7 +335,7 @@ private struct ReceiveScreen<Content: View>: View {
                     .spectraScreenPadding()
             }
         }
-        .navigationTitle(AppLocalization.string(title))
+        .navigationTitle(AppLocalization.string("Receive"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)

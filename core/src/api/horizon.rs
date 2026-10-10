@@ -705,10 +705,6 @@ impl HorizonClient {
         Ok(stats.fee_charged.mode.parse::<u64>().unwrap_or(100))
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<StellarHistoryEntry>, ApiError> {
-        Ok(self.fetch_history_page(address, None).await?.items)
-    }
-
     pub async fn fetch_history_page(
         &self,
         address: &str,

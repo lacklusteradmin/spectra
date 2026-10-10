@@ -31,8 +31,7 @@ struct LogsView: View {
                 searchMatches = true
             } else {
                 let haystack = [
-                    event.message, event.category, event.chainName ?? "", event.source ?? "", event.metadata ?? "", event.walletId ?? "",
-                    event.transactionHash ?? "",
+                    event.message, event.category, event.chainName ?? "", event.source ?? "", event.transactionHash ?? "",
                 ].joined(separator: " ").lowercased()
                 searchMatches = haystack.contains(query)
             }
@@ -79,7 +78,7 @@ struct LogsView: View {
                         VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
                             HStack(spacing: SpectraLayout.Space.s) {
                                 Image(systemName: iconName(for: event.level)).foregroundStyle(color(for: event.level))
-                                Text(log.timestamp.appFormatted(date: .abbreviated, time: .standard)).font(.caption.bold()).foregroundStyle(
+                                Text(log.timestamp.appFormatted(time: .standard)).font(.caption.bold()).foregroundStyle(
                                     .secondary)
                                 Text(event.category).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).padding(.horizontal, SpectraLayout.Space.xs)
                                     .padding(.vertical, SpectraLayout.Space.xxs).background(Color.secondary.opacity(0.12), in: Capsule())
@@ -92,23 +91,15 @@ struct LogsView: View {
                                 Text(AppLocalization.format("chain: %@", chainName)).font(.caption.monospaced()).foregroundStyle(
                                     .secondary)
                             }
-                            if let walletId = event.walletId {
-                                Text(AppLocalization.format("wallet: %@", walletId)).font(.caption.monospaced()).foregroundStyle(
-                                    .secondary
-                                ).textSelection(.enabled)
-                            }
                             if let transactionHash = event.transactionHash, !transactionHash.isEmpty {
                                 Text(transactionHash).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
-                            }
-                            if let metadata = event.metadata, !metadata.isEmpty {
-                                Text(metadata).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                             }
                         }.padding(.vertical, SpectraLayout.Space.xxs)
                     }
                 }
             }
         }.navigationTitle(AppLocalization.string("Logs")).searchable(
-            text: $searchText, prompt: AppLocalization.string("Search message, chain, tx hash, wallet")
+            text: $searchText, prompt: AppLocalization.string("Search message, chain, tx hash")
         ).onAppear {
             rebuildLogPresentation()
         }.onChange(of: diagnosticsState.operationalLogsRevision) { _, _ in

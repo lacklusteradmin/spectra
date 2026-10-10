@@ -189,20 +189,15 @@ impl From<reqwest::Error> for SpectraBridgeError {
 }
 
 mod endpoint_api;
-pub use endpoint_api::{
-    Endpoint, EndpointApi, EndpointApiOption, EndpointCapability, endpoint_api_options,
-    endpoint_capability_id, endpoint_capability_options,
-};
+pub use endpoint_api::{Endpoint, EndpointApi, EndpointCapability, endpoint_capability_options};
 
 pub mod endpoints;
 
 mod donations;
-pub use donations::{DonationDestination, donation_destinations};
+pub use donations::donation_destinations;
 
 mod explorers;
-pub use explorers::{
-    Explorer, ExplorerLink, address_explorer_link, explorers, transaction_explorer_link,
-};
+pub use explorers::{address_explorer_link, explorers, transaction_explorer_link};
 
 pub mod api;
 pub mod chains;

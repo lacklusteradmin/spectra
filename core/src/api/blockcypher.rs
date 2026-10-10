@@ -140,11 +140,7 @@ impl BlockcypherClient {
             .collect())
     }
 
-    /// The most recent 50 transactions touching `address`, newest first.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
-        Ok(self.fetch_history_page(address, None).await?.items)
-    }
-
+    /// A page of 50 transactions touching `address`, newest first.
     pub async fn fetch_history_page(
         &self,
         address: &str,

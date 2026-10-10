@@ -17,7 +17,7 @@ extension AppState {
             do {
                 _ = try await self.bridge.ready().probeChainEndpoints(chain: chain)
             } catch {
-                self.appendOperationalLog(.error, category: "Endpoints", message: error.localizedDescription, chain: chain)
+                self.appendOperationalLog(category: "Endpoints", message: error.localizedDescription, chain: chain)
             }
         }
     }
@@ -29,7 +29,7 @@ extension AppState {
             do {
                 _ = try await self.bridge.ready().runConfiguredSelfTests(chain: chain)
             } catch {
-                self.appendOperationalLog(.error, category: "Self-Tests", message: error.localizedDescription, chain: chain)
+                self.appendOperationalLog(category: "Self-Tests", message: error.localizedDescription, chain: chain)
             }
             await self.diagnostics.loadFromSQLite()
         }

@@ -13,7 +13,6 @@ use crate::api::utxo::{FeeRate, Utxo, UtxoBalance, UtxoHistoryEntry, UtxoTxStatu
 
 #[derive(Debug, Deserialize)]
 pub struct EsploraAddressStats {
-    pub address: String,
     pub chain_stats: EsploraChainStats,
     pub mempool_stats: EsploraChainStats,
 }

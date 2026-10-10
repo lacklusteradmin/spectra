@@ -52,16 +52,8 @@ impl TrongridClient {
         }
     }
 
-    /// Up to `limit` recent confirmed transfers, native TRX, TRC-10 and TRC-20,
-    /// newest first. One endpoint answers both reads.
-    pub async fn fetch_history(
-        &self,
-        address: &str,
-        limit: usize,
-    ) -> Result<Vec<TronTransfer>, ApiError> {
-        Ok(self.fetch_history_page(address, limit, None).await?.items)
-    }
-
+    /// A page of up to `limit` confirmed transfers, native TRX, TRC-10 and
+    /// TRC-20, newest first. One endpoint answers both reads.
     pub async fn fetch_history_page(
         &self,
         address: &str,
@@ -546,9 +538,10 @@ mod history_tests {
             "{}/v1/accounts",
             server.uri()
         )]))
-        .fetch_history(ME, 50)
+        .fetch_history_page(ME, 50, None)
         .await
-        .unwrap();
+        .unwrap()
+        .items;
         let ids: Vec<_> = history.iter().map(|t| t.txid.as_str()).collect();
         assert_eq!(ids, ["usdt", "in"]);
         assert_eq!(history[0].amount_display, "1.2345");
@@ -574,7 +567,7 @@ mod history_tests {
                 "{}/v1/accounts",
                 server.uri()
             )]))
-            .fetch_history(ME, 50)
+            .fetch_history_page(ME, 50, None)
             .await
             .is_err()
         );

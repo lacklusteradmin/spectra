@@ -33,34 +33,26 @@ struct WalletDiagnosticsStateTests: IsolatedAppStateSuite {
     /// the 800-line cap are core's rules, tested in `operational_events.rs`.
     @Test func appendedLogCrossesTheBindingWithEveryField() async throws {
         let state = WalletDiagnosticsState(bridge: bridge)
-        state.appendOperationalLog(
-            .error, category: "Network", message: "Request failed", chain: Chain.bitcoin, source: "rpc",
-            metadata: "timeout"
-        )
+        state.appendOperationalLog(category: "Network", message: "Request failed", chain: Chain.bitcoin, source: "rpc")
         await state.flushPendingPersistence()
+        #expect(state.operationalLogs.first?.input.level == .error)
         #expect(state.operationalLogs.first?.input.category == "Network")
         #expect(state.operationalLogs.first?.input.message == "Request failed")
         #expect(state.operationalLogs.first?.input.chainId == Chain.bitcoin)
         #expect(state.operationalLogs.first?.input.source == "rpc")
-        #expect(state.operationalLogs.first?.input.metadata == "timeout")
     }
-    @Test func exportOperationalLogsTextIncludesHeaderAndMetadata() async throws {
+    @Test func exportOperationalLogsTextIncludesHeaderAndFields() async throws {
         let state = WalletDiagnosticsState(bridge: bridge)
-        let walletId = UUID()
         state.appendOperationalLog(
-            .warning, category: "Chain Sync", message: "Ethereum refresh timed out.", chain: Chain.ethereum,
-            walletId: walletId.uuidString,
-            transactionHash: "0xabc", source: "network", metadata: "cached"
-        )
+            category: "Chain Sync", message: "Ethereum refresh timed out.", chain: Chain.ethereum, source: "network")
         await state.flushPendingPersistence()
         let text = state.exportOperationalLogsText(networkSyncStatusText: "Network Status: Healthy")
         #expect(text.contains("Spectra Operational Logs"))
         #expect(text.contains("Entries: 1"))
         #expect(text.contains("Network Status: Healthy"))
-        #expect(text.contains("[WARNING]"))
-        #expect(text.contains("wallet=\(walletId.uuidString)"))
-        #expect(text.contains("tx=0xabc"))
-        #expect(text.contains("meta=cached"))
+        #expect(text.contains("[ERROR]"))
+        #expect(text.contains("source=network"))
+        #expect(text.contains("chain=\(Chain.ethereum.id)"))
     }
 
 }

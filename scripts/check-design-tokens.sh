@@ -39,7 +39,7 @@ report "Numeric corner radius outside SpectraLayout:" \
 # geometry — a frame, an offset, an icon size — is not spacing and is not
 # matched.
 report "Numeric spacing outside SpectraLayout:" \
-  "use SpectraLayout.Space (xxs/xs/s/m/l/xl/xxl) or a named SpectraLayout value" \
+  "use SpectraLayout.Space (xxs/xs/s/m/l/xl) or a named SpectraLayout value" \
   "$(grep -rnE 'padding\((\.[a-zA-Z]+, )?[0-9]|(^|[^A-Za-z])spacing: [1-9]|minLength: [1-9]' --include='*.swift' "$VIEWS" | grep -v "^$TOKENS:" || true)"
 
 # A literal orange. The theme colour is the asset catalog's AccentColor

@@ -115,7 +115,7 @@ counts as written whatever the call returns.
 
 | File | Purpose |
 |---|---|
-| `normalize-icons.sh` | Normalizes crypto and fiat SVGs to the project's format. `--check` reports drift without modifying files. |
+| `normalize-icons.sh` | Normalizes crypto SVGs to the project's format. `--check` reports drift without modifying files. |
 | `svgo.config.mjs` | SVG normalization rules used by the script above; this is a configuration file. |
 | `export-swift-icons.sh` | Converts and synchronizes sources from `icons/` into the Xcode asset catalog, rendering app icons as PNGs. |
 

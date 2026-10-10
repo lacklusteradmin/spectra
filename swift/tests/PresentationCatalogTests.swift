@@ -9,7 +9,7 @@ struct PresentationCatalogTests {
             let chain = try #require(Chain(id: wiki.id))
             let entry = try #require(chain.entry)
             let picker = ChainSelectionDescriptor(chain: chain, entry: entry)
-            #expect(!chain.isTestnet)
+            #expect(Chain.mainnets.contains(chain))
             #expect(wiki.tags == picker.tags, "\(wiki.id)")
             #expect(wiki.tags.map(\.title).joined(separator: " · ") == picker.tagLine)
         }

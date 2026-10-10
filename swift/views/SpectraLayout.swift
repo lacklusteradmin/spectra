@@ -14,7 +14,6 @@ enum SpectraLayout {
         static let m: CGFloat = 12
         static let l: CGFloat = 16
         static let xl: CGFloat = 24
-        static let xxl: CGFloat = 32
     }
 
     static let screenHorizontal: CGFloat = Space.l
@@ -113,9 +112,9 @@ extension View {
     /// accent fill when selected. The selected label is white text, so the
     /// fill behind it has to stay opaque to keep the label legible.
     @ViewBuilder
-    func spectraSelectableFill(isSelected: Bool, accent: Color, cornerRadius: CGFloat) -> some View {
+    func spectraSelectableFill(isSelected: Bool, cornerRadius: CGFloat) -> some View {
         if isSelected {
-            background(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(accent))
+            background(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(Color.accentColor))
         } else {
             spectraInsetFill(cornerRadius: cornerRadius)
         }

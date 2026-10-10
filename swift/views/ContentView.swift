@@ -157,7 +157,3 @@ private struct UnreadableStoreCard: View {
         }.padding(SpectraLayout.Space.xl).spectraElevatedFill().padding(SpectraLayout.Space.xl)
     }
 }
-
-#Preview {
-    ContentView(store: AppState())
-}

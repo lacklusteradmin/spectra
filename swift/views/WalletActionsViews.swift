@@ -70,7 +70,6 @@ extension WalletAction {
 }
 
 extension WalletActions {
-    func offers(_ action: WalletAction) -> Bool { actions.contains { $0.action == action } }
     func actions(in section: WalletActionSection) -> [WalletActionOffer] {
         actions.filter { $0.section == section }
     }

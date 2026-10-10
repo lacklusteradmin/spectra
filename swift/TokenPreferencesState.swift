@@ -71,7 +71,7 @@ final class TokenPreferencesState {
             }
             return nil
         case .failure(let error):
-            diagnostics.appendOperationalLog(.error, category: "Tokens", message: String(describing: error))
+            diagnostics.appendOperationalLog(category: "Tokens", message: String(describing: error))
             return userErrorMessage(error)
         }
     }

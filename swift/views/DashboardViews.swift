@@ -750,7 +750,7 @@ struct DashboardNoticeCardView: View {
             if let timestamp = notice.timestamp {
                 Text(
                     AppLocalization.format(
-                        "Last known healthy sync: %@", timestamp.appFormatted(date: .abbreviated, time: .shortened))
+                        "Last known healthy sync: %@", timestamp.appFormatted(time: .shortened))
                 ).font(.caption).foregroundStyle(.secondary)
             }
         }.padding(.vertical, SpectraLayout.Space.xs)

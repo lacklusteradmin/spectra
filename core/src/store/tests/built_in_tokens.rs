@@ -5,7 +5,10 @@ use crate::store::state::StateCommand;
 fn every_built_in_has_a_unique_id() {
     let entries = crate::store::built_in_token_preferences();
     assert!(!entries.is_empty(), "the catalog produced nothing");
-    let mut ids: Vec<String> = entries.iter().map(|e| e.id()).collect();
+    let mut ids: Vec<&str> = entries
+        .iter()
+        .map(|e| e.token.deployment_id.as_str())
+        .collect();
     ids.sort_unstable();
     let count = ids.len();
     ids.dedup();

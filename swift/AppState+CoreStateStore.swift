@@ -25,9 +25,9 @@ extension AppState {
             applyCoreState(state)
         } catch SpectraBridgeError.StoreUnreadable(let message) {
             storeStatus = .unreadable
-            appendOperationalLog(.error, category: "Storage", message: message)
+            appendOperationalLog(category: "Storage", message: message)
         } catch {
-            appendOperationalLog(.error, category: "Storage", message: error.localizedDescription)
+            appendOperationalLog(category: "Storage", message: error.localizedDescription)
         }
     }
 
@@ -62,7 +62,7 @@ extension AppState {
     /// so the log keeps it.
     func reportCommandError(_ error: Error) {
         commandError = userErrorMessage(error)
-        appendOperationalLog(.error, category: "State", message: String(describing: error))
+        appendOperationalLog(category: "State", message: String(describing: error))
     }
 
     @discardableResult

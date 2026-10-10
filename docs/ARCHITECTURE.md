@@ -114,7 +114,7 @@ only string parsing left is at the edges that receive text: the CLI's
 arguments, the catalog TOML files and the database columns.
 
 Chain-specific implementations live directly in each domain directory, for
-example `derivation/bitcoin.rs`, `fetch/bitcoin.rs` and `send/bitcoin.rs`.
+example `derivation/bitcoin.rs`, `fetch/bitcoin_history.rs` and `send/bitcoin.rs`.
 Keep differences that carry protocol meaning; share cryptographic primitives
 and wrappers that differ only in a chain name. Tests over the registry should
 assert complete capability coverage, rather than only test named examples.

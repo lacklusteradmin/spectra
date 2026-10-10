@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Rewrites every icon under icons/crypto/ and icons/fiat/ into the house
-# style defined by scripts/svgo.config.mjs, so the two directories stay a single
-# coherent icon library instead of a pile of exporter output.
+# Rewrites every icon under icons/crypto/ into the house style defined by
+# scripts/svgo.config.mjs, so the directory stays a coherent icon library
+# instead of a pile of exporter output.
 #
 #   scripts/normalize-icons.sh           normalize in place
 #   scripts/normalize-icons.sh --check   fail if any icon is not already normalized
@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 CONFIG="$SCRIPT_DIR/svgo.config.mjs"
-DIRS=("$REPO_ROOT/icons/crypto" "$REPO_ROOT/icons/fiat")
+DIRS=("$REPO_ROOT/icons/crypto")
 
 if ! command -v svgo &>/dev/null; then
   echo "error: svgo not found. Install with: brew install svgo" >&2

@@ -380,7 +380,7 @@ struct HistoryListView: View {
         } catch {
             guard !Task.isCancelled, pageRequestId == requestId, queryKey == key else { return }
             pageError = userErrorMessage(error)
-            store.appendOperationalLog(.error, category: "History", message: String(describing: error))
+            store.appendOperationalLog(category: "History", message: String(describing: error))
         }
     }
     private var historyPagingControls: some View {

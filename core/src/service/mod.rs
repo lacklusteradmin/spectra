@@ -69,12 +69,10 @@ pub(crate) mod address_discovery;
 mod balance_refresh;
 mod diagnostic_state;
 pub use diagnostic_state::{
-    ChainDegradation, ChainDiagnostics, ConfiguredSelfTestReport, DiagnosticCommand, DiagnosticLog,
-    DiagnosticLogInput, DiagnosticLogLevel, DiagnosticState, DiagnosticsPlatformInfo,
-    DiagnosticsSourceCount,
+    ChainDegradation, DiagnosticCommand, DiagnosticLog, DiagnosticLogInput, DiagnosticLogLevel,
+    DiagnosticState, DiagnosticsPlatformInfo,
 };
 mod funds_scan;
-pub use funds_scan::{FundsScan, FundsScanEndpoint, FundsScanProgress, FundsScanRead};
 mod helpers;
 mod history_cursor;
 pub(crate) mod history_derived;
@@ -86,25 +84,22 @@ pub use history_query::{
 mod history_refresh;
 pub use history_refresh::{HistoryRefreshOutcome, HistoryWalletDiagnostics};
 mod history_operation;
-pub use history_operation::{ChainHistoryRefresh, HistoryRefreshScope};
+pub use history_operation::HistoryRefreshScope;
 mod keypool;
 mod maintenance;
 mod network;
 mod network_balance;
 mod network_history;
 mod network_prices;
-pub use network_prices::{NativeSpotPrice, QuoteRefreshFailure, QuoteRefreshState};
+pub use network_prices::QuoteRefreshState;
 mod endpoint_directory;
 mod endpoint_health;
 mod network_tokens;
-pub use endpoint_directory::{CustomEndpoint, EndpointDirectoryEntry};
+pub use endpoint_directory::CustomEndpoint;
 mod operational_events;
 mod pending_status;
-pub use pending_status::{PendingMaintenanceFailure, PendingMaintenanceResult};
+pub use pending_status::PendingMaintenanceResult;
 mod movement;
-mod valuation;
-pub use state::PortfolioSnapshot;
-pub use valuation::{PortfolioValuation, QuotedTotal};
 mod reset;
 mod send_broadcast;
 mod send_destination;
@@ -119,8 +114,8 @@ mod staking_icp;
 mod staking_protocols;
 mod staking_substrate;
 mod standalone;
+mod valuation;
 pub use movement::PortfolioMovementBaseline;
-pub use reset::ResetOutcome;
 mod state;
 mod transaction_actions;
 mod transaction_recheck;
@@ -130,27 +125,22 @@ mod transport;
 mod types;
 mod wallet_actions;
 mod wallet_approvals;
-pub use wallet_approvals::{TokenApproval, TokenApprovals};
 mod wallet_coins;
-pub use wallet_coins::{AddressBranch, OwnedAddressCoins, UnspentOutput, WalletCoins};
+pub use wallet_coins::AddressBranch;
 mod wallet_copy;
 pub use wallet_copy::WalletCopyCommit;
 mod wallet_keys;
-pub use wallet_actions::{WalletAction, WalletActionOffer, WalletActionSection, WalletActions};
-pub use wallet_keys::{WalletKeyExport, WalletKeyKind};
+pub use wallet_keys::WalletKeyKind;
 mod wallet_closing;
+mod wallet_import;
 mod wallet_messages;
 mod wallet_near_keys;
 mod wallet_near_storage;
 mod wallet_network_account;
 mod wallet_nfts;
-pub use wallet_nfts::{WalletNft, WalletNfts};
 mod wallet_sui_coins;
 mod wallet_token_accounts;
 mod wallet_trust_lines;
-pub use wallet_messages::SignedMessage;
-pub use wallet_network_account::{NetworkAccount, TonAccountState, WalletNetworkAccount};
-mod wallet_import;
 mod zcash_shielded;
 pub use zcash_shielded::ZcashShieldedStatus;
 mod litecoin_mweb;
@@ -446,8 +436,6 @@ mod a_primary_endpoint_can_serve_a_primary_read {
 #[path = "tests/app_boundary.rs"]
 mod app_boundary_tests;
 
-pub use address_discovery::WalletAddressDiscovery;
-
 impl WalletService {
     pub async fn update_endpoints(
         &self,
@@ -472,11 +460,7 @@ mod send_stage_utxo;
 mod send_stages;
 mod send_utxo_sources;
 mod setup_summary;
-pub use setup_summary::{
-    AccountReserve, CapabilityCoverage, SetupEndpoint, WalletSetupLimit, WalletSetupSummary,
-};
-
-pub use owned_send::{OwnedReplacementDraft, OwnedSendPreview, OwnedSendQuote};
+pub use setup_summary::{CapabilityCoverage, WalletSetupSummary};
 
 impl WalletService {
     pub(crate) fn secrets(&self) -> Result<Arc<dyn SecretStore>, SpectraBridgeError> {
@@ -490,10 +474,7 @@ impl WalletService {
 
 mod monero_wallet;
 mod multisig;
-pub use multisig::{
-    MultisigAccount, MultisigInput, MultisigOutput, MultisigPermission, MultisigScheme,
-    MultisigSession, MultisigSigner, MultisigSpend,
-};
+pub use multisig::{MultisigSession, MultisigSigner, MultisigSpend};
 mod multisig_aptos;
 mod multisig_cardano;
 mod multisig_psbt;
@@ -504,4 +485,3 @@ mod multisig_sui;
 mod multisig_ton;
 mod multisig_tron;
 mod multisig_xrp;
-pub use monero_wallet::MoneroSyncStatus;

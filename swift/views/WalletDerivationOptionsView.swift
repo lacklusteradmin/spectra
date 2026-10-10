@@ -124,7 +124,7 @@ private struct SeedPhraseReadingSection: View {
                 .font(.subheadline.weight(.semibold).monospacedDigit())
                 .foregroundStyle(isSelected ? Color.white : Color.primary)
                 .frame(maxWidth: .infinity, minHeight: 36)
-                .spectraSelectableFill(isSelected: isSelected, accent: .accentColor, cornerRadius: SpectraLayout.Radius.control)
+                .spectraSelectableFill(isSelected: isSelected, cornerRadius: SpectraLayout.Radius.control)
         }
         .buttonStyle(.plain)
     }
@@ -189,7 +189,6 @@ private struct AdvancedOverrideTextField: View {
     let detail: String
     @Binding var text: String
     var isSecure: Bool = false
-    var keyboard: UIKeyboardType = .default
     /// A secret field can be shown: its spaces count, and a hidden field
     /// hides them.
     @State private var isRevealed = false
@@ -223,7 +222,7 @@ private struct AdvancedOverrideTextField: View {
                 .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
         } else {
             TextField(AppLocalization.string("(default)"), text: $text)
-                .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(keyboard)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
         }
     }
 }
@@ -259,7 +258,7 @@ private struct NewPhraseLengthSection: View {
                                 .foregroundStyle(isSelected ? Color.white : Color.primary)
                                 .lineLimit(1).minimumScaleFactor(0.8)
                                 .frame(maxWidth: .infinity, minHeight: 44)
-                                .spectraSelectableFill(isSelected: isSelected, accent: .accentColor, cornerRadius: SpectraLayout.Radius.inner)
+                                .spectraSelectableFill(isSelected: isSelected, cornerRadius: SpectraLayout.Radius.inner)
                         }
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)

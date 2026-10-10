@@ -72,4 +72,4 @@ bindgen-android:
 
 clean:
 	cargo clean
-	rm -rf build/ swift/generated/ kotlin/app/src/main/kotlin/uniffi/ kotlin/app/src/main/jniLibs/
+	rm -rf swift/generated/ kotlin/app/src/main/kotlin/uniffi/ kotlin/app/src/main/jniLibs/
