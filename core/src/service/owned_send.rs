@@ -16,6 +16,11 @@ pub struct OwnedSendPreview {
     /// The estimated fee in the chain's gas asset, as an exact decimal cut
     /// to the gas asset's precision.
     pub network_fee: Option<String>,
+    /// What leaves the wallet in the sent asset: the amount and the fee, when
+    /// the fee is paid in that asset too. `None` for a token, whose fee is
+    /// the gas asset's, and while the fee is unknown.
+    #[uniffi(default = None)]
+    pub total: Option<String>,
     /// That fee in the display currency, when the gas asset has a quote.
     pub network_fee_value: Option<f64>,
     /// The amount being quoted, in the display currency.
@@ -25,6 +30,11 @@ pub struct OwnedSendPreview {
     /// What the destination is, checked beside the quote. `None` when no
     /// destination was given.
     pub recipient: Option<RecipientCheck>,
+    /// Why this amount cannot be sent as quoted — more than the balance, or
+    /// too little left for the fee — as the build would refuse it. `None`
+    /// when the amount and the fee fit, or when the gas balance is unknown.
+    #[uniffi(default = None)]
+    pub amount_refusal: Option<crate::LocalizableMessage>,
 }
 
 /// The share of the fee-adjusted maximum each amount shortcut fills in; 100
@@ -64,6 +74,11 @@ pub struct RecipientCheck {
     /// this network. Read from local state, so a failed activity read does
     /// not hide it; the build review asks for confirmation on the same fact.
     pub is_own_address: bool,
+    /// Neither the address book nor this wallet's history has sent here:
+    /// the build's `NewAddress` warning, known before anything is built.
+    /// Never set for an own address.
+    #[uniffi(default = false)]
+    pub is_new_to_wallet: bool,
 }
 
 /// What a preview says about the funds, beyond the fee. Amounts are exact
@@ -132,6 +147,25 @@ fn owned_preview(
         Some(&holding.amount),
     );
     let asset_decimals = decimals.unwrap_or(gas_decimals);
+    let total = send_total(is_native, amount, network_fee.as_deref());
+    let amount_refusal = network_fee.clone().and_then(|network_fee| {
+        let wallet = state.wallets.iter().find(|w| w.id == wallet_id)?;
+        amount_refusal(&crate::send::send_affordability(
+            crate::send::SendAffordabilityInput {
+                is_native,
+                chain_id: chain,
+                symbol: holding.symbol.clone(),
+                amount: amount.to_string(),
+                network_fee,
+                holding_balance: holding.amount.clone(),
+                gas_balance: wallet
+                    .holdings
+                    .iter()
+                    .find(|h| h.is_native() && h.chain_id == chain)
+                    .map(|h| h.amount.clone()),
+            },
+        ))
+    });
     OwnedSendPreview {
         wallet_id,
         holding_key,
@@ -139,11 +173,59 @@ fn owned_preview(
         amount: amount.to_string(),
         preview,
         network_fee,
+        total,
         network_fee_value,
         amount_value,
         details: details.map(|d| SendPreviewDetails::from_core(d, asset_decimals)),
         shortcuts,
         recipient: None,
+        amount_refusal,
+    }
+}
+
+/// The amount and the fee together, when both are the sent asset: a coin
+/// pays its own fee, a token pays the gas asset's.
+pub(super) fn send_total(
+    is_native: bool,
+    amount: &str,
+    network_fee: Option<&str>,
+) -> Option<String> {
+    if !is_native {
+        return None;
+    }
+    crate::decimal::add(amount, network_fee?)
+}
+
+/// Why an amount does not fit, as a person reads it. `Unavailable` is not a
+/// refusal of the amount: the gas balance is unknown, which the build checks
+/// for itself.
+fn amount_refusal(verdict: &crate::send::SendAffordability) -> Option<crate::LocalizableMessage> {
+    use crate::send::SendAffordability;
+    match verdict {
+        SendAffordability::Affordable | SendAffordability::Unavailable => None,
+        SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => {
+            Some(crate::LocalizableMessage::new(
+                "Insufficient %@ for the amount plus the network fee (requires %@ %@).",
+                [symbol.as_str(), required.as_str(), symbol.as_str()],
+            ))
+        }
+        SendAffordability::AmountExceedsBalance { symbol } => Some(crate::LocalizableMessage::new(
+            "Insufficient %@ balance.",
+            [symbol],
+        )),
+        SendAffordability::FeeExceedsGasBalance {
+            gas_symbol,
+            fee,
+            chain_id,
+        } => Some(crate::LocalizableMessage::new(
+            "Insufficient %@ for the %@ network fee (%@ %@).",
+            [
+                gas_symbol.as_str(),
+                chain_id.chain_display_name(),
+                fee.as_str(),
+                gas_symbol.as_str(),
+            ],
+        )),
     }
 }
 
@@ -172,20 +254,38 @@ impl WalletService {
                     holding_key.clone(),
                     destination.clone(),
                 );
-                let own = async {
+                // Whose address it is, and whether this wallet has sent
+                // here, by the rule the build's review applies.
+                let known = async {
                     let (chain, _) = this
                         .destination_probe_target(&wallet_id, &holding_key)
                         .await?;
-                    let address = this
+                    let resolved = this
                         .resolve_send_destination(chain, destination.clone())
-                        .await?
-                        .address;
-                    this.is_own_address(chain, &address).await
+                        .await?;
+                    if this.is_own_address(chain, &resolved.address).await? {
+                        return Ok::<_, SpectraBridgeError>((true, false));
+                    }
+                    let warnings = this
+                        .high_risk_send_reasons(
+                            wallet_id.clone(),
+                            holding_key.clone(),
+                            "0".into(),
+                            resolved.address,
+                            destination.clone(),
+                            resolved.used_ens,
+                        )
+                        .await;
+                    let is_new =
+                        warnings.contains(&crate::send::flow::HighRiskSendWarning::NewAddress);
+                    Ok((false, is_new))
                 };
-                let (risk, own) = tokio::join!(risk, own);
+                let (risk, known) = tokio::join!(risk, known);
+                let (is_own_address, is_new_to_wallet) = known.unwrap_or((false, false));
                 Some(RecipientCheck {
                     activity: risk.ok().map(|risk| risk.activity),
-                    is_own_address: own.unwrap_or(false),
+                    is_own_address,
+                    is_new_to_wallet,
                 })
             };
             let quote = this.preview_quote_only(
@@ -490,7 +590,7 @@ impl From<crate::send::preview_decode::SimpleChainPreview> for SendPreview {
 }
 
 impl SendPreview {
-    fn network_fee(&self) -> &str {
+    pub(crate) fn network_fee(&self) -> &str {
         match self {
             Self::Utxo { preview } => &preview.estimatedNetworkFee,
             Self::Ethereum { preview } => &preview.estimatedNetworkFee,
@@ -602,42 +702,13 @@ impl WalletService {
                 .find(|h| h.is_native() && h.chain_id == chain)
                 .map(|h| h.amount.clone()),
         });
-        use crate::send::SendAffordability;
-        match verdict {
-            SendAffordability::Affordable => {}
-            SendAffordability::Unavailable => {
-                return Err(SpectraBridgeError::failure(
-                    "Unable to determine the available gas balance",
-                ));
-            }
-            SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => {
-                return Err(SpectraBridgeError::failed(
-                    "Insufficient %@ for the amount plus the network fee (requires %@ %@).",
-                    [symbol.as_str(), required.as_str(), symbol.as_str()],
-                ));
-            }
-            SendAffordability::AmountExceedsBalance { symbol } => {
-                return Err(SpectraBridgeError::failed(
-                    "Insufficient %@ balance.",
-                    [symbol],
-                ));
-            }
-            SendAffordability::FeeExceedsGasBalance {
-                gas_symbol,
-                fee,
-                chain_id,
-            } => {
-                let network = chain_id.chain_display_name();
-                return Err(SpectraBridgeError::failed(
-                    "Insufficient %@ for the %@ network fee (%@ %@).",
-                    [
-                        gas_symbol.as_str(),
-                        network,
-                        fee.as_str(),
-                        gas_symbol.as_str(),
-                    ],
-                ));
-            }
+        if verdict == crate::send::SendAffordability::Unavailable {
+            return Err(SpectraBridgeError::failure(
+                "Unable to determine the available gas balance",
+            ));
+        }
+        if let Some(message) = amount_refusal(&verdict) {
+            return Err(SpectraBridgeError::Failure { message });
         }
         let fee_rate_svb = match &preview {
             Some(SendPreview::Utxo { preview })
@@ -856,7 +927,7 @@ impl WalletService {
 
 #[cfg(test)]
 mod shortcut_amount_tests {
-    use super::shortcut_amount;
+    use super::{send_total, shortcut_amount};
 
     #[test]
     fn shares_are_cut_to_display_precision_and_the_maximum_is_exact() {
@@ -866,5 +937,21 @@ mod shortcut_amount_tests {
         // Dust has no display form; it stays exact rather than become zero.
         let dust = "0.000000000000000001".to_string();
         assert_eq!(shortcut_amount(dust.clone(), 25, 18), dust);
+    }
+
+    /// A coin's total is what leaves the wallet, exactly; a token's fee is
+    /// another asset's, so it has none, and nor does an unknown fee.
+    #[test]
+    fn a_total_adds_the_fee_only_where_the_coin_pays_it() {
+        assert_eq!(
+            send_total(true, "0.001", Some("0.000021")),
+            Some("0.001021".to_string())
+        );
+        assert_eq!(
+            send_total(true, "1", Some("0.000000000000000001")),
+            Some("1.000000000000000001".to_string())
+        );
+        assert_eq!(send_total(false, "20", Some("0.000021")), None);
+        assert_eq!(send_total(true, "0.001", None), None);
     }
 }

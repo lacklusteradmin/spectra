@@ -22,6 +22,8 @@ async fn service_with(
     for (id, chain, holdings) in wallets {
         let mut wallet = WalletState::single_address(id, id, chain, "addr", None, false);
         wallet.holdings = holdings;
+        // The holdings given are balances, read.
+        wallet.balances_read_at = Some(1.0);
         service
             .apply_state_command(StateCommand::UpsertWallet { wallet })
             .await
@@ -201,11 +203,14 @@ async fn a_testnet_row_has_no_value() {
 /// is `identity`'s job, and `holdings` says only where it is actually held.
 #[tokio::test]
 async fn a_pinned_asset_held_nowhere_holds_nothing() {
-    let service = service_with(vec![(
-        "w1",
-        crate::registry::Chain::Ethereum,
-        vec![holding("ETH", crate::registry::Chain::Ethereum, 1.0)],
-    )])
+    let service = service_with(vec![
+        (
+            "w1",
+            crate::registry::Chain::Ethereum,
+            vec![holding("ETH", crate::registry::Chain::Ethereum, 1.0)],
+        ),
+        ("w2", crate::registry::Chain::Solana, Vec::new()),
+    ])
     .await;
     service
         .apply_state_command(StateCommand::SetPinnedDashboardAssets {
@@ -229,6 +234,58 @@ async fn a_pinned_asset_held_nowhere_holds_nothing() {
     assert_eq!(
         ethereum.identity, ethereum.holdings[0].coin,
         "and is named by the largest of them"
+    );
+}
+
+/// A pinned asset no included wallet's network carries has no row: a zero
+/// there would claim an account the user does not have. Nor does one whose
+/// wallet has not read its balances yet, whose zero is not yet known.
+#[tokio::test]
+async fn a_pinned_asset_needs_a_wallet_that_has_read_its_network() {
+    let service = service_with(vec![(
+        "w1",
+        crate::registry::Chain::Ethereum,
+        vec![holding("ETH", crate::registry::Chain::Ethereum, 1.0)],
+    )])
+    .await;
+    service
+        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
+            token_ids: vec!["bitcoin".into(), "solana".into()],
+        })
+        .await
+        .expect("pin");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
+    assert!(
+        !groups.iter().any(|g| g.id == "bitcoin" || g.id == "solana"),
+        "{groups:?}"
+    );
+
+    let mut reading = WalletState::single_address(
+        "w2",
+        "w2",
+        crate::registry::Chain::Solana,
+        "addr",
+        None,
+        false,
+    );
+    reading.holdings = vec![crate::registry::Chain::Solana.native_holding_template()];
+    service
+        .apply_state_command(StateCommand::UpsertWallet { wallet: reading })
+        .await
+        .expect("upsert");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
+    assert!(
+        !groups.iter().any(|g| g.id == "solana"),
+        "still reading: {groups:?}"
+    );
+    assert!(
+        service
+            .portfolio_snapshot()
+            .await
+            .unwrap()
+            .wallets
+            .iter()
+            .any(|w| w.id == "w2" && w.balances_read_at.is_none())
     );
 }
 
@@ -296,4 +353,57 @@ async fn portfolio_snapshot_keeps_wallets_groups_and_valuation_on_one_version() 
     assert!(after.derived.portfolio.is_empty());
     assert!(after.groups.iter().all(|group| group.holdings.is_empty()));
     assert_eq!(after.valuation.wallets["w1"].total, 6000.0);
+}
+
+/// A row worth less than a dollar is small, a pinned or unpriced one never.
+#[tokio::test]
+async fn rows_under_a_dollar_are_small_unless_pinned_or_unpriced() {
+    let service = service_with(vec![(
+        "w1",
+        crate::registry::Chain::Ethereum,
+        vec![
+            holding("ETH", crate::registry::Chain::Ethereum, 0.0001),
+            holding("BTC", crate::registry::Chain::Bitcoin, 1.0),
+            holding("DOGE", crate::registry::Chain::Dogecoin, 3.0),
+        ],
+    )])
+    .await;
+    {
+        let mut state = service.wallet_state.write().await;
+        state.quotes.prices.insert("ethereum:native".into(), 3000.0);
+        state.quotes.prices.insert("bitcoin:native".into(), 60000.0);
+    }
+    service
+        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
+            token_ids: Vec::new(),
+        })
+        .await
+        .expect("pin");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
+    let small = |symbol: &str| {
+        groups
+            .iter()
+            .find(|g| row_symbol(g) == symbol)
+            .unwrap()
+            .is_small
+    };
+    assert!(small("ETH"), "0.0001 ETH is $0.30");
+    assert!(!small("BTC"));
+    assert!(!small("DOGE"), "unpriced, so its worth is unknown");
+
+    service
+        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
+            token_ids: vec!["ethereum".into()],
+        })
+        .await
+        .expect("pin");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
+    assert!(
+        !groups
+            .iter()
+            .find(|g| row_symbol(g) == "ETH")
+            .unwrap()
+            .is_small,
+        "pinned"
+    );
 }

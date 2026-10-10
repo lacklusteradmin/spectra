@@ -396,13 +396,13 @@ mod tor_and_rates {
         StateCommand::SetAppSetting { update }
     }
 
-    /// The four Tor fields survive reopening the database, so a second front
-    /// end and the CLI read what the app set.
+    /// The Tor fields survive reopening the database, so a second front end
+    /// and the CLI read what the app set.
     ///
-    /// `tor_enabled` and `tor_kill_switch` are never true together here. The
-    /// policy is process-wide — the HTTP layer reads it per request — so a test
-    /// that engaged the switch would refuse every other test's HTTP call for as
-    /// long as it held it. What the switch itself does is
+    /// `tor_enabled` is never turned on here. The policy is process-wide — the
+    /// HTTP layer reads it per request — and Tor on with no transport refuses
+    /// every request, so a test that held it would refuse every other test's
+    /// HTTP call. What the policy does is
     /// `the_kill_switch_engages_only_while_tor_is_wanted_and_not_ready`, over
     /// values rather than globals.
     #[tokio::test]
@@ -411,7 +411,6 @@ mod tor_and_rates {
         let db = database();
         s.open_state(db.clone()).await.unwrap();
         for update in [
-            AppSettingUpdate::TorEnabled { value: true },
             AppSettingUpdate::TorUseCustomProxy { value: true },
             AppSettingUpdate::TorCustomProxyAddress {
                 value: "socks5h://10.0.0.2:9050".into(),
@@ -459,21 +458,12 @@ mod tor_and_rates {
             "socks5://127.0.0.1:9150"
         );
 
-        // Turn Tor off before turning the switch on, so the two are never both
-        // set while this test holds the process-wide policy.
-        s.apply_state_command(setting(AppSettingUpdate::TorEnabled { value: false }))
-            .await
-            .unwrap();
-        s.apply_state_command(setting(AppSettingUpdate::TorKillSwitch { value: true }))
-            .await
-            .unwrap();
         assert!(!crate::tor::kill_switch_engaged());
 
         let reopened = service();
         let state = reopened.open_state(db).await.unwrap();
         assert!(!state.settings.tor_enabled);
         assert!(state.settings.tor_use_custom_proxy);
-        assert!(state.settings.tor_kill_switch);
         assert_eq!(
             state.settings.tor_custom_proxy_address,
             "socks5://127.0.0.1:9150"
@@ -481,18 +471,18 @@ mod tor_and_rates {
         assert!(!crate::tor::kill_switch_engaged());
     }
 
-    /// The switch blocks exactly when the user asked for Tor, asked for the
-    /// switch, and Tor is not carrying traffic.
+    /// Requests are held back exactly when the user asked for Tor and Tor is
+    /// not carrying traffic: asking for Tor is asking never to go out in the
+    /// clear, with no setting to fall back to a direct connection.
     #[test]
     fn the_kill_switch_engages_only_while_tor_is_wanted_and_not_ready() {
         use crate::tor::TorStatus;
         use crate::tor::kill_switch_verdict;
-        for (wanted, switch, ready, expected) in [
-            (true, true, false, true),
-            (true, true, true, false),
-            (true, false, false, false),
-            (false, true, false, false),
-            (false, false, false, false),
+        for (wanted, ready, expected) in [
+            (true, false, true),
+            (true, true, false),
+            (false, false, false),
+            (false, true, false),
         ] {
             let status = if ready {
                 TorStatus::Ready
@@ -500,16 +490,21 @@ mod tor_and_rates {
                 TorStatus::Stopped
             };
             assert_eq!(
-                kill_switch_verdict(switch, wanted, &status),
+                kill_switch_verdict(wanted, &status),
                 expected,
-                "wanted={wanted} switch={switch} ready={ready}"
+                "wanted={wanted} ready={ready}"
             );
         }
-        // Bootstrapping is not ready: the window this switch exists for.
+        // Bootstrapping is not ready: the window a direct fallback would leak.
         assert!(kill_switch_verdict(
             true,
-            true,
             &TorStatus::Bootstrapping { percent: 90 }
+        ));
+        assert!(kill_switch_verdict(
+            true,
+            &TorStatus::Error {
+                message: "down".into()
+            }
         ));
     }
 

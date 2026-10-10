@@ -151,6 +151,18 @@ pub struct SendArtifactReview {
     /// What the asset's own rules do to the transfer, when they do more than
     /// move the amount.
     pub transfer_terms: Option<AssetTransferTerms>,
+    /// A transfer's network fee, as the quote it was built from estimated it:
+    /// an exact decimal of the gas asset. Staking and wallet operations carry
+    /// their own fee beside what they do.
+    #[uniffi(default = None)]
+    pub network_fee: Option<String>,
+    /// That fee in the display currency when the send was built.
+    #[uniffi(default = None)]
+    pub network_fee_value: Option<f64>,
+    /// The amount and that fee together, when the fee is paid in the sent
+    /// asset: what leaves the wallet.
+    #[uniffi(default = None)]
+    pub total: Option<String>,
 }
 
 /// What an asset's rules do to a transfer beyond moving the amount: a fee

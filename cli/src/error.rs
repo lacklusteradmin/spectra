@@ -68,6 +68,10 @@ impl From<spectra_core::SpectraBridgeError> for CliError {
         match error {
             // Bad input is core saying no, not core falling over.
             Bridge::InvalidInput { message } => Self::rejected(message.to_string()),
+            Bridge::StoreUnreadable { message } => Self::failure(format!(
+                "this build cannot read the stored data ({message}); \
+                 `spectra settings discard --yes` deletes it and starts over"
+            )),
             other => Self::failure(other.to_string()),
         }
     }

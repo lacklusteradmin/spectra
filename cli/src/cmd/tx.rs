@@ -275,8 +275,10 @@ pub enum SendCommand {
     Probe(ProbeArgs),
     /// Resolve what was typed into the address a send would go to.
     Destination(DestinationArgs),
-    /// Read the address a scanned QR payload carries for a chain, offline.
+    /// Read the address, amount and memo a scanned QR payload asks for, offline.
     Scan(ScanArgs),
+    /// The payment code a receiving address shows to ask for an amount, offline.
+    Request(RequestArgs),
     /// Ask whether a send can land once the fee is counted.
     Affordability(AffordabilityArgs),
     /// Validate custom EVM gas fees in gwei, without keys or network.
@@ -618,6 +620,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         SendCommand::Probe(args) => probe(ctx, out, args),
         SendCommand::Destination(args) => destination(ctx, out, args),
         SendCommand::Scan(args) => scan(out, args),
+        SendCommand::Request(args) => request(out, args),
         SendCommand::Affordability(args) => affordability(out, args),
         SendCommand::Fees(args) => fees(out, args),
         SendCommand::Overrides(args) => overrides(out, args),
@@ -1029,31 +1032,84 @@ pub struct ScanArgs {
     /// chain has judged it.
     #[arg(long)]
     chain: String,
+    /// Contract of the token being sent; the network's coin when omitted. A
+    /// code that asks for another asset is refused.
+    #[arg(long)]
+    token: Option<String>,
     /// The scanned text — a bare address or a payment URI.
     payload: String,
 }
 
-/// The composer's scanner, without a camera. Exit 3 when the payload carries no
-/// address this chain accepts, so a script can assert the refusal.
+/// The receive page's request, without a screen: what its QR code holds.
+#[derive(Args)]
+pub struct RequestArgs {
+    /// Chain the address is on.
+    #[arg(long)]
+    chain: String,
+    /// The receiving address.
+    #[arg(long)]
+    address: String,
+    /// The amount of the network's coin to ask for.
+    #[arg(long)]
+    amount: Option<String>,
+    #[command(flatten)]
+    memo: MemoArgs,
+}
+
+/// Exit 3 when the network has no request format, or the address, amount or
+/// memo is not one it takes.
+fn request(out: Out, args: RequestArgs) -> CliResult<()> {
+    let chain = resolve_chain(&args.chain)?;
+    let uri = spectra_core::send::scanned_payment::payment_request_uri(
+        chain,
+        args.address.clone(),
+        args.amount.clone(),
+        args.memo.memo(),
+    )?;
+    out.text(|| {
+        println!();
+        println!("  {uri}");
+    });
+    out.emit(serde_json::json!({
+        "ok": true,
+        "chain": chain.str_id(),
+        "uri": uri,
+    }));
+    Ok(())
+}
+
+/// The composer's scanner, without a camera: the recipient, and the amount
+/// and memo the code asks for. Exit 3 when the payload carries no address
+/// this chain accepts or asks for something else, so a script can assert
+/// the refusal.
 fn scan(out: Out, args: ScanArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let Some(address) = spectra_core::send::flow::scanned_send_address(chain, args.payload.clone())
-    else {
-        return Err(CliError::rejected(format!(
-            "no {} address in that payload",
-            chain.chain_display_name()
-        )));
-    };
+    let payment = spectra_core::send::scanned_payment::read_scanned_payment(
+        chain,
+        args.token.clone(),
+        args.payload.clone(),
+    )?;
     out.text(|| {
         println!();
         out::field("scanned", &args.payload);
-        out::field("address", &address);
+        out::field("address", &payment.address);
+        if let Some(amount) = &payment.amount {
+            out::field("amount", amount);
+        }
+        if let Some(memo) = &payment.memo {
+            out::field("memo", &memo.value);
+        }
     });
     out.emit(serde_json::json!({
         "ok": true,
         "chain": chain.str_id(),
         "payload": args.payload,
-        "address": address,
+        "address": payment.address,
+        "amount": payment.amount,
+        "memo": payment.memo.map(|memo| serde_json::json!({
+            "kind": memo.kind,
+            "value": memo.value,
+        })),
     }));
     Ok(())
 }
@@ -1323,8 +1379,10 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             return;
         }
         for record in &records {
-            let direction =
-                spectra_core::store::wallet_domain::transaction_kind_direction(record.kind);
+            let direction = spectra_core::store::wallet_domain::transaction_amount_direction(
+                record.kind,
+                record.amount.clone(),
+            );
             let incoming =
                 direction == spectra_core::store::wallet_domain::TransactionDirection::Incoming;
             let mark = match direction {

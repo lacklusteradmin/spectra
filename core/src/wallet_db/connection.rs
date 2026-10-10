@@ -39,6 +39,58 @@ impl WalletDatabase {
     }
 }
 
+/// Remove the SQLite database at `path` and the files SQLite keeps beside it.
+pub(crate) fn delete_sqlite_files(path: &std::path::Path) -> Result<(), DbError> {
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let file = std::path::PathBuf::from(format!("{}{suffix}", path.display()));
+        match std::fs::remove_file(&file) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(DbError::Invalid(format!(
+                    "remove {}: {error}",
+                    file.display()
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The ids of the wallets stored at `path` and of those whose secrets are
+/// still due for deletion, read from their rows without decoding them: all a
+/// store this build cannot decode still tells. A file that is not a database,
+/// or lacks those tables, names none.
+pub(crate) fn stored_wallet_ids(path: &str) -> Result<Vec<String>, DbError> {
+    if !std::path::Path::new(path).exists() {
+        return Ok(Vec::new());
+    }
+    let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|source| DbError::Open {
+            path: path.to_string(),
+            source,
+        })?;
+    let mut ids = Vec::new();
+    for query in [
+        "SELECT id FROM wallets",
+        "SELECT wallet_id FROM wallet_secret_deletions",
+    ] {
+        let Ok(mut statement) = conn.prepare(query) else {
+            continue;
+        };
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(DbError::from)?;
+        for id in rows {
+            let id = id.map_err(DbError::from)?;
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    Ok(ids)
+}
+
 pub(super) fn with_conn<T, E: From<DbError>>(
     database: &WalletDatabase,
     f: impl FnOnce(&Connection) -> Result<T, E>,

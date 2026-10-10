@@ -48,21 +48,3 @@ pub(crate) fn open_zcash_db(path: &Path, network: Network) -> Result<ZcashDb, Db
         .map_err(|error| DbError::Corrupt(format!("zcash database migration: {error}")))?;
     Ok(db)
 }
-
-/// Remove the shielded database at `path` and SQLite's files beside it.
-pub(crate) fn delete_zcash_db(path: &Path) -> Result<(), DbError> {
-    for suffix in ["", "-wal", "-shm", "-journal"] {
-        let file = PathBuf::from(format!("{}{suffix}", path.display()));
-        match std::fs::remove_file(&file) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(DbError::Invalid(format!(
-                    "remove {}: {error}",
-                    file.display()
-                )));
-            }
-        }
-    }
-    Ok(())
-}

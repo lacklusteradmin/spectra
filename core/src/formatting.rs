@@ -102,6 +102,21 @@ pub fn format_asset_amount(amount: String, asset_decimals: u32) -> Option<AssetA
     })
 }
 
+/// An address as a person reads and compares it. Core stores EVM addresses in
+/// lowercase, which loses the EIP-55 mixed case a reader checks character by
+/// character; this puts it back. Every other address reads as stored.
+#[uniffi::export]
+pub fn display_address(chain: crate::registry::Chain, address: String) -> String {
+    if chain.is_evm()
+        && let Some(hex) = address.strip_prefix("0x")
+        && hex.len() == 40
+        && let Ok(bytes) = hex::decode(hex)
+    {
+        return crate::derivation::evm::eip55_checksum(&bytes);
+    }
+    address
+}
+
 #[cfg(test)]
 mod amount_text_tests {
     use super::format_asset_amount;
@@ -220,6 +235,19 @@ mod tests {
         let usd = fiat_amount_rules(crate::store::state::FiatCurrency::Usd);
         assert_eq!(usd.decimals, 2);
         assert!((usd.minimum_visible - 0.01).abs() < 1e-9);
+    }
+
+    #[test]
+    fn an_evm_address_reads_in_its_checksummed_case() {
+        use crate::registry::Chain;
+        let stored = "0xd8da6bf26964af9d7eed9e03e53415d37aa96045".to_string();
+        assert_eq!(
+            display_address(Chain::Ethereum, stored.clone()),
+            "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+        );
+        assert_eq!(display_address(Chain::Ethereum, "0x12".into()), "0x12");
+        let btc = "bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98".to_string();
+        assert_eq!(display_address(Chain::Bitcoin, btc.clone()), btc);
     }
 }
 

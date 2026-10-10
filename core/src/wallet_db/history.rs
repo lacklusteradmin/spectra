@@ -322,11 +322,24 @@ pub fn history_delete_for_wallet(
 }
 
 /// Delete all history records (hard reset).
-pub fn history_clear(database: &WalletDatabase) -> Result<(), DbError> {
+/// Delete every record and name what went, newest first. The ids are read
+/// from the rows without decoding them: a reset clears records this build
+/// cannot read, rather than failing on them after its wallets are gone.
+pub fn history_clear(database: &WalletDatabase) -> Result<Vec<String>, DbError> {
     with_conn(database, |conn| {
-        conn.execute("DELETE FROM history_records", [])
+        let tx = conn.unchecked_transaction().map_err(DbError::from)?;
+        let ids = tx
+            .prepare("SELECT id FROM history_records ORDER BY created_at DESC, id ASC")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<_>, _>>()
+            })
             .map_err(DbError::from)?;
-        Ok(())
+        tx.execute("DELETE FROM history_records", [])
+            .map_err(DbError::from)?;
+        tx.commit().map_err(DbError::from)?;
+        Ok(ids)
     })
 }
 

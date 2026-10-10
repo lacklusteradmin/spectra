@@ -97,13 +97,11 @@ pub enum WalletActionSection {
 impl WalletAction {
     pub fn section(self) -> WalletActionSection {
         match self {
-            Self::Send
-            | Self::Multisig
-            | Self::Receive
-            | Self::History
+            Self::Send | Self::Receive | Self::History => WalletActionSection::Everyday,
+            Self::Multisig
             | Self::OpenInExplorer
-            | Self::AddKeys => WalletActionSection::Everyday,
-            Self::Stake
+            | Self::AddKeys
+            | Self::Stake
             | Self::ScanBlocks
             | Self::Coins
             | Self::TokenApprovals

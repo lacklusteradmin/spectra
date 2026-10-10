@@ -414,6 +414,7 @@ pub(crate) fn wallets_for_import(
                 // confirmed it.
                 near_account_key: None,
                 multisig_policy,
+                balances_read_at: None,
             }
         })
         .collect()

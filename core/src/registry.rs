@@ -1097,6 +1097,31 @@ impl Chain {
     /// What a payment on this network can say about whose deposit it is,
     /// the first the default: XRP's destination tag, Stellar's text and ID
     /// memos. Empty where payments carry none.
+    /// How a payment request to an address on this network is written for
+    /// a QR code: the format wallets read, with the amount and memo in it.
+    /// `None` where no format is widely read, and the address is shared alone.
+    pub fn payment_uri_format(self) -> Option<PaymentUriFormat> {
+        use PaymentUriFormat::*;
+        if self.is_evm() {
+            return self.evm_chain_id().is_ok().then_some(Eip681);
+        }
+        match self.mainnet_counterpart() {
+            Self::Bitcoin => Some(Bip21("bitcoin")),
+            Self::Litecoin => Some(Bip21("litecoin")),
+            Self::Dogecoin => Some(Bip21("dogecoin")),
+            Self::BitcoinCash => Some(Bip21("bitcoincash")),
+            Self::Dash => Some(Bip21("dash")),
+            Self::Zcash => Some(Bip21("zcash")),
+            Self::Peercoin => Some(Bip21("peercoin")),
+            Self::Solana => Some(SolanaPay),
+            Self::Xrp => Some(Xrpl),
+            Self::Stellar => Some(Sep7),
+            Self::Monero => Some(MoneroUri),
+            Self::Ton => Some(TonTransfer),
+            _ => None,
+        }
+    }
+
     pub fn payment_memo_kinds(self) -> &'static [PaymentMemoKind] {
         match self.mainnet_counterpart() {
             Self::Xrp => &[PaymentMemoKind::DestinationTag],
@@ -2056,6 +2081,25 @@ impl Chain {
     pub fn from_display_name(name: &str) -> Option<Self> {
         Chain::all().find(|c| c.chain_display_name() == name)
     }
+}
+
+/// A payment request's format, by the scheme its wallets read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaymentUriFormat {
+    /// BIP-21 and its descendants: `scheme:address?amount=<whole units>`.
+    Bip21(&'static str),
+    /// EIP-681: `ethereum:address@<chain id>?value=<wei>`.
+    Eip681,
+    /// Solana Pay: `solana:address?amount=<whole units>`.
+    SolanaPay,
+    /// `ripple:address?amount=<whole units>&dt=<destination tag>`.
+    Xrpl,
+    /// SEP-7: `web+stellar:pay?destination=…&amount=…&memo=…&memo_type=…`.
+    Sep7,
+    /// `monero:address?tx_amount=<whole units>`.
+    MoneroUri,
+    /// `ton://transfer/address?amount=<nanotons>`.
+    TonTransfer,
 }
 
 /// How a payment names whose deposit it is at an account many share: the

@@ -9,8 +9,10 @@ pub mod message;
 
 pub mod payload;
 pub mod payment_memo;
+pub mod prepared_fields;
 pub mod preview_decode;
 pub mod preview_types;
+pub mod scanned_payment;
 pub mod stages;
 pub mod transfer;
 pub mod verification;

@@ -90,17 +90,10 @@ impl WalletService {
                             ..TransactionChange::default()
                         })
                     }
-                    TransactionCommand::Clear => {
-                        let removed: Vec<String> = crate::wallet_db::history_fetch_all(&database)?
-                            .into_iter()
-                            .map(|record| record.id)
-                            .collect();
-                        crate::wallet_db::history_clear(&database)?;
-                        Ok(TransactionChange {
-                            removed,
-                            ..TransactionChange::default()
-                        })
-                    }
+                    TransactionCommand::Clear => Ok(TransactionChange {
+                        removed: crate::wallet_db::history_clear(&database)?,
+                        ..TransactionChange::default()
+                    }),
                 }
             })
             .await

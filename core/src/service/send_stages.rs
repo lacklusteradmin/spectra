@@ -33,12 +33,32 @@ impl WalletService {
             let review = this.review_owned_send(input).await?;
             // This operation completes the review itself; no unused confirmation remains.
             this.send_reviews.lock().await.remove(&review.id);
+            let chain = review.request.chain_id;
+            let network_fee = review.preview.as_ref().and_then(|preview| {
+                crate::decimal::truncate(preview.network_fee(), u32::from(chain.native_decimals()))
+            });
+            let network_fee_value = match &network_fee {
+                Some(fee) => super::valuation::display_value_of(
+                    &this.app_state().await,
+                    &chain.native_holding_template(),
+                    fee,
+                ),
+                None => None,
+            };
+            let total = super::owned_send::send_total(
+                review.request.contract_address.is_none(),
+                &review.request.amount_str,
+                network_fee.as_deref(),
+            );
             let advisories = SendArtifactReview {
                 warnings: review.warnings,
                 recipient_warnings: review.recipient_warnings,
                 requires_self_send_confirmation: review.requires_self_send_confirmation,
                 staking: None,
                 transfer_terms: None,
+                network_fee,
+                network_fee_value,
+                total,
             };
             this.build_send_with_review(review.request, Some(advisories))
                 .await

@@ -70,6 +70,9 @@ pub struct TransactionSnapshot {
     pub replaceable: Vec<super::history_derived::ReplaceableSend>,
     pub earliest: Vec<crate::store::WalletEarliestTransactionDate>,
     pub total_count: u64,
+    /// Transactions still pending, across every wallet: what a front end
+    /// badges its history with.
+    pub pending_count: u64,
     /// Wallets whose chain history has pages not yet fetched. A front end
     /// offers "load more" for these and asks nothing per wallet.
     pub wallets_with_more_history: Vec<String>,

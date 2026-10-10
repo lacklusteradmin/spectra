@@ -168,6 +168,33 @@ async fn removes_by_id_by_wallet_and_wholesale() {
     let _ = std::fs::remove_file(&db);
 }
 
+/// Clearing deletes what it cannot decode: a record written by another build
+/// would otherwise fail a reset after its wallets were already removed.
+#[tokio::test]
+async fn clearing_removes_records_this_build_cannot_read() {
+    let (service, db) = opened("clear-unreadable").await;
+    rusqlite::Connection::open(&db)
+        .expect("open")
+        .execute(
+            "INSERT INTO history_records (id, chain_id, created_at, payload)
+             VALUES ('old', 'bitcoin', 0, '{\"id\":\"old\",\"kind\":\"send\",\"status\":\"pending\"}')",
+            [],
+        )
+        .expect("insert");
+    assert!(
+        service.transactions().await.is_err(),
+        "fixture must not decode"
+    );
+
+    let cleared = service
+        .apply_transaction_command(TransactionCommand::Clear)
+        .await
+        .expect("clear");
+    assert_eq!(cleared.removed, vec!["old"]);
+    assert!(service.transactions().await.expect("read").is_empty());
+    let _ = std::fs::remove_file(&db);
+}
+
 #[tokio::test]
 async fn removing_what_is_absent_is_not_a_change() {
     let (service, db) = opened("absent").await;

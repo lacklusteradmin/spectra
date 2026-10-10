@@ -75,9 +75,10 @@ fn build_reqwest_client(proxy_url: Option<&str>) -> Client {
 /// The blocked client, built once — the kill switch reaches for it per request.
 static BLOCKED_CLIENT: LazyLock<Client> = LazyLock::new(build_blocked_client);
 
-/// The message a caller sees when the Tor kill switch stopped the request.
+/// The message a caller sees when Tor was asked for and is not carrying
+/// traffic yet, so the request was held back rather than sent in the clear.
 pub(crate) const KILL_SWITCH_MESSAGE: &str =
-    "Tor kill switch: the circuit is not ready, so the request was not sent.";
+    "Tor is not connected yet, so the request was not sent.";
 
 /// A proxy nothing listens on, so whatever is routed to it cannot connect.
 const DEAD_PROXY: &str = "socks5h://127.0.0.1:1";

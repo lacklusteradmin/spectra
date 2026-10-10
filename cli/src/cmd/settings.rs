@@ -23,6 +23,15 @@ pub enum SettingsCommand {
     Set(SetArgs),
     /// Reset selected data scopes; default: settings, endpoints and token preferences.
     Reset(ResetArgs),
+    /// Delete a store this build cannot read, with every wallet secret it names, and start an empty one.
+    Discard(DiscardArgs),
+}
+
+#[derive(Args)]
+pub struct DiscardArgs {
+    /// Confirm deleting the stored data and the wallet secrets it names.
+    #[arg(long)]
+    yes: bool,
 }
 
 #[derive(Args)]
@@ -55,6 +64,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SettingsCommand) -> CliResult<()> {
         SettingsCommand::Get(args) => get(ctx, out, args),
         SettingsCommand::Set(args) => set(ctx, out, args),
         SettingsCommand::Reset(args) => reset(ctx, out, args),
+        SettingsCommand::Discard(args) => discard(ctx, out, args),
     }
 }
 
@@ -140,11 +150,6 @@ const FIELDS: &[Field] = &[
         key: "tor-proxy-address",
         read: |s| s.tor_custom_proxy_address.clone(),
         update: |v| Ok(AppSettingUpdate::TorCustomProxyAddress { value: v.into() }),
-    },
-    Field {
-        key: "tor-kill-switch",
-        read: |s| s.tor_kill_switch.to_string(),
-        update: |v| parse_bool(v).map(|value| AppSettingUpdate::TorKillSwitch { value }),
     },
     Field {
         key: "large-movement-usd",
@@ -253,6 +258,21 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
         )
     });
     out.emit(serde_json::json!({ "ok": true, "plan": outcome.plan }));
+    Ok(())
+}
+
+/// Replace a store `open_state` cannot read. Only a store that will not open
+/// gets here: a readable one is cleared with `settings reset`.
+fn discard(ctx: &Ctx, out: Out, args: DiscardArgs) -> CliResult<()> {
+    if !args.yes {
+        return Err(CliError::usage(
+            "this deletes the stored data and every wallet secret it names — re-run with --yes",
+        ));
+    }
+    ctx.rt
+        .block_on(ctx.unopened_service()?.discard_state(ctx.db_path()))?;
+    out.text(|| println!("  {} discarded the stored data", out::ok_mark()));
+    out.emit(serde_json::json!({ "ok": true }));
     Ok(())
 }
 

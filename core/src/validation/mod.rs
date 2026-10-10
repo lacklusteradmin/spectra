@@ -174,6 +174,54 @@ pub(crate) fn bip39_code_and_name(language: bip39::Language) -> (&'static str, &
     }
 }
 
+/// The words a slot being typed may be heading for: the words of the entry's
+/// wordlist that begin with `prefix`, up to `limit`. The list is the one
+/// `check` names, or the one the rest of the entry is detected in; with
+/// neither, every list the network reads phrases in, its first list first.
+#[uniffi::export]
+pub fn seed_word_suggestions(check: SeedPhraseCheck, prefix: String, limit: u32) -> Vec<String> {
+    use crate::derivation::phrase::wordlists;
+    let prefix = prefix.trim().to_lowercase();
+    if prefix.is_empty() || limit == 0 {
+        return Vec::new();
+    }
+    let language = check
+        .language
+        .clone()
+        .or_else(|| check_seed_phrase(check.clone()).language.map(|l| l.code));
+    let mut suggestions: Vec<String> = Vec::new();
+    for list in formats_for(check.chain).into_iter().flat_map(wordlists) {
+        if language
+            .as_deref()
+            .is_some_and(|code| list.code_and_name().0 != code)
+        {
+            continue;
+        }
+        for word in list.words_starting_with(&prefix) {
+            if suggestions.len() == limit as usize {
+                return suggestions;
+            }
+            if !suggestions.iter().any(|known| known == word) {
+                suggestions.push(word.to_string());
+            }
+        }
+    }
+    suggestions
+}
+
+/// The words of a phrase pasted as people keep them: numbered ("1. abandon",
+/// "2) ability"), on lines, or separated by commas. Numbers and punctuation
+/// are not words of any wordlist, so they are dropped; what is left goes into
+/// the slots in order.
+#[uniffi::export]
+pub fn seed_phrase_words_from_text(text: String) -> Vec<String> {
+    text.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '|' | '·' | '、' | '，'))
+        .map(|token| token.trim_matches(|c: char| c.is_ascii_punctuation() || c.is_ascii_digit()))
+        .filter(|token| !token.is_empty() && !token.chars().all(|c| c.is_ascii_digit()))
+        .map(str::to_lowercase)
+        .collect()
+}
+
 /// Decide a seed-phrase entry: how long it is, which format and wordlist it
 /// is in, which words are not in that list, whether the entry is finished,
 /// whether it reads as a phrase, and what to say.
@@ -708,5 +756,43 @@ mod password_verdict_tests {
                 expected
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod seed_word_entry_tests {
+    use super::*;
+
+    fn check(words: &[&str], chain: Option<Chain>) -> SeedPhraseCheck {
+        SeedPhraseCheck {
+            words: words.iter().map(|w| w.to_string()).collect(),
+            language: None,
+            word_count: None,
+            chain,
+        }
+    }
+
+    #[test]
+    fn a_prefix_suggests_the_words_it_can_become() {
+        let suggestions = seed_word_suggestions(check(&["abandon", "ab"], None), "ab".into(), 4);
+        assert_eq!(suggestions, ["abandon", "ability", "able", "about"]);
+        assert!(seed_word_suggestions(check(&[], None), "  ".into(), 4).is_empty());
+        // A Monero seed suggests from Monero's list, not BIP-39's.
+        let monero = seed_word_suggestions(check(&[], Some(Chain::Monero)), "aban".into(), 3);
+        assert!(
+            monero.iter().all(|word| word.starts_with("aban")),
+            "{monero:?}"
+        );
+    }
+
+    #[test]
+    fn a_numbered_or_comma_separated_paste_reads_as_its_words() {
+        let words =
+            seed_phrase_words_from_text("1. Abandon\n2) ability, 3:able #4 about\t5.above".into());
+        assert_eq!(words, ["abandon", "ability", "able", "about", "above"]);
+        assert_eq!(
+            seed_phrase_words_from_text("legal winner thank".into()),
+            ["legal", "winner", "thank"]
+        );
     }
 }

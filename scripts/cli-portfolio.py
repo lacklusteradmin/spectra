@@ -100,7 +100,7 @@ class PortfolioTests(unittest.TestCase):
                 db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet),wid))
                 db.execute('INSERT OR REPLACE INTO app_state_meta VALUES (?,?)', ('quotes',json.dumps({'prices':{'ethereum:native':3000}})))
             valuation = run('portfolio','--stored')['valuation']
-            assert valuation['portfolio'] == dict(total=6000.0, unpricedCount=1, fiatTotal=6000.0), valuation
+            assert valuation['portfolio'] == dict(total=6000.0, unpricedCount=1, fiatTotal=6000.0, testNetworkCount=0), valuation
             assert valuation['wallets'][wid] == valuation['portfolio']
             # Each read starts a new CLI process: the command must persist both
             # the flag and its effect, without deleting the wallet's holdings.
@@ -114,7 +114,7 @@ class PortfolioTests(unittest.TestCase):
             assert excluded['includeInPortfolioTotal'] is False, excluded
             assert excluded['holdings'] == before['holdings'], excluded
             valuation = run('portfolio', '--stored')['valuation']
-            assert valuation['portfolio'] == dict(total=0.0, unpricedCount=0, fiatTotal=0.0), valuation
+            assert valuation['portfolio'] == dict(total=0.0, unpricedCount=0, fiatTotal=0.0, testNetworkCount=0), valuation
             assert valuation['wallets'][wid] == expected_wallet_value, valuation
             run('wallet', 'inclusion', 'Boundary', 'true')
             assert stored_wallet()['includeInPortfolioTotal'] is True

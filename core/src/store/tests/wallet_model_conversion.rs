@@ -33,6 +33,7 @@ fn bitcoin_wallet() -> WalletView {
         icp_principal: None,
         near_account_key: None,
         multisig_policy: None,
+        balances_read_at: None,
     }
 }
 
