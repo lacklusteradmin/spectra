@@ -311,6 +311,94 @@ mod tests {
         assert_eq!(out[1].created_at_unix, -1.0);
     }
 
+    /// Each NFT transfer is its own token: its deployment names the
+    /// collection and id, its name is the collection's and `#id`, and its
+    /// quantity is the amount, never a balance scaled by decimals.
+    #[test]
+    fn an_nft_transfer_is_recorded_as_its_own_token_and_quantity() {
+        use crate::api::evm_nft::NftStandard;
+        let transfer = |standard,
+                        contract: &str,
+                        id: &str,
+                        quantity: &str,
+                        collection: &str,
+                        symbol: &str,
+                        from: &str,
+                        to: &str| EvmNftTransferItem {
+            standard,
+            contract_address: contract.into(),
+            token_id: id.into(),
+            quantity: quantity.into(),
+            collection: collection.into(),
+            symbol: symbol.into(),
+            from_address: from.into(),
+            to_address: to.into(),
+            transaction_hash: format!("0x{id}"),
+            block_number: 100,
+            timestamp: 1_780_000_000.0,
+        };
+        let out = build_evm_transaction_records(EvmTransactionRecordRequest {
+            decoded_page: EvmHistoryPageDecoded {
+                nfts: vec![
+                    transfer(
+                        NftStandard::Erc721,
+                        "0xABC",
+                        "1234",
+                        "1",
+                        "Apes",
+                        "APE",
+                        "0xself",
+                        "0xother",
+                    ),
+                    transfer(
+                        NftStandard::Erc1155,
+                        "0xdef",
+                        "7",
+                        "4",
+                        "",
+                        "",
+                        "0xother",
+                        "0xself",
+                    ),
+                ],
+                ..Default::default()
+            },
+            normalized_address: "0xself".into(),
+            chain_id: crate::registry::Chain::Ethereum,
+            token_source_used: None,
+            wallets: vec![EvmTransactionRecordWalletInput {
+                wallet_id: "w1".into(),
+                wallet_name: "Collector".into(),
+            }],
+            unknown_timestamp_sentinel_unix: -1.0,
+        });
+        let rows: Vec<_> = out
+            .iter()
+            .map(|row| {
+                (
+                    row.deployment_id.as_deref().unwrap(),
+                    row.kind.as_str(),
+                    row.amount_decimal.as_str(),
+                    row.asset_display_name.as_str(),
+                    row.symbol.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                (
+                    "ethereum:erc-721:0xabc:1234",
+                    "send",
+                    "1",
+                    "Apes #1234",
+                    "APE"
+                ),
+                ("ethereum:erc-1155:0xdef:7", "receive", "4", "#7", "NFT"),
+            ]
+        );
+    }
+
     #[test]
     fn plans_evm_transaction_records_skips_unrelated_transfers() {
         let page = EvmHistoryPageDecoded {

@@ -480,3 +480,7 @@ impl WalletService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/multisig_substrate.rs"]
+mod multisig_substrate_tests;

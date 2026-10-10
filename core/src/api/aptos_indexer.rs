@@ -372,9 +372,163 @@ mod tests {
         assert_eq!(entries[0]["is_incoming"], true);
         assert_eq!(entries[0]["contract"], padded_address("0xbeef").unwrap());
     }
+    /// Holdings of a thousand storage objects to a page, the first all APT
+    /// (no token), the second the token at `decimals`.
+    async fn holdings(decimals: u64) -> Result<Vec<HeldToken>, ApiError> {
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(move |request: &Request| {
+                let body: Value = serde_json::from_slice(&request.body).unwrap();
+                let rows: Vec<Value> = match body["variables"]["after"].as_str().unwrap() {
+                    "" => (0..1000)
+                        .map(|n| {
+                            json!({"storage_id": format!("{n:04}"),
+                            "asset_type": "0x1::aptos_coin::AptosCoin", "amount": "1"})
+                        })
+                        .collect(),
+                    "0999" => vec![json!({"storage_id": "1000",
+                        "asset_type": format!("0x{}", "44".repeat(32)), "amount": "2500000",
+                        "metadata": {"decimals": decimals}})],
+                    other => panic!("unexpected cursor {other}"),
+                };
+                ResponseTemplate::new(200).set_body_json(json!({"data": {
+                    "ledger_infos": [{"chain_id": 1}], "current_fungible_asset_balances": rows}}))
+            })
+            .mount(&server)
+            .await;
+        AptosIndexerClient::new(Arc::new(vec![server.uri()]), 1)
+            .fetch_holdings(&format!("0x{}", "11".repeat(32)))
+            .await
+    }
+
+    /// A full page is followed from its last storage object to the next;
+    /// APT is the native coin, not a token held.
+    #[tokio::test]
+    async fn holdings_are_read_past_every_full_page() {
+        let held = holdings(6).await.unwrap();
+        assert_eq!(
+            held.iter()
+                .map(|token| (token.contract.clone(), token.balance_raw, token.decimals))
+                .collect::<Vec<_>>(),
+            [(format!("0x{}", "44".repeat(32)), 2_500_000, Some(6))]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_holding_past_38_decimals_refuses_the_listing() {
+        let error = holdings(39).await.unwrap_err().to_string();
+        assert!(error.contains("precision limit (38)"), "{error}");
+    }
+
     #[test]
     fn unknown_precision_and_network_identity_are_refused() {
         assert!(precision(&json!({"metadata":{"decimals":39}})).is_err());
         assert!(padded_address("0xnot_hex").is_err());
+    }
+}
+
+#[cfg(test)]
+mod paging_tests {
+    use super::*;
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+
+    /// A full page of versions none of which moved an asset for the address
+    /// decodes to nothing and is still not the end: its cursor is the last
+    /// version read. The next page asks for versions before it, and a short
+    /// page ends the history. A cursor that is not a version is refused
+    /// before anything is asked.
+    #[tokio::test]
+    async fn an_empty_decoded_page_is_not_the_end_and_pages_on_before_its_last_version() {
+        let owner = padded_address("0x12").unwrap();
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(|request: &Request| {
+                let body = if request.url.path() == "/graphql" {
+                    let query: Value = request.body_json().unwrap();
+                    let versions: Vec<u64> = if query["variables"]["before"].is_null() {
+                        (51..=100).rev().collect()
+                    } else {
+                        vec![50]
+                    };
+                    let deposit = json!({"amount": "1250000", "asset_type": "0xbeef",
+                        "type": "0x1::fungible_asset::Deposit", "is_gas_fee": false,
+                        "is_transaction_success": true, "metadata": {"decimals": 6}});
+                    let gas = json!({"amount": "100", "asset_type": "0x1::aptos_coin::AptosCoin",
+                        "type": "0x1::coin::WithdrawEvent", "is_gas_fee": true,
+                        "is_transaction_success": true});
+                    let rows: Vec<_> = versions
+                        .into_iter()
+                        .map(|version| json!({"transaction_version": version.to_string(),
+                            "fungible_asset_activities": if version == 50 { json!([deposit, gas]) } else { json!([]) }}))
+                        .collect();
+                    json!({"data": {"ledger_infos": [{"chain_id": 1}], "account_transactions": rows}})
+                } else if let Some(version) = request.url.path().strip_prefix("/v1/transactions/by_version/") {
+                    let version: u64 = version.parse().unwrap();
+                    json!({"version": version.to_string(), "hash": format!("0x{version:064x}"),
+                        "timestamp": "1700000000000000", "success": true, "sender": "0x99",
+                        "replay_protection_nonce": "123"})
+                } else {
+                    json!({"chain_id": 1, "ledger_version": "101"})
+                };
+                ResponseTemplate::new(200).set_body_json(body)
+            })
+            .mount(&server)
+            .await;
+        let indexer =
+            AptosIndexerClient::new(Arc::new(vec![format!("{}/graphql", server.uri())]), 1);
+        let node = AptosClient::new(Arc::new(vec![format!("{}/v1", server.uri())]));
+
+        let first = indexer
+            .fetch_history_page(&owner, None, &node)
+            .await
+            .unwrap();
+        assert!(first.items.is_empty());
+        assert_eq!(first.next_cursor.as_deref(), Some("51"));
+        let second = indexer
+            .fetch_history_page(&owner, first.next_cursor.as_deref(), &node)
+            .await
+            .unwrap();
+        assert_eq!(second.next_cursor, None);
+        let rows: Vec<_> = second
+            .items
+            .iter()
+            .map(|row| (row["amount_display"].clone(), row["is_incoming"].clone()))
+            .collect();
+        assert_eq!(rows, [(json!("1.25"), json!(true))]);
+        let asked: Vec<Value> = server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|request| request.url.path() == "/graphql")
+            .map(|request| request.body_json::<Value>().unwrap())
+            .collect();
+        assert_eq!(
+            asked
+                .iter()
+                .map(|query| query["variables"]["before"].clone())
+                .collect::<Vec<_>>(),
+            [Value::Null, json!("51")]
+        );
+        assert!(
+            asked[1]["query"]
+                .as_str()
+                .unwrap()
+                .contains("transaction_version:{_lt:$before}")
+        );
+
+        let asked_before = server.received_requests().await.unwrap().len();
+        assert_eq!(
+            indexer
+                .fetch_history_page(&owner, Some("not-a-version"), &node)
+                .await
+                .unwrap_err(),
+            ApiError::invalid("invalid Aptos history cursor")
+        );
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            asked_before
+        );
     }
 }

@@ -565,3 +565,7 @@ impl WalletService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/multisig_ton.rs"]
+mod multisig_ton_tests;

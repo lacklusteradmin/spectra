@@ -396,4 +396,22 @@ mod tests {
             state.quotes
         );
     }
+
+    /// A test network's coin has no market: its spot price is none in USD
+    /// and in the display currency, not zero.
+    #[tokio::test]
+    async fn a_test_networks_coin_has_no_spot_price() {
+        let chain = crate::registry::Chain::BitcoinTestnet4;
+        let service = WalletService::new(vec![]).unwrap();
+        assert_eq!(
+            service.native_spot_price(chain).await.unwrap(),
+            NativeSpotPrice {
+                chain_id: chain,
+                symbol: chain.coin_symbol().into(),
+                price_usd: None,
+                price: None,
+                currency: "USD".into(),
+            }
+        );
+    }
 }

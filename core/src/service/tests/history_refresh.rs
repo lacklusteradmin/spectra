@@ -852,3 +852,254 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
     assert_ne!(merged[0].deployment_id, merged[1].deployment_id);
     assert!(merged.iter().all(|r| r.deployment_id.is_some()));
 }
+
+/// A service over `endpoints` on a fresh store.
+async fn opened(endpoints: Vec<crate::service::ChainEndpoints>) -> std::sync::Arc<WalletService> {
+    let service = WalletService::new(endpoints).expect("service");
+    let path = std::env::temp_dir()
+        .join(format!(
+            "history-paging-{}.sqlite",
+            crate::store::new_event_id()
+        ))
+        .to_string_lossy()
+        .into_owned();
+    service.open_state(path).await.expect("open");
+    service
+}
+
+/// A full page of token transfers is not the end of the history, though no
+/// contract on it is one the network knows: the refresh stores nothing from
+/// it and says there is more. Loading more reads the next page, where the
+/// network's own test token is stored under that network, named and scaled
+/// as the catalog has it rather than as the provider says.
+#[tokio::test]
+async fn a_full_token_page_of_unknown_contracts_is_not_the_end_of_the_history() {
+    use crate::store::state::{AppSettingUpdate, StateCommand};
+    use serde_json::json;
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+    const OWNER: &str = "0x9858effd232b4033e47d90003d41ec34ecaeda94";
+    const TEST_TOKEN: &str = "0xcac524bca292aaade2df8a05cc58f0a65b1b3bb9";
+    let server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(|request: &Request| {
+            let query: HashMap<String, String> = request.url.query_pairs().into_owned().collect();
+            let page: usize = query["page"].parse().unwrap();
+            // Page one: a mainnet-only deployment and nineteen unknown contracts.
+            let contracts: Vec<String> = match (query["action"].as_str(), page) {
+                ("tokentx", 1) => {
+                    std::iter::once("0x6c3ea9036406852006290770bedfcaba0e23a0e8".into())
+                        .chain((1..20).map(|i| format!("0x{i:040x}")))
+                        .collect()
+                }
+                ("tokentx", 2) => vec![TEST_TOKEN.into()],
+                _ => vec![],
+            };
+            let rows: Vec<_> = contracts
+                .iter()
+                .enumerate()
+                .map(|(i, contract)| {
+                    json!({"hash": format!("0x{:064x}", page * 100 + i), "blockNumber": "42",
+                        "timeStamp": "1700000000", "from": format!("0x{}", "22".repeat(20)),
+                        "to": OWNER, "contractAddress": contract,
+                        "tokenName": "Untrusted provider name", "tokenSymbol": "UNTRUSTED",
+                        "tokenDecimal": "18", "value": "1250000", "logIndex": i.to_string()})
+                })
+                .collect();
+            ResponseTemplate::new(200)
+                .set_body_json(json!({"status": "1", "message": "OK", "result": rows}))
+        })
+        .mount(&server)
+        .await;
+    let service = opened(vec![]).await;
+    for update in [
+        AppSettingUpdate::AddCustomEndpoint {
+            capabilities: vec![
+                crate::EndpointCapability::History,
+                crate::EndpointCapability::TokenHistory,
+            ],
+            chain_id: Chain::EthereumSepolia,
+            api: "blockscout".into(),
+            endpoint: server.uri(),
+        },
+        AppSettingUpdate::CustomEndpointsOnly {
+            chain_id: Chain::EthereumSepolia,
+            value: true,
+        },
+    ] {
+        service
+            .apply_state_command(StateCommand::SetAppSetting { update })
+            .await
+            .expect("endpoint");
+    }
+    let mut sepolia = wallet("w1", Chain::Ethereum, &[(Chain::EthereumSepolia, OWNER)]);
+    sepolia.chain_id = Chain::EthereumSepolia;
+    service
+        .apply_state_command(StateCommand::UpsertWallet { wallet: sepolia })
+        .await
+        .expect("wallet");
+
+    let first = service
+        .refresh_evm_chain_history(Chain::Ethereum, Vec::new(), false, Some(20))
+        .await
+        .expect("first page");
+    assert_eq!(
+        (first.wallets_failed, first.added, first.exhausted),
+        (0, 0, false)
+    );
+    let second = service
+        .refresh_evm_chain_history(Chain::Ethereum, Vec::new(), true, Some(20))
+        .await
+        .expect("second page");
+    assert_eq!(
+        (second.wallets_failed, second.added, second.exhausted),
+        (0, 1, true)
+    );
+    let token_pages: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|request| {
+            let query: HashMap<String, String> = request.url.query_pairs().into_owned().collect();
+            (query.get("action").map(String::as_str) == Some("tokentx"))
+                .then(|| query["page"].clone())
+        })
+        .collect();
+    assert_eq!(token_pages, ["1", "2"]);
+    let stored = service.transactions().await.unwrap();
+    let rows: Vec<_> = stored
+        .iter()
+        .map(|row| {
+            (
+                row.chain_id,
+                row.symbol.as_str(),
+                row.asset_display_name.as_str(),
+                row.amount.as_str(),
+                row.deployment_id.clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [(
+            Chain::EthereumSepolia,
+            "tPYUSD",
+            "Test PayPal USD",
+            "1.25",
+            Some(format!("ethereum-sepolia:erc-20:{TEST_TOKEN}"))
+        )]
+    );
+}
+
+/// A page of Solana signatures none of which moved anything for the wallet
+/// is still a full page: the refresh stores nothing, is not exhausted, and
+/// keeps the page's last signature as its cursor. Loading more asks for the
+/// signatures before it, and a later refresh of the newest page keeps the
+/// older record.
+#[tokio::test]
+async fn a_solana_page_that_stores_nothing_still_pages_on_from_its_last_signature() {
+    use serde_json::{Value, json};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+    const OWNER: &str = "11111111111111111111111111111111";
+    let older = "A".repeat(88);
+    let server = MockServer::start().await;
+    {
+        let older = older.clone();
+        Mock::given(any())
+            .respond_with(move |request: &Request| {
+                let call: Value = request.body_json().unwrap();
+                let result = match call["method"].as_str() {
+                    Some("getSignaturesForAddress") => {
+                        if call["params"][1]["before"].is_null() {
+                            json!(
+                                (0..50)
+                                    .map(|i| json!({"signature": format!("{i:088}")}))
+                                    .collect::<Vec<_>>()
+                            )
+                        } else {
+                            json!([{"signature": older}])
+                        }
+                    }
+                    Some("getTransaction") => {
+                        let after = if call["params"][0] == older.as_str() {
+                            200
+                        } else {
+                            100
+                        };
+                        json!({"slot": 42, "blockTime": 1_700_000_000,
+                            "transaction": {"message": {"accountKeys": [OWNER]}},
+                            "meta": {"fee": 0, "preBalances": [100], "postBalances": [after]}})
+                    }
+                    _ => return ResponseTemplate::new(404),
+                };
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"jsonrpc": "2.0", "id": call["id"], "result": result}))
+            })
+            .mount(&server)
+            .await;
+    }
+    let service = opened(vec![crate::service::ChainEndpoints {
+        capabilities: crate::EndpointCapability::ALL.to_vec(),
+        chain_id: Chain::Solana,
+        endpoints: vec![server.uri()],
+    }])
+    .await;
+    service
+        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
+            wallet: wallet("w1", Chain::Solana, &[(Chain::Solana, OWNER)]),
+        })
+        .await
+        .expect("wallet");
+
+    let first = service
+        .refresh_chain_history_page(Chain::Solana, Vec::new(), false)
+        .await
+        .expect("first page");
+    assert_eq!(
+        (first.wallets_failed, first.added, first.exhausted),
+        (0, 0, false)
+    );
+    let last = format!("{:088}", 49);
+    assert_eq!(
+        service
+            .history_cursor(Chain::Solana, "w1".into())
+            .next_cursor
+            .as_deref(),
+        Some(last.as_str())
+    );
+    let second = service
+        .refresh_chain_history_page(Chain::Solana, Vec::new(), true)
+        .await
+        .expect("second page");
+    assert_eq!(
+        (second.wallets_failed, second.added, second.exhausted),
+        (0, 1, true)
+    );
+    let before: Vec<Value> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|request| request.body_json::<Value>().unwrap())
+        .filter(|call| call["method"] == "getSignaturesForAddress")
+        .map(|call| call["params"][1]["before"].clone())
+        .collect();
+    assert_eq!(before, [Value::Null, json!(last)]);
+    let amounts = |stored: Vec<crate::store::persistence_models::TransactionRecord>| {
+        stored.into_iter().map(|row| row.amount).collect::<Vec<_>>()
+    };
+    assert_eq!(
+        amounts(service.transactions().await.unwrap()),
+        ["0.0000001"]
+    );
+
+    let head = service
+        .refresh_chain_history_page(Chain::Solana, Vec::new(), false)
+        .await
+        .expect("head");
+    assert_eq!((head.added, head.exhausted), (0, false));
+    assert_eq!(
+        amounts(service.transactions().await.unwrap()),
+        ["0.0000001"]
+    );
+}

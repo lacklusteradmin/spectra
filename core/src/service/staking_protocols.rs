@@ -1084,3 +1084,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tests/account_staking.rs"]
+mod account_staking_tests;

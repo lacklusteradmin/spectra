@@ -348,6 +348,52 @@ mod tests {
             .unwrap()
     }
 
+    /// Every network and API the catalog serves takes a custom endpoint of
+    /// that API, declaring every capability the adapter supports: a Litecoin
+    /// node as `tcp://host:port`, any other as an HTTPS URL.
+    #[test]
+    fn every_catalog_network_and_api_takes_a_custom_endpoint() {
+        let mut pairs: Vec<(Chain, EndpointApi)> = Vec::new();
+        for record in &crate::endpoints::catalog().records {
+            if !pairs.contains(&(record.chain_id, record.api)) {
+                pairs.push((record.chain_id, record.api));
+            }
+        }
+        let mut accepted = 0;
+        for (index, (chain, api)) in pairs.into_iter().enumerate() {
+            let capabilities = crate::endpoint_api::endpoint_capability_options(chain, api);
+            if capabilities.is_empty() {
+                continue;
+            }
+            let url = if api == EndpointApi::LitecoinP2p {
+                format!("tcp://custom-{index}.example:9333")
+            } else {
+                format!("https://custom-{index}.example/api")
+            };
+            let endpoint = CustomEndpoint::validated(
+                chain,
+                api.as_str().into(),
+                url.clone(),
+                capabilities.clone(),
+            )
+            .unwrap_or_else(|error| panic!("{chain} {}: {error}", api.as_str()));
+            let mut declared = capabilities;
+            declared.sort();
+            declared.dedup();
+            assert_eq!(
+                endpoint,
+                CustomEndpoint {
+                    chain_id: chain,
+                    api,
+                    endpoint: url,
+                    capabilities: declared,
+                }
+            );
+            accepted += 1;
+        }
+        assert!(accepted > 100, "{accepted}");
+    }
+
     #[tokio::test]
     async fn custom_nodes_use_the_same_api_adapters_and_survive_reopening() {
         let db = std::env::temp_dir()

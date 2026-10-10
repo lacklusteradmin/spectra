@@ -249,6 +249,63 @@ mod tests {
         let btc = "bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98".to_string();
         assert_eq!(display_address(Chain::Bitcoin, btc.clone()), btc);
     }
+
+    /// A custom token's precision is its own deployment's: one contract on
+    /// two networks keeps two counts, an edit changes only its own, and a
+    /// removed token leaves the catalog while the other stays.
+    #[test]
+    fn a_custom_tokens_precision_is_its_own_deployments() {
+        use crate::registry::Chain;
+        use crate::store::state::{ResidentState, StateCommand, reduce_state_in_place};
+        let contract = "0x1111111111111111111111111111111111111111";
+        let mut state = ResidentState::default();
+        for (chain, decimals) in [(Chain::Ethereum, 6), (Chain::Base, 9)] {
+            reduce_state_in_place(
+                &mut state,
+                StateCommand::AddCustomToken {
+                    standard: None,
+                    chain_id: chain,
+                    symbol: "SAME".into(),
+                    name: "Same Symbol".into(),
+                    contract: contract.into(),
+                    coingecko_id: String::new(),
+                    coinpaprika_id: String::new(),
+                    decimals,
+                },
+            );
+        }
+        let ethereum = format!("ethereum:erc-20:{contract}");
+        let base = format!("base:erc-20:{contract}");
+        let catalog = asset_precision_catalog(&state);
+        assert_eq!(catalog.by_deployment_id[&ethereum], 6);
+        assert_eq!(catalog.by_deployment_id[&base], 9);
+        assert_eq!(catalog.by_deployment_id["ethereum:native"], 18);
+        assert_eq!(catalog.by_deployment_id["bitcoin:native"], 8);
+        assert_eq!(catalog.unknown_decimals, 18);
+
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::SetCustomTokenDecimals {
+                chain_id: Chain::Ethereum,
+                contract: contract.into(),
+                decimals: 4,
+            },
+        );
+        let catalog = asset_precision_catalog(&state);
+        assert_eq!(catalog.by_deployment_id[&ethereum], 4);
+        assert_eq!(catalog.by_deployment_id[&base], 9);
+
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::RemoveCustomToken {
+                chain_id: Chain::Ethereum,
+                contract: contract.into(),
+            },
+        );
+        let catalog = asset_precision_catalog(&state);
+        assert!(!catalog.by_deployment_id.contains_key(&ethereum));
+        assert_eq!(catalog.by_deployment_id[&base], 9);
+    }
 }
 
 /// Effective precision by concrete deployment, derived from core-owned preferences.

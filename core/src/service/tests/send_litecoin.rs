@@ -568,3 +568,79 @@ async fn litecoin_build_boundaries_recipient_dust_is_checked_before_provider_rea
         }
     }
 }
+
+/// An owned build pays exactly the fee the review previewed, on every
+/// script type: the review's rate prices the same inputs and outputs.
+#[tokio::test]
+async fn an_owned_litecoin_build_pays_the_fee_its_preview_quoted() {
+    for purpose in [44, 49, 84] {
+        let chain = Chain::Litecoin;
+        let root_path = format!("m/{purpose}'/2'/0'/0/0");
+        let change_path = format!("m/{purpose}'/2'/0'/1/3");
+        let funded = [
+            (address(chain, &root_path), 100_000),
+            (address(chain, &change_path), 200_000),
+        ];
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(move |r: &Request| {
+                let path = r.url.path();
+                let body = if path.starts_with("/api/v2/estimatefee/") {
+                    // Two litoshis a virtual byte.
+                    json!({"result": "0.00002"})
+                } else if let Some(a) = path.strip_prefix("/api/v2/utxo/") {
+                    json!(funded.iter().enumerate().filter(|(_, (held, _))| held == a).map(|(i, (_, value))| json!({
+                        "txid": format!("{:064x}", i + 1), "vout": 0, "value": value.to_string(),
+                        "confirmations": 1, "height": 1,
+                    })).collect::<Vec<_>>())
+                } else {
+                    panic!("unexpected provider request {path}")
+                };
+                ResponseTemplate::new(200).set_body_json(body)
+            })
+            .mount(&server)
+            .await;
+        let (wallet, _, _) = service(chain, server.uri(), &root_path, None).await;
+        wallet
+            .register_owned_address(
+                "w".into(),
+                chain,
+                address(chain, &change_path),
+                Some(change_path.clone()),
+                Some("change".into()),
+                Some(3),
+            )
+            .await
+            .unwrap();
+        let mut state = wallet.app_state().await.wallets[0].clone();
+        let mut coin = native_coin_template(chain).unwrap();
+        coin.amount = "0.003".into();
+        state.holdings.push(coin);
+        wallet
+            .apply_state_command(StateCommand::UpsertWallet { wallet: state })
+            .await
+            .unwrap();
+        let input = crate::service::send_review::SendReviewInput {
+            wallet_id: "w".into(),
+            holding_key: "litecoin:native".into(),
+            amount: "0.0015".into(),
+            destination: address(chain, &format!("m/{purpose}'/2'/0'/0/9")),
+            overrides: None,
+            memo: None,
+        };
+        let review = wallet.review_owned_send(input.clone()).await.unwrap();
+        let quoted = review.preview.unwrap().network_fee().to_string();
+        let built = wallet.build_owned_send(input).await.unwrap();
+        let stored = wallet.load_send_artifact(built.id).await.unwrap();
+        let PreparedPayload::Litecoin(prepared) = &stored.prepared else {
+            panic!("not Litecoin")
+        };
+        assert_eq!(prepared.inputs.len(), 2, "{purpose}");
+        assert_eq!(
+            crate::decimal::from_units(prepared.fee.into(), 8),
+            quoted,
+            "{purpose}"
+        );
+        assert_eq!(built.review.network_fee.as_deref(), Some(quoted.as_str()));
+    }
+}

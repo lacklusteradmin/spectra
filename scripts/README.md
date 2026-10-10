@@ -19,56 +19,43 @@ when tests finish. The environment must allow binding local ports.
 | File | Purpose |
 |---|---|
 | `cli-acceptance.sh` | Main entry point: builds or uses the supplied `spectra` binary, checks what only the binary shows (state across processes, the SQLite store and sealed secret files, exit codes, confirmation gates, the loopback network guard), then runs the Python suites below except `cli-monero-regtest.py`. Rules themselves are tested in core. |
-| `cli-wallets.py` | Custom EVM paths and signing identity after restart, passphrase handling and invalid derivation inputs, and per-network chain IDs in signed EVM bytes. |
-| `cli-portfolio.py` | Balance refresh and preservation after failed reads; network/token identity; valuation with missing quotes or exchange rates; persisted portfolio inclusion and its effect on totals; price alerts. |
-| `cli-history.py` | Complete Bitcoin history pagination and duplicate-free repeated refreshes; stored history paging, search, sorting, deduplication and source labels; corrupt-record refusal; provider cursors across restarts. |
-| `cli-send.py` | Send previews, self-send confirmation, fee refusal, cancellation and replacement drafts, who holds each transfer end and a not-yet-sent address (a wallet or a contact), and network mismatch refusal; wrong passwords never broadcast, while a correct password broadcasts once and saves the matching transaction. |
-| `cli-transport.py` | A stored Tor or custom-proxy policy routes a fresh CLI process through the selected SOCKS proxy. |
-| `cli-endpoints.py` | Every catalog network/API pair persists as a custom endpoint; source filters, capability routing and the health summary for networks without providers. |
-| `cli-token-preferences.py` | Token-wide choices and editable price-source metadata survive process restarts. |
-| `cli-send-stages.py` | Durable build, sign and explicit-node submission stages against loopback nodes. |
-| `cli-send-utxo.py` | Each UTXO network's send pays the script its recipient names — P2PKH, P2SH, CashAddr and witness programs, and Decred's pubkey and script hashes from dcrd's vectors, read back from the signed bytes; another network's address refused before the node is asked. |
-| `cli-send-polkadot.py` | Polkadot and Bittensor metadata-driven signing, reviewed fees and finalized success/failure events. |
-| `cli-send-cardano.py` | Independent extended-key witness bytes; token-bearing inputs paying ADA and returning their assets; a native asset sent with its minimum ADA, discovered and refreshed; a node on another network refused; incomplete, changed or insufficient inputs refused. |
-| `cli-finality-account-chains.py` | Exact XRP, Stellar and Tron execution results, failed transactions and pending unknown results across process restarts. |
-| `cli-send-local-digests.py` | Sui/Aptos local transaction digests reject a mismatched submission reply and retain the same signed payload for a fresh-process retry. |
-| `cli-send-tokens.py` | Sui, Aptos and TON token stages, metadata and stale-state refusal, plus ERC-20 on Ethereum Classic and HyperEVM; Solana Token-2022 transfer fees and hooks reviewed, a fee changed before signing refused, and every Token-2022 refusal building nothing. |
-| `cli-receipt-fees.py` | Complete historical OP Stack actual fees for confirmed and reverted transactions; missing components remain unknown after reopening. |
-| `cli-chain-coverage.py` | Network-correct raw private-key imports, signer identities and testnet watch imports. |
-| `cli-send-icp-zcash.py` | ICP and Zcash transparent send stages against loopback providers; transparent funds pay a TEX address (ZIP-320) and refuse a shielded one. |
-| `cli-trc10.py` | Mainnet/Nile TRC-10 metadata, discovery/history, exact token signing and durable success/failure; wrong identity/precision/funds refuse early. |
-| `cli-staking.py` | Four account chains and DOT nomination pools, ownership/funds checks, fresh-process receipts, same-payload retries and finalized outcomes. |
-| `cli-nfts.py` | ERC-721 and ERC-1155 tokens: the inventory read across pages; transfers built only for what the contract and a live read say the wallet holds, signed as ethers.js signs them and re-checked before signing; one history row per token; a collection tracked as a token never gets a balance or a token send. |
-| `cli-zcash-shielded.py` | Zcash shielded funds against `spectra-zcash-fixture`, a loopback lightwalletd whose synthetic chain checks each transaction as a node would and journals what it paid whom: scanning from the restore height, shielding, a shielded payment with a memo only its recipient reads, paying a transparent address, recovery into a second data directory; the Sapling parameters the one request beyond loopback, refused; refusals before signing. |
-| `cli-litecoin-mweb.py` | Litecoin MWEB funds against `spectra-litecoin-mweb-fixture`, a loopback Litecoin node and Esplora indexer whose synthetic chain — independent of core's MWEB, its transactions decoded by the `litecoin` crate — proves every light-client answer, checks each transaction as a node would and journals what it paid whom: a scan of forty thousand outputs in batches, a payment inside MWEB, a peg-out, a peg-in to the wallet and one to another's MWEB address from transparent funds, recovery at another path; refusals of a scan with no node, the wrong password, a key-only or second wallet of the phrase, a node on another network, and of payments past the balance, to another network or below dust. |
-| `cli-multisig-psbt.py` | 2-of-3 P2WSH multisig on Bitcoin and Litecoin across three data directories: descriptor watch, discovery and balance, PSBT create, cosigner upgrade and signing, join, finalize and broadcast; foreign coins, spent inputs, stale reviews, short thresholds and MWEB recipients refused. |
-| `cli-multisig-p2sh.py` | 2-of-3 P2SH multisig on Bitcoin Cash (BCHN PSBTs) and Dogecoin (partially signed transactions) against a loopback Blockbook, every finished signature verified over the network's digest; submission through an unverifiable node refused. |
-| `cli-multisig-safe.py` | A Safe's policy, modules and guard read from a loopback node, owners signing in their own data directories and one executing; unofficial proxies, delegate calls and used nonces refused. |
-| `cli-multisig-tron.py` | Tron permissions read, an ordinary send the key cannot make alone refused before signing, and an active-permission transfer multi-signed and broadcast. |
-| `cli-multisig-xrp.py` | An XRP signer list and disabled master key read, an ordinary send refused, and a tagged payment multi-signed and submitted. |
-| `cli-multisig-stellar.py` | Stellar signers and thresholds read, an ordinary send the key cannot make alone refused, and a memo payment signed by two signers and submitted. |
-| `cli-multisig-sui-aptos.py` | Sui MultiSig and Aptos MultiKey accounts watched from their policies, transfers signed in two data directories, combined and submitted. |
-| `cli-multisig-cardano.py` | A Cardano native script watched at its address, witnessed by two CIP-1854 keys in two data directories and submitted against a loopback Koios that verifies every witness. |
-| `cli-multisig-substrate.py` | A pallet-multisig account on Asset Hub or Bittensor (second argument) against a node that keeps the pallet's state: an approval by hash reserving the deposit, then one carrying the call that executes it. |
-| `cli-multisig-ton.py` | A TON multisig v2 against a toncenter that keeps the multisig's and its orders' state: one signer's W5 wallet proposes an order, another's approves and executes it, every wallet message's signature verified. |
-| `cli-payment-memos.py` | XRP destination tags and Stellar text and ID memos on payments and account closings: a destination that asks for one (XRP's `lsfRequireDestTag`, SEP-29 `config.memo_required`) refused without it, at build and again before signing; out-of-range, overlong or foreign ones refused before any request; a memo changed after review refused; each transaction signed as ripple-binary-codec and @stellar/stellar-base sign it. |
-| `cli-issued-assets.py` | XRP Ledger issued currencies and Stellar credit assets: one code from two issuers stays two assets in tokens, balances, discovery and history; trust lines opened, removed and paid through, each signed as the network's SDK signs it; refusals build nothing. |
-| `cli-wallet-operations.py` | Operations a wallet's page builds, against loopback nodes: closing XRP and Stellar accounts, NEAR access keys, NEAR token storage refunds, Sui coin merges and Solana token-account closures, each prerequisite refused before anything is built and each transaction signed and broadcast through the send stages; and a Cardano account's stake address, rewards and delegation from Koios. |
-| `cli-icp-staking.py` | Controller-only neurons, explicit lock/fee review, independent Candid responses and refusal of forged execution certificates before funding. |
-| `cli-send-near.py` | Mainnet/testnet native and NEP-141 protocol fee budgets, implicit-account costs, storage reserves and fee/funds changes before signing or pending retries; a token's unregistered recipient registered by `storage_deposit` in the same reviewed transaction, a registration changed before signing and a contract with no NEP-145 answer refused. |
-| `cli-send-monero.py` | Monero ownership and network guards; the signature fixture runs in Rust. |
+| `cli-send.py` | A password-protected owned send: `send owned-broadcast` is refused without `--yes`; with it and the password from the environment it broadcasts exactly once. |
+| `cli-endpoints.py` | The listing's built-in/custom source filter and the health verdict the CLI aggregates (networks without APIs, unreachable endpoints) against a loopback Blockbook node. |
+| `cli-send-stages.py` | An EVM send built, signed and broadcast in separate processes: nothing submitted before `broadcast-signed --yes`, an identical retry, and two processes racing to sign at one nonce, one refused as reserved. |
+| `cli-send-polkadot.py` | A Polkadot Asset Hub send across processes: a fee changed at broadcast submits nothing, one broadcast, an unchanged rebroadcast, polled finality, recovery after a lost status write, and a failed outcome with its cursor kept. |
+| `cli-send-cardano.py` | A Cardano send built, signed and broadcast once, exactly as signed. |
+| `cli-send-tokens.py` | A TON jetton send broadcast once, then an incomplete trace, an aborted one and a lost status write recovered to its final outcome across processes. |
+| `cli-send-icp-zcash.py` | ICP and transparent Zcash sends built, signed and broadcast in separate processes against loopback providers, with an identical retry. |
+| `cli-trc10.py` | A mainnet TRC-10 send broadcast once with its `TransferAssetContract` body, polled to confirmed and recorded with its token and amount. |
+| `cli-staking.py` | One stake per account chain and a DOT pool stake across processes: the stored artifact reopened exactly, a broadcast refusal, a same-bytes retry, and exact-hash and finalized recovery. |
+| `cli-nfts.py` | ERC-721 and ERC-1155 transfers signed and broadcast, exactly the ethers.js bytes submitted. |
+| `cli-zcash-shielded.py` | Zcash shielded funds against `spectra-zcash-fixture`, a loopback lightwalletd whose synthetic chain checks each transaction as a node would and journals what it paid whom: scanning from the restore height, shielding, a shielded payment with a memo only its recipient reads, paying a transparent address, recovery into a second data directory, a restore height past the tip refused; the Sapling parameters the one request beyond loopback, refused. |
+| `cli-litecoin-mweb.py` | Litecoin MWEB funds against `spectra-litecoin-mweb-fixture`, a loopback Litecoin node and Esplora indexer whose synthetic chain — independent of core's MWEB, its transactions decoded by the `litecoin` crate — proves every light-client answer, checks each transaction as a node would and journals what it paid whom: a scan of forty thousand outputs in batches, a payment inside MWEB, a peg-out, a peg-in to the wallet, recovery at another path, and a node on another network refused. |
+| `cli-multisig-psbt.py` | A 2-of-3 P2WSH multisig on Bitcoin across three data directories against a loopback Esplora: receive, discovery and balance kept across processes, a PSBT signed by two cosigners in their own data directories, joined and broadcast once; submit and discard ask for `--yes`. |
+| `cli-multisig-safe.py` | A Safe's policy read from a loopback node, two owners signing in their own data directories and one executing once; a second submission refused as already submitted. |
+| `cli-multisig-tron.py` | A Tron account's active permission multi-signed in two data directories, joined and broadcast once. |
+| `cli-multisig-xrp.py` | An XRP signer-list payment with a destination tag signed in two data directories, joined, finalized and submitted once against a loopback rippled. |
+| `cli-multisig-stellar.py` | A Stellar memo payment signed by two signers in two data directories, joined and submitted once against a loopback Horizon. |
+| `cli-multisig-aptos.py` | An Aptos MultiKey transfer signed in two data directories, joined and submitted once against a loopback node. |
+| `cli-multisig-cardano.py` | A Cardano native-script spend witnessed by two CIP-1854 keys in two data directories, joined and submitted once against a loopback Koios. |
+| `cli-multisig-substrate.py` | A pallet-multisig transfer on Asset Hub against a node that keeps the pallet's state: approved by hash in one data directory and with its call in another, which executes it. |
+| `cli-multisig-ton.py` | A TON multisig v2 against a toncenter that keeps the multisig's and its orders' state: one signer's W5 wallet proposes an order, another's approves it in a second data directory and executes it. |
+| `cli-issued-assets.py` | XRP Ledger and Stellar trust lines opened, paid through and removed, each signed once and broadcast once as signed, and recorded in history by kind. |
+| `cli-wallet-operations.py` | Operations a wallet's page builds, against loopback nodes: closing XRP and Stellar accounts, deleting a NEAR access key, refunding NEAR token storage, merging Sui coins and closing Solana token accounts, each built, signed, broadcast once with the exact signed bytes and recorded in history; a refused closing stores nothing. |
+| `cli-icp-staking.py` | An ICP neuron stake signed and reopened, then refused before funding on a forged certificate; recheck and repair leave the stored payload unchanged. |
+| `cli-send-near.py` | A NEAR send across processes: a refused broadcast submits nothing, an uncertain one is retried with the same bytes, and the final status is recovered before the nonce, expiry or fee could change. |
 | `cli-monero-regtest.py` | Optional: a real `monerod` behind a loopback proxy, run by hand with `--monerod /path/to/monerod`. Not part of `make verify`. |
 | `cli-assertions.sh` | Shared shell assertions: checks exit codes and output, and counts passes and failures. Sourced by other scripts. |
 | `test-cli-assertions.sh` | Tests the assertion helpers so failed commands cannot be reported as passing. |
 
-The wallets, portfolio, history, send and transport suites use the
-standard-library `unittest` runner. Each scenario reports its own result, and a
-failure does not stop the remaining scenarios in that file. No third-party
-Python packages are required. Run a whole suite or an individual scenario:
+Each suite exercises only what the binary alone shows; the rules behind it are
+cargo tests in core. Some suites use the standard-library `unittest` runner, so
+each scenario reports its own result and a failure does not stop the others. No
+third-party Python packages are required. Run a whole suite or an individual
+scenario:
 
 ```sh
-python3 scripts/cli-portfolio.py
-python3 scripts/cli-history.py target/debug/spectra
+python3 scripts/cli-send-stages.py target/debug/spectra
 python3 scripts/cli-send.py target/debug/spectra SendTests.test_password_protected_broadcast
 ```
 

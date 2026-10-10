@@ -900,6 +900,77 @@ mod a_listing_answers_for_every_known_token {
             holding_key(Chain::Ethereum, "0xabc")
         );
     }
+
+    /// A devnet wallet's tokens are listed by the devnet's own endpoints,
+    /// both token programs asked about the owner; the mainnet's, for the
+    /// same address, are not asked at all.
+    #[tokio::test]
+    async fn a_devnet_listing_asks_only_the_devnets_endpoints() {
+        use serde_json::{Value, json};
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+        let owner = "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX";
+        let mint = "So11111111111111111111111111111111111111112";
+        let devnet = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(move |request: &Request| {
+                let call: Value = request.body_json().unwrap();
+                let program = call["params"][1]["programId"].as_str().unwrap_or_default();
+                let value = if program.starts_with("Tokenkeg") {
+                    json!([{"account": {"data": {"parsed": {"info": {
+                        "mint": mint,
+                        "tokenAmount": {"amount": "2500000", "decimals": 6},
+                    }}}}}])
+                } else {
+                    json!([])
+                };
+                ResponseTemplate::new(200).set_body_json(
+                    json!({"jsonrpc": "2.0", "id": call["id"], "result": {"value": value}}),
+                )
+            })
+            .mount(&devnet)
+            .await;
+        let mainnet = MockServer::start().await;
+        let endpoints = |chain_id, server: &MockServer| crate::service::ChainEndpoints {
+            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            chain_id,
+            endpoints: vec![server.uri()],
+        };
+        let service = WalletService::new(vec![
+            endpoints(Chain::SolanaDevnet, &devnet),
+            endpoints(Chain::Solana, &mainnet),
+        ])
+        .unwrap();
+        let held = service
+            .discover_token_balances(Chain::SolanaDevnet, owner.into())
+            .await
+            .unwrap();
+        let read: Vec<_> = held
+            .iter()
+            .map(|t| {
+                (
+                    t.contract_address.as_str(),
+                    t.decimals,
+                    t.balance_display.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(read, [(mint, 6, "2.5")]);
+        let calls: Vec<Value> = devnet
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(|request| request.body_json().unwrap())
+            .collect();
+        assert_eq!(calls.len(), 2, "{calls:?}");
+        assert!(
+            calls
+                .iter()
+                .all(|call| call["method"] == "getTokenAccountsByOwner"
+                    && call["params"][0] == owner)
+        );
+        assert!(mainnet.received_requests().await.unwrap().is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -1179,6 +1250,111 @@ mod decimals_come_from_the_chain {
         );
     }
 
+    /// A NEP-141 balance on NEAR's test network is read from that network's
+    /// node alone, by `ft_balance_of` for the holder and `ft_metadata`, and
+    /// scaled by the contract's own decimals rather than the caller's.
+    #[tokio::test]
+    async fn a_near_testnet_token_is_read_from_the_testnets_own_node() {
+        use base64::Engine;
+        use serde_json::Value;
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+        let view = |request: &Request| -> (Value, String, Value) {
+            let call: Value = request.body_json().unwrap();
+            let params = &call["params"];
+            let args = base64::engine::general_purpose::STANDARD
+                .decode(params["args_base64"].as_str().unwrap_or_default())
+                .unwrap();
+            (
+                params["account_id"].clone(),
+                params["method_name"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                serde_json::from_slice(&args).unwrap_or(Value::Null),
+            )
+        };
+        let testnet = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(move |request: &Request| {
+                let call: Value = request.body_json().unwrap();
+                let value = match view(request).1.as_str() {
+                    "ft_balance_of" => json!("2500000"),
+                    "ft_metadata" => {
+                        json!({"spec": "ft-1.0.0", "name": "Fixture", "symbol": "TST", "decimals": 6})
+                    }
+                    _ => Value::Null,
+                };
+                let bytes = serde_json::to_vec(&value).unwrap();
+                ResponseTemplate::new(200).set_body_json(
+                    json!({"jsonrpc": "2.0", "id": call["id"], "result": {"result": bytes}}),
+                )
+            })
+            .mount(&testnet)
+            .await;
+        let mainnet = MockServer::start().await;
+        let endpoints = |chain_id, server: &MockServer| ChainEndpoints {
+            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            chain_id,
+            endpoints: vec![server.uri()],
+        };
+        let service = WalletService::new(vec![
+            endpoints(Chain::NearTestnet, &testnet),
+            endpoints(Chain::Near, &mainnet),
+        ])
+        .unwrap();
+        let rows = service
+            .fetch_token_balances(
+                Chain::NearTestnet,
+                "owner.testnet".into(),
+                vec![TokenDescriptor {
+                    standard: String::new(),
+                    contract: "fixture.testnet".into(),
+                    symbol: "TST".into(),
+                    decimals: 18,
+                    name: None,
+                }],
+            )
+            .await
+            .unwrap();
+        let read: Vec<_> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r.standard.as_str(),
+                    r.contract_address.as_str(),
+                    r.decimals,
+                    r.balance_raw.as_str(),
+                    r.balance_display.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(read, [("NEP-141", "fixture.testnet", 6, "2500000", "2.5")]);
+        let mut calls: Vec<_> = testnet
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .map(view)
+            .collect();
+        calls.sort_by(|a, b| a.1.cmp(&b.1));
+        assert_eq!(
+            calls,
+            [
+                (
+                    json!("fixture.testnet"),
+                    "ft_balance_of".to_string(),
+                    json!({"account_id": "owner.testnet"})
+                ),
+                (
+                    json!("fixture.testnet"),
+                    "ft_metadata".to_string(),
+                    json!({})
+                ),
+            ]
+        );
+        assert!(mainnet.received_requests().await.unwrap().is_empty());
+    }
+
     /// An empty list is not a fetch.
     #[tokio::test]
     async fn no_tokens_is_no_round_trip() {
@@ -1194,3 +1370,7 @@ mod decimals_come_from_the_chain {
         assert!(out.is_empty());
     }
 }
+
+#[cfg(test)]
+#[path = "tests/network_tokens.rs"]
+mod network_tokens_tests;

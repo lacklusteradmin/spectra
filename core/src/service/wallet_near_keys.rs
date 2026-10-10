@@ -276,3 +276,7 @@ impl WalletService {
         Ok((wallet, chain, account))
     }
 }
+
+#[cfg(test)]
+#[path = "tests/wallet_near_keys.rs"]
+pub(super) mod tests;

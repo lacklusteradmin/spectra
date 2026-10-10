@@ -408,6 +408,45 @@ mod tests {
         assert!(service.account_reserve(Chain::XrpTestnet).await.is_err());
     }
 
+    /// A read Spectra serves only from an endpoint the user adds needs one:
+    /// Dash's test network has no built-in provider at all, and BNB Smart
+    /// Chain no built-in history indexer. A read a built-in endpoint serves is
+    /// configured, until the user uses only their own and has none.
+    #[tokio::test]
+    async fn a_read_no_configured_endpoint_serves_needs_a_custom_one() {
+        use crate::store::state::{AppSettingUpdate, StateCommand};
+        use CapabilityCoverage::{Configured, NeedsCustomEndpoint};
+        let service = WalletService::new(vec![]).unwrap();
+        let dash = service.wallet_setup_summary(Chain::DashTestnet).await;
+        assert_eq!(
+            (dash.balance, dash.history),
+            (NeedsCustomEndpoint, NeedsCustomEndpoint)
+        );
+        assert!(dash.endpoints.is_empty());
+        let bnb = service.wallet_setup_summary(Chain::BnbChain).await;
+        assert_eq!(
+            (bnb.balance, bnb.history),
+            (Configured, NeedsCustomEndpoint)
+        );
+        let base = service.wallet_setup_summary(Chain::BaseSepolia).await;
+        assert_eq!(base.balance, Configured);
+        assert!(!base.endpoints.is_empty());
+        assert!(base.endpoints.iter().all(|endpoint| endpoint.is_built_in));
+        service
+            .apply_state_command(StateCommand::SetAppSetting {
+                update: AppSettingUpdate::CustomEndpointsOnly {
+                    chain_id: Chain::BaseSepolia,
+                    value: true,
+                },
+            })
+            .await
+            .unwrap();
+        let only = service.wallet_setup_summary(Chain::BaseSepolia).await;
+        assert!(only.custom_endpoints_only);
+        assert_eq!(only.balance, NeedsCustomEndpoint);
+        assert!(only.endpoints.is_empty());
+    }
+
     /// The limits are the registry's, on the networks the product names.
     #[test]
     fn limits_follow_the_registry() {

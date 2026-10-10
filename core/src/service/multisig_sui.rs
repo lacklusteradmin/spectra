@@ -342,3 +342,7 @@ impl WalletService {
         Ok(digest)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/multisig_sui.rs"]
+mod multisig_sui_tests;

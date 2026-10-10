@@ -586,3 +586,68 @@ impl AptosClient {
         Ok(response.data.active_validators)
     }
 }
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::api::transaction_status::TransactionStatus;
+    use serde_json::json;
+
+    fn hash() -> String {
+        format!("0x{}", "ab".repeat(32))
+    }
+
+    /// A committed user transaction settles by its result; a pending one is
+    /// still pending. A reply for another hash is not this transaction's.
+    #[test]
+    fn a_committed_transaction_settles_and_only_for_its_own_hash() {
+        let reply = |hash: &str, kind: &str, success: bool| json!({"hash": hash, "type": kind, "version": "123", "success": success});
+        let read = |response: Value| aptos_transaction_status(&response, &hash());
+        assert_eq!(
+            read(reply(&hash(), "user_transaction", true)),
+            Ok(TransactionStatus::Confirmed {
+                succeeded: true,
+                block: None
+            })
+        );
+        assert_eq!(
+            read(reply(&hash(), "user_transaction", false)),
+            Ok(TransactionStatus::Confirmed {
+                succeeded: false,
+                block: None
+            })
+        );
+        assert_eq!(
+            read(reply(&hash(), "pending_transaction", false)),
+            Ok(TransactionStatus::Pending)
+        );
+        assert_eq!(
+            read(reply(
+                &format!("0x{}", "aa".repeat(32)),
+                "user_transaction",
+                true
+            )),
+            Err(ApiError::decode("Aptos status: transaction hash mismatch"))
+        );
+    }
+
+    /// A hash the node does not know yet is pending, not failed.
+    #[tokio::test]
+    async fn an_unknown_hash_is_still_pending() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
+        let server = MockServer::start().await;
+        Mock::given(path(format!("/transactions/by_hash/{}", hash())))
+            .respond_with(
+                ResponseTemplate::new(404)
+                    .set_body_json(json!({"error_code": "transaction_not_found"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = AptosClient::new(std::sync::Arc::new(vec![server.uri()]));
+        assert_eq!(
+            client.fetch_transaction_status(&hash()).await,
+            Ok(TransactionStatus::Pending)
+        );
+    }
+}

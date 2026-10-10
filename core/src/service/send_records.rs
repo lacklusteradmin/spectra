@@ -451,6 +451,44 @@ mod tests {
         assert!(service.rebroadcast_transaction(record.id).await.is_err());
         assert!(server.received_requests().await.unwrap().is_empty());
     }
+
+    /// Only a send not yet confirmed, carrying a payload in a format of its
+    /// own chain, is rebroadcast: an Ethereum send holding a Solana payload
+    /// is refused, and so is a confirmed one.
+    #[test]
+    fn only_an_unconfirmed_send_with_its_own_chains_payload_is_rebroadcast() {
+        let record = |status: &str, format: &str| -> TransactionRecord {
+            serde_json::from_value(json!({
+                "id": "send", "walletId": "w", "kind": "send", "status": status,
+                "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH",
+                "chainId": "ethereum", "amount": "1", "address": "recipient",
+                "transactionHash": format!("0x{}", "ab".repeat(32)), "createdAtUnix": 1000.0,
+                "signedTransactionPayload": "0x1234", "signedTransactionPayloadFormat": format
+            }))
+            .unwrap()
+        };
+        let (chain, payload, field) = rebroadcast_input(&record("pending", "evm.raw_hex")).unwrap();
+        assert_eq!(
+            (chain, payload.as_str(), field.as_str()),
+            (crate::registry::Chain::Ethereum, "0x1234", "txid")
+        );
+        assert!(rebroadcast_input(&record("failed", "evm.raw_hex")).is_ok());
+        for (status, format, refusal) in [
+            (
+                "pending",
+                "solana.rust_json",
+                "payload does not match transaction chain",
+            ),
+            ("confirmed", "evm.raw_hex", "transaction already confirmed"),
+        ] {
+            assert_eq!(
+                rebroadcast_input(&record(status, format))
+                    .unwrap_err()
+                    .to_string(),
+                refusal
+            );
+        }
+    }
 }
 
 #[cfg(test)]

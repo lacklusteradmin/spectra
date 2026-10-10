@@ -955,3 +955,7 @@ mod shortcut_amount_tests {
         assert_eq!(send_total(true, "0.001", None), None);
     }
 }
+
+#[cfg(test)]
+#[path = "tests/send_owned.rs"]
+mod owned_send_tests;

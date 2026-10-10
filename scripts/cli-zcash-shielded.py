@@ -14,9 +14,8 @@ pays a shielded address with a memo and a transparent one, and a second data
 directory restored from the same phrase finds the same funds and history.
 Spending the Sapling note needs the published Sapling parameters, which only
 download.z.cash serves: that is the one request beyond loopback, and it is
-refused. What is refused before anything is signed: a TEX address, a memo to
-a transparent recipient, an amount past the balance, a key-only wallet, no
-lightwalletd server, one on another network, a restore height past its tip."""
+refused. A restore height past the server's tip scans nothing. What a
+payment or a sync refuses before any network is read is tested in core."""
 import json
 import os
 import pathlib
@@ -46,11 +45,11 @@ def fixture_binary():
 class Fixture:
     """One fixture process: its chain, its port and what it journals."""
 
-    def __init__(self, directory, *args):
+    def __init__(self, directory):
         self.journal = pathlib.Path(directory) / 'fixture.jsonl'
         self.process = subprocess.Popen(
             [str(fixture_binary()), '--wallet-phrase-env', 'WALLET', '--outsider-phrase-env', 'OUTSIDER',
-             '--start', str(START), '--blocks', '30', '--journal', str(self.journal), *args],
+             '--start', str(START), '--blocks', '30', '--journal', str(self.journal)],
             stdout=subprocess.PIPE, text=True, env={**os.environ, 'WALLET': PHRASE, 'OUTSIDER': OUTSIDER})
         self.info = json.loads(self.process.stdout.readline())
         self.url = f"http://127.0.0.1:{self.info['port']}"
@@ -92,25 +91,27 @@ class ShieldedTests(unittest.TestCase):
         self.directories.append(directory)
         return directory.name
 
-    def run_cli(self, directory, *args, success=True, env=None):
+    def run_cli(self, directory, *args, success=True):
+        # Its own journal: the refused parameters download is expected in it,
+        # and each test asserts it is empty otherwise.
         p = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True,
                            timeout=600,
                            env={**os.environ, 'SPECTRA_LOOPBACK_ONLY': str(pathlib.Path(directory) / 'network.jsonl'),
-                                'SPECTRA_PASSWORD': 'fixture-password', 'SPECTRA_SEED': PHRASE, **(env or {})})
+                                'SPECTRA_PASSWORD': 'fixture-password', 'SPECTRA_SEED': PHRASE})
         assert (p.returncode == 0) == success, (args, p.returncode, p.stdout, p.stderr)
         return json.loads(p.stdout) if success else (p.returncode, p.stdout + p.stderr)
 
-    def refuses(self, directory, words, *args, code=3, env=None):
-        returned, output = self.run_cli(directory, *args, success=False, env=env)
+    def refuses(self, directory, words, *args, code=3):
+        returned, output = self.run_cli(directory, *args, success=False)
         assert returned == code and words in output, (words, returned, output)
 
-    def wallet(self, directory, name='Shielded', restore_height=START, endpoint=None):
+    def wallet(self, directory, name='Shielded', restore_height=START):
         """A Zcash wallet restored from the phrase, and the server it scans."""
         self.run_cli(directory, 'wallet', 'import', '--chain', 'zcash', '--name', name,
                      '--restore-height', str(restore_height))
         self.run_cli(directory, 'endpoints', '--chain', 'zcash', '--custom-only', 'true')
         self.run_cli(directory, 'endpoints', '--chain', 'zcash', '--api', 'lightwalletd', '--capabilities',
-                     'history,broadcast,verification', '--add', endpoint or self.chain.url)
+                     'history,broadcast,verification', '--add', self.chain.url)
 
     def sync(self, directory, name='Shielded'):
         status = self.run_cli(directory, 'wallet', 'zcash-sync', name)['shielded']
@@ -139,23 +140,7 @@ class ShieldedTests(unittest.TestCase):
         data = self.data_directory()
         info = self.chain.info
         assert info['pool'] == 'ironwood', info
-
-        # Without a lightwalletd server there is nothing to scan from.
-        self.run_cli(data, 'wallet', 'import', '--chain', 'zcash', '--name', 'Shielded',
-                     '--restore-height', str(START))
-        self.run_cli(data, 'endpoints', '--chain', 'zcash', '--custom-only', 'true')
-        self.refuses(data, 'needs a lightwalletd server', 'wallet', 'zcash-sync', 'Shielded')
-        self.run_cli(data, 'endpoints', '--chain', 'zcash', '--api', 'lightwalletd', '--capabilities',
-                     'history,broadcast,verification', '--add', self.chain.url)
-        offers = [o['action'] for o in self.run_cli(data, 'wallet', 'actions', 'Shielded')['actions']['actions']]
-        assert 'shieldedFunds' in offers, offers
-        status = self.run_cli(data, 'wallet', 'zcash-status', 'Shielded')['shielded']
-        assert (status['ready'], status['restoreHeight'], status['address']) == (False, START, None), status
-
-        # The first batch makes the account from the seed: a wrong password
-        # makes nothing.
-        self.refuses(data, 'password', 'wallet', 'zcash-sync', 'Shielded', env={'SPECTRA_PASSWORD': 'wrong'})
-        assert not self.run_cli(data, 'wallet', 'zcash-status', 'Shielded')['shielded']['ready']
+        self.wallet(data)
 
         # The scan finds the Ironwood and Sapling notes, and the transparent
         # output to shield, at the address the fixture derived.
@@ -184,7 +169,6 @@ class ShieldedTests(unittest.TestCase):
         # row of it confirms that record.
         assert ('shield', '0.49985', 'confirmed', info['wallet_address']) in self.history(data), \
             self.history(data)
-        self.refuses(data, 'too small to shield', 'wallet', 'shield', 'Shielded')
 
         # A shielded payment carries its memo to the recipient, who alone
         # reads it; the review shows it and the fee as signed.
@@ -213,22 +197,16 @@ class ShieldedTests(unittest.TestCase):
 
         # Paying a transparent address spends the Sapling note first, whose
         # proof needs the Sapling parameters: offline, the download is the
-        # one request refused, and nothing is signed. A file in their place
-        # that is not the published one is not used.
+        # one request refused, and nothing is signed.
         built = self.run_cli(data, 'wallet', 'send-shielded', 'Shielded', '--to', info['outsider_transparent'],
                              '--amount', '0.1')['artifact']
         assert json.loads(built['prepared_details'])['ZcashShielded']['spends_sapling'], built
         journal = pathlib.Path(data) / 'network.jsonl'
-        parameters = pathlib.Path(data) / 'zcash-params'
-        for planted in (False, True):
-            if planted:
-                parameters.mkdir(exist_ok=True)
-                (parameters / 'sapling-spend.params').write_bytes(b'\0' * 47_958_396)
-            self.refuses(data, 'Sapling parameters', 'send', 'sign', built['id'],
-                         '--review-digest', built['review_digest'], code=1)
-            assert {line.split('\t')[0] for line in journal.read_text().splitlines()} == {PARAMETERS}, \
-                journal.read_text()
-            journal.unlink()
+        self.refuses(data, 'Sapling parameters', 'send', 'sign', built['id'],
+                     '--review-digest', built['review_digest'], code=1)
+        assert {line.split('\t')[0] for line in journal.read_text().splitlines()} == {PARAMETERS}, \
+            journal.read_text()
+        journal.unlink()
         assert self.run_cli(data, 'send', 'inspect', built['id'])['artifact']['stage'] == 'Prepared'
 
         # More than the Sapling note holds comes from Ironwood alone, with no
@@ -243,17 +221,6 @@ class ShieldedTests(unittest.TestCase):
         fee = prepared['fee_zat']
         assert status['spendable'] == f"{(194_975_000 - 50_000_000 - fee) / 1e8:.8f}".rstrip('0'), (status, fee)
         assert ('send', '0.5', 'confirmed', info['outsider_transparent']) in self.history(data), self.history(data)
-
-        # Refused before any note is chosen, or for want of them.
-        for words, to, amount, memo in [
-            ('cannot cover the amount and the fee', info['outsider_address'], '100', None),
-            ("paid from the wallet's transparent balance", info['outsider_tex'], '0.1', None),
-            ('A memo reaches only a shielded recipient', info['outsider_transparent'], '0.1', 'hi'),
-            ('Not a Zcash address on this network', 'tmBsTi2xWTjUdEXnuTceL7fecEQKeWaPDJd', '0.1', None),
-            ('Not a Zcash address on this network', 'zs1notanaddress', '0.1', None),
-        ]:
-            self.refuses(data, words, 'wallet', 'send-shielded', 'Shielded', '--to', to, '--amount', amount,
-                         *(['--memo', memo] if memo else []))
 
         # The same phrase in a second data directory finds the same notes
         # and the same history: what it received, shielded and sent. A
@@ -271,33 +238,10 @@ class ShieldedTests(unittest.TestCase):
                           for kind, amount, state, to in self.history(data))
         assert self.history(recovered) == expected, (self.history(recovered), expected)
 
-    def test_what_has_no_shielded_account_is_refused(self):
-        # A key holds a transparent address and no shielded account.
-        data = self.data_directory()
-        self.run_cli(data, 'wallet', 'import', '--chain', 'zcash', '--name', 'Key', '--private-key-env', 'KEY',
-                     env={'KEY': '01' * 32})
-        offers = [o['action'] for o in self.run_cli(data, 'wallet', 'actions', 'Key')['actions']['actions']]
-        assert 'shieldedFunds' not in offers, offers
-        for command in (['zcash-sync', 'Key'], ['zcash-status', 'Key'], ['shield', 'Key'],
-                        ['send-shielded', 'Key', '--to', self.chain.info['outsider_address'], '--amount', '0.1']):
-            self.refuses(data, 'restored from its seed phrase', 'wallet', *command)
-
-        # A restore height past the server's tip scans nothing.
+    def test_a_restore_height_past_the_servers_tip_scans_nothing(self):
         late = self.data_directory()
         self.wallet(late, restore_height=START + 10_000)
         self.refuses(late, 'past the chain', 'wallet', 'zcash-sync', 'Shielded')
-
-    def test_a_server_on_another_network_is_refused(self):
-        testnet = Fixture(self.scratch.name, '--network', 'test', '--fund-shielded', '0', '--fund-sapling', '0',
-                          '--fund-transparent', '0')
-        try:
-            data = self.data_directory()
-            self.wallet(data, endpoint=testnet.url)
-            returned, output = self.run_cli(data, 'wallet', 'zcash-sync', 'Shielded', success=False)
-            assert returned == 1 and 'serves the test network, not Zcash' in output, (returned, output)
-            assert not self.run_cli(data, 'wallet', 'zcash-status', 'Shielded')['shielded']['ready']
-        finally:
-            testnet.stop()
 
 
 if __name__ == '__main__':

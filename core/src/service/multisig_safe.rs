@@ -480,3 +480,7 @@ impl WalletService {
         Ok(hash)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/multisig_safe.rs"]
+mod multisig_safe_tests;

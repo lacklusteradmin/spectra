@@ -1528,3 +1528,7 @@ mod tests {
         assert!(position(&n, "owner", 101).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "tests/icp_staking.rs"]
+mod icp_staking_tests;

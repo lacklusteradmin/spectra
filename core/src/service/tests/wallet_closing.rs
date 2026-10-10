@@ -131,3 +131,137 @@ fn stellar_refuses_what_the_network_would() {
     // With the memo it asks for, it takes the account.
     assert!(stellar_merge(&memo, DESTINATION, true).is_ok());
 }
+
+/// The XRP wallet of the payment fixture's phrase, and an XRPL node where
+/// its account and the destination exist and `blockers` stand in the
+/// way of deleting it.
+async fn xrp_wallet(
+    blockers: Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+) -> (
+    crate::service::loopback_service::OpenService,
+    wiremock::MockServer,
+    String,
+) {
+    use serde_json::{Value, json};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+    let vector: Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/xrp-mnemonic-payment.json"
+    ))
+    .unwrap();
+    let sender = vector["transaction"]["Account"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let server = MockServer::start().await;
+    let source = sender.clone();
+    Mock::given(any())
+        .respond_with(move |request: &Request| {
+            let body: Value = serde_json::from_slice(&request.body).unwrap();
+            let params = &body["params"][0];
+            let result = match body["method"].as_str().unwrap() {
+                "server_info" => json!({"info": {"network_id": 0}}),
+                "server_state" => json!({"state": {"validated_ledger": {
+                    "seq": 2_000, "reserve_base": 1_000_000, "reserve_inc": 200_000}}}),
+                "account_info" if params["account"] == source.as_str() => json!({"account_data": {
+                    "Balance": "25000000", "Sequence": 1_000, "OwnerCount": 2, "Flags": 0}}),
+                "account_info" if params["account"] == DESTINATION => json!({"account_data": {
+                    "Balance": "50000000", "Sequence": 5, "OwnerCount": 0, "Flags": 0}}),
+                "account_objects" => {
+                    assert_eq!(params["deletion_blockers_only"], true);
+                    json!({"account_objects": *blockers.lock().unwrap()})
+                }
+                other => panic!("unexpected XRPL call {other} {params}"),
+            };
+            ResponseTemplate::new(200).set_body_json(json!({"result": result}))
+        })
+        .mount(&server)
+        .await;
+    let service = crate::service::loopback_service::open().await;
+    let mut commit = crate::derivation::setup::tests::fixture(
+        Chain::Xrp,
+        crate::derivation::setup::WalletSetupMethod::ImportPhrase,
+    );
+    commit.seed_phrase = Some(vector["mnemonic"].as_str().unwrap().into());
+    commit.derivation_path = Some(vector["derivation_path"].as_str().unwrap().into());
+    let wallet = service.import(commit).await;
+    assert_eq!(service.address(&wallet, Chain::Xrp).await, sender);
+    use EndpointCapability::*;
+    service
+        .use_endpoint(
+            Chain::Xrp,
+            crate::EndpointApi::XrplJsonRpc,
+            &[Balance, Fee, Broadcast, Verification],
+            &server.uri(),
+        )
+        .await;
+    (service, server, wallet)
+}
+
+/// Signing reads every prerequisite again: an escrow created after the
+/// review stops the deletion, which stays unsigned until it is gone.
+#[tokio::test]
+async fn a_blocker_that_appears_after_the_review_is_refused_at_signing() {
+    let blockers = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (service, _server, wallet) = xrp_wallet(blockers.clone()).await;
+    let built = service
+        .build_account_closing(wallet, DESTINATION.into(), None)
+        .await
+        .unwrap();
+    *blockers.lock().unwrap() = vec![serde_json::json!({"LedgerEntryType": "Escrow"})];
+    let refusal = service
+        .sign_send(built.id.clone(), built.review_digest.clone(), None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(refusal.contains("escrows"), "{refusal}");
+    let stored = service.inspect_send(built.id.clone()).await.unwrap();
+    assert_eq!(stored.stage, SendStage::Prepared);
+    blockers.lock().unwrap().clear();
+    let signed = service
+        .sign_send(built.id, built.review_digest, None)
+        .await
+        .unwrap();
+    assert_eq!(signed.stage, SendStage::Signed);
+}
+
+/// Only XRP and Stellar accounts close, and only from a wallet that signs:
+/// another network's account and a watched one are refused before any
+/// network is read, and nothing is stored.
+#[tokio::test]
+async fn other_networks_and_watched_accounts_do_not_close() {
+    let service = crate::service::loopback_service::open().await;
+    let solana = service
+        .import(crate::derivation::setup::tests::fixture(
+            Chain::Solana,
+            crate::derivation::setup::WalletSetupMethod::ImportPhrase,
+        ))
+        .await;
+    let refused = service
+        .build_account_closing(
+            solana,
+            "BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX".into(),
+            None,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(refused, "A Solana account cannot be closed.");
+    let mut watch = crate::derivation::setup::tests::fixture(
+        Chain::Xrp,
+        crate::derivation::setup::WalletSetupMethod::WatchAddresses,
+    );
+    watch.request.kind = crate::derivation::import::WalletImportKind::WatchAddresses {
+        addresses: vec![DESTINATION.into()],
+    };
+    let watched = service.import(watch).await;
+    let refused = service
+        .build_account_closing(watched, "rHsMGQEkVNJmpGWs8XUBoTBiAAbwxZN5v3".into(), None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        refused.contains("a watch-only wallet cannot send"),
+        "{refused}"
+    );
+    assert!(service.list_sends().await.unwrap().is_empty());
+}

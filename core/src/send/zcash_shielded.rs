@@ -273,7 +273,22 @@ pub(crate) fn propose_shielding_all(
         zcash_client_backend::data_api::CoinbaseFilter::AllTransparentOutputs,
         None,
     )
-    .map_err(|error| match error {
+    .map_err(shielding_error)?;
+    review(network, &proposal)
+}
+
+/// What a shielding proposal that failed means to the person shielding:
+/// too little to shield after the fee, or what any proposal's failure means.
+fn shielding_error<DE, TE, SE, FE, CE, N>(error: ProposalError<DE, TE, SE, FE, CE, N>) -> SendError
+where
+    DE: std::fmt::Display,
+    TE: std::fmt::Display,
+    SE: std::fmt::Display,
+    FE: std::fmt::Display,
+    CE: std::fmt::Display,
+    N: std::fmt::Display,
+{
+    match error {
         ProposalError::InsufficientFunds { .. }
         | ProposalError::Change(
             ChangeError::InsufficientFunds { .. } | ChangeError::DustInputs { .. },
@@ -281,8 +296,7 @@ pub(crate) fn propose_shielding_all(
             "The transparent balance is too small to shield after the fee.".into(),
         ),
         other => propose_error(other),
-    })?;
-    review(network, &proposal)
+    }
 }
 
 /// The Groth16 parameters a Sapling spend or output is proved with.

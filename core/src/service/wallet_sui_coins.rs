@@ -255,3 +255,7 @@ impl WalletService {
         Ok(client)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/wallet_sui_coins.rs"]
+mod tests;

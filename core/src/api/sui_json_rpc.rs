@@ -1023,3 +1023,47 @@ mod network_identity_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::api::transaction_status::TransactionStatus;
+
+    /// A digest settles once a checkpoint holds it, by its effects; executed
+    /// but not yet checkpointed, it is still pending, failure or not. A reply
+    /// for another digest is not this transaction's.
+    #[test]
+    fn a_digest_settles_at_its_checkpoint_and_only_for_itself() {
+        let digest = "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S";
+        let reply = |digest: &str, checkpoint: Value, status: &str| {
+            serde_json::json!({
+                "digest": digest,
+                "checkpoint": checkpoint,
+                "effects": {"status": {"status": status}},
+            })
+        };
+        let read = |response: Value| sui_transaction_status(&response, digest);
+        assert_eq!(
+            read(reply(digest, "42".into(), "success")),
+            Ok(TransactionStatus::Confirmed {
+                succeeded: true,
+                block: Some(42)
+            })
+        );
+        assert_eq!(
+            read(reply(digest, "42".into(), "failure")),
+            Ok(TransactionStatus::Confirmed {
+                succeeded: false,
+                block: Some(42)
+            })
+        );
+        assert_eq!(
+            read(reply(digest, Value::Null, "failure")),
+            Ok(TransactionStatus::Pending)
+        );
+        assert_eq!(
+            read(reply("wrong-digest", "42".into(), "success")),
+            Err(ApiError::decode("Sui status: transaction digest mismatch"))
+        );
+    }
+}

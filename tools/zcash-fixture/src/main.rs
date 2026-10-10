@@ -10,8 +10,6 @@
 //! that scans checks it. Transactions handed to `SendTransaction` are checked
 //! as a node would (`verify`), then mined and journaled.
 //!
-//! A funding amount of zero leaves that pool unfunded.
-//!
 //! Prints one JSON line — the port and the wallet's and an outside
 //! recipient's addresses — then serves until killed.
 
@@ -34,16 +32,17 @@ use zcash_transparent::builder::TransparentSigningSet;
 use zcash_transparent::bundle::{OutPoint, TxOut};
 use zcash_transparent::keys::{IncomingViewingKey, NonHardenedChildIndex};
 
+/// What the fixture funds the wallet with, in zatoshis, one transaction each.
+const FUND_SHIELDED: u64 = 150_000_000;
+const FUND_SAPLING: u64 = 25_000_000;
+const FUND_TRANSPARENT: u64 = 50_000_000;
+
 struct Args {
-    network: Network,
     start: u32,
     blocks: u32,
     wallet: String,
     outsider: String,
     journal: Option<std::path::PathBuf>,
-    fund_shielded: u64,
-    fund_sapling: u64,
-    fund_transparent: u64,
 }
 
 fn args() -> Args {
@@ -65,18 +64,11 @@ fn args() -> Args {
             .map_or(default, |value| value.parse().expect("a number"))
     };
     Args {
-        network: match values.get("network").map(String::as_str) {
-            Some("test") => Network::TestNetwork,
-            _ => Network::MainNetwork,
-        },
         start: number("start", 3_430_000) as u32,
         blocks: number("blocks", 30) as u32,
         wallet: phrase("wallet-phrase-env"),
         outsider: phrase("outsider-phrase-env"),
         journal: values.get("journal").map(Into::into),
-        fund_shielded: number("fund-shielded", 150_000_000),
-        fund_sapling: number("fund-sapling", 25_000_000),
-        fund_transparent: number("fund-transparent", 50_000_000),
     }
 }
 
@@ -245,7 +237,7 @@ impl Faucet {
 #[tokio::main]
 async fn main() {
     let args = args();
-    let network = args.network;
+    let network = Network::MainNetwork;
     let wallet = account(&network, &args.wallet);
     let outsider = account(&network, &args.outsider);
     let wallet_ua = shielded_address(&network, &wallet);
@@ -263,54 +255,43 @@ async fn main() {
     let memo = MemoBytes::from_bytes(b"fixture funding").expect("a memo");
     let orchard_to = *wallet_ua.orchard().expect("an Orchard receiver");
     let sapling_to = *wallet_ua.sapling().expect("a Sapling receiver");
-    if args.fund_shielded > 0 {
-        let shielded = Zatoshis::from_u64(args.fund_shielded).expect("a value");
-        let funding = faucet.pay(
-            network,
-            chain.next_height(),
-            args.fund_shielded,
-            move |builder| {
-                if ironwood {
-                    builder
-                        .add_ironwood_output::<Infallible>(None, orchard_to, shielded, memo.clone())
-                        .expect("an Ironwood output");
-                } else {
-                    builder
-                        .add_orchard_output::<Infallible>(None, orchard_to, shielded, memo.clone())
-                        .expect("an Orchard output");
-                }
-            },
-        );
-        chain.mine(vec![funding]);
-    }
-    if args.fund_sapling > 0 {
-        let sapling = Zatoshis::from_u64(args.fund_sapling).expect("a value");
-        let funding = faucet.pay(
-            network,
-            chain.next_height(),
-            args.fund_sapling,
-            move |builder| {
+    let shielded = Zatoshis::from_u64(FUND_SHIELDED).expect("a value");
+    let funding = faucet.pay(
+        network,
+        chain.next_height(),
+        FUND_SHIELDED,
+        move |builder| {
+            if ironwood {
                 builder
-                    .add_sapling_output::<Infallible>(None, sapling_to, sapling, MemoBytes::empty())
-                    .expect("a Sapling output");
-            },
-        );
-        chain.mine(vec![funding]);
-    }
-    if args.fund_transparent > 0 {
-        let transparent = Zatoshis::from_u64(args.fund_transparent).expect("a value");
-        let funding = faucet.pay(
-            network,
-            chain.next_height(),
-            args.fund_transparent,
-            move |builder| {
+                    .add_ironwood_output::<Infallible>(None, orchard_to, shielded, memo.clone())
+                    .expect("an Ironwood output");
+            } else {
                 builder
-                    .add_transparent_output(&wallet_t, transparent)
-                    .expect("a transparent output");
-            },
-        );
-        chain.mine(vec![funding]);
-    }
+                    .add_orchard_output::<Infallible>(None, orchard_to, shielded, memo.clone())
+                    .expect("an Orchard output");
+            }
+        },
+    );
+    chain.mine(vec![funding]);
+    let sapling = Zatoshis::from_u64(FUND_SAPLING).expect("a value");
+    let funding = faucet.pay(network, chain.next_height(), FUND_SAPLING, move |builder| {
+        builder
+            .add_sapling_output::<Infallible>(None, sapling_to, sapling, MemoBytes::empty())
+            .expect("a Sapling output");
+    });
+    chain.mine(vec![funding]);
+    let transparent = Zatoshis::from_u64(FUND_TRANSPARENT).expect("a value");
+    let funding = faucet.pay(
+        network,
+        chain.next_height(),
+        FUND_TRANSPARENT,
+        move |builder| {
+            builder
+                .add_transparent_output(&wallet_t, transparent)
+                .expect("a transparent output");
+        },
+    );
+    chain.mine(vec![funding]);
     while chain.blocks.len() < args.blocks as usize {
         chain.mine(vec![]);
     }
@@ -347,12 +328,6 @@ async fn main() {
             .expect("an Orchard receiver")
             .encode(&network),
             "outsider_transparent": encode_t(&outsider_t),
-            "outsider_tex": match outsider_t {
-                TransparentAddress::PublicKeyHash(hash) => {
-                    zcash_keys::address::Address::Tex(hash).encode(&network)
-                }
-                TransparentAddress::ScriptHash(_) => unreachable!("a P2PKH address"),
-            },
             "pool": if ironwood { "ironwood" } else { "orchard" },
         })
     );

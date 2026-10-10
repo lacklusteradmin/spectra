@@ -108,18 +108,11 @@ fn main() {
         "wallet": {
             "mweb": mweb_address(&wallet, 2),
             "pegin": mweb_address(&wallet, 1),
-            "change": mweb_address(&wallet, 0),
             "legacy": legacy(&args.wallet).to_string(),
-            "segwit": segwit(&args.wallet).to_string(),
         },
         "outsider": {
             "mweb": mweb_address(&outsider, 2),
-            "other_network_mweb": outsider.encoded(2, match network {
-                NetworkKind::Main => NetworkKind::Test,
-                NetworkKind::Test => NetworkKind::Main,
-            }),
             "legacy": legacy(&args.outsider).to_string(),
-            "segwit": segwit(&args.outsider).to_string(),
         },
     });
     let (scan, spend) = wallet.address(2);

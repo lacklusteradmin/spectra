@@ -597,3 +597,46 @@ mod direction_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod derivation_override_tests {
+    use super::*;
+    use crate::registry::Chain;
+
+    /// A derivation secret is taken only by a network whose derivation reads
+    /// it: a passphrase anywhere but Monero, a custom HMAC key only on the
+    /// networks that seed from one. Anything else is refused by name; an
+    /// empty value is no value.
+    #[test]
+    fn each_override_is_taken_only_where_derivation_reads_it() {
+        let overrides = |passphrase: &str, hmac_key: &str| WalletDerivationOverrides {
+            passphrase: Some(passphrase.into()),
+            hmac_key: Some(hmac_key.into()),
+        };
+        let refusal = |chain, passphrase, hmac_key| {
+            overrides(passphrase, hmac_key)
+                .validate_for_chain(chain)
+                .unwrap_err()
+                .to_string()
+        };
+        assert_eq!(
+            refusal(Chain::Ethereum, "", "custom"),
+            "Ethereum does not support a custom HMAC key"
+        );
+        assert_eq!(
+            refusal(Chain::Monero, "secret", ""),
+            "Monero does not support a derivation passphrase"
+        );
+        assert!(
+            overrides("secret", "")
+                .validate_for_chain(Chain::Ethereum)
+                .is_ok()
+        );
+        assert!(
+            overrides("secret", "custom")
+                .validate_for_chain(Chain::Solana)
+                .is_ok()
+        );
+        assert!(overrides("", "").validate_for_chain(Chain::Monero).is_ok());
+    }
+}

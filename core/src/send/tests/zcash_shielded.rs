@@ -194,3 +194,74 @@ fn an_undecodable_proposal_is_not_signed() {
     assert_eq!(error.to_string(), "The reviewed proposal no longer decodes");
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+type Proposal = ProposalError<String, String, String, String, String, u32>;
+
+fn short() -> (Zatoshis, Zatoshis) {
+    (Zatoshis::const_from_u64(1), Zatoshis::const_from_u64(2))
+}
+
+fn insufficient() -> Proposal {
+    let (available, required) = short();
+    ProposalError::InsufficientFunds {
+        available,
+        required,
+    }
+}
+
+fn change_insufficient() -> Proposal {
+    let (available, required) = short();
+    ProposalError::Change(ChangeError::InsufficientFunds {
+        available,
+        required,
+    })
+}
+
+fn dust() -> Proposal {
+    ProposalError::Change(ChangeError::DustInputs {
+        transparent: vec![],
+        sapling: vec![],
+        orchard: vec![],
+        ironwood: vec![],
+    })
+}
+
+/// A payment the notes cannot fund, before or after change, is a shortfall
+/// of the shielded balance; inputs worth less than their fee are too small
+/// to spend; an unscanned wallet must sync first.
+#[test]
+fn a_payment_short_of_funds_is_refused_as_the_shielded_balance_short() {
+    for error in [insufficient(), change_insufficient()] {
+        assert!(matches!(
+            propose_error(error),
+            SendError::InsufficientFunds(message)
+                if message.to_string() == "The shielded balance cannot cover the amount and the fee."
+        ));
+    }
+    assert!(matches!(
+        propose_error(dust()),
+        SendError::InsufficientFunds(message)
+            if message.to_string() == "The funds are too small to spend after the fee."
+    ));
+    assert_eq!(
+        propose_error(Proposal::ScanRequired).to_string(),
+        "Sync the shielded wallet before sending from it."
+    );
+}
+
+/// Shielding short of funds, or of inputs worth their fee, is a transparent
+/// balance too small to shield; anything else is what a payment's would be.
+#[test]
+fn shielding_short_of_funds_is_refused_as_too_small_to_shield() {
+    for error in [insufficient(), change_insufficient(), dust()] {
+        assert!(matches!(
+            shielding_error(error),
+            SendError::InsufficientFunds(message)
+                if message.to_string() == "The transparent balance is too small to shield after the fee."
+        ));
+    }
+    assert_eq!(
+        shielding_error(Proposal::ScanRequired).to_string(),
+        "Sync the shielded wallet before sending from it."
+    );
+}

@@ -166,3 +166,32 @@ fn an_account_receives_at_its_reference_unified_address() {
     assert!(shielded_history(&path, Chain::Zcash).unwrap().is_empty());
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+/// With no lightwalletd server among the network's endpoints there is
+/// nothing to scan from: the sync is refused and the wallet stays unsynced.
+#[tokio::test]
+async fn a_sync_with_no_lightwalletd_server_is_refused() {
+    let service = crate::service::loopback_service::open().await;
+    let wallet = service
+        .import(fixture(Chain::Zcash, WalletSetupMethod::ImportPhrase))
+        .await;
+    service
+        .apply_state_command(StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::CustomEndpointsOnly {
+                chain_id: Chain::Zcash,
+                value: true,
+            },
+        })
+        .await
+        .unwrap();
+    let refusal = service
+        .sync_zcash_shielded(wallet.clone(), None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(
+        refusal,
+        "Zcash needs a lightwalletd server to scan shielded funds. Add one for it."
+    );
+    assert!(!service.zcash_shielded_status(wallet).await.unwrap().ready);
+}

@@ -535,3 +535,202 @@ mod history_tests {
         assert!(near_ft_history(&[row], "me.near", "hash").is_err());
     }
 }
+
+#[cfg(test)]
+mod paging_tests {
+    use super::*;
+    use serde_json::json;
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+
+    const OWNER: &str = "me.near";
+
+    fn origin() -> String {
+        "H".repeat(44)
+    }
+
+    fn transfer(id: &str, from: &str, to: &str, amount: &str, children: Vec<Value>) -> Value {
+        json!({"receipt_id": id, "predecessor_account_id": from, "receiver_account_id": to,
+               "actions": [{"action": "TRANSFER", "args": {"deposit": amount}}],
+               "outcome": {"status": true}, "receipts": children,
+               "block": {"block_timestamp": "1700000000000000000"}})
+    }
+
+    fn token_activity(index: u64, delta: &str) -> Value {
+        json!({"affected_account_id": OWNER, "involved_account_id": "other.near",
+               "contract_account_id": "token.near", "delta_amount": delta, "cause": "TRANSFER",
+               "receipt_id": format!("ft-{index}"), "event_index": index, "event_type": 1,
+               "block_timestamp": "1700000000000000000", "meta": {"decimals": 6},
+               "transaction_hash": origin()})
+    }
+
+    /// Nearblocks: the account's receipt and token lists name one origin on
+    /// every row, fifty to a page with a cursor to the next, and the origin's
+    /// complete receipts and token activity.
+    async fn provider() -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(|request: &Request| {
+                let continued = request.url.query_pairs().any(|(key, _)| key == "next");
+                let path = request.url.path().to_string();
+                let body = if path == format!("/accounts/{OWNER}/receipts") {
+                    let rows = vec![json!({"transaction_hash": origin()}); if continued { 1 } else { 50 }];
+                    json!({"data": rows, "meta": {"next_page": if continued { Value::Null } else { "native-next".into() }}})
+                } else if path == format!("/accounts/{OWNER}/ft-txns") {
+                    let rows: Vec<_> = if continued {
+                        vec![token_activity(51, "123")]
+                    } else {
+                        (0..50).map(|index| token_activity(index, "1")).collect()
+                    };
+                    json!({"data": rows, "meta": {"next_page": if continued { Value::Null } else { "ft-next".into() }}})
+                } else if path == format!("/txns/{}/receipts", origin()) {
+                    let child = transfer("child", OWNER, "contract.near", "3000000000000000000000000", vec![]);
+                    json!({"data": transfer("root", "other.near", OWNER, "10000000000000000000000000", vec![child])})
+                } else if path == format!("/txns/{}/fts", origin()) {
+                    json!({"data": [token_activity(0, "9000000"), token_activity(1, "-2000000")]})
+                } else {
+                    return ResponseTemplate::new(404);
+                };
+                ResponseTemplate::new(200).set_body_json(body)
+            })
+            .mount(&server)
+            .await;
+        server
+    }
+
+    async fn requests(server: &MockServer, path: &str) -> Vec<String> {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|request| request.url.path() == path)
+            .map(|request| request.url.query().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    /// Fifty receipts of one origin on a page read that origin once and give
+    /// one row; the page's cursor is the next request's `next`, and the last
+    /// page names none. Each page reads its origins afresh.
+    #[tokio::test]
+    async fn a_receipt_page_reads_each_origin_once_and_follows_the_cursor() {
+        let server = provider().await;
+        let client = NearblocksClient::new(std::sync::Arc::new(vec![server.uri()]));
+        let first = client.fetch_history_page(OWNER, None).await.unwrap();
+        assert_eq!(first.next_cursor.as_deref(), Some("native-next"));
+        let amounts: Vec<_> = first
+            .items
+            .iter()
+            .map(|row| row.amount_yocto.as_str())
+            .collect();
+        assert_eq!(amounts, ["7000000000000000000000000"]);
+        assert!(first.items[0].is_incoming);
+        let second = client
+            .fetch_history_page(OWNER, first.next_cursor.as_deref())
+            .await
+            .unwrap();
+        assert_eq!(second.next_cursor, None);
+        assert_eq!(
+            serde_json::to_value(&second.items).unwrap(),
+            serde_json::to_value(&first.items).unwrap()
+        );
+        assert_eq!(
+            requests(&server, &format!("/accounts/{OWNER}/receipts")).await,
+            ["limit=50", "limit=50&next=native-next"]
+        );
+        assert_eq!(
+            requests(&server, &format!("/txns/{}/receipts", origin()))
+                .await
+                .len(),
+            2
+        );
+    }
+
+    /// The same for token activity: a page of fifty rows of one origin reads
+    /// that origin's complete activity once, netted to one row.
+    #[tokio::test]
+    async fn a_token_page_reads_each_origin_once_and_follows_the_cursor() {
+        let server = provider().await;
+        let client = NearblocksClient::new(std::sync::Arc::new(vec![server.uri()]));
+        let first = client.fetch_ft_history_page(OWNER, None).await.unwrap();
+        assert_eq!(first.next_cursor.as_deref(), Some("ft-next"));
+        let amounts: Vec<_> = first
+            .items
+            .iter()
+            .map(|row| row["amount_display"].clone())
+            .collect();
+        assert_eq!(amounts, [json!("7")]);
+        let second = client
+            .fetch_ft_history_page(OWNER, first.next_cursor.as_deref())
+            .await
+            .unwrap();
+        assert_eq!(second.next_cursor, None);
+        assert_eq!(second.items, first.items);
+        assert_eq!(
+            requests(&server, &format!("/accounts/{OWNER}/ft-txns")).await,
+            ["limit=50", "limit=50&next=ft-next"]
+        );
+        assert_eq!(
+            requests(&server, &format!("/txns/{}/fts", origin()))
+                .await
+                .len(),
+            2
+        );
+    }
+}
+
+#[cfg(test)]
+mod inventory_tests {
+    use super::*;
+    use serde_json::json;
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+
+    /// An inventory of two pages, the second behind an opaque cursor that
+    /// needs escaping, its token at `decimals`.
+    async fn inventory(decimals: u64) -> Result<Vec<crate::api::HeldToken>, ApiError> {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(move |request: &Request| {
+                assert_eq!(request.url.path(), "/accounts/holder.near/assets/fts");
+                let next = request
+                    .url
+                    .query_pairs()
+                    .find(|(key, _)| key == "next")
+                    .map(|(_, value)| value.into_owned());
+                ResponseTemplate::new(200).set_body_json(match next.as_deref() {
+                    None => json!({"data": [{"contract": "first.near", "amount": "1000000",
+                        "meta": {"decimals": 6}}], "meta": {"next_page": "opaque+/="}}),
+                    Some("opaque+/=") => json!({"data": [{"contract": "second.near",
+                        "amount": "2500000", "meta": {"decimals": decimals}}],
+                        "meta": {"next_page": null}}),
+                    Some(other) => panic!("unexpected cursor {other}"),
+                })
+            })
+            .mount(&server)
+            .await;
+        NearblocksClient::new(std::sync::Arc::new(vec![server.uri()]))
+            .fetch_ft_holdings("holder.near")
+            .await
+    }
+
+    #[tokio::test]
+    async fn the_ft_inventory_is_read_through_its_cursor_to_the_last_page() {
+        let held = inventory(6).await.unwrap();
+        assert_eq!(
+            held.iter()
+                .map(|token| (token.contract.as_str(), token.balance_raw, token.decimals))
+                .collect::<Vec<_>>(),
+            [
+                ("first.near", 1_000_000, Some(6)),
+                ("second.near", 2_500_000, Some(6))
+            ]
+        );
+    }
+
+    /// No amount is scaled past 38 places, so a token claiming more refuses
+    /// the inventory rather than reading as some other amount.
+    #[tokio::test]
+    async fn a_token_past_38_decimals_refuses_the_inventory() {
+        let error = inventory(39).await.unwrap_err().to_string();
+        assert!(error.contains("precision limit (38)"), "{error}");
+    }
+}

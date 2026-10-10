@@ -675,3 +675,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "tests/monero_wallet.rs"]
+mod monero_wallet_tests;

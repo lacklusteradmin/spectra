@@ -359,3 +359,138 @@ async fn peercoin_custom_broadcast_endpoint_proves_network_before_submission() {
         }
     }
 }
+
+/// A Peercoin indexer holding an ordinary 1 PPC output at each of
+/// `addresses`, until `spent` says they are gone.
+async fn two_coin_indexer(
+    chain: Chain,
+    addresses: [String; 2],
+    spent: Arc<std::sync::atomic::AtomicBool>,
+) -> MockServer {
+    let parents: Vec<_> = addresses
+        .iter()
+        .enumerate()
+        .map(|(index, a)| {
+            let script = crate::derivation::utxo_address::parse_utxo_address(chain, a)
+                .unwrap()
+                .script_pubkey();
+            (a.clone(), parent(script, false, index as u32))
+        })
+        .collect();
+    let server = MockServer::start().await;
+    Mock::given(any())
+        .respond_with(move |r: &Request| {
+            let path = r.url.path();
+            let body = if path == "/api/v2" {
+                json!({"blockbook":{"coin":"Peercoin","decimals":6},
+                    "backend":{"chain":"livenet","blocks":900000}})
+            } else if let Some(a) = path.strip_prefix("/api/v2/utxo/") {
+                if spent.load(std::sync::atomic::Ordering::SeqCst) {
+                    json!([])
+                } else {
+                    json!(parents.iter().filter(|(address, _)| address == a).map(|(_, tx)| json!({
+                        "txid": tx.compute_txid().to_string(), "vout": 0, "value": "1000000",
+                        "confirmations": 500, "height": 1,
+                    })).collect::<Vec<_>>())
+                }
+            } else if let Some(id) = path.strip_prefix("/api/v2/tx/") {
+                let (_, tx) = parents
+                    .iter()
+                    .find(|(_, tx)| tx.compute_txid().to_string() == id)
+                    .unwrap();
+                json!({"txid": id, "hex": hex::encode(bitcoin::consensus::serialize(tx)),
+                    "confirmations": 500, "blockHeight": 1})
+            } else {
+                panic!("unexpected provider request {path}")
+            };
+            ResponseTemplate::new(200).set_body_json(body)
+        })
+        .mount(&server)
+        .await;
+    server
+}
+
+/// An owned build pays exactly the fee the review previewed.
+#[tokio::test]
+async fn an_owned_peercoin_build_pays_the_fee_its_preview_quoted() {
+    let chain = Chain::Peercoin;
+    let root_path = "m/84'/6'/0'/0/0";
+    let change_path = "m/84'/6'/0'/1/3";
+    let server = two_coin_indexer(
+        chain,
+        [address(chain, root_path), address(chain, change_path)],
+        Default::default(),
+    )
+    .await;
+    let (wallet, _directory, _secrets) = service(chain, server.uri(), root_path).await;
+    wallet
+        .register_owned_address(
+            "w".into(),
+            chain,
+            address(chain, change_path),
+            Some(change_path.into()),
+            Some("change".into()),
+            Some(3),
+        )
+        .await
+        .unwrap();
+    let mut state = wallet.app_state().await.wallets[0].clone();
+    let mut coin = native_coin_template(chain).unwrap();
+    coin.amount = "2".into();
+    state.holdings.push(coin);
+    wallet
+        .apply_state_command(StateCommand::UpsertWallet { wallet: state })
+        .await
+        .unwrap();
+    let input = crate::service::send_review::SendReviewInput {
+        wallet_id: "w".into(),
+        holding_key: "peercoin:native".into(),
+        amount: "1.5".into(),
+        destination: address(chain, "m/84'/6'/0'/0/9"),
+        overrides: None,
+        memo: None,
+    };
+    let review = wallet.review_owned_send(input.clone()).await.unwrap();
+    let quoted = review.preview.unwrap().network_fee().to_string();
+    let built = wallet.build_owned_send(input).await.unwrap();
+    let stored = wallet.load_send_artifact(built.id).await.unwrap();
+    let PreparedPayload::Peercoin(prepared) = &stored.prepared else {
+        panic!("wrong protocol");
+    };
+    assert_eq!(prepared.inputs.len(), 2);
+    assert_eq!(crate::decimal::from_units(prepared.fee.into(), 6), quoted);
+    assert_eq!(built.review.network_fee.as_deref(), Some(quoted.as_str()));
+}
+
+/// A reviewed input spent since the review is not signed for.
+#[tokio::test]
+async fn a_peercoin_input_spent_after_review_is_refused_at_signing() {
+    let chain = Chain::Peercoin;
+    let root_path = "m/84'/6'/0'/0/0";
+    let spent = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let server = two_coin_indexer(
+        chain,
+        [address(chain, root_path), address(chain, "m/84'/6'/0'/0/1")],
+        spent.clone(),
+    )
+    .await;
+    let (wallet, _directory, _secrets) = service(chain, server.uri(), root_path).await;
+    let built = wallet
+        .build_send(request(chain, address(chain, "m/84'/6'/0'/0/9")))
+        .await
+        .unwrap();
+    spent.store(true, std::sync::atomic::Ordering::SeqCst);
+    let refused = wallet
+        .sign_send(built.id.clone(), built.review_digest, Some("secret".into()))
+        .await
+        .unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("Peercoin input changed or was spent"),
+        "{refused}"
+    );
+    let stored = wallet.inspect_send(built.id).await.unwrap();
+    assert_eq!(stored.stage, SendStage::Prepared);
+    assert!(stored.signed_payload.is_none());
+}

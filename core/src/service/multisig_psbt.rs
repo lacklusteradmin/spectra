@@ -646,3 +646,7 @@ impl WalletService {
         Ok(review.txid)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/multisig_psbt.rs"]
+mod multisig_psbt_tests;

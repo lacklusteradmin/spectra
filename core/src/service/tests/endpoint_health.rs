@@ -353,6 +353,39 @@ async fn esplora_and_monero_use_the_protocol_path() {
     );
 }
 
+/// A Blockbook endpoint is probed at its `/api/v2` status, once, and is
+/// healthy only when that reports the height it is at; an answer without
+/// one is unreachable, and the detail says what came back.
+#[tokio::test]
+async fn blockbook_is_probed_at_its_status_and_must_report_its_height() {
+    let server = MockServer::start().await;
+    let record = record(Chain::DashTestnet, EndpointApi::Blockbook, server.uri());
+    Mock::given(method("GET"))
+        .and(path("/api/v2"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"blockbook": {"bestHeight": 123}})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let (checked, reachable, detail) = probe(Chain::DashTestnet, &record).await;
+    assert!(checked && reachable, "{detail}");
+    for answer in [
+        json!({"error": "Internal server error"}),
+        json!({"blockbook": {"coin": "Dash Testnet"}}),
+    ] {
+        server.reset().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(answer.clone()))
+            .mount(&server)
+            .await;
+        let (checked, reachable, detail) = probe(Chain::DashTestnet, &record).await;
+        assert!(checked && !reachable, "{answer}");
+        assert!(detail.contains(&answer.to_string()), "{detail}");
+    }
+}
+
 #[tokio::test]
 async fn rest_probes_reject_html() {
     let server = MockServer::start().await;

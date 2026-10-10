@@ -2,6 +2,7 @@ use super::*;
 use crate::wallet_db::error::DbError;
 
 mod connection;
+mod history_query;
 
 /// A database no other test can be holding. Tests run in parallel, so the name
 /// is keyed on process, thread and a counter, which cannot collide.
@@ -128,7 +129,12 @@ fn litecoin_keypool_history_counts_all_catalog_scripts_and_accounts() {
 /// Malformed metadata refuses loading without rewriting stored bytes.
 #[test]
 fn unreadable_metadata_refuses_loading() {
-    for key in [META_TOKEN_PREFERENCES, META_PRICE_ALERTS, META_FIAT_RATES] {
+    for key in [
+        META_TOKEN_PREFERENCES,
+        META_PRICE_ALERTS,
+        META_FIAT_RATES,
+        "quotes",
+    ] {
         let db = tmp_db();
         let saved = ResidentState {
             wallets: vec![wallet("w1", crate::registry::Chain::Bitcoin)],
@@ -148,7 +154,11 @@ fn unreadable_metadata_refuses_loading() {
             })
             .unwrap();
 
-            assert!(app_state_load(&db).is_err(), "{key}: {raw}");
+            let refused = app_state_load(&db).unwrap_err().to_string();
+            assert!(
+                refused.contains(&format!("invalid {key}")),
+                "{key}: {raw}: {refused}"
+            );
             assert_eq!(wallet_load_all(&db).unwrap(), saved.wallets);
             let stored: String = with_conn(&db, |conn| {
                 conn.query_row(
@@ -676,25 +686,69 @@ fn history_id_lookup_uses_the_primary_key_and_normalizes_duplicates() {
     assert!(history_fetch_all(&db).unwrap().is_empty());
 }
 
+/// Stored metadata is read in the current format only: an unknown key, a
+/// schema version other than this one or none at all, and settings missing a
+/// field or carrying one this build does not know are each refused by name.
 #[test]
 fn unknown_metadata_and_schema_versions_are_refused() {
-    for (key, value) in [
-        ("unknown_key", "null"),
-        (META_SCHEMA_VERSION, "1"),
-        (META_SCHEMA_VERSION, "3"),
+    let settings = |edit: &dyn Fn(&mut serde_json::Map<String, serde_json::Value>)| {
+        let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+        edit(value.as_object_mut().unwrap());
+        value.to_string()
+    };
+    let replace = "INSERT OR REPLACE INTO app_state_meta (key, value) VALUES (?1, ?2)";
+    for (statement, arguments, refusal) in [
+        (
+            replace,
+            vec!["unknown_key".to_string(), "null".into()],
+            "unknown app state metadata key: unknown_key".to_string(),
+        ),
+        (
+            replace,
+            vec![META_SCHEMA_VERSION.into(), "1".into()],
+            "unsupported app state schema version: 1".into(),
+        ),
+        (
+            replace,
+            vec![META_SCHEMA_VERSION.into(), "3".into()],
+            "unsupported app state schema version: 3".into(),
+        ),
+        (
+            "DELETE FROM app_state_meta WHERE key = ?1",
+            vec![META_SCHEMA_VERSION.into()],
+            format!("missing app state metadata key: {META_SCHEMA_VERSION}"),
+        ),
+        (
+            replace,
+            vec![
+                META_SETTINGS.into(),
+                settings(&|fields| {
+                    fields.remove("fiatCurrency");
+                }),
+            ],
+            "missing field `fiatCurrency`".into(),
+        ),
+        (
+            replace,
+            vec![
+                META_SETTINGS.into(),
+                settings(&|fields| {
+                    fields.insert("obsolete".into(), true.into());
+                }),
+            ],
+            "unknown field `obsolete`".into(),
+        ),
     ] {
         let db = tmp_db();
         app_state_save(&db, &ResidentState::default()).unwrap();
         with_conn(&db, |conn| {
-            conn.execute(
-                "INSERT OR REPLACE INTO app_state_meta (key, value) VALUES (?1, ?2)",
-                params![key, value],
-            )
-            .unwrap();
+            conn.execute(statement, rusqlite::params_from_iter(&arguments))
+                .unwrap();
             Ok::<_, DbError>(())
         })
         .unwrap();
-        assert!(app_state_load(&db).is_err());
+        let refused = app_state_load(&db).unwrap_err().to_string();
+        assert!(refused.contains(&refusal), "{refusal}: {refused}");
     }
 }
 

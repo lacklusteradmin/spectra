@@ -370,4 +370,177 @@ mod tests {
             );
         }
     }
+
+    /// A Solana wallet whose node holds, under each token program, the
+    /// accounts `accounts(owner)` gives.
+    async fn wallet(
+        accounts: fn(&str) -> Vec<(&'static str, serde_json::Value)>,
+    ) -> (
+        crate::service::loopback_service::OpenService,
+        wiremock::MockServer,
+        String,
+        String,
+    ) {
+        use serde_json::{Value, json};
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+        let service = crate::service::loopback_service::open().await;
+        let wallet = service
+            .import(crate::derivation::setup::tests::fixture(
+                Chain::Solana,
+                crate::derivation::setup::WalletSetupMethod::ImportPhrase,
+            ))
+            .await;
+        let owner = service.address(&wallet, Chain::Solana).await;
+        let held = accounts(&owner);
+        let server = MockServer::start().await;
+        let answering = owner.clone();
+        Mock::given(any())
+            .respond_with(move |request: &Request| {
+                let body: Value = serde_json::from_slice(&request.body).unwrap();
+                let params = &body["params"];
+                let result = match body["method"].as_str().unwrap() {
+                    "getGenesisHash" => json!(Chain::Solana.solana_genesis_hash().unwrap()),
+                    "getTokenAccountsByOwner" => {
+                        assert_eq!(params[0], answering.as_str());
+                        let program = params[1]["programId"].as_str().unwrap();
+                        json!({"value": held
+                            .iter()
+                            .filter(|(p, _)| *p == program)
+                            .map(|(_, account)| account.clone())
+                            .collect::<Vec<_>>()})
+                    }
+                    other => panic!("unexpected Solana call {other}"),
+                };
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"jsonrpc": "2.0", "id": body["id"], "result": result}))
+            })
+            .mount(&server)
+            .await;
+        service
+            .use_endpoint(
+                Chain::Solana,
+                crate::EndpointApi::SolanaJsonRpc,
+                &[
+                    EndpointCapability::Balance,
+                    EndpointCapability::Fee,
+                    EndpointCapability::Broadcast,
+                    EndpointCapability::Verification,
+                ],
+                &server.uri(),
+            )
+            .await;
+        (service, server, wallet, owner)
+    }
+
+    fn address(byte: u8) -> String {
+        bs58::encode([byte; 32]).into_string()
+    }
+
+    /// A token account as `getTokenAccountsByOwner` parses it.
+    fn parsed(
+        byte: u8,
+        owner: &str,
+        amount: u64,
+        lamports: u64,
+        extra: serde_json::Value,
+    ) -> serde_json::Value {
+        let mut info = serde_json::json!({"mint": address(byte + 1), "owner": owner,
+            "state": "initialized", "tokenAmount": {"amount": amount.to_string(), "decimals": 6}});
+        info.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        serde_json::json!({"pubkey": address(byte), "account": {"lamports": lamports,
+            "data": {"parsed": {"info": info}}}})
+    }
+
+    fn held(owner: &str) -> Vec<(&'static str, serde_json::Value)> {
+        use serde_json::json;
+        let [spl, token_2022] = crate::send::solana::TOKEN_PROGRAMS;
+        vec![
+            (spl, parsed(0x11, owner, 0, 2_039_280, json!({}))),
+            (spl, parsed(0x44, owner, 7, 2_039_280, json!({}))),
+            (
+                spl,
+                parsed(
+                    0x55,
+                    owner,
+                    0,
+                    2_039_280,
+                    json!({"closeAuthority": address(9)}),
+                ),
+            ),
+            (
+                token_2022,
+                parsed(
+                    0x33,
+                    owner,
+                    0,
+                    2_039_280,
+                    json!({"extensions": [{"extension": "transferFeeAmount",
+                        "state": {"withheldAmount": 5}}]}),
+                ),
+            ),
+            (token_2022, parsed(0x22, owner, 0, 2_074_080, json!({}))),
+        ]
+    }
+
+    /// The wallet's empty token accounts under both programs, each with its
+    /// rent and, read from its parsed extensions and authorities, what stops
+    /// the network closing it; only the closable ones' rent is reclaimable.
+    #[tokio::test]
+    async fn empty_token_accounts_are_listed_with_their_rent_and_blocks() {
+        let (service, _server, wallet, _owner) = wallet(held).await;
+        let empty = service.wallet_empty_token_accounts(wallet).await.unwrap();
+        let listed: Vec<_> = empty
+            .accounts
+            .iter()
+            .map(|a| {
+                (
+                    a.address.clone(),
+                    a.token_2022,
+                    a.rent.as_str(),
+                    a.blocked.as_deref(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                (address(0x11), false, "0.00203928", None),
+                (
+                    address(0x55),
+                    false,
+                    "0.00203928",
+                    Some("Another address holds this account's close authority.")
+                ),
+                (
+                    address(0x33),
+                    true,
+                    "0.00203928",
+                    Some(
+                        "Transfer fees are withheld in this account until the issuer collects them."
+                    )
+                ),
+                (address(0x22), true, "0.00207408", None),
+            ]
+        );
+        assert_eq!(empty.reclaimable, "0.00411336");
+    }
+
+    /// Closing an address that is none of the wallet's token accounts is
+    /// refused, and nothing is stored.
+    #[tokio::test]
+    async fn closing_what_is_no_token_account_of_the_wallet_is_refused() {
+        let (service, _server, wallet, _owner) = wallet(held).await;
+        let refusal = service
+            .build_token_account_closure(wallet, vec![address(0x66)])
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refusal.contains("is not a token account of this wallet"),
+            "{refusal}"
+        );
+        assert!(service.list_sends().await.unwrap().is_empty());
+    }
 }

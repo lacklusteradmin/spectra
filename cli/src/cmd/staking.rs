@@ -1,7 +1,7 @@
 //! Wallet-owned staking positions and durable preparation; send stages sign
 //! and broadcast the reviewed artifact.
 
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use colored::Colorize as _;
 
 use super::resolve_chain;
@@ -52,8 +52,8 @@ pub struct PositionsArgs {
 pub struct BuildArgs {
     #[command(flatten)]
     wallet: WalletArgs,
-    #[arg(long,value_parser=["stake","unstake","withdraw","claim-rewards"])]
-    action: String,
+    #[arg(long, value_enum)]
+    action: ActionArg,
     #[arg(long)]
     validator: Option<String>,
     #[arg(long)]
@@ -64,6 +64,27 @@ pub struct BuildArgs {
     #[arg(long)]
     lockup_seconds: Option<u64>,
 }
+/// The actions `staking build` prepares, one value each; clap refuses any
+/// other spelling before a wallet is read.
+#[derive(Clone, Copy, ValueEnum)]
+enum ActionArg {
+    Stake,
+    Unstake,
+    Withdraw,
+    ClaimRewards,
+}
+
+impl From<ActionArg> for spectra_core::staking::StakingAction {
+    fn from(action: ActionArg) -> Self {
+        match action {
+            ActionArg::Stake => Self::Stake,
+            ActionArg::Unstake => Self::Unstake,
+            ActionArg::Withdraw => Self::Withdraw,
+            ActionArg::ClaimRewards => Self::ClaimRewards,
+        }
+    }
+}
+
 #[derive(Args)]
 pub struct RecheckArgs {
     #[arg(long)]
@@ -189,12 +210,7 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
                 args.wallet.password_file,
                 args.wallet.password_env,
             )?;
-            let action = match args.action.as_str() {
-                "stake" => spectra_core::staking::StakingAction::Stake,
-                "unstake" => spectra_core::staking::StakingAction::Unstake,
-                "withdraw" => spectra_core::staking::StakingAction::Withdraw,
-                _ => spectra_core::staking::StakingAction::ClaimRewards,
-            };
+            let action = args.action.into();
             let request = spectra_core::staking::StakingRequest {
                 wallet_id: wallet.id,
                 chain_id: chain,

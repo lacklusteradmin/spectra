@@ -1012,3 +1012,60 @@ mod transaction_validity_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::api::transaction_status::TransactionStatus;
+
+    /// A transaction settles at `FINAL`, by its outcome; included but not
+    /// final, it is still pending, failure or not. A reply naming another
+    /// hash or another signer is not this transaction's.
+    #[test]
+    fn a_transaction_settles_when_final_and_only_for_its_own_hash_and_signer() {
+        let hash = "H".repeat(44);
+        let reply = |hash: &str, signer: &str, finality: &str, status: Value| {
+            json!({
+                "transaction": {"hash": hash, "signer_id": signer},
+                "final_execution_status": finality,
+                "status": status,
+            })
+        };
+        let read = |response: Value| near_transaction_status(&response, &hash, "me.near");
+        let failure = json!({"Failure": {"ActionError": {}}});
+        assert_eq!(
+            read(reply(
+                &hash,
+                "me.near",
+                "FINAL",
+                json!({"SuccessValue": ""})
+            )),
+            Ok(TransactionStatus::Confirmed {
+                succeeded: true,
+                block: None
+            })
+        );
+        assert_eq!(
+            read(reply(&hash, "me.near", "FINAL", failure.clone())),
+            Ok(TransactionStatus::Confirmed {
+                succeeded: false,
+                block: None
+            })
+        );
+        assert_eq!(
+            read(reply(&hash, "me.near", "INCLUDED", failure.clone())),
+            Ok(TransactionStatus::Pending)
+        );
+        let mismatch = Err(ApiError::decode(
+            "NEAR status: transaction identity mismatch",
+        ));
+        assert_eq!(
+            read(reply(&hash, "other.near", "FINAL", failure.clone())),
+            mismatch
+        );
+        assert_eq!(
+            read(reply(&"G".repeat(44), "me.near", "FINAL", failure)),
+            mismatch
+        );
+    }
+}
