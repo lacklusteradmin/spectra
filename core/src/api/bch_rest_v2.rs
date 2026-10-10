@@ -153,13 +153,9 @@ impl BchRestClient {
             .collect())
     }
 
-    /// The first page of the address's transactions. `net_sats` is what the
-    /// address received less what its own inputs spent; the fee is the whole
+    /// A page of the address's transactions. `net_sats` is what the address
+    /// received less what its own inputs spent; the fee is the whole
     /// transaction's.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
-        Ok(self.fetch_history_page(address, None).await?.items)
-    }
-
     pub async fn fetch_history_page(
         &self,
         address: &str,
@@ -360,7 +356,12 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let history = client(&server).await.fetch_history(ME).await.unwrap();
+        let history = client(&server)
+            .await
+            .fetch_history_page(ME, None)
+            .await
+            .unwrap()
+            .items;
         let rows: Vec<_> = history
             .iter()
             .map(|e| (e.txid.as_str(), e.net_sats, e.confirmed, e.fee_sats))

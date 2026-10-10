@@ -74,7 +74,7 @@ mod utxo_output_tests;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-pub use transfer::{SendAsset, SendAssetKind, SendTokenIdentity};
+pub use transfer::{SendAsset, SendAssetKind};
 
 /// Whether a send can be made, with what core resolved to make it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]

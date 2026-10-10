@@ -169,15 +169,11 @@ impl WhatsonchainClient {
             .collect())
     }
 
-    /// Fetch recent transactions for `address` via WhatsOnChain.
+    /// A page of transactions for `address` via WhatsOnChain.
     ///
     /// WoC exposes `/address/{addr}/history` as a flat list of
     /// `{tx_hash, height}` entries. To populate amounts and timestamps we
     /// issue a sequential `/tx/hash/{hash}` fetch per entry.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
-        Ok(self.fetch_history_page(address, None).await?.items)
-    }
-
     pub async fn fetch_history_page(
         &self,
         address: &str,

@@ -189,10 +189,8 @@ async fn appended_lines_are_trimmed_and_capped_at_eight_hundred() {
         category: "  Network  ".into(),
         message,
         chain_id: Some(crate::registry::Chain::Bitcoin),
-        wallet_id: Some("   ".into()),
-        transaction_hash: None,
+        transaction_hash: Some("   ".into()),
         source: Some(" rpc ".into()),
-        metadata: None,
     };
     for index in 0..810 {
         service
@@ -209,6 +207,6 @@ async fn appended_lines_are_trimmed_and_capped_at_eight_hundred() {
     assert_eq!(newest.category, "Network");
     assert_eq!(newest.chain_id, Some(crate::registry::Chain::Bitcoin));
     assert_eq!(newest.source.as_deref(), Some("rpc"));
-    assert_eq!(newest.wallet_id, None, "a blank field is no field");
+    assert_eq!(newest.transaction_hash, None, "a blank field is no field");
     assert_eq!(logs[799].input.message, "Event 10");
 }

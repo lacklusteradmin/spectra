@@ -18,18 +18,6 @@ pub struct HistoryCursor {
     pub is_exhausted: bool,
 }
 
-/// How much history pagination to forget.
-#[derive(Debug, Clone, PartialEq)]
-pub enum HistoryScope {
-    /// One wallet's feed on one chain: pull-to-refresh, or a send confirming.
-    ChainAndWallet {
-        chain_id: crate::registry::Chain,
-        wallet_id: String,
-    },
-    /// Everything: account wipe.
-    All,
-}
-
 impl WalletService {
     /// Where the next history fetch for this (chain, wallet) starts.
     pub fn history_cursor(
@@ -59,22 +47,6 @@ impl WalletService {
             })
             .map(|wallet| wallet.id.clone())
             .collect()
-    }
-}
-
-impl WalletService {
-    /// Forget history pagination, for as much of it as `scope` names.
-    ///
-    /// Internal: the commands that invalidate a feed — removing a wallet,
-    /// changing Bitcoin's Esplora source — reset it where they commit.
-    pub fn reset_history(&self, scope: HistoryScope) {
-        match scope {
-            HistoryScope::ChainAndWallet {
-                chain_id,
-                wallet_id,
-            } => self.history_pagination.reset(chain_id, &wallet_id),
-            HistoryScope::All => self.history_pagination.reset_all(),
-        }
     }
 }
 

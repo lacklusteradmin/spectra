@@ -175,10 +175,6 @@ impl InsightClient {
             .collect())
     }
 
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<DcrHistoryEntry>, ApiError> {
-        Ok(self.fetch_history_page(address, None).await?.items)
-    }
-
     pub async fn fetch_history_page(
         &self,
         address: &str,

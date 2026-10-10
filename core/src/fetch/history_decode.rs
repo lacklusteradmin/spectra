@@ -33,7 +33,6 @@ pub struct EvmTokenTransferItem {
     pub contract_address: String,
     pub token_name: String,
     pub symbol: String,
-    pub decimals: i32,
     pub from_address: String,
     pub to_address: String,
     /// Decimal amount serialized as a string so Swift can reconstruct a
@@ -41,7 +40,6 @@ pub struct EvmTokenTransferItem {
     pub amount_decimal: String,
     pub transaction_hash: String,
     pub block_number: i64,
-    pub log_index: i64,
     pub timestamp: f64,
 }
 
@@ -272,13 +270,11 @@ mod tests {
                 contract_address: "0xabc".into(),
                 token_name: "USD Coin".into(),
                 symbol: "USDC".into(),
-                decimals: 6,
                 from_address: "0xself".into(),
                 to_address: "0xother".into(),
                 amount_decimal: "1.5".into(),
                 transaction_hash: "0xhash".into(),
                 block_number: 100,
-                log_index: 0,
                 timestamp: 1700000000.0,
             }],
             nfts: vec![],
@@ -323,13 +319,11 @@ mod tests {
                 contract_address: "0xabc".into(),
                 token_name: "USD Coin".into(),
                 symbol: "USDC".into(),
-                decimals: 6,
                 from_address: "0xA".into(),
                 to_address: "0xB".into(),
                 amount_decimal: "1".into(),
                 transaction_hash: "0xhash".into(),
                 block_number: 100,
-                log_index: 0,
                 timestamp: 1700000000.0,
             }],
             ..Default::default()

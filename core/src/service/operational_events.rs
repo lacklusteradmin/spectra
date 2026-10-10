@@ -22,9 +22,7 @@ impl WalletService {
                     message,
                     chain_id,
                     transaction_hash,
-                    wallet_id: None,
                     source: Some("core".into()),
-                    metadata: None,
                 },
             })
             .await;
@@ -81,9 +79,7 @@ impl WalletService {
                 message,
                 chain_id: Some(chain_id),
                 transaction_hash,
-                wallet_id: None,
                 source: Some("core".into()),
-                metadata: None,
             },
         })
         .await

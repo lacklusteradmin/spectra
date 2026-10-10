@@ -370,13 +370,9 @@ impl BlockbookClient {
         })
     }
 
-    /// The most recent 50 transactions touching `address`, newest first.
+    /// A page of 50 transactions touching `address`, newest first.
     /// `net_sats` is the change to the queried address; the fee is the whole
     /// transaction's.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<UtxoHistoryEntry>, ApiError> {
-        Ok(self.fetch_history_page(address, None).await?.items)
-    }
-
     pub async fn fetch_history_page(
         &self,
         address: &str,

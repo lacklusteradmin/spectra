@@ -58,7 +58,8 @@ in; never hand-edit `swift/generated/` — change the Rust API and rebuild.
 
 ### Verification
 
-Three suites gate a change, and `make verify` runs all of them:
+Four targets gate a change, and `make verify` runs all of them; `make check-ui`
+is a separate check run by hand:
 
 ```sh
 make verify

@@ -425,11 +425,6 @@ impl WalletService {
                 let before = service.wallet_state.read().await;
                 let mut state = before.clone();
                 let events = mutate(&mut state);
-                for old in &before.wallets {
-                    if !state.wallets.iter().any(|w| w.id == old.id) {
-                        state.diagnostics.forget_wallet(&old.id);
-                    }
-                }
                 let changes = if database.is_some() && !events.is_empty() {
                     Some(crate::wallet_db::AppStateChanges::between(
                         Some(&before),
@@ -682,10 +677,8 @@ fn append_secret_cleanup_warning(diagnostics: &mut DiagnosticState, error: &Spec
         category: "Secret Cleanup".into(),
         message,
         chain_id: None,
-        wallet_id: None,
         transaction_hash: None,
         source: Some("core".into()),
-        metadata: None,
     });
 }
 

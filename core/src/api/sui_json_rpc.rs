@@ -143,14 +143,10 @@ impl SuiClient {
         Ok(SuiBalance { mist })
     }
 
-    /// The address's SUI transfers, newest first.
+    /// A page of the address's SUI transfers, newest first.
     ///
     /// Queried as sender and as recipient, since neither filter alone sees
     /// both directions, and read from each transaction's balance changes.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<SuiHistoryEntry>, ApiError> {
-        Ok(self.fetch_history_page(address, None).await?.items)
-    }
-
     pub async fn fetch_history_page(
         &self,
         address: &str,

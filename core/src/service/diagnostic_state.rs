@@ -61,10 +61,8 @@ pub struct DiagnosticLogInput {
     pub category: String,
     pub message: String,
     pub chain_id: Option<crate::registry::Chain>,
-    pub wallet_id: Option<String>,
     pub transaction_hash: Option<String>,
     pub source: Option<String>,
-    pub metadata: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Enum)]
 pub enum DiagnosticCommand {
@@ -84,7 +82,6 @@ pub enum DiagnosticCommand {
     ClearLogs {
         chain_id: Option<crate::registry::Chain>,
     },
-    Reset,
 }
 impl DiagnosticState {
     /// The one way a log line is stored. Free text is redacted here, before
@@ -95,18 +92,16 @@ impl DiagnosticState {
         use crate::diagnostics::sanitizer::sanitize_diagnostics_string as sanitize;
         input.category = sanitize(input.category.trim());
         input.message = sanitize(input.message.trim());
-        for text in [&mut input.wallet_id, &mut input.transaction_hash] {
-            *text = text
-                .take()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty());
-        }
-        for text in [&mut input.source, &mut input.metadata] {
-            *text = text
-                .take()
-                .map(|s| sanitize(s.trim()))
-                .filter(|s| !s.is_empty());
-        }
+        input.transaction_hash = input
+            .transaction_hash
+            .take()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        input.source = input
+            .source
+            .take()
+            .map(|s| sanitize(s.trim()))
+            .filter(|s| !s.is_empty());
         self.logs.insert(
             0,
             DiagnosticLog {
@@ -116,10 +111,6 @@ impl DiagnosticState {
             },
         );
         self.logs.truncate(800);
-    }
-    pub(crate) fn forget_wallet(&mut self, wallet_id: &str) {
-        self.logs
-            .retain(|l| l.input.wallet_id.as_deref() != Some(wallet_id));
     }
 }
 #[uniffi::export(async_runtime = "tokio")]
@@ -178,7 +169,6 @@ impl WalletService {
                         DiagnosticCommand::ClearLogs { chain_id } => d
                             .logs
                             .retain(|l| chain_id.is_some() && l.input.chain_id != chain_id),
-                        DiagnosticCommand::Reset => *d = DiagnosticState::default(),
                     }
                     vec![crate::store::state::StateEvent::DiagnosticsChanged]
                 })
@@ -317,10 +307,8 @@ fn sync_log(
         category: "Chain Sync".into(),
         message,
         chain_id: Some(chain),
-        wallet_id: None,
         transaction_hash: None,
         source: Some("network".into()),
-        metadata: None,
     }
 }
 #[cfg(test)]
@@ -440,17 +428,13 @@ mod tests {
             category: "Import".into(),
             message: format!("refused {phrase}"),
             chain_id: None,
-            wallet_id: Some("w1".into()),
             transaction_hash: Some(key.clone()),
             source: Some(format!("key={key}")),
-            metadata: Some(format!("0x{key}")),
         });
         let stored = &state.logs[0].input;
         assert!(!stored.message.contains("abandon"), "{}", stored.message);
         assert!(!stored.source.as_deref().unwrap().contains(&key));
-        assert!(!stored.metadata.as_deref().unwrap().contains(&key));
         assert_eq!(stored.transaction_hash.as_deref(), Some(key.as_str()));
-        assert_eq!(stored.wallet_id.as_deref(), Some("w1"));
     }
 
     #[tokio::test]

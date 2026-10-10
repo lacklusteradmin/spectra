@@ -235,7 +235,6 @@ impl WalletService {
                     contract_address: entry.contract,
                     token_name,
                     symbol,
-                    decimals: i32::from(decimals),
                     from_address: entry.from,
                     to_address: entry.to,
                     amount_decimal: crate::decimal::from_unit_digits(
@@ -244,7 +243,6 @@ impl WalletService {
                     )?,
                     transaction_hash: entry.txid,
                     block_number: entry.block_number as i64,
-                    log_index: entry.log_index as i64,
                     timestamp: entry.timestamp as f64,
                 })
             })

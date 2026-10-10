@@ -154,11 +154,6 @@ impl FileSecretStore {
         Ok(Self { root })
     }
 
-    /// Root directory this store reads and writes.
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
     fn bucket_dir(&self, kind: SecretClass) -> PathBuf {
         self.root.join(kind.bucket())
     }

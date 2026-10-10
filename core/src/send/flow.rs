@@ -442,8 +442,9 @@ pub enum HighRiskSendWarning {
     ChainMismatch,
 }
 
+#[cfg(test)]
 impl HighRiskSendWarning {
-    /// The serialized `code`, for tests and logs.
+    /// A stable name for each warning, for assertions.
     pub fn code(&self) -> &'static str {
         match self {
             Self::InvalidFormat { .. } => "invalid_format",

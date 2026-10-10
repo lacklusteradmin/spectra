@@ -172,12 +172,8 @@ impl NearblocksClient {
         })
     }
 
-    /// The account's NEAR transfers, newest first, from Nearblocks' receipt
-    /// list.
-    pub async fn fetch_history(&self, address: &str) -> Result<Vec<NearHistoryEntry>, ApiError> {
-        Ok(self.fetch_history_page(address, None).await?.items)
-    }
-
+    /// A page of the account's NEAR transfers, newest first, from
+    /// Nearblocks' receipt list.
     pub async fn fetch_history_page(
         &self,
         account_id: &str,

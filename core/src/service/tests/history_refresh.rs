@@ -814,13 +814,11 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
         contract_address: contract.into(),
         token_name: "Same".into(),
         symbol: "SAME".into(),
-        decimals: 6,
         from_address: "from".into(),
         to_address: "to".into(),
         amount_decimal: "1".into(),
         transaction_hash: "tx".into(),
         block_number: 1,
-        log_index: 0,
         timestamp: 1.0,
     })
     .collect();
