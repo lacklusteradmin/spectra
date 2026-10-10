@@ -219,3 +219,24 @@ never signing.
 - [x] **97. Check and Sign** in title case.
 - [x] **98. Send page** no longer fails with "Spectra received data it couldn't
   read" when a stored send from another build is in the resume list.
+
+## 8. Launch
+
+- [x] **99. No home screen before the stored data is read.** Launch shows the
+  logo until core has answered: then the wallets, or the unreadable cover —
+  never the empty-wallet welcome on the way to either.
+
+## 9. Receive
+
+- [x] **100. Receive's wallet list** marks no row: every row opens its
+  wallet's address, and the checkmark marked only the wallet opened last.
+- [x] **101. Receive's wallet list** asks its question and lists wallets as
+  Home does: a heading, then each wallet's network, balance, asset count and
+  whether Spectra only watches it.
+- [x] **102. Wallet rows** say "watching" on the network line, so a badge no
+  longer breaks a wallet's name beside a wide balance (Home and Receive).
+
+## 10. Wallet page
+
+- [x] **103. Deleting a wallet** closes its page and Manage Wallet and returns
+  to Home, instead of leaving a blank page until Back.

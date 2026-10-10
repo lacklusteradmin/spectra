@@ -17,6 +17,65 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-09 — Deleting a wallet returns to Home
+
+- **Before:** after Delete and the device check, the wallet was removed but
+  its page stayed on Home's stack. The page draws nothing for a wallet that is
+  gone, so the screen stood blank until Back.
+- **After:** Home closes the wallet page — and Manage Wallet, which it pushed —
+  as soon as the wallet it shows no longer exists, whatever removed it.
+- **Why:** a page for nothing is a dead end; the deletion's outcome is the
+  wallet's absence from Home.
+- **CLI check:** none applies — navigation is the app's.
+- **Verification:** driven on the simulator to Delete and the device check,
+  which wants the simulator's passcode and was not completed; the cause — the
+  destination drawing nothing for a missing wallet — is read from the code.
+  `make lint` clean; `make test-ios` passed 150 tests on an iPhone 17e
+  simulator. Swift only.
+
+## 2026-10-09 — Receive's wallet list reads like Home's, and marks no choice
+
+- **Before:** with more than one wallet, Receive opened on a bare card of
+  rows — a mark, a name and a network — with no heading, and marked the
+  wallet opened last with a checkmark beside its chevron, telling VoiceOver it
+  was selected. A watching wallet's eye badge sat on the name line, where it
+  broke a short name ("Cold BTC") in two beside a wide balance, on Home too.
+- **After:** the list opens with "Choose a wallet to receive into" and why
+  each differs, and draws each wallet with Home's row (`WalletCardView`, one
+  `Presentation(wallet:store:)` for both): network, balance, asset count and
+  whether Spectra only watches it. No row is marked; each opens its address,
+  as before. "Watching" is an eye on the network line.
+- **Why:** a person choosing where funds arrive tells wallets apart by what
+  they hold and whether they can spend it; a selection mark on a list of
+  links says nothing a person can act on.
+- **CLI check:** none applies — the list is the app's.
+- **Verification:** shown on the simulator with three wallets (one signing,
+  two watched); `make lint` and `make check-ui` clean; `make test-ios` passed
+  150 tests on an iPhone 17e simulator. Swift only.
+
+## 2026-10-09 — Launch shows nothing of the wallet until core has read the store
+
+- **Before:** the tabs were drawn at once, before core had opened the store.
+  Home showed "Welcome to Spectra" for a device with no wallets, then
+  replaced it with the wallets a moment later — or, when the data could not
+  be read, the unreadable cover rose over it.
+- **After:** `AppState.storeStatus` (`opening`, `open`, `unreadable`) replaces
+  `isStoreUnreadable`. Until core answers, the root view is the logo on the
+  backdrop, in place of the tabs rather than over them. The tabs are drawn
+  once the portfolio snapshot has brought the wallets; unreadable data goes
+  straight from the logo to its cover, and the reload stops there. Discarding
+  that data returns to the logo until the new store is read. A failure to open
+  that is not unreadable data is logged and the app runs as before: offering
+  to discard data over an error that may pass would destroy it.
+- **Why:** the welcome is a statement — no wallets on this device — that the
+  app had not checked when it made it.
+- **CLI check:** none applies — the CLI reads the store before it prints
+  anything.
+- **Verification:** `aReadableStoreOpensWithItsWallets`,
+  `dataCoreCannotReadIsUnreadable`; launches recorded on the simulator with a
+  readable store (logo, then Home with its wallet) and with a file that is not
+  a database (logo, then the cover). `make lint` and `make check-ui` clean; `make test-ios` passed 150 tests on an iPhone 17e simulator. Swift only: core and the CLI unchanged, their suites not rerun.
+
 ## 2026-10-09 — A send's review shows its total and a new destination before it is built
 
 - **Before:** the quote and the built review gave the fee alone; what leaves
