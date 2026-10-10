@@ -17,6 +17,73 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-10 — Reset Wallet is a Settings page, not a sheet
+
+- **Before:** the red Reset Wallet row was a button that raised the reset
+  page as a sheet from below, in its own navigation stack, closed with
+  Cancel.
+- **After:** the row is a link with a chevron, like every other Settings row,
+  and pushes the page onto Settings' stack; Back leaves it, and a finished
+  reset pops it. The page's own stack and Cancel are deleted.
+- **Why:** it is a page of choices reached from a Settings row, not a task
+  laid over the screen; one presentation for every page Settings leads to.
+- **CLI check:** none applies — presentation.
+- **Verification:** driven on an iPhone 17e simulator: the row pushes the
+  page from the right and Back returns to Settings. `make lint` clean. Swift
+  only.
+
+## 2026-10-10 — Show Seed Phrase opens after Face ID
+
+- **Before:** the reveal kept its answer only if the scene was active when the
+  phrase came back. Face ID makes the scene inactive while its sheet is up,
+  and the answer could arrive before the scene was active again; it was then
+  dropped, with no sheet and no message. A test pinned that as intended.
+- **After:** an answer that arrives while the scene is inactive waits — the
+  app's snapshot cover is over the screen meanwhile — and the sheet, or the
+  refusal, is shown when the scene is active again. Going to the background
+  still invalidates the request and drops a waiting answer.
+- **Why:** inactive is not leaving the app; the authentication the reveal
+  asks for is what makes it inactive. Background, which is leaving, is what
+  must discard the secret.
+- **CLI check:** none applies — scene lifecycle is the app's.
+- **Verification:** `anAnswerDuringFaceIDIsShownOnReturn`,
+  `anErrorDuringFaceIDIsSaidOnReturn`, `backgroundDropsAWaitingAnswer`
+  replace the test that pinned the drop. Not driven on the simulator: that
+  would take the user's Face ID and put their phrase on screen. `make lint`
+  clean; `make test-ios` passed 154 tests on an iPhone 17e simulator. Swift
+  only.
+
+## 2026-10-09 — A custom token is added under a named standard
+
+- **Before:** the New Token form asked for a network only. Core guessed the
+  standard from the identifier's shape: digits on Tron were TRC-10, anything
+  else TRC-20; on Aptos `::` meant Coin; on BNB Smart Chain every contract was
+  ERC-20. The field's hint and fixed decimals were the network's, so Tron's
+  read "Token ID or Contract Address". `spectra token add --standard` was
+  optional and fell back to the same guess.
+- **After:** `ChainEntry.token_standards` lists each protocol with its own
+  `identifier_prompt` and `fixed_decimals`, replacing the network-wide
+  `contract_address_prompt` and `fixed_token_decimals`. `AddCustomToken` takes
+  the network's only standard when none is named and otherwise refuses with
+  `StandardRequired`; a standard the network lacks is `UnsupportedStandard`.
+  The form shows the standard — a picker where there are several, a line
+  where there is one — and the field and decimals follow it. Editing a token
+  shows the standard it keeps.
+- **Why:** the standard decides how the token is read and sent; a guess from
+  the identifier's shape cannot tell an ERC-20 from a BEP-20 and lets a typo
+  pick the protocol.
+- **CLI check:** `spectra token add --chain tron --contract 1009999 --symbol
+  OLD --name Old --decimals 6` exits 3 with "that chain has more than one
+  token standard: name one with --standard"; with `--standard TRC-10` it
+  stores `tron:trc-10:1009999`.
+- **Verification:** `custom_tokens_are_added_under_the_named_protocol`,
+  `the_derived_columns_agree_with_what_they_derive_from`,
+  `aTokenIsAddedUnderTheStandardTheFormNames`; `cli-token-preferences.py`
+  checks both refusals and the stored standard across processes. `make lint`
+  and `make check-ui` clean; `cargo test --workspace` passed (1,329 core tests
+  and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios`
+  passed 151 tests on an iPhone 17e simulator.
+
 ## 2026-10-09 — Deleting a wallet returns to Home
 
 - **Before:** after Delete and the device check, the wallet was removed but

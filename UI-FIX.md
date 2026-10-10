@@ -240,3 +240,17 @@ never signing.
 
 - [x] **103. Deleting a wallet** closes its page and Manage Wallet and returns
   to Home, instead of leaving a blank page until Back.
+
+## 11. Tokens
+
+- [x] **104. A new token names its standard.** On a network with more than one
+  (Tron's TRC-10 and TRC-20, BNB Smart Chain's ERC-20 and BEP-20, Aptos's
+  Coin and AIP-21) the form asks which; the identifier field and fixed
+  decimals follow the standard chosen, not the network.
+- [x] **105. Show Seed Phrase** opens after Face ID. An answer that arrived
+  while Face ID still held the scene inactive was dropped without a word.
+
+## 12. Settings
+
+- [x] **106. Reset Wallet** opens as a page pushed from Settings, with Back,
+  like every other Settings row; it was a sheet from below with Cancel.

@@ -174,34 +174,47 @@ struct TomlWikiChain {
     state_model: String,
 }
 
-/// Token input copy follows the network's protocol set, without picking a
-/// single protocol for its deployments.
-fn contract_address_prompt_for(token_standards: &[String]) -> String {
-    let has = |standard: &str| token_standards.iter().any(|s| s == standard);
-    if token_standards.is_empty() {
-        ""
-    } else if has("Aptos Coin") || has("AIP-21") {
-        "Fungible Asset Metadata or Coin Type"
-    } else if has("TRC-10") {
-        "Token ID or Contract Address"
-    } else if has("NEP-141") {
-        "Contract Account ID"
-    } else if has("SPL") {
-        "Mint Address"
-    } else if has("Sui Coin") {
-        "Coin Standard Type"
-    } else if has("TEP-74") {
-        "Jetton Master Address"
-    } else if has("Trust Line Token") {
-        "Currency Code and Issuer (CODE.rIssuer)"
-    } else if has("Stellar Asset") {
-        "Asset Code and Issuer (CODE:ISSUER)"
-    } else if has("Cardano Native Token") {
-        "Policy ID and Asset Name (POLICY.NAME)"
-    } else {
-        "Contract Address"
+/// What a token of `standard` is identified by, as a field asks for it.
+fn identifier_prompt_for(standard: &str) -> &'static str {
+    match standard {
+        "ERC-20" | "BEP-20" | "ARC-20" | "TRC-20" => "Contract Address",
+        "TRC-10" => "Token ID",
+        "SPL" => "Mint Address",
+        "TEP-74" => "Jetton Master Address",
+        "NEP-141" => "Contract Account ID",
+        "Sui Coin" => "Coin Standard Type",
+        "Aptos Coin" => "Coin Type",
+        "AIP-21" => "Fungible Asset Metadata Address",
+        "Trust Line Token" => "Currency Code and Issuer (CODE.rIssuer)",
+        "Stellar Asset" => "Asset Code and Issuer (CODE:ISSUER)",
+        "Cardano Native Token" => "Policy ID and Asset Name (POLICY.NAME)",
+        _ => "Token Identifier",
     }
-    .to_string()
+}
+
+/// One token protocol a network supports, with what a token of it is
+/// identified by and the places it has when the protocol fixes them.
+///
+/// A token is added under one of these, named rather than guessed from the
+/// identifier: on BNB Smart Chain an ERC-20 and a BEP-20 contract look alike,
+/// and Tron's TRC-10 ID and TRC-20 address are asked for differently.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenStandardEntry {
+    pub standard: String,
+    pub identifier_prompt: String,
+    /// The places every token of this protocol has: nothing to choose.
+    pub fixed_decimals: Option<u32>,
+}
+
+impl TokenStandardEntry {
+    pub fn new(standard: &str) -> Self {
+        Self {
+            standard: standard.to_string(),
+            identifier_prompt: identifier_prompt_for(standard).to_string(),
+            fixed_decimals: crate::tokens::fixed_token_decimals(standard),
+        }
+    }
 }
 
 // ── Public serialized shape — exposed to Swift via UniFFI
@@ -261,12 +274,9 @@ pub struct ChainEntry {
     pub is_evm: bool,
     pub color: CatalogColor,
     pub artwork_name: String,
-    /// Every protocol the network supports; each deployment owns its actual standard.
-    pub token_standards: Vec<String>,
-    pub contract_address_prompt: String,
-    /// The decimal places every token here has, when its protocols fix them
-    /// rather than each token: nothing for a person to choose.
-    pub fixed_token_decimals: Option<u32>,
+    /// Every protocol the network supports, in the catalog's order; each
+    /// deployment owns its actual standard.
+    pub token_standards: Vec<TokenStandardEntry>,
     pub native_coingecko_id: String,
     pub native_decimals: u32,
     pub native_asset_display_name: String,
@@ -309,16 +319,6 @@ pub struct StakingChainEntry {
     pub unbonding_period: String,
     pub minimum_stake: String,
     pub explanation: String,
-}
-
-/// The places every token on the network has, when each of its protocols
-/// fixes the same number.
-fn fixed_token_decimals_for(token_standards: &[String]) -> Option<u32> {
-    let mut fixed = token_standards
-        .iter()
-        .map(|standard| crate::tokens::fixed_token_decimals(standard));
-    let first = fixed.next()??;
-    fixed.all(|places| places == Some(first)).then_some(first)
 }
 
 // ── Static catalog
@@ -511,9 +511,11 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 is_evm: chain.is_evm(),
                 color: c.color,
                 artwork_name: c.artwork_name.clone(),
-                token_standards: c.token_standards.clone(),
-                contract_address_prompt: contract_address_prompt_for(&c.token_standards),
-                fixed_token_decimals: fixed_token_decimals_for(&c.token_standards),
+                token_standards: c
+                    .token_standards
+                    .iter()
+                    .map(|standard| TokenStandardEntry::new(standard))
+                    .collect(),
                 native_coingecko_id: native.coingecko_id.clone(),
                 native_decimals: native.decimals,
                 native_asset_display_name: native.name.clone(),
@@ -952,20 +954,26 @@ mod explicit_network_catalog {
         assert!(WIKI.windows(2).all(|pair| pair[0].name <= pair[1].name));
     }
 
-    /// Contract prompts follow token standards; EVM membership comes from the registry.
+    /// Each network's standards are the registry's, in its order, and every
+    /// one names what its tokens are identified by; EVM membership comes from
+    /// the registry.
     #[test]
     fn the_derived_columns_agree_with_what_they_derive_from() {
-        for e in CATALOG.iter() {
-            assert_eq!(
-                e.contract_address_prompt,
-                if e.token_standards.is_empty() {
-                    String::new()
-                } else {
-                    contract_address_prompt_for(&e.token_standards)
-                },
-                "{}",
-                e.id
-            );
+        for chain in Chain::all() {
+            let e = entry(chain.str_id());
+            let standards: Vec<&str> = e
+                .token_standards
+                .iter()
+                .map(|s| s.standard.as_str())
+                .collect();
+            assert_eq!(standards, chain.token_standards(), "{}", e.id);
+            for standard in &e.token_standards {
+                assert_ne!(
+                    standard.identifier_prompt, "Token Identifier",
+                    "{} {}",
+                    e.id, standard.standard
+                );
+            }
         }
         for chain in Chain::all() {
             assert_eq!(
