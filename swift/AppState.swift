@@ -151,10 +151,11 @@ final class AppState {
     }
     var isAppLocked: Bool = false
     var appLockError: String? = nil
-    /// Set when core reports the stored data unreadable at launch. Observed:
-    /// nothing works without the store, so the app covers itself with the one
-    /// way out — discarding it — instead of showing an empty wallet list.
-    var isStoreUnreadable = false
+    /// What core has said about the stored data. Observed: until it answers
+    /// the app draws none of the wallet — a home screen drawn before the
+    /// answer showed the empty-wallet welcome, then gave way to the wallets
+    /// or to the unreadable cover.
+    var storeStatus: StoreStatus = .opening
     /// Set when core could not be given the keychain-backed secret store.
     /// Observed: nothing that touches a seed or a private key works without
     /// it, so the failure has to reach the user rather than only the log.

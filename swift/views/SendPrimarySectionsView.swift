@@ -34,7 +34,7 @@ struct SendFromPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            SendFlowPageHeading(title: "Choose an asset to send", subtitle: "Choose an asset from your wallet.")
+            FlowPageHeading(title: "Choose an asset to send", subtitle: "Choose an asset from your wallet.")
             // Both cards headed alike: a title over its rows.
             SpectraRowSection(title: AppLocalization.string("Sending wallet")) {
                 walletRow.spectraRowPadding()
@@ -127,23 +127,6 @@ struct SendFromPage: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-@MainActor
-struct SendFlowPageHeading: View {
-    let title: String
-    var subtitle: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-            Text(AppLocalization.string(title)).font(.title.weight(.bold))
-            if let subtitle {
-                Text(AppLocalization.string(subtitle)).font(.subheadline).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, SpectraLayout.Space.s)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -298,7 +281,7 @@ struct SendRecipientPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
             SendAssetContextView(store: store)
-            SendFlowPageHeading(title: "Who are you sending to?", subtitle: "Enter an address or choose a saved contact.")
+            FlowPageHeading(title: "Who are you sending to?", subtitle: "Enter an address or choose a saved contact.")
             recipientActions
             VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                 toCard
@@ -483,7 +466,7 @@ struct SendAmountPage: View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
             SendAssetContextView(store: store)
             VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-                SendFlowPageHeading(title: "How much are you sending?")
+                FlowPageHeading(title: "How much are you sending?")
                 SendRecipientIdentityView(
                     store: store, chain: presentation.selectedCoin?.chainId,
                     address: store.sendFlow.address, compact: true)

@@ -36,7 +36,9 @@ extension AppState {
         } catch {
             return userErrorMessage(error)
         }
-        isStoreUnreadable = false
+        // A new store, read again from the start: the launch screen until
+        // its wallets are in, as at launch.
+        storeStatus = .opening
         resetWalletFlows()
         setupRustRefreshEngine()
         await reloadCoreProjections()

@@ -20,8 +20,14 @@ struct ReceiveView: View {
         }
     }
 
+    /// The question, then every wallet that can receive as Home lists it —
+    /// its network, what it holds and whether Spectra only watches it — so
+    /// the one to receive into is told apart without opening each.
     private var walletList: some View {
         ReceiveScreen(title: "Receive") {
+            FlowPageHeading(
+                title: "Choose a wallet to receive into",
+                subtitle: "Each wallet has its own address on its network.")
             if store.receiveEnabledWallets.isEmpty {
                 SpectraEmptyStateCard(
                     title: "No receive wallets",
@@ -30,12 +36,13 @@ struct ReceiveView: View {
                 )
             } else {
                 SpectraRowGroup(data: store.receiveEnabledWallets) { wallet in
-                    WalletReceiveRow(
-                        wallet: wallet,
-                        isSelected: wallet.id == store.receiveFlow.walletId
-                    ) {
-                        select(wallet)
+                    // A link, not a choice: every row opens its wallet, so
+                    // none is marked.
+                    Button { select(wallet) } label: {
+                        WalletCardView(presentation: .init(wallet: wallet, store: store))
+                            .equatable().spectraRowPadding()
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -333,55 +340,6 @@ private struct ReceiveScreen<Content: View>: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
-    }
-}
-
-/// Open a wallet's receive address. Addresses come from core on the next
-/// step, where UTXO addresses are reserved and registered as owned.
-private struct WalletReceiveRow: View {
-    let wallet: WalletView
-    let isSelected: Bool
-    let onSelect: () -> Void
-
-    var body: some View {
-        let badge = AssetHolding.nativeChainBadge(for: wallet.family) ?? (nil, Color.mint)
-
-        Button(action: onSelect) {
-            HStack(spacing: SpectraLayout.Space.m) {
-                CoinBadge(
-                    artworkName: badge.artworkName,
-                    fallbackText: wallet.familyName,
-                    color: badge.color,
-                    size: 36
-                )
-
-                VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
-                    Text(wallet.name)
-                        .font(.headline)
-                        .foregroundStyle(Color.primary)
-                        .lineLimit(1)
-                    // The network, not the family: a Sepolia wallet read
-                    // "Ethereum" and looked like a mainnet one.
-                    Text(wallet.networkTitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.tint)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .spectraRowPadding()
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 

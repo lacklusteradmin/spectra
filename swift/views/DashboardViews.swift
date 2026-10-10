@@ -66,6 +66,12 @@ struct DashboardView: View {
                 if let wallet = store.wallet(for: walletId) {
                     WalletDetailView(store: store, wallet: wallet)
                 }
+            }
+            // A wallet deleted under its page — from Manage Wallet, which it
+            // pushed — leaves nothing to show: the page and all it pushed
+            // close, rather than standing blank until Back.
+            .onChange(of: selectedWallet == nil) { _, isGone in
+                if isGone, selectedWalletId != nil { selectedWalletId = nil }
             }.navigationDestination(item: $selectedAssetGroupId) { id in AssetGroupDetailView(store: store, assetGroupId: id) }
                 .navigationDestination(isPresented: store.sendFlowBinding(on: .home)) {
                     SendView(store: store)
@@ -164,19 +170,9 @@ struct DashboardView: View {
             }
         case .wallets:
             SpectraRowGroup(data: store.wallets, header: { pageSwitch(assetCount: shownAssetRows.count) }, footer: { EmptyView() }) { wallet in
-                let badge = AssetHolding.nativeChainBadge(for: wallet.family) ?? (nil, .mint)
                 Button { selectedWalletId = wallet.id } label: {
-                    WalletCardView(
-                        presentation: WalletCardView.Presentation(
-                            walletName: wallet.name, chainTitleText: wallet.networkTitle,
-                            totalValueText: store.amounts.formattedWalletTotal(walletId: wallet.id),
-                            hidesBalance: store.preferences.hideBalances,
-                            isReadingBalances: wallet.balancesReadAt == nil,
-                            assetCountText: assetCountText(wallet.shownHoldings.count),
-                            isWatchOnly: wallet.signing.isWatchOnly, badgeArtworkName: badge.0,
-                            badgeMark: wallet.familyName, badgeColor: badge.1
-                        )
-                    ).equatable().spectraRowPadding()
+                    WalletCardView(presentation: .init(wallet: wallet, store: store))
+                        .equatable().spectraRowPadding()
                 }.buttonStyle(.plain)
             }
         }
@@ -207,9 +203,6 @@ struct DashboardView: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    }
-    private func assetCountText(_ count: Int) -> String {
-        AppLocalization.format("%lld assets", count: count, count)
     }
     /// What sits under the asset rows: placeholders while the only wallets
     /// are still reading, a note while some are, the folded small balances,

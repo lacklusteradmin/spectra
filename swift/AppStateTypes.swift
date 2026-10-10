@@ -29,6 +29,20 @@ extension DiagnosticLogLevel {
     }
 }
 /// A failure already worded for the reader.
+/// Where launch stands with the stored data.
+enum StoreStatus: Equatable {
+    /// Core has not answered yet.
+    case opening
+    /// Core has answered and the app runs on what it read. A failure other
+    /// than unreadable data — the file could not be opened — is logged and
+    /// lands here too: offering to discard data over an error that may pass
+    /// would destroy it.
+    case open
+    /// Core cannot read what is stored: discarding it is the only way out,
+    /// and nothing else can run.
+    case unreadable
+}
+
 struct DisplayedError: LocalizedError {
     let errorDescription: String?
     init(_ message: String) { errorDescription = message }

@@ -12,7 +12,7 @@ struct ContentView: View {
     private var cover: AppCover? {
         if scenePhase != .active { return .snapshot }
         if store.isAppLocked { return .locked }
-        return store.isStoreUnreadable ? .unreadableStore : nil
+        return store.storeStatus == .unreadable ? .unreadableStore : nil
     }
 
     private func handleScenePhase(_ phase: ScenePhase) {
@@ -39,16 +39,27 @@ struct ContentView: View {
     }
 
     var body: some View {
-        MainTabView(store: store)
-            .accessibilityHidden(cover != nil)
-            .sceneCover(item: cover) { cover in
-                AppCoverView(store: store, cover: cover)
-                    .preferredColorScheme(store.preferences.appearanceMode.colorScheme)
-                    .environment(\.locale, AppLocalization.locale)
+        Group {
+            // The tabs are drawn once core has said what is stored: drawn
+            // before, Home showed the welcome for a device with no wallets
+            // and then replaced it, or was covered a moment later as
+            // unreadable. In place rather than a cover, so not one frame of
+            // the tabs reaches the screen.
+            if store.storeStatus == .opening {
+                SpectraLogoScreen()
+            } else {
+                MainTabView(store: store)
             }
-            .preferredColorScheme(store.preferences.appearanceMode.colorScheme)
-            .environment(\.locale, AppLocalization.locale)
-            .onChange(of: scenePhase, initial: true) { _, phase in handleScenePhase(phase) }
+        }
+        .accessibilityHidden(cover != nil)
+        .sceneCover(item: cover) { cover in
+            AppCoverView(store: store, cover: cover)
+                .preferredColorScheme(store.preferences.appearanceMode.colorScheme)
+                .environment(\.locale, AppLocalization.locale)
+        }
+        .preferredColorScheme(store.preferences.appearanceMode.colorScheme)
+        .environment(\.locale, AppLocalization.locale)
+        .onChange(of: scenePhase, initial: true) { _, phase in handleScenePhase(phase) }
     }
 }
 
@@ -61,14 +72,17 @@ private struct AppCoverView: View {
     let cover: AppCover
 
     var body: some View {
-        ZStack {
-            SpectraBackdrop()
-            switch cover {
-            case .snapshot:
-                SpectraLogo()
-            case .locked:
+        switch cover {
+        case .snapshot:
+            SpectraLogoScreen()
+        case .locked:
+            ZStack {
+                SpectraBackdrop()
                 lockCard
-            case .unreadableStore:
+            }
+        case .unreadableStore:
+            ZStack {
+                SpectraBackdrop()
                 UnreadableStoreCard(store: store)
             }
         }
@@ -88,6 +102,20 @@ private struct AppCoverView: View {
                     .font(.body.weight(.semibold)).frame(maxWidth: 220).padding(.vertical, SpectraLayout.Space.xs)
             }.buttonStyle(.glassProminent).controlSize(.large)
         }.padding(SpectraLayout.Space.xl).spectraElevatedFill().padding(SpectraLayout.Space.xl)
+    }
+}
+
+/// The backdrop and the logo, and nothing of the wallet: what the app
+/// switcher's snapshot shows, and what launch shows until core has read the
+/// stored data.
+private struct SpectraLogoScreen: View {
+    var body: some View {
+        ZStack {
+            SpectraBackdrop().ignoresSafeArea()
+            SpectraLogo()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AppLocalization.string("Spectra"))
     }
 }
 

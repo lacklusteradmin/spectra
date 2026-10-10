@@ -24,7 +24,7 @@ extension AppState {
             let state = try await self.bridge.ready().appState()
             applyCoreState(state)
         } catch SpectraBridgeError.StoreUnreadable(let message) {
-            isStoreUnreadable = true
+            storeStatus = .unreadable
             appendOperationalLog(.error, category: "Storage", message: message)
         } catch {
             appendOperationalLog(.error, category: "Storage", message: error.localizedDescription)
@@ -35,11 +35,16 @@ extension AppState {
         // Core-owned domain state first: it is the authority, so anything
         // loaded after it must not contradict it.
         await loadCoreOwnedState()
+        // Nothing else can be read from data core cannot read.
+        guard storeStatus != .unreadable else { return }
         await diagnostics.loadFromSQLite()
         // Opening the state folds this build's built-in tokens in, and carries
         // settings, alerts and contacts; the six preferences this platform
         // keeps were read from `UserDefaults` when `preferences` was created.
         await rebuildWalletDerivedStateFromCore()
+        // The tabs are drawn from here, with the wallets the snapshot just
+        // brought: before it, Home had none and showed its welcome.
+        storeStatus = .open
         await refreshTransactionProjection()
     }
 
