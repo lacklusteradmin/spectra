@@ -41,4 +41,18 @@ with tempfile.TemporaryDirectory() as directory:
     assert cleared['coinpaprika_id'] == '' and cleared['coingecko_id'] == ''
     run('remove', '--chain', 'Base', '--contract', address)
     assert all(r['isBuiltIn'] for r in rows())
-print('The catalog is listed whole and independent price sources survive reopening')
+
+    # Tron has two token standards: none named is refused, never guessed from
+    # the identifier, and the one named is kept for the next process.
+    def refused(*args):
+        result = subprocess.run([sys.argv[1], '--data-dir', directory, 'token', *args], capture_output=True, text=True)
+        assert result.returncode == 3, (args, result.stdout, result.stderr)
+        return result.stdout + result.stderr
+    tron = ['--chain', 'Tron', '--contract', '1009999', '--symbol', 'OLD', '--name', 'Old style', '--decimals', '6']
+    assert 'more than one token standard' in refused('add', *tron)
+    assert 'does not support that token standard' in refused('add', *tron, '--standard', 'ERC-20')
+    assert all(r['isBuiltIn'] for r in rows())
+    run('add', *tron, '--standard', 'TRC-10')
+    added = next(r for r in rows() if not r['isBuiltIn'])
+    assert added['id'] == 'tron:trc-10:1009999', added
+print('The catalog is listed whole, independent price sources survive reopening, and a standard is named')

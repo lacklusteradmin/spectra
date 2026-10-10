@@ -40,8 +40,7 @@ struct SeedPhraseRevealStateTests {
         #expect(!state.isShowingPhraseSheet)
     }
 
-    @Test(arguments: [false, true])
-    func unavailableWalletOrInactiveSceneRejectsCompletionWithoutRepopulatingSecret(walletRemoved: Bool) async {
+    @Test func removedWalletRejectsCompletionWithoutRepopulatingSecret() async {
         let state = SeedPhraseRevealState()
         state.activate()
         var canPresent = true
@@ -50,13 +49,72 @@ struct SeedPhraseRevealStateTests {
             await state.reveal(canPresent: { canPresent }, operation: { await gate.wait() })
         }
         await gate.reached()
-        if walletRemoved { canPresent = false }
-        else { state.setSceneIsActive(false) }
-        gate.resume("secret from hidden scene")
+        canPresent = false
+        gate.resume("secret of a removed wallet")
         #expect(await work.value == nil)
         #expect(state.phrase.isEmpty)
         #expect(!state.isShowingPhraseSheet)
         #expect(state.errorMessage == nil)
+    }
+
+    /// Face ID makes the scene inactive and can answer before it is active
+    /// again: the phrase waits, hidden, and is shown on return.
+    @Test func anAnswerDuringFaceIDIsShownOnReturn() async {
+        let state = SeedPhraseRevealState()
+        state.activate()
+        let gate = SuspensionGate<String>()
+        let work = Task {
+            await state.reveal(canPresent: { true }, operation: { await gate.wait() })
+        }
+        await gate.reached()
+        state.setSceneIsActive(false)
+        gate.resume("secret")
+        #expect(await work.value == true)
+        #expect(!state.isShowingPhraseSheet, "nothing is presented while the scene is inactive")
+        state.setSceneIsActive(false)
+        #expect(state.phrase == "secret", "a second inactive pass keeps the waiting answer")
+        state.setSceneIsActive(true)
+        #expect(state.isShowingPhraseSheet)
+        #expect(state.phrase == "secret")
+    }
+
+    /// A refusal that arrives during Face ID is said on return too.
+    @Test func anErrorDuringFaceIDIsSaidOnReturn() async {
+        let state = SeedPhraseRevealState()
+        state.activate()
+        let gate = SuspensionGate<Void>()
+        let work = Task {
+            await state.reveal(canPresent: { true }, operation: {
+                await gate.wait()
+                throw DisplayedError("refused")
+            })
+        }
+        await gate.reached()
+        state.setSceneIsActive(false)
+        gate.resume()
+        #expect(await work.value == false)
+        #expect(state.errorMessage == nil)
+        state.setSceneIsActive(true)
+        #expect(state.errorMessage == "refused")
+    }
+
+    /// Going to the background drops a waiting answer: nothing is shown
+    /// when the app comes back.
+    @Test func backgroundDropsAWaitingAnswer() async {
+        let state = SeedPhraseRevealState()
+        state.activate()
+        let gate = SuspensionGate<String>()
+        let work = Task {
+            await state.reveal(canPresent: { true }, operation: { await gate.wait() })
+        }
+        await gate.reached()
+        state.setSceneIsActive(false)
+        gate.resume("secret")
+        #expect(await work.value == true)
+        state.invalidate()
+        state.setSceneIsActive(true)
+        #expect(!state.isShowingPhraseSheet)
+        #expect(state.phrase.isEmpty)
     }
 
     @Test func backgroundedRequestStaysInvalidAfterReturningToActiveScene() async {

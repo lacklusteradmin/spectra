@@ -78,7 +78,8 @@ pub struct AddArgs {
     /// Chain that hosts the token.
     #[arg(long)]
     chain: String,
-    /// Actual protocol; omitted values are inferred from the identifier shape.
+    /// The token's protocol, as `chains` lists it (TRC-10 or TRC-20, ERC-20
+    /// or BEP-20, …). Required where the network has more than one.
     #[arg(long)]
     standard: Option<String>,
     /// Symbol, as it should be displayed.
@@ -255,6 +256,31 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         ));
     }
     let chain_id = resolve_chain(&args.chain)?;
+    // The token keeps the protocol it was added under; its places follow it.
+    let stored_standard = ctx
+        .state()?
+        .token_preferences
+        .into_iter()
+        .find_map(|entry| {
+            (entry.token.chain_id == chain_id
+                && spectra_core::tokens::validate_protocol_identifier(
+                    chain_id,
+                    &entry.token.token_standard,
+                    &args.contract,
+                )
+                .ok()
+                .as_deref()
+                    == Some(entry.token.contract.as_str()))
+            .then_some(entry.token.token_standard)
+        });
+    let decimals = args
+        .decimals
+        .or_else(|| {
+            stored_standard
+                .as_deref()
+                .and_then(spectra_core::tokens::fixed_token_decimals)
+        })
+        .ok_or_else(|| CliError::usage("--decimals is required for this token's standard"))?;
     let transition = ctx.apply(StateCommand::UpdateCustomToken {
         chain_id,
         contract: args.contract,
@@ -262,28 +288,40 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         name: args.name,
         coingecko_id: args.coingecko_id,
         coinpaprika_id: args.coinpaprika_id,
-        decimals: token_decimals(chain_id, args.decimals)?,
+        decimals,
     })?;
     reject_on_event(&transition)?;
     out.emit(serde_json::json!({"ok": true}));
     Ok(())
 }
 
-/// The places a token takes: the network's own where its protocol fixes
-/// them, otherwise the ones given.
-fn token_decimals(chain_id: spectra_core::registry::Chain, given: Option<u32>) -> CliResult<u32> {
-    let fixed = spectra_core::chains::list_all_chains()
-        .into_iter()
-        .find(|entry| entry.id == chain_id.str_id())
-        .and_then(|entry| entry.fixed_token_decimals);
-    given
-        .or(fixed)
-        .ok_or_else(|| CliError::usage("--decimals is required on this network"))
-}
-
 fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let chain_id = resolve_chain(&args.chain)?;
-    let decimals = token_decimals(chain_id, args.decimals)?;
+    // The places a token takes: its protocol's where the protocol fixes them,
+    // otherwise the ones given. Which protocol is core's to settle: with
+    // several and none named it refuses before storing anything, so the
+    // places sent then are never read.
+    let standards = spectra_core::chains::list_all_chains()
+        .into_iter()
+        .find(|entry| entry.id == chain_id.str_id())
+        .map(|entry| entry.token_standards)
+        .unwrap_or_default();
+    let named = match args.standard.as_deref() {
+        Some(name) => standards.iter().find(|s| s.standard == name),
+        None if standards.len() == 1 => standards.first(),
+        None => None,
+    };
+    let unsettled = args.standard.is_none() && standards.len() > 1;
+    let decimals = match (args.decimals, named.and_then(|s| s.fixed_decimals)) {
+        (Some(given), _) => given,
+        (None, Some(fixed)) => fixed,
+        (None, None) if unsettled => 0,
+        (None, None) => {
+            return Err(CliError::usage(
+                "--decimals is required for this token's standard",
+            ));
+        }
+    };
     let transition = ctx.apply(StateCommand::AddCustomToken {
         standard: args.standard,
         chain_id,
@@ -401,6 +439,10 @@ fn reject_on_event(transition: &StateTransition) -> CliResult<()> {
             R::TooManyDecimals => "more decimal places than any token has",
             R::BuiltInToken => "the catalog ships that token, so it is not yours to edit",
             R::UnknownToken => "no token with that contract on that chain",
+            R::StandardRequired => {
+                "that chain has more than one token standard: name one with --standard"
+            }
+            R::UnsupportedStandard => "that chain does not support that token standard",
         })),
     }
 }

@@ -38,8 +38,10 @@ final class TokenPreferencesState {
     /// Teach the wallet a token the catalog does not ship, or edit one it was
     /// taught. Returns the refusal to show beside the form, or `nil` once core
     /// has accepted it.
+    /// Add a token under `standard`, one of `chain`'s protocols — the
+    /// network's only one when `nil` — or edit `editing`, which keeps its own.
     func addCustom(
-        chain: Chain, symbol: String, name: String, contractAddress: String,
+        chain: Chain, standard: String? = nil, symbol: String, name: String, contractAddress: String,
         coingeckoId: String = "", coinpaprikaId: String = "", decimals: UInt32, editing: TokenPreferenceEntry? = nil
     ) async -> String? {
         let command: StateCommand
@@ -50,7 +52,7 @@ final class TokenPreferencesState {
                 coingeckoId: coingeckoId, coinpaprikaId: coinpaprikaId, decimals: decimals)
         } else {
             command = .addCustomToken(
-                chainId: chain, symbol: symbol, name: name,
+                standard: standard, chainId: chain, symbol: symbol, name: name,
                 contract: contractAddress, coingeckoId: coingeckoId,
                 coinpaprikaId: coinpaprikaId, decimals: decimals)
         }
@@ -88,5 +90,7 @@ private func tokenPreferenceRejectionMessage(_ reason: TokenPreferenceRejection)
     case .tooManyDecimals: return AppLocalization.string("That is more decimal places than a token has.")
     case .builtInToken: return AppLocalization.string("Built-in tokens cannot be edited or removed.")
     case .unknownToken: return AppLocalization.string("That token is no longer in the list.")
+    case .standardRequired: return AppLocalization.string("Choose the standard the token was issued under.")
+    case .unsupportedStandard: return AppLocalization.string("That network does not support this token standard.")
     }
 }

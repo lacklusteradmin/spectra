@@ -249,6 +249,11 @@ pub enum TokenPreferenceRejection {
     BuiltInToken,
     /// No row for that chain and contract.
     UnknownToken,
+    /// The network has more than one token protocol and none was named. A
+    /// guess from the identifier's shape cannot tell an ERC-20 from a BEP-20.
+    StandardRequired,
+    /// The named protocol is not one the network supports.
+    UnsupportedStandard,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -749,8 +754,10 @@ pub enum StateCommand {
         token_id: String,
         is_pinned: bool,
     },
-    /// Add a custom token. Trim input, uppercase the symbol, validate the
-    /// contract using the chain's rule, and reject duplicates.
+    /// Add a custom token under `standard`, one of the network's token
+    /// protocols — the network's only one when `None`. Trim input, uppercase
+    /// the symbol, validate the identifier by that protocol's rule, and
+    /// reject duplicates.
     /// Rejection emits `tokenPreferenceRejected` without changing state.
     AddCustomToken {
         #[uniffi(default = None)]
@@ -1345,11 +1352,22 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
             let mut contract = crate::tokens::normalize_token_identifier(Some(contract), chain_id)
                 .unwrap_or_default();
             let hosting = token_hosting_chain(chain_id);
-            let standard = standard.unwrap_or_else(|| {
-                chain_id
-                    .token_standard_for_identifier(&contract)
-                    .to_string()
-            });
+            // Named, never guessed: the network's only protocol, or the one
+            // asked for among several.
+            let standards = chain_id.token_standards();
+            let standard = match standard.map(|s| s.trim().to_string()) {
+                Some(named) if !named.is_empty() => Ok(named),
+                _ if standards.len() == 1 => Ok(standards[0].clone()),
+                _ => Err(TokenPreferenceRejection::StandardRequired),
+            };
+            let standard_rejection = match &standard {
+                Err(reason) => Some(*reason),
+                Ok(named) if !chain_id.allows_token_standard(named) => {
+                    Some(TokenPreferenceRejection::UnsupportedStandard)
+                }
+                Ok(_) => None,
+            };
+            let standard = standard.unwrap_or_default();
             if let Ok(normalized) =
                 crate::tokens::validate_protocol_identifier(chain_id, &standard, &contract)
             {
@@ -1361,6 +1379,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
 
             let rejection = match hosting {
                 None => Some(TokenPreferenceRejection::UnknownChain),
+                Some(_) if standard_rejection.is_some() => standard_rejection,
                 Some(_) if symbol.is_empty() => Some(TokenPreferenceRejection::EmptySymbol),
                 // Twelve characters is longer than any symbol is spelled; past
                 // it the field has a pasted name or a whole address in it.
@@ -1626,8 +1645,12 @@ mod tests {
         })
     }
 
+    /// A token is added under the protocol named for it — the network's only
+    /// one when none is — never one guessed from the identifier's shape. The
+    /// identifier is judged by that protocol, and the same contract under two
+    /// labels of one protocol is one token.
     #[test]
-    fn custom_tokens_accept_multiple_protocols_and_reject_alias_duplicates_and_invalid_pairs() {
+    fn custom_tokens_are_added_under_the_named_protocol() {
         use crate::registry::Chain;
         let mut state = ResidentState::default();
         let command =
@@ -1641,63 +1664,133 @@ mod tests {
                 coinpaprika_id: String::new(),
                 decimals: 6,
             };
+        let rejected = |reason| [StateEvent::TokenPreferenceRejected { reason }];
+        let added = |events: &[StateEvent]| {
+            events
+                .iter()
+                .any(|e| matches!(e, StateEvent::TokenPreferencesChanged { .. }))
+        };
         let trc20 = "TJRabPrwbZy45sbavfcjinPJC18kjpRTv8";
-        let events = reduce_state_in_place(&mut state, command(Chain::Tron, None, trc20));
-        assert!(
-            events
+
+        // Several protocols and none named: refused, whatever the shape.
+        for (chain, identifier) in [
+            (Chain::Tron, trc20),
+            (Chain::Tron, "1002000"),
+            (Chain::Aptos, "0x1::coin::T"),
+            (
+                Chain::BnbChain,
+                "0x1111111111111111111111111111111111111111",
+            ),
+        ] {
+            let events = reduce_state_in_place(&mut state, command(chain, None, identifier));
+            assert_eq!(
+                events,
+                rejected(TokenPreferenceRejection::StandardRequired),
+                "{chain:?}"
+            );
+        }
+        assert!(state.token_preferences.is_empty());
+
+        // Named, each is kept under the protocol it was named under.
+        assert!(added(&reduce_state_in_place(
+            &mut state,
+            command(Chain::Tron, Some("TRC-20"), trc20)
+        )));
+        assert!(added(&reduce_state_in_place(
+            &mut state,
+            command(Chain::Tron, Some("TRC-10"), "1002000")
+        )));
+        let address = "0x1111111111111111111111111111111111111111";
+        assert!(added(&reduce_state_in_place(
+            &mut state,
+            command(Chain::BnbChain, Some("BEP-20"), address)
+        )));
+        assert!(added(&reduce_state_in_place(
+            &mut state,
+            command(Chain::Aptos, Some("Aptos Coin"), "0x001::coin::T")
+        )));
+        // The network's only protocol needs no naming.
+        assert!(added(&reduce_state_in_place(
+            &mut state,
+            command(
+                Chain::Solana,
+                None,
+                "So11111111111111111111111111111111111111112"
+            )
+        )));
+        let standard_of = |state: &ResidentState, id: &str| {
+            state
+                .token_preferences
                 .iter()
-                .any(|e| matches!(e, StateEvent::TokenPreferencesChanged { .. }))
+                .find(|p| p.token.deployment_id == id)
+                .map(|p| p.token.token_standard.clone())
+        };
+        assert_eq!(
+            standard_of(&state, "tron:trc-10:1002000").as_deref(),
+            Some("TRC-10")
         );
-        let events =
-            reduce_state_in_place(&mut state, command(Chain::Tron, Some("TRC-10"), "1002000"));
-        assert!(
-            events
-                .iter()
-                .any(|e| matches!(e, StateEvent::TokenPreferencesChanged { .. }))
+        assert_eq!(
+            standard_of(&state, "aptos:aptos coin:0x1::coin::T").as_deref(),
+            Some("Aptos Coin")
         );
         assert!(
             state
                 .token_preferences
                 .iter()
-                .any(|p| p.token.deployment_id == "tron:trc-10:1002000")
+                .any(|p| p.token.chain_id == Chain::BnbChain && p.token.token_standard == "BEP-20")
         );
-        let address = "0x1111111111111111111111111111111111111111";
-        reduce_state_in_place(
+        assert!(
+            state
+                .token_preferences
+                .iter()
+                .any(|p| p.token.chain_id == Chain::Solana && p.token.token_standard == "SPL")
+        );
+
+        // ERC-20 and BEP-20 are two labels of one protocol: one contract.
+        let events = reduce_state_in_place(
             &mut state,
             command(Chain::BnbChain, Some("ERC-20"), address),
         );
-        let events = reduce_state_in_place(
-            &mut state,
-            command(Chain::BnbChain, Some("BEP-20"), address),
-        );
-        assert_eq!(
-            events,
-            [StateEvent::TokenPreferenceRejected {
-                reason: TokenPreferenceRejection::DuplicateToken
-            }]
-        );
-        for (chain, standard, identifier) in [
-            (Chain::Solana, "ERC-20", address),
-            (Chain::Tron, "unknown", "1002001"),
-            (Chain::Aptos, "AIP-21", "0x1::coin::T"),
+        assert_eq!(events, rejected(TokenPreferenceRejection::DuplicateToken));
+
+        // A protocol the network lacks, and an identifier the named protocol
+        // does not take.
+        for (chain, standard, identifier, reason) in [
+            (
+                Chain::Solana,
+                "ERC-20",
+                address,
+                TokenPreferenceRejection::UnsupportedStandard,
+            ),
+            (
+                Chain::Tron,
+                "unknown",
+                "1002001",
+                TokenPreferenceRejection::UnsupportedStandard,
+            ),
+            (
+                Chain::Tron,
+                "TRC-10",
+                trc20,
+                TokenPreferenceRejection::InvalidContract,
+            ),
+            (
+                Chain::Tron,
+                "TRC-20",
+                "1002001",
+                TokenPreferenceRejection::InvalidContract,
+            ),
+            (
+                Chain::Aptos,
+                "AIP-21",
+                "0x1::coin::T",
+                TokenPreferenceRejection::InvalidContract,
+            ),
         ] {
             let events =
                 reduce_state_in_place(&mut state, command(chain, Some(standard), identifier));
-            assert_eq!(
-                events,
-                [StateEvent::TokenPreferenceRejected {
-                    reason: TokenPreferenceRejection::InvalidContract
-                }]
-            );
+            assert_eq!(events, rejected(reason), "{chain:?} {standard}");
         }
-        reduce_state_in_place(&mut state, command(Chain::Aptos, None, "0x001::coin::T"));
-        assert!(
-            state
-                .token_preferences
-                .iter()
-                .any(|p| p.token.deployment_id == "aptos:aptos coin:0x1::coin::T"
-                    && p.token.token_standard == "Aptos Coin")
-        );
     }
 
     const EVM_CONTRACT: &str = "0x742d35cc6634c0532925a3b844bc454e4438f44e";

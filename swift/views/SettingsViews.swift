@@ -5,7 +5,6 @@ import SwiftUI
 /// grouped by what the user is looking after rather than by implementation.
 struct SettingsView: View {
     @Bindable var store: AppState
-    @State private var isShowingResetWalletWarning: Bool = false
     @ScaledMetric(relativeTo: .body) private var iconWidth: CGFloat = 28
     private let biometry = DeviceBiometry.current
     private enum Route: Hashable {
@@ -23,6 +22,7 @@ struct SettingsView: View {
         case cryptoWiki
         case donate
         case tor
+        case resetWallet
     }
     var body: some View {
         NavigationStack {
@@ -68,12 +68,7 @@ struct SettingsView: View {
                             settingsLink("Operational Logs", systemImage: "doc.text.magnifyingglass", route: .operationalLogs)
                         }
                         SpectraRowSection(dividerInset: dividerInset) {
-                            Button {
-                                isShowingResetWalletWarning = true
-                            } label: {
-                                rowLabel("Reset Wallet", systemImage: "trash", tint: .red)
-                            }
-                            .buttonStyle(.plain)
+                            settingsLink("Reset Wallet", systemImage: "trash", route: .resetWallet, tint: .red)
                         }
                     }.spectraScreenPadding()
                 }.scrollBounceBehavior(.always)
@@ -97,9 +92,8 @@ struct SettingsView: View {
                 case .cryptoWiki: CryptoWikiLibraryView()
                 case .donate: DonationsView()
                 case .tor: TorSettingsView(store: store)
+                case .resetWallet: ResetWalletWarningView(store: store)
                 }
-            }.sheet(isPresented: $isShowingResetWalletWarning) {
-                ResetWalletWarningView(store: store)
             }
         }
     }
@@ -197,21 +191,21 @@ struct SettingsView: View {
     }
 
     /// A row that acts in place: no chevron, since it leads nowhere.
-    private func rowLabel(_ title: String, systemImage: String, tint: Color? = nil) -> some View {
-        rowTitle(AppLocalization.string(title), systemImage: systemImage, tint: tint).spectraRowPadding()
+    private func rowLabel(_ title: String, systemImage: String) -> some View {
+        rowTitle(AppLocalization.string(title), systemImage: systemImage).spectraRowPadding()
     }
 
-    private func settingsLink(_ title: String, systemImage: String, route: Route) -> some View {
-        settingsLink(title, systemImage: systemImage, route: route) { EmptyView() }
+    private func settingsLink(_ title: String, systemImage: String, route: Route, tint: Color? = nil) -> some View {
+        settingsLink(title, systemImage: systemImage, route: route, tint: tint) { EmptyView() }
     }
 
     /// A row that leads to a page, with what it is set to on the right.
     private func settingsLink<Trailing: View>(
-        _ title: String, systemImage: String, route: Route, @ViewBuilder trailing: () -> Trailing
+        _ title: String, systemImage: String, route: Route, tint: Color? = nil, @ViewBuilder trailing: () -> Trailing
     ) -> some View {
         NavigationLink(value: route) {
             HStack(spacing: SpectraLayout.Space.s) {
-                rowTitle(AppLocalization.string(title), systemImage: systemImage)
+                rowTitle(AppLocalization.string(title), systemImage: systemImage, tint: tint)
                 Spacer(minLength: SpectraLayout.Space.s)
                 trailing()
                 Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)

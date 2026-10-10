@@ -2595,7 +2595,15 @@ mod tests {
     fn protocol_sets_keep_legacy_and_current_protocols_on_one_network() {
         for chain in [Chain::Tron, Chain::TronNile] {
             assert_eq!(chain.token_standards(), ["TRC-10", "TRC-20"]);
-            assert_eq!(chain.entry().token_standards, ["TRC-10", "TRC-20"]);
+            let entries = &chain.entry().token_standards;
+            let prompts: Vec<(&str, &str)> = entries
+                .iter()
+                .map(|s| (s.standard.as_str(), s.identifier_prompt.as_str()))
+                .collect();
+            assert_eq!(
+                prompts,
+                [("TRC-10", "Token ID"), ("TRC-20", "Contract Address")]
+            );
         }
         for chain in [Chain::Aptos, Chain::AptosTestnet] {
             assert_eq!(chain.token_standards(), ["Aptos Coin", "AIP-21"]);

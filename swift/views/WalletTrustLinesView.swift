@@ -55,10 +55,9 @@ struct WalletTrustLinesView: View {
         }
     }
 
-    /// What the network calls an issued asset's identifier.
+    /// What the network's issued-asset protocol identifies an asset by.
     private var identifierPrompt: String {
-        let prompt = wallet.chain.entry?.contractAddressPrompt ?? ""
-        return prompt.isEmpty ? "Token Identifier" : prompt
+        wallet.chain.entry?.tokenStandards.first?.identifierPrompt ?? "Token Identifier"
     }
 
     private func row(_ line: WalletTrustLine) -> some View {

@@ -11,57 +11,50 @@ struct ResetWalletWarningView: View {
     @State private var isResetting = false
     @State private var errorMessage: String?
     var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    Text(
-                        AppLocalization.string(
-                            "Choose which categories to remove from this device. Selected items are deleted locally and some options also clear secure keychain data."
-                        ))
-                    Label(
-                        AppLocalization.string(
-                            "You must have your seed phrase backed up. Without it, you cannot recover your funds after reset."),
-                        systemImage: "exclamationmark.triangle.fill"
-                    ).font(.body.weight(.semibold)).foregroundStyle(.red)
-                }
-                Section {
-                    ForEach(ResetScope.allCases, id: \.self) { scope in
-                        Toggle(isOn: binding(for: scope)) {
-                            VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
-                                Text(scope.title)
-                                Text(scope.detail).font(.caption).foregroundStyle(.secondary)
-                            }
+        Form {
+            Section {
+                Text(
+                    AppLocalization.string(
+                        "Choose which categories to remove from this device. Selected items are deleted locally and some options also clear secure keychain data."
+                    ))
+                Label(
+                    AppLocalization.string(
+                        "You must have your seed phrase backed up. Without it, you cannot recover your funds after reset."),
+                    systemImage: "exclamationmark.triangle.fill"
+                ).font(.body.weight(.semibold)).foregroundStyle(.red)
+            }
+            Section {
+                ForEach(ResetScope.allCases, id: \.self) { scope in
+                    Toggle(isOn: binding(for: scope)) {
+                        VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
+                            Text(scope.title)
+                            Text(scope.detail).font(.caption).foregroundStyle(.secondary)
                         }
                     }
-                } header: {
-                    Text(AppLocalization.string("Choose What To Reset"))
-                } footer: {
-                    if selectedScopes.isEmpty {
-                        Text(AppLocalization.string("Select at least one category to enable reset."))
-                    }
                 }
-                Section {
-                    Button(AppLocalization.string("Reset Selected Data"), role: .destructive) { isConfirming = true }
-                        .disabled(selectedScopes.isEmpty || isResetting)
-                    if let errorMessage {
-                        Text(errorMessage).font(.caption).foregroundStyle(.red)
-                    }
+            } header: {
+                Text(AppLocalization.string("Choose What To Reset"))
+            } footer: {
+                if selectedScopes.isEmpty {
+                    Text(AppLocalization.string("Select at least one category to enable reset."))
                 }
             }
-            .navigationTitle(AppLocalization.string("Reset Wallet"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(AppLocalization.string("Cancel")) { dismiss() }
+            Section {
+                Button(AppLocalization.string("Reset Selected Data"), role: .destructive) { isConfirming = true }
+                    .disabled(selectedScopes.isEmpty || isResetting)
+                if let errorMessage {
+                    Text(errorMessage).font(.caption).foregroundStyle(.red)
                 }
             }
-            .confirmationDialog(
-                AppLocalization.string("Delete the selected data?"), isPresented: $isConfirming, titleVisibility: .visible
-            ) {
-                Button(AppLocalization.string("Reset Selected Data"), role: .destructive) { reset() }
-            } message: {
-                Text(confirmationMessage)
-            }
+        }
+        .navigationTitle(AppLocalization.string("Reset Wallet"))
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            AppLocalization.string("Delete the selected data?"), isPresented: $isConfirming, titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("Reset Selected Data"), role: .destructive) { reset() }
+        } message: {
+            Text(confirmationMessage)
         }
     }
 
