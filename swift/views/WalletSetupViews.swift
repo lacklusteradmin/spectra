@@ -12,6 +12,10 @@ struct SetupView: View {
     /// system back button and the swipe step back one page at a time.
     private let setupPage: WalletSetupPage
     @State private var nextPage: WalletSetupPage?
+    @State private var isEditingWatchedAddresses = false
+    /// The name core gives a wallet whose name is left blank, shown where the
+    /// name is typed.
+    @State private var defaultWalletName: String?
     init(store: AppState, draft: WalletImportDraft, page: WalletSetupPage? = nil) {
         self.store = store
         self.draft = draft
@@ -25,9 +29,10 @@ struct SetupView: View {
     private var isPageComplete: Bool {
         switch setupPage {
         case .seedPhrase: draft.isSecretComplete
-        case .password: draft.walletPasswordValidationError == nil
         case .backupVerification: draft.isBackupVerificationComplete
-        case .watchAddresses, .walletName: store.canImportWallet
+        case .watchAddresses: store.canImportWallet
+        case .walletName:
+            store.canImportWallet && (!draft.mode.takesWalletPassword || draft.walletPasswordValidationError == nil)
         }
     }
     private var isPrimaryActionEnabled: Bool {
@@ -52,9 +57,11 @@ struct SetupView: View {
     }
     @ViewBuilder
     private func watchedAddressEditor(text: Binding<String>) -> some View {
-        TextEditor(text: text).textInputAutocapitalization(.never).autocorrectionDisabled().scrollContentBackground(.hidden).frame(
-            minHeight: 88
-        ).padding(SpectraLayout.Space.s).spectraInputFieldStyle().foregroundStyle(Color.primary)
+        AddressInput(
+            text: text, isFocused: $isEditingWatchedAddresses,
+            prompt: AppLocalization.string("One address per line"), allowsNewlines: true)
+            .frame(minHeight: 88, alignment: .topLeading)
+            .padding(SpectraLayout.Space.m).spectraInputFieldStyle()
     }
     /// A flat card, not Liquid Glass: the setup screen stacks about ten of them.
     @ViewBuilder
@@ -65,7 +72,7 @@ struct SetupView: View {
     private var walletPasswordStepSection: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
             Text(AppLocalization.string("import_flow.wallet_password_optional")).font(.headline).foregroundStyle(Color.primary)
-            Text(AppLocalization.string("import_flow.wallet_password_explanation")).font(.subheadline).foregroundStyle(.secondary)
+            Text(AppLocalization.string("import_flow.wallet_password_subtitle")).font(.subheadline).foregroundStyle(.secondary)
             SecureField(AppLocalization.string("import_flow.wallet_password_field"), text: $draft.walletPassword).textInputAutocapitalization(
                 .never
             ).autocorrectionDisabled().padding(SpectraLayout.Space.m).spectraInputFieldStyle().foregroundStyle(Color.primary)
@@ -81,20 +88,20 @@ struct SetupView: View {
     }
     @ViewBuilder
     private func watchedAddressSection(
-        title: String, text: Binding<String>, caption: String? = nil, validationMessage: String? = nil, validationColor: Color? = nil
+        text: Binding<String>, caption: String? = nil, validationMessage: String? = nil, validationColor: Color? = nil
     ) -> some View {
-        Text(AppLocalization.string(title)).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
         watchedAddressEditor(text: text)
         if let caption { Text(caption).font(.caption).foregroundStyle(.secondary) }
-        if let validationMessage { Text(validationMessage).font(.caption).foregroundStyle(validationColor ?? Color.secondary) }
+        if let validationMessage, !validationMessage.isEmpty {
+            Text(validationMessage).font(.caption).foregroundStyle(validationColor ?? Color.secondary)
+        }
     }
     private func watchedAddressValidationMessage(
         entries: [String], assetDisplayName: String, validator: (String) -> Bool
     ) -> (message: String, color: Color) {
         let localizedAssetName = assetDisplayName
-        if entries.isEmpty {
-            return (AppLocalization.format("Enter one %@ address per line.", localizedAssetName), Color.secondary)
-        }
+        // Nothing typed yet: the page and the field already say what goes here.
+        if entries.isEmpty { return ("", Color.secondary) }
         if !entries.allSatisfy(validator) {
             return (AppLocalization.format("Every line must contain a valid %@ address.", localizedAssetName), .red.opacity(0.9))
         }
@@ -108,10 +115,13 @@ struct SetupView: View {
     private var setupHeader: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
             if !isEditingWallet, let chain = draft.chain, let entry = chain.entry {
-                // The network this wallet is added on, chosen before the form.
+                // The network this wallet is added on, chosen before the form,
+                // and how far through the form this page is.
                 HStack(spacing: SpectraLayout.Space.xs) {
                     CoinBadge(artworkName: entry.artworkName, fallbackText: entry.gasTokenSymbol, color: entry.color.color, size: 20)
                     Text(chain.displayName).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    Spacer(minLength: SpectraLayout.Space.s)
+                    stepIndicator
                 }
             }
             Text(pageCopy.title).font(.largeTitle.weight(.bold)).foregroundStyle(Color.primary)
@@ -119,6 +129,21 @@ struct SetupView: View {
             Text(pageCopy.subtitle).font(.subheadline).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+    /// "Step 2 of 3", with a segment per page: where this page sits in the flow.
+    @ViewBuilder
+    private var stepIndicator: some View {
+        let pages = draft.setupFlow.pages
+        if pages.count > 1, let index = draft.setupFlow.index(of: setupPage) {
+            HStack(spacing: SpectraLayout.Space.xs) {
+                ForEach(pages.indices, id: \.self) { position in
+                    Capsule().fill(position <= index ? AnyShapeStyle(.tint) : AnyShapeStyle(SpectraLayout.insetFill))
+                        .frame(width: 18, height: 4)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(AppLocalization.format("Step %lld of %lld", index + 1, pages.count))
+        }
     }
     /// Single rendering entry point for the page body: a switch over
     /// `setupPage` makes the page → content map structural.
@@ -129,8 +154,6 @@ struct SetupView: View {
             watchPageContent
         case .seedPhrase:
             WalletSecretStep(store: store, draft: draft, showsBackupVerification: false)
-        case .password:
-            passwordPageContent
         case .backupVerification:
             WalletSecretStep(store: store, draft: draft, showsBackupVerification: true)
         case .walletName:
@@ -174,15 +197,13 @@ struct SetupView: View {
                         Text(AppLocalization.string("A view key shows what the wallet receives, not what it spends: its balance does not drop when it pays from another device."))
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
-                        Text(copy.addressesToWatchTitle).font(.headline).foregroundStyle(Color.primary)
-                        Text(copy.addressesToWatchSubtitle).font(.subheadline).foregroundStyle(.secondary)
                         let validation = watchedAddressValidationMessage(
                             entries: draft.watchOnlyEntries,
                             assetDisplayName: chain.displayName,
                             validator: { isValidWatchOnlyAddress(chain: chain, address: $0) }
                         )
                         watchedAddressSection(
-                            title: chain.displayName, text: $draft.watchOnlyInput,
+                            text: $draft.watchOnlyInput,
                             validationMessage: validation.message, validationColor: validation.color
                         )
                     }
@@ -192,39 +213,35 @@ struct SetupView: View {
             WalletAddressPreviewCard(store: store, draft: draft)
         }
     }
+    /// The name first — the page is named for it — then the password a
+    /// secret may be sealed under, then what the wallet will do and whom it
+    /// asks, while the endpoints can still change.
     @ViewBuilder
     private var walletNamePageContent: some View {
-        // The last page before the commit says what the wallet will do and
-        // whom it asks, while the endpoints can still change.
+        setupCard {
+            HStack(spacing: SpectraLayout.Space.s) {
+                TextField(
+                    isEditingWallet
+                        ? AppLocalization.string("import_flow.wallet_name")
+                        : (defaultWalletName ?? AppLocalization.string("import_flow.wallet_name")),
+                    text: $draft.walletName
+                )
+                .textInputAutocapitalization(.words).autocorrectionDisabled().foregroundStyle(Color.primary)
+                .accessibilityLabel(AppLocalization.string("import_flow.wallet_name"))
+                if !draft.walletName.isEmpty {
+                    Button { draft.walletName = "" } label: {
+                        Image(systemName: "xmark.circle.fill").font(.body.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }.buttonStyle(.plain).accessibilityLabel(AppLocalization.string("Clear wallet name"))
+                }
+            }.padding(SpectraLayout.Space.m).spectraInputFieldStyle()
+        }
+        if draft.mode.takesWalletPassword {
+            setupCard { walletPasswordStepSection }
+        }
         if !isEditingWallet, let chain = draft.chain {
             WalletSetupSummaryCard(store: store, chain: chain)
         }
-        setupCard {
-            VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                Text(
-                    isEditingWallet
-                        ? AppLocalization.string("import_flow.wallet_name")
-                        : AppLocalization.string("import_flow.wallet_name_optional")
-                ).font(.headline).foregroundStyle(Color.primary)
-                if !isEditingWallet {
-                    Text(AppLocalization.string("import_flow.wallet_name_hint")).font(.subheadline).foregroundStyle(.secondary)
-                }
-                HStack(spacing: SpectraLayout.Space.s) {
-                    TextField(AppLocalization.string("import_flow.wallet_name_placeholder"), text: $draft.walletName)
-                        .textInputAutocapitalization(.words).autocorrectionDisabled().foregroundStyle(Color.primary)
-                    if !draft.walletName.isEmpty {
-                        Button { draft.walletName = "" } label: {
-                            Image(systemName: "xmark.circle.fill").font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                        }.buttonStyle(.plain).accessibilityLabel(AppLocalization.string("Clear wallet name"))
-                    }
-                }.padding(SpectraLayout.Space.m).spectraInputFieldStyle()
-            }
-        }
-    }
-    @ViewBuilder
-    private var passwordPageContent: some View {
-        setupCard { walletPasswordStepSection }
     }
     @ViewBuilder
     private var importStatusSection: some View {
@@ -256,22 +273,30 @@ struct SetupView: View {
     var body: some View {
         ZStack {
             SpectraBackdrop().ignoresSafeArea()
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: SpectraLayout.Space.l) {
-                    setupHeader
-                    VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                        pageContent
-                        importStatusSection
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: SpectraLayout.Space.l) {
+                        setupHeader
+                        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+                            pageContent
+                            importStatusSection
+                        }
                     }
-                }.spectraScreenPadding()
-            }.scrollBounceBehavior(.basedOnSize)
+                    .spectraScreenPadding()
+                    .scrollsToKeyboardAnchor(proxy)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            setupBottomActionBar
-        }
+        .safeAreaBar(edge: .bottom) { setupBottomActionBar }
+        .toolbar(.hidden, for: .tabBar)
         .navigationDestination(item: $nextPage) { page in
             SetupView(store: store, draft: draft, page: page)
+        }
+        .task(id: setupPage) {
+            guard setupPage == .walletName, !isEditingWallet else { return }
+            defaultWalletName = try? await store.bridge.ready().defaultWalletName()
         }
     }
     private var setupBottomActionBar: some View {

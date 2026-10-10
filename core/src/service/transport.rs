@@ -64,7 +64,7 @@ impl WalletService {
         if let Some(dir) = self.transport_cache_dir.lock().as_ref() {
             crate::tor::reconcile(settings, dir, restart);
         } else {
-            crate::tor::apply_policy(settings.tor_enabled, settings.tor_kill_switch);
+            crate::tor::apply_policy(settings.tor_enabled);
         }
     }
 }

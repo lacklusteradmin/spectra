@@ -4,7 +4,8 @@ import UIKit
 
 /// Saved recipients, with adding a contact as a toolbar action.
 struct AddressBookView: View {
-    let addressBook: AddressBookState
+    let store: AppState
+    private var addressBook: AddressBookState { store.addressBook }
     @State private var isAddingContact = false
     @State private var openContact: AddressBookEntry?
 
@@ -15,7 +16,7 @@ struct AddressBookView: View {
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                     spectraPageHeader(
-                        title: "Saved Addresses",
+                        title: "Address Book",
                         subtitle: "Pick a saved recipient during a send instead of pasting an address.",
                         systemImage: "person.crop.circle"
                     )
@@ -35,14 +36,13 @@ struct AddressBookView: View {
                             }
                         )
                     } else {
-                        LazyVStack(spacing: SpectraLayout.Space.m) {
-                            ForEach(addressBook.entries) { entry in
-                                AddressBookContactCard(entry: entry) { openContact = entry }
-                            }
+                        // One card, a row per contact.
+                        SpectraRowGroup(data: addressBook.entries) { entry in
+                            AddressBookContactRow(entry: entry) { openContact = entry }
                         }
                     }
                 }
-                .padding(SpectraLayout.Space.l)
+                .spectraScreenPadding()
             }
         }
         .navigationTitle(AppLocalization.string("Address Book"))
@@ -63,7 +63,7 @@ struct AddressBookView: View {
             NewAddressBookContactView(addressBook: addressBook)
         }
         .navigationDestination(item: $openContact) { entry in
-            AddressBookContactView(addressBook: addressBook, entry: entry)
+            AddressBookContactView(store: store, entry: entry)
         }
     }
 
@@ -101,22 +101,21 @@ struct AddressBookView: View {
 }
 
 /// One saved recipient. The row opens the contact; copy is its own button.
-private struct AddressBookContactCard: View {
+private struct AddressBookContactRow: View {
     let entry: AddressBookEntry
     let onOpen: () -> Void
-    @State private var didCopy = false
 
     var body: some View {
         let badge = AssetHolding.nativeChainBadge(for: entry.chainId) ?? (nil, Color.mint)
 
-        HStack(spacing: SpectraLayout.Space.m) {
+        HStack(spacing: SpectraLayout.Space.xs) {
             Button(action: onOpen) {
                 HStack(spacing: SpectraLayout.Space.m) {
                     CoinBadge(
                         artworkName: badge.artworkName,
                         fallbackText: entry.chainName,
                         color: badge.color,
-                        size: 42
+                        size: 36
                     )
 
                     VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
@@ -141,33 +140,15 @@ private struct AddressBookContactCard: View {
 
                     Spacer(minLength: 0)
                 }
+                .padding(.leading, SpectraLayout.rowHorizontal)
+                .padding(.vertical, SpectraLayout.rowVertical)
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
-            Button {
-                UIPasteboard.general.string = entry.address
-                didCopy = true
-                spectraHaptic(.light)
-            } label: {
-                Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 14, weight: .medium))
-                    .frame(width: 34, height: 34)
-            }
-            .buttonStyle(.glass)
-            .accessibilityLabel(AppLocalization.string(didCopy ? "Copied" : "Copy"))
-        }
-        .padding(SpectraLayout.Space.l)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .spectraElevatedFill()
-        // `.task(id:)` clears "Copied" after a moment and cancels with the row,
-        // so a card scrolled away mid-timer does not come back still claiming
-        // it.
-        .task(id: didCopy) {
-            guard didCopy else { return }
-            try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled else { return }
-            didCopy = false
+            CopyButton(value: entry.address)
+                .padding(.trailing, SpectraLayout.Space.xs)
         }
     }
 }

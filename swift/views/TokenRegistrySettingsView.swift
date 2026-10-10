@@ -46,7 +46,7 @@ struct TokenRegistrySettingsView: View {
             .overlay { emptyState(isFilteredEmpty: groups.isEmpty) }
         }
         .navigationTitle(AppLocalization.string("Known Tokens"))
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: AppLocalization.string("Search name, symbol, chain, or address"))
         .textInputAutocapitalization(.never).autocorrectionDisabled()
         .toolbarBackground(.hidden, for: .navigationBar)

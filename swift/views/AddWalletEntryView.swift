@@ -2,8 +2,9 @@ import SwiftUI
 
 /// Add Wallet: choose the network first. Every page after it — the ways of
 /// adding a wallet, the formats they accept, the options they offer — is that
-/// network's own. Funds Finder sits above the list for a phrase whose network
-/// is unknown.
+/// network's own: a wallet is on one network, and Add to Another Network
+/// takes its phrase to the next. Funds Finder sits under the list, for a
+/// phrase whose network is unknown.
 struct AddWalletEntryView: View {
     let store: AppState
     private static let descriptors = ChainSelectionDescriptor.popularOrder(Chain.all)
@@ -92,7 +93,8 @@ struct WalletSetupMethodsView: View {
         .onChange(of: upgradedIsWatchOnly) { _, isWatchOnly in
             if isWatchOnly == false { dismiss() }
         }
-        .navigationTitle(upgrading == nil ? chain.displayName : WalletAction.addKeys.title)
+        // The header names the network; the bar would say it a second time.
+        .navigationTitle(upgrading == nil ? "" : WalletAction.addKeys.title)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(
             isPresented: Binding(
@@ -176,7 +178,7 @@ extension WalletSetupMethod {
         case .watchAddresses: "eye.circle.fill"
         case .watchAccountXpub: "binoculars.circle.fill"
         case .watchViewKey: "eye.square.fill"
-        case .watchMultisig: "person.3.fill"
+        case .watchMultisig: "person.2.circle.fill"
         }
     }
 }

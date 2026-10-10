@@ -35,9 +35,9 @@ struct WalletAccessKeysView: View {
                     Text(AppLocalization.string("A dapp adds a function-call key when you sign in to it. The key can call only its contract and spend gas only from its allowance. Delete the ones you no longer use."))
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.accessKeys.title).navigationBarTitleDisplayMode(.inline)
@@ -125,11 +125,7 @@ private struct DeleteAccessKeyView: View {
                 submittedText: AppLocalization.string("Submitted. The key is gone once it confirms."))
         }
         .navigationTitle(AppLocalization.string("Delete Key")).navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
         .task {
             await session.load(
                 operation: .build,

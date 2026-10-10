@@ -23,6 +23,9 @@ extension AppState {
         do {
             let state = try await self.bridge.ready().appState()
             applyCoreState(state)
+        } catch SpectraBridgeError.StoreUnreadable(let message) {
+            isStoreUnreadable = true
+            appendOperationalLog(.error, category: "Storage", message: message)
         } catch {
             appendOperationalLog(.error, category: "Storage", message: error.localizedDescription)
         }
@@ -34,7 +37,7 @@ extension AppState {
         await loadCoreOwnedState()
         await diagnostics.loadFromSQLite()
         // Opening the state folds this build's built-in tokens in, and carries
-        // settings, alerts and contacts; the five preferences this platform
+        // settings, alerts and contacts; the six preferences this platform
         // keeps were read from `UserDefaults` when `preferences` was created.
         await rebuildWalletDerivedStateFromCore()
         await refreshTransactionProjection()

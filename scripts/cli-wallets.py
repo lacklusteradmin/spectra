@@ -488,6 +488,19 @@ class WalletsTests(unittest.TestCase):
                 both = summary('base-sepolia')
                 assert not both['customEndpointsOnly'] and both['endpoints'][0]['endpoint'] == endpoint, both
                 assert any(e['isBuiltIn'] for e in both['endpoints']), both
+                # Editing the network's only own endpoint keeps using only its
+                # own, across processes; edited back, it reads as before.
+                run('endpoints', '--chain', 'base-sepolia', '--custom-only', 'true')
+                moved = endpoint.replace('127.0.0.1', 'localhost')
+                edited = run('endpoints', '--chain', 'base-sepolia', '--api', 'evm-json-rpc', '--capabilities',
+                             'balance,verification', '--replace', endpoint, '--add', moved)
+                assert [e['endpoint'] for e in edited['customEndpoints']] == [moved], edited
+                assert summary('base-sepolia')['customEndpointsOnly'], summary('base-sepolia')
+                run('endpoints', '--chain', 'base-sepolia', '--api', 'evm-json-rpc', '--capabilities',
+                    'balance,verification', '--replace', moved, '--add', endpoint)
+                # Removing the network's last own endpoint stops using only its own.
+                removed = run('endpoints', '--chain', 'base-sepolia', '--remove', endpoint)
+                assert removed['customEndpoints'] == [] and removed['customEndpointsOnly'] == [], removed
                 if journal.exists():
                     assert not journal.read_text(), journal.read_text()
         finally:

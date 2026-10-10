@@ -1,14 +1,23 @@
 import Foundation
 import SwiftUI
 extension AppState {
-    /// Open the composer on `walletId`, or on the first wallet that can send.
-    func beginSend(walletId: String? = nil) {
+    /// Open the composer on `walletId`, or on the first wallet that can send,
+    /// and on `holdingKey` when that wallet can send it.
+    func beginSend(walletId: String? = nil, holdingKey: String? = nil) {
         let wallets = sendEnabledWallets
         guard let wallet = wallets.first(where: { $0.id == walletId }) ?? wallets.first else { return }
         sendFlow.walletId = wallet.id
-        sendFlow.holdingKey = availableSendCoins(for: sendFlow.walletId).first?.holdingKey ?? ""
+        let coins = availableSendCoins(for: sendFlow.walletId)
+        sendFlow.holdingKey = coins.first(where: { $0.holdingKey == holdingKey })?.holdingKey ?? coins.first?.holdingKey ?? ""
         sendFlow.resetComposer()
         syncSendAssetSelection()
+        presentSendFlow()
+    }
+    /// Push the composer on the tab the user is on — Home and History each
+    /// have it as a destination; Settings has none, so it opens on Home.
+    private func presentSendFlow() {
+        if selectedMainTab == .settings { selectedMainTab = .home }
+        sendFlow.presentingTab = selectedMainTab
         sendFlow.isPresented = true
     }
     func syncSendAssetSelection() {
@@ -54,6 +63,11 @@ extension AppState {
               quote.amount == sendFlow.amountInput else { return nil }
         return quote
     }
+    /// Why the entered amount cannot be sent, from core's quote for it: more
+    /// than the balance, or too little left for the fee.
+    var sendAmountRefusal: String? {
+        sendQuoteForEnteredAmount?.amountRefusal?.localizedText
+    }
     func sendShortcutAmount(percentage: UInt32) -> String? {
         guard !sendFlow.isPreparingPreview else { return nil }
         return sendQuote?.shortcuts[percentage]
@@ -72,28 +86,14 @@ extension AppState {
         return addressBook.entries.filter { $0.chainId == selectedSendCoin.chainId }
     }
     func selectedWalletForSend() -> WalletView? { wallet(for: sendFlow.walletId) }
-    /// The pending send the composer can replace as it stands: core's rule,
-    /// scoped to the wallet and chain the composer is on.
-    ///
-    /// The rule is `replaceable_sends`, derived where the records are; what is
-    /// left here is the lookup. The chain has to match: a replacement is the
-    /// pending send's nonce re-signed *on its own chain*, and the composer
-    /// signs for whichever chain it is showing.
-    var replaceableSendForSelectedWallet: ReplaceableSend? {
-        guard let selectedSendCoin else { return nil }
-        return replaceableSends.first {
-            $0.walletId == sendFlow.walletId && $0.chainId == selectedSendCoin.chainId
-        }
+    /// Whether the composer is pushed on `tab`'s stack.
+    func sendFlowBinding(on tab: MainAppTab) -> Binding<Bool> {
+        Binding(
+            get: { self.sendFlow.isPresented && self.sendFlow.presentingTab == tab },
+            set: { self.sendFlow.isPresented = $0 })
     }
     func replaceableSend(forTransaction transactionId: String) -> ReplaceableSend? {
         replaceableSends.first { $0.transactionId == transactionId }
-    }
-    func prepareReplacementContext(cancel: Bool) async {
-        guard let pending = replaceableSendForSelectedWallet else {
-            sendFlow.session.error = AppLocalization.string("No pending transaction found for this wallet.")
-            return
-        }
-        await prepareReplacementContext(pending: pending, cancel: cancel)
     }
     func openReplacementComposer(for transactionId: String, cancel: Bool) async -> String? {
         guard let pending = replaceableSend(forTransaction: transactionId) else {
@@ -102,9 +102,7 @@ extension AppState {
             sendFlow.session.error = message
             return message
         }
-        selectedMainTab = .home
-        await Task.yield()
-        sendFlow.isPresented = true
+        presentSendFlow()
         await prepareReplacementContext(pending: pending, cancel: cancel)
         return sendFlow.session.error
     }
@@ -132,8 +130,6 @@ extension AppState {
             sendFlow.session.error = AppLocalization.format("Unable to prepare replacement context: %@", userErrorMessage(error))
         }
     }
-    func prepareSpeedUpContext() async { await prepareReplacementContext(cancel: false) }
-    func prepareCancelContext() async { await prepareReplacementContext(cancel: true) }
     /// The address this send is going to, from whatever is in the field.
     /// Core owns resolution.
     func resolveSendDestination(input: String, on chain: Chain) async throws -> SendDestinationResolution {
@@ -171,26 +167,4 @@ extension AppState {
     func availableSendCoins(for walletId: String) -> [AssetHolding] { walletDerivedCache.availableSendCoinsByWalletId[walletId] ?? [] }
     var sendEnabledWallets: [WalletView] { walletDerivedCache.sendEnabledWallets }
     var canBeginSend: Bool { !sendEnabledWallets.isEmpty }
-    var replacementNonceStateMessage: String? {
-        guard let selectedSendCoin, selectedSendCoin.isEVMChain else { return nil }
-        guard let pending = replaceableSendForSelectedWallet else {
-            return AppLocalization.format(
-                "No pending %@ send found for this wallet. Replacement and cancel are available only for pending transactions.",
-                selectedSendCoin.chainName)
-        }
-        var message = AppLocalization.format("Pending %@ transaction detected", pending.symbol)
-        if let nonce = pending.recordedNonce {
-            message += AppLocalization.format("send.replacement.pendingNonceSuffix", nonce)
-        } else {
-            message += "."
-        }
-        let hash = pending.transactionHash
-        let shortHash = hash.count > 14 ? "\(hash.prefix(10))...\(hash.suffix(4))" : hash
-        message += AppLocalization.format("send.replacement.transactionSuffix", shortHash)
-        message += AppLocalization.string(
-            pending.canSpeedUp
-                ? " Use Speed Up to resend with higher fees or Cancel to submit a 0-value self-transfer using the same nonce."
-                : " Use Cancel to submit a 0-value self-transfer using the same nonce. A token transfer cannot be rebuilt from its record, so it cannot be sped up.")
-        return message
-    }
 }

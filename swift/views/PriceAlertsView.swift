@@ -22,7 +22,7 @@ struct PriceAlertsView: View {
             }
             Section(AppLocalization.string("New Alert")) {
                 if store.portfolio.isEmpty {
-                    SpectraEmptyStateCard(
+                    SpectraEmptyStateContent(
                         title: "No alertable assets",
                         message: "Import a wallet with assets first. Alerts are created from assets currently in your portfolio.",
                         systemImage: "chart.line.uptrend.xyaxis"
@@ -55,7 +55,7 @@ struct PriceAlertsView: View {
             }
             Section(AppLocalization.string("Active Alerts")) {
                 if store.priceAlerts.rules.isEmpty {
-                    SpectraEmptyStateCard(
+                    SpectraEmptyStateContent(
                         title: "No alerts configured yet",
                         message: "Add a price rule to watch one of your portfolio assets.",
                         systemImage: "bell.slash"
@@ -134,8 +134,14 @@ struct PriceAlertsView: View {
     private func syncSelection() {
         if !alertableHoldingKeys.contains(selectedHoldingKey) { selectedHoldingKey = store.portfolio.first?.holdingKey ?? "" }
     }
+    /// "Above $3,000": one sentence per condition, since languages put the
+    /// price on either side of the word.
     private func alertTargetText(_ alert: PriceAlertRule) -> String {
-        "\(alert.condition.displayName) \(store.amounts.formattedFiat(store.amounts.alertTarget(alert)))"
+        let price = store.amounts.formattedFiat(store.amounts.alertTarget(alert))
+        switch alert.condition {
+        case .above: return AppLocalization.format("priceAlert.above_format", price)
+        case .below: return AppLocalization.format("priceAlert.below_format", price)
+        }
     }
     private func statusColor(for alert: PriceAlertRule) -> Color {
         Color.spectraPriceAlertStatusColor(isEnabled: alert.isEnabled, hasTriggered: alert.hasTriggered)

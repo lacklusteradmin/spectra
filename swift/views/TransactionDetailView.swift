@@ -8,7 +8,10 @@ import UIKit
 struct TransactionDetailView: View {
     let store: AppState
     let transaction: TransactionRecord
-    @State private var replacementMessage: String?
+    /// What the last action on this page — a recheck, a rebroadcast, a
+    /// replacement — came to.
+    @State private var actionMessage: String?
+    @State private var isRunningAction = false
     @State private var liveTransaction: TransactionRecord?
     /// Which ends to show and whether each is the wallet's own: core's
     /// answer, cached for the body. View state: losing it costs a redraw.
@@ -30,7 +33,7 @@ struct TransactionDetailView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: SpectraLayout.sectionSpacing) {
                     heroCard
-                    mempoolActionsCard
+                    pendingActionsCard
                     transactionTimelineCard
                     addressesCard
                     detailsCard
@@ -69,7 +72,8 @@ struct TransactionDetailView: View {
                 Spacer(minLength: SpectraLayout.Space.s)
                 TransactionStatusBadge(status: tx.status)
             }
-            Text(signedAmountText).font(.title.weight(.bold))
+            BalanceText(text: signedAmountText, isHidden: store.preferences.hideBalances)
+                .font(.title.weight(.bold))
                 .foregroundStyle(tx.amountColor)
                 .spectraNumericTextLayout(minimumScaleFactor: 0.5)
         }.padding(SpectraLayout.cardPadding).frame(maxWidth: .infinity, alignment: .leading)
@@ -79,50 +83,81 @@ struct TransactionDetailView: View {
         let amount = store.amounts.formattedTransactionDetailAmount(displayedTransaction)
         return displayedTransaction.amountSign + amount
     }
-    // Core says which rows can still be replaced; this row is one of them or
-    // it is not. Second on the page because it is the only thing here a
-    // reader can act on, and it cannot wait.
+    /// What a pending transaction can still have done to it: checked again,
+    /// sent to the network again, sped up or cancelled — each where core
+    /// offers it. Second on the page because it is the only thing here a
+    /// reader can act on, and it cannot wait. The result shows here.
     @ViewBuilder
-    private var mempoolActionsCard: some View {
-        if let pending = store.replaceableSend(forTransaction: displayedTransaction.id) {
-            spectraDetailCard(title: AppLocalization.format("%@ Mempool Actions", pending.chainId.displayName)) {
-                if store.sendFlow.isPreparingReplacement {
-                    SpectraLoadingRow(title: "Preparing replacement/cancel context...")
+    private var pendingActionsCard: some View {
+        let tx = displayedTransaction
+        let canRecheck = tx.actions.recheckUnavailableReason == nil
+        let canRebroadcast = tx.actions.rebroadcastUnavailableReason == nil
+        let replaceable = store.replaceableSend(forTransaction: tx.id)
+        if canRecheck || canRebroadcast || replaceable != nil {
+            spectraDetailCard(title: AppLocalization.string("Pending Transaction")) {
+                if store.sendFlow.isPreparingReplacement || isRunningAction {
+                    SpectraLoadingRow(title: "Working…")
                 } else {
-                    if pending.canSpeedUp {
-                        Button {
-                            Task {
-                                replacementMessage = await store.openReplacementComposer(
-                                    for: displayedTransaction.id, cancel: false
-                                )
+                    GlassEffectContainer(spacing: SpectraLayout.Space.s) {
+                        VStack(spacing: SpectraLayout.Space.s) {
+                            if let replaceable, replaceable.canSpeedUp {
+                                actionButton("Speed Up This Transaction", systemImage: "hare", prominent: true) {
+                                    await store.openReplacementComposer(for: tx.id, cancel: false)
+                                }
                             }
-                        } label: {
-                            Text(AppLocalization.string("Speed Up This Transaction")).font(.headline).frame(maxWidth: .infinity)
-                                .padding(.vertical, SpectraLayout.Space.m)
-                        }.buttonStyle(.glassProminent)
-                    }
-                    Button {
-                        Task {
-                            replacementMessage = await store.openReplacementComposer(
-                                for: displayedTransaction.id, cancel: true
-                            )
+                            if canRecheck {
+                                actionButton("Recheck", systemImage: "arrow.clockwise") {
+                                    await store.retryUTXOTransactionStatus(for: tx.id)
+                                }
+                            }
+                            if canRebroadcast {
+                                actionButton("Rebroadcast", systemImage: "dot.radiowaves.up.forward") {
+                                    await store.rebroadcastSignedTransaction(for: tx.id)
+                                }
+                            }
+                            if replaceable != nil {
+                                actionButton("Cancel This Transaction", systemImage: "xmark.circle", destructive: true) {
+                                    await store.openReplacementComposer(for: tx.id, cancel: true)
+                                }
+                            }
                         }
-                    } label: {
-                        Text(AppLocalization.string("Cancel This Transaction")).font(.headline).frame(maxWidth: .infinity).padding(
-                            .vertical, SpectraLayout.Space.m)
-                    }.buttonStyle(.glass)
-                    Text(
-                        AppLocalization.string(
-                            pending.canSpeedUp
-                                ? "This opens the Send composer with the same nonce and higher fee defaults so you can safely speed up or cancel the pending transaction."
-                                : "This opens the Send composer with the same nonce and higher fee defaults so you can cancel the pending transfer. A token transfer cannot be rebuilt from its record, so it cannot be sped up."
-                        )
-                    ).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let replaceable {
+                        Text(
+                            AppLocalization.string(
+                                replaceable.canSpeedUp
+                                    ? "This opens the Send composer with the same nonce and higher fee defaults so you can safely speed up or cancel the pending transaction."
+                                    : "This opens the Send composer with the same nonce and higher fee defaults so you can cancel the pending transfer. A token transfer cannot be rebuilt from its record, so it cannot be sped up."
+                            )
+                        ).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                if let replacementMessage {
-                    Text(replacementMessage).font(.caption).foregroundStyle(.secondary)
+                if let actionMessage {
+                    Text(actionMessage).font(.caption).foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+    @ViewBuilder
+    private func actionButton(
+        _ title: String, systemImage: String, prominent: Bool = false, destructive: Bool = false,
+        run: @escaping () async -> String?
+    ) -> some View {
+        let button = Button {
+            spectraHaptic(.light)
+            Task {
+                isRunningAction = true
+                actionMessage = await run()
+                isRunningAction = false
+            }
+        } label: {
+            Label(AppLocalization.string(title), systemImage: systemImage).font(.headline)
+                .frame(maxWidth: .infinity).padding(.vertical, SpectraLayout.Space.s)
+        }
+        if prominent {
+            button.buttonStyle(.glassProminent)
+        } else {
+            button.buttonStyle(.glass).tint(destructive ? .red : nil)
         }
     }
     @ViewBuilder
@@ -131,9 +166,9 @@ struct TransactionDetailView: View {
         let to = endpoints?.to
         if from != nil || to != nil {
             spectraDetailCard(title: "Addresses") {
-                if let from { TransactionAddressRow(label: "From", endpoint: from) }
+                if let from { TransactionAddressRow(label: "From", endpoint: from, chain: displayedTransaction.chain) }
                 if from != nil, to != nil { Divider().opacity(0.4) }
-                if let to { TransactionAddressRow(label: "To", endpoint: to) }
+                if let to { TransactionAddressRow(label: "To", endpoint: to, chain: displayedTransaction.chain) }
             }
         }
     }
@@ -233,7 +268,7 @@ struct TransactionDetailView: View {
                     }.frame(minHeight: 44).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityAddTraits(isShowingTechnicalDetails ? [.isButton, .isSelected] : .isButton)
+                .accessibilityValue(AppLocalization.string(isShowingTechnicalDetails ? "Expanded" : "Collapsed"))
                 if isShowingTechnicalDetails {
                     VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                         ForEach(rows) { row in
@@ -301,11 +336,13 @@ struct TransactionDetailView: View {
                 TransactionTimelineItem(
                     id: "network-hash",
                     title: displayedTransaction.isSubmittedOperation ? "Broadcast" : "Detected",
-                    detail: AppLocalization.format("Hash %@", shortTransactionHash(transactionHash)),
+                    // The hash is the Details card's; here, only that the network has it.
+                    detail: displayedTransaction.isSubmittedOperation
+                        ? "The network accepted the transaction." : "Spectra found this transaction on the network.",
                     systemImage: "link",
                     tint: .accentColor,
                     isComplete: true,
-                    isCurrent: displayedTransaction.status == .pending
+                    isCurrent: false
                 )
             )
         } else {
@@ -317,7 +354,7 @@ struct TransactionDetailView: View {
                     systemImage: "hourglass",
                     tint: .spectraWarning,
                     isComplete: false,
-                    isCurrent: displayedTransaction.status == .pending
+                    isCurrent: false
                 )
             )
         }
@@ -344,7 +381,7 @@ struct TransactionDetailView: View {
                     systemImage: "checkmark.seal.fill",
                     tint: .green,
                     isComplete: true,
-                    isCurrent: true
+                    isCurrent: false
                 )
             )
         case .failed:
@@ -357,7 +394,7 @@ struct TransactionDetailView: View {
                     systemImage: "xmark.octagon.fill",
                     tint: .red,
                     isComplete: false,
-                    isCurrent: true
+                    isCurrent: false
                 )
             )
         }
@@ -371,12 +408,10 @@ struct TransactionDetailView: View {
         if let storedConfirmationCountText = displayedTransaction.storedConfirmationCountText {
             parts.append(storedConfirmationCountText)
         }
-        return parts.isEmpty ? AppLocalization.string("Network has confirmed this transaction.") : parts.joined(separator: " - ")
+        return parts.isEmpty ? AppLocalization.string("Network has confirmed this transaction.") : parts.joined(separator: " · ")
     }
-    private func shortTransactionHash(_ hash: String) -> String {
-        guard hash.count > 20 else { return hash }
-        return "\(hash.prefix(10))...\(hash.suffix(6))"
-    }
+    /// The connector runs the row's full height, however tall its text
+    /// grows: the row is fixed to its content, and the line fills the rest.
     private func timelineRow(_ item: TransactionTimelineItem, isLast: Bool) -> some View {
         HStack(alignment: .top, spacing: SpectraLayout.Space.m) {
             VStack(spacing: SpectraLayout.Space.xs) {
@@ -391,7 +426,8 @@ struct TransactionDetailView: View {
                 if !isLast {
                     Rectangle()
                         .fill(item.isComplete ? item.tint.opacity(0.35) : Color.primary.opacity(0.12))
-                        .frame(width: 2, height: 28)
+                        .frame(width: 2)
+                        .frame(minHeight: SpectraLayout.Space.m, maxHeight: .infinity)
                 }
             }
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
@@ -414,7 +450,8 @@ struct TransactionDetailView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, SpectraLayout.Space.xxs)
+        .padding(.bottom, isLast ? 0 : SpectraLayout.Space.s)
+        .fixedSize(horizontal: false, vertical: true)
     }
     private func nonEmptyAddress(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
@@ -520,9 +557,10 @@ private struct TransactionDetailRow: View {
 private struct TransactionAddressRow: View {
     let label: String
     let endpoint: TransactionEndpoint
+    let chain: Chain
 
     var body: some View {
-        CopyableValueRow(value: endpoint.address) {
+        CopyableValueRow(value: displayAddress(chain: chain, address: endpoint.address)) {
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
                 HStack(spacing: SpectraLayout.Space.s) {
                     Text(AppLocalization.string(label)).font(.subheadline).foregroundStyle(.secondary)
@@ -534,7 +572,7 @@ private struct TransactionAddressRow: View {
                             .spectraInsetFill()
                     }
                 }
-                Text(emphasizedEnds(endpoint.address)).font(.body.monospaced())
+                Text(emphasizedEnds(displayAddress(chain: chain, address: endpoint.address))).font(.body.monospaced())
                     .lineLimit(1).truncationMode(.middle)
             }
         }

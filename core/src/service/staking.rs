@@ -160,6 +160,12 @@ impl WalletService {
             let amount = resolved_amount
                 .ok_or_else(|| SpectraBridgeError::invalid("Staking amount is required"))?;
             let review = staking_review(&prepared, &request)?;
+            // The fee in the display currency too, as a send's review has it.
+            let network_fee_value = super::valuation::display_value_of(
+                &this.app_state().await,
+                &chain.native_holding_template(),
+                &review.network_fee,
+            );
             let send_request = crate::send::SendExecutionRequest {
                 wallet_id: request.wallet_id.clone(),
                 chain_id: chain,
@@ -207,6 +213,8 @@ impl WalletService {
                     created_at: crate::store::now_unix().floor(),
                     review_digest: String::new(),
                     review: SendArtifactReview {
+                        network_fee: Some(review.network_fee.clone()),
+                        network_fee_value,
                         staking: Some(review),
                         ..SendArtifactReview::default()
                     },

@@ -280,6 +280,9 @@ impl WalletService {
             recipient_warnings,
             requires_self_send_confirmation,
             transfer_terms: None,
+            network_fee: None,
+            network_fee_value: None,
+            total: None,
         })
     }
 }

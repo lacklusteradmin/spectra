@@ -1,17 +1,20 @@
 import SwiftUI
 import UIKit
 
-/// An address wraps between its actual characters; layout never adds a hyphen.
-/// UIKit retains the original editable string, including copy and selection.
+/// An address, key or list of addresses being typed: it wraps between its
+/// actual characters, and layout never adds a hyphen that would read as part
+/// of it. UIKit retains the original editable string, including copy and
+/// selection. One address takes Return as done; a list takes it as a line.
 @MainActor
-struct SendAddressInput: View {
+struct AddressInput: View {
     @Binding var text: String
     @Binding var isFocused: Bool
     let prompt: String
+    var allowsNewlines = false
     @ScaledMetric(relativeTo: .subheadline) private var fontSize: CGFloat = 15
 
     var body: some View {
-        AddressTextView(text: $text, isFocused: $isFocused, prompt: prompt, fontSize: fontSize)
+        AddressTextView(text: $text, isFocused: $isFocused, prompt: prompt, fontSize: fontSize, allowsNewlines: allowsNewlines)
             .overlay(alignment: .topLeading) {
                 if text.isEmpty {
                     Text(verbatim: prompt)
@@ -30,6 +33,7 @@ private struct AddressTextView: UIViewRepresentable {
     @Binding var isFocused: Bool
     let prompt: String
     let fontSize: CGFloat
+    let allowsNewlines: Bool
 
     func makeCoordinator() -> Coordinator { Coordinator(input: self) }
 
@@ -49,7 +53,7 @@ private struct AddressTextView: UIViewRepresentable {
         view.smartDashesType = .no
         view.smartQuotesType = .no
         view.smartInsertDeleteType = .no
-        view.returnKeyType = .done
+        view.returnKeyType = allowsNewlines ? .default : .done
         view.adjustsFontForContentSizeCategory = false
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         applyText(to: view)

@@ -63,6 +63,13 @@ struct AmountPresentation {
         let separator = locale.decimalSeparator ?? "."
         return separator == "." ? trimmed : trimmed.replacingOccurrences(of: separator, with: ".")
     }
+    /// The reverse: a decimal core wrote, as a decimal field holds it, so a
+    /// figure filled in for the user — a shortcut, a position, a scanned
+    /// amount — edits with the separator the decimal pad types.
+    static func decimalFieldText(_ canonical: String, locale: Locale = .current) -> String {
+        let separator = locale.decimalSeparator ?? "."
+        return separator == "." ? canonical : canonical.replacingOccurrences(of: ".", with: separator)
+    }
     /// The amount alone, as a compact row shows it: core picks the places
     /// and cuts, never rounds up.
     func formattedAssetAmountValue(_ amount: String, deploymentId: String?) -> String {
@@ -143,14 +150,6 @@ struct AmountPresentation {
             !description.isEmpty
         else { return nil }
         return description
-    }
-    func historyMetadataText(for transaction: TransactionRecord) -> String? {
-        var parts: [String] = []
-        if let rate = storedFeeRateText(for: transaction) { parts.append(rate) }
-        if let usedChangeOutput = transaction.usedChangeOutput, transaction.kind == .send {
-            parts.append(AppLocalization.string(usedChangeOutput ? "change output" : "no change output"))
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
     /// What the detail sheet names as the record's history source. Core says
     /// what the stored id means; the sentence around a chain's providers is

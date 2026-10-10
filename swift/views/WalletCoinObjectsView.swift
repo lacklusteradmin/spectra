@@ -21,9 +21,9 @@ struct WalletCoinObjectsView: View {
                     Text(AppLocalization.string("Every coin received on Sui is a separate object, and a send names each one it spends. Merging a coin's objects into one makes later sends cheaper."))
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.coinObjects.title).navigationBarTitleDisplayMode(.inline)
@@ -95,11 +95,7 @@ private struct MergeCoinsView: View {
                 submittedText: AppLocalization.string("Submitted. The objects are one once it confirms."))
         }
         .navigationTitle(AppLocalization.string("Merge Coins")).navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
         .task {
             await session.load(
                 operation: .build,

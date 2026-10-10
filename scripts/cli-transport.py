@@ -64,7 +64,6 @@ class TransportTests(unittest.TestCase):
                 try:
                     run('settings', 'set', 'tor-custom-proxy', 'true')
                     run('settings', 'set', 'tor-proxy-address', f'socks5://127.0.0.1:{proxy.server_address[1]}')
-                    run('settings', 'set', 'tor-kill-switch', 'true')
                     run('settings', 'set', 'tor-enabled', 'true')
                     self.assertEqual(run('tor')['status'], 'Ready')
                     self.assertEqual(run('tor', '--reconnect')['status'], 'Ready')

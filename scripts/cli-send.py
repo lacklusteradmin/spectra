@@ -232,6 +232,10 @@ class SendTests(unittest.TestCase):
                 assert set(preview['shortcuts'])=={'25','50','75','100'}, preview
                 assert 0 < float(preview['shortcuts']['100']) < 10, preview
                 assert float(preview['details']['maxSendable']) < 10, preview
+                assert preview['amount_refusal'] is None, preview
+                # More than the balance is refused in the quote, before Review.
+                over=run('send','preview',*base,'--amount','10','--destination',addresses[1])['preview']
+                assert 'Insufficient' in over['amount_refusal'], over
                 risk=run('send','probe','--wallet','Source','--asset','ETH','--to',addresses[1])
                 assert risk['activity']=='funded', risk
                 assert quote['requires_self_send_confirmation']
@@ -239,6 +243,8 @@ class SendTests(unittest.TestCase):
                 assert artifact['review']['requires_self_send_confirmation']
                 assert artifact['review']['warnings']==quote['warnings']
                 assert artifact['review']['recipient_warnings']==quote['recipient_warnings']
+                # The fee reviewed at signing is the one the preview quoted.
+                assert artifact['review']['network_fee']==preview['network_fee'], (artifact['review'], preview)
                 assert run('send','inspect',artifact['id'])['artifact']==artifact
 
                 assert quote['request']['evm_overrides']['nonce'] == 7

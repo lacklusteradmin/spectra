@@ -34,9 +34,11 @@ struct ImportMethodTests {
     }
 
     @Test func eachMethodWalksItsOwnPages() {
-        #expect(SetupFlow.forMethod(.createPhrase).pages == [.seedPhrase, .password, .backupVerification, .walletName])
-        #expect(SetupFlow.forMethod(.importPhrase).pages == [.seedPhrase, .password, .walletName])
-        #expect(SetupFlow.forMethod(.importPrivateKey).pages == [.seedPhrase, .password, .walletName])
+        // Verification follows the phrase it checks; the name and the
+        // password share the last page.
+        #expect(SetupFlow.forMethod(.createPhrase).pages == [.seedPhrase, .backupVerification, .walletName])
+        #expect(SetupFlow.forMethod(.importPhrase).pages == [.seedPhrase, .walletName])
+        #expect(SetupFlow.forMethod(.importPrivateKey).pages == [.seedPhrase, .walletName])
         #expect(SetupFlow.forMethod(.watchAddresses).pages == [.watchAddresses, .walletName])
         #expect(SetupFlow.forMethod(.watchAccountXpub).pages == [.watchAddresses, .walletName])
         #expect(SetupFlow.forMethod(.watchViewKey).pages == [.watchAddresses, .walletName])

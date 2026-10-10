@@ -27,9 +27,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Spectra uses the camera to scan QR codes for wallet addresses.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Spectra uses Face ID to verify your identity before revealing your wallet seed phrase.</string>
+	<string>Spectra uses Face ID to confirm it is you before it unlocks, sends, or shows a recovery phrase.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Spectra saves wallet QR codes to your photo library when you choose Save QR Code.</string>
+	<string>Spectra saves a wallet address QR code to your photo library when you choose Save Image while sharing it.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

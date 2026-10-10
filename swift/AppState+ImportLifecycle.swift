@@ -64,6 +64,24 @@ extension AppState {
         }
         if completed { isShowingAddWalletEntry = false }
     }
+    /// Import each commit in turn — the Funds Finder's Import All, one wallet
+    /// per found account. A refusal stops none of the others; each answer
+    /// comes back in order, `nil` for an import core made. The derived
+    /// state is rebuilt once, at the end.
+    func importWallets(_ commits: [WalletImportCommit], progress: (Int) -> Void) async -> [String?] {
+        var refusals: [String?] = []
+        for (index, commit) in commits.enumerated() {
+            progress(index)
+            do {
+                _ = try await bridge.ready().importWallets(commit: commit)
+                refusals.append(nil)
+            } catch {
+                refusals.append(userErrorMessage(error))
+            }
+        }
+        await rebuildWalletDerivedStateFromCore()
+        return refusals
+    }
     /// Add a wallet's key, or watched address, to another network as a
     /// wallet of its own. Core reads the secret and seals the copy; the app
     /// adopts the new wallet as it does an import's.

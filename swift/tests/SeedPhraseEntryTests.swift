@@ -37,6 +37,18 @@ struct SeedPhraseEntryTests {
         #expect(entry.nextSlotCount == nil)
     }
 
+    /// Words typed faster than focus moves arrive in one slot together; each
+    /// takes its own slot from there on, and none is lost past the grid's end.
+    @Test func severalWordsInOneSlotFillTheSlotsAfterIt() {
+        let entry = SeedPhraseEntry()
+        entry.update(at: 10, with: "Abandon about zoo ")
+        #expect(Array(entry.slots[10...12]) == ["abandon", "about", "zoo"])
+        #expect(entry.slots.count >= 13)
+        entry.update(at: 10, with: "")
+        #expect(entry.slot(at: 10).isEmpty)
+        #expect(entry.slot(at: 11) == "about")
+    }
+
     @Test func clearingReturnsTheGridToItsStartingLength() {
         let entry = SeedPhraseEntry()
         entry.paste(zero24)

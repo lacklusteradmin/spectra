@@ -89,18 +89,37 @@ struct SendNetworkStep: View {
 
     // MARK: — Network sub-sections
 
+    /// A typed value that keeps its name and unit beside it once filled: a
+    /// placeholder alone left Max Fee and Priority Fee looking the same. The
+    /// placeholder is the quote's value, not the name beside it again.
+    private func labeledField(
+        _ title: String, unit: String?, estimate: String?, text: Binding<String>, keyboard: UIKeyboardType
+    ) -> some View {
+        HStack(spacing: SpectraLayout.Space.s) {
+            Text(AppLocalization.string(title)).font(.subheadline).foregroundStyle(.secondary)
+            TextField(text: text, prompt: Text(verbatim: estimate ?? "")) { Text(AppLocalization.string(title)) }
+                .keyboardType(keyboard).multilineTextAlignment(.trailing).monospacedDigit()
+            if let unit { Text(verbatim: unit).font(.subheadline).foregroundStyle(.secondary) }
+        }
+        .padding(.horizontal, SpectraLayout.Space.m).padding(.vertical, SpectraLayout.Space.s)
+        .frame(minHeight: 44)
+        .spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
+    }
+
     @ViewBuilder
     private func evmNetworkContent(selectedCoin: AssetHolding) -> some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
             networkSectionHeader(AppLocalization.format("%@ Network", selectedCoin.chainName))
+            let terms = store.sendFlow.quotedEvmTerms
             Toggle(AppLocalization.string("Use Custom Fees"), isOn: Bindable(store.sendFlow).useCustomEvmFees)
             if store.sendFlow.useCustomEvmFees {
-                TextField(AppLocalization.string("Max Fee (gwei)"), text: Bindable(store.sendFlow).customEvmMaxFeeGwei)
-                    .keyboardType(.decimalPad).padding(.horizontal, SpectraLayout.Space.m).padding(.vertical, SpectraLayout.Space.s)
-                    .spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
-                TextField(AppLocalization.string("Priority Fee (gwei)"), text: Bindable(store.sendFlow).customEvmPriorityFeeGwei)
-                    .keyboardType(.decimalPad).padding(.horizontal, SpectraLayout.Space.m).padding(.vertical, SpectraLayout.Space.s)
-                    .spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
+                labeledField(
+                    "Max Fee", unit: "gwei", estimate: terms.map { AmountPresentation.decimalFieldText($0.maxFeePerGasGwei) },
+                    text: Bindable(store.sendFlow).customEvmMaxFeeGwei, keyboard: .decimalPad)
+                labeledField(
+                    "Priority Fee", unit: "gwei",
+                    estimate: terms.map { AmountPresentation.decimalFieldText($0.maxPriorityFeePerGasGwei) },
+                    text: Bindable(store.sendFlow).customEvmPriorityFeeGwei, keyboard: .decimalPad)
                 if let customEvmFeeValidationError = store.sendFlow.customEvmFeeValidationError {
                     Text(customEvmFeeValidationError).font(.caption).foregroundStyle(.red)
                 } else {
@@ -110,45 +129,27 @@ struct SendNetworkStep: View {
             }
             Toggle(AppLocalization.string("Manual Nonce"), isOn: Bindable(store.sendFlow).evmManualNonceEnabled)
             if store.sendFlow.evmManualNonceEnabled {
-                TextField(AppLocalization.string("Nonce"), text: Bindable(store.sendFlow).evmManualNonce)
-                    .keyboardType(.numberPad).padding(.horizontal, SpectraLayout.Space.m).padding(.vertical, SpectraLayout.Space.s)
-                    .spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
+                labeledField(
+                    "Nonce", unit: nil, estimate: terms.map { String($0.nonce) },
+                    text: Bindable(store.sendFlow).evmManualNonce, keyboard: .numberPad)
                 if let evmNonceValidationError = store.sendFlow.evmNonceValidationError {
                     Text(evmNonceValidationError).font(.caption).foregroundStyle(.red)
                 }
-            }
-            // Replacement is offered wherever core says a pending send can
-            // still be replaced.
-            if store.sendFlow.isPreparingReplacement {
-                SpectraLoadingRow(title: "Preparing replacement/cancel context...")
-            } else if let pending = store.replaceableSendForSelectedWallet {
-                if pending.canSpeedUp {
-                    Button(AppLocalization.string("Speed Up Pending Transaction")) {
-                        spectraHaptic(.medium)
-                        Task { await store.prepareSpeedUpContext() }
-                    }
-                }
-                Button(AppLocalization.string("Cancel Pending Transaction")) {
-                    spectraHaptic(.medium)
-                    Task { await store.prepareCancelContext() }
-                }
-            }
-            // Only about a send that can be replaced.
-            if store.replaceableSendForSelectedWallet != nil,
-               let replacementNonceStateMessage = store.replacementNonceStateMessage {
-                Text(replacementNonceStateMessage).font(.caption).foregroundStyle(.secondary)
             }
             if store.sendFlow.isPreparingPreview {
                 SpectraLoadingRow(title: "Loading nonce and fee estimate...")
             } else if let quote, case .ethereum(let evmSendPreview) = quote.preview {
                 Divider().opacity(0.3)
                 valueRow("Nonce", "\(evmSendPreview.nonce)")
-                valueRow("Gas Limit", evmSendPreview.gasLimit.formatted())
+                valueRow("Gas Limit", evmSendPreview.gasLimit.formatted(.number.locale(AppLocalization.locale)))
                 valueRow("Max Fee", store.amounts.compactGasPrice(gwei: evmSendPreview.maxFeePerGasGwei))
                 valueRow("Priority Fee", store.amounts.compactGasPrice(gwei: evmSendPreview.maxPriorityFeePerGasGwei))
+            } else if let error = store.sendFlow.previewError {
+                Label(error, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red)
             } else {
-                Text(AppLocalization.string("Enter an amount to load a live nonce and fee preview. Add a valid destination address before sending."))
-                    .font(.caption).foregroundStyle(.secondary)
+                // The amount and recipient are in by this page; a missing
+                // quote is one still on its way.
+                SpectraLoadingRow(title: "Loading nonce and fee estimate...")
             }
         }
     }
@@ -172,9 +173,10 @@ struct SendNetworkStep: View {
                     Text(AppLocalization.format("Token transfers on %@ pay network fees in %@. Keep a %@ balance for fees.", chainName, chain.gasTokenSymbol, chain.gasTokenSymbol))
                         .font(.caption).foregroundStyle(.secondary)
                 }
+            } else if let error = store.sendFlow.previewError {
+                Label(error, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red)
             } else {
-                Text(AppLocalization.format("Enter an amount to load a %@ fee preview. Add a valid destination address before sending.", chainName))
-                    .font(.caption).foregroundStyle(.secondary)
+                SpectraLoadingRow(title: AppLocalization.format("Loading %@ fee estimate...", chainName))
             }
             Text(AppLocalization.format("Spectra signs and broadcasts %@ transfers in-app.", chain.displayName))
                 .font(.caption).foregroundStyle(.secondary)

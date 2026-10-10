@@ -289,3 +289,54 @@ async fn failed_cleanup_acknowledgment_is_safe_to_retry() {
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn a_store_with_an_undecodable_row_opens_as_unreadable_and_discards_with_its_secrets() {
+    let path = path();
+    let writer = WalletService::new(vec![]).unwrap();
+    let secrets = Arc::new(InMemorySecretStore::new());
+    writer.set_secret_store(secrets.clone());
+    writer.open_state(path.clone()).await.unwrap();
+    let id = imported_wallet(&writer, None).await;
+    drop(writer);
+    // A row written in a shape this build no longer reads.
+    sql(
+        &path,
+        "UPDATE wallets SET payload = json_remove(payload, '$.hiddenHoldings')",
+    );
+
+    let service = WalletService::new(vec![]).unwrap();
+    service.set_secret_store(secrets.clone());
+    let error = service.open_state(path.clone()).await.unwrap_err();
+    assert!(
+        matches!(error, SpectraBridgeError::StoreUnreadable { .. }),
+        "{error:?}"
+    );
+    // Nothing is bound, so the next call fails the same way rather than
+    // running against a half-open store.
+    assert!(matches!(
+        service.open_state(path.clone()).await,
+        Err(SpectraBridgeError::StoreUnreadable { .. })
+    ));
+
+    let state = service.discard_state(path.clone()).await.unwrap();
+    assert!(state.wallets.is_empty());
+    assert!(crate::store::wallet_secrets::load_seed_phrase(&*secrets, &id, None).is_err());
+    // The new store is the open one, so discarding it again is refused.
+    assert!(service.discard_state(path.clone()).await.is_err());
+    assert!(service.app_state().await.wallets.is_empty());
+}
+
+#[tokio::test]
+async fn discarding_a_file_that_is_no_database_names_no_wallets_and_replaces_it() {
+    let path = path();
+    std::fs::write(&path, b"not a database").unwrap();
+    let service = WalletService::new(vec![]).unwrap();
+    service.set_secret_store(Arc::new(InMemorySecretStore::new()));
+    assert!(matches!(
+        service.open_state(path.clone()).await,
+        Err(SpectraBridgeError::StoreUnreadable { .. })
+    ));
+    let state = service.discard_state(path.clone()).await.unwrap();
+    assert!(state.wallets.is_empty());
+}

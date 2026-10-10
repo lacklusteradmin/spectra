@@ -173,9 +173,12 @@ mod tests {
             .await
             .expect("upsert");
 
-        let earliest = service.transaction_snapshot().await.unwrap().earliest;
+        let snapshot = service.transaction_snapshot().await.unwrap();
+        let earliest = snapshot.earliest;
         assert_eq!(earliest.len(), 1);
         assert_eq!(earliest[0].earliest_created_at_unix, 1_723_507_200.25);
+        // The one record is pending, and the snapshot counts it for a badge.
+        assert_eq!(snapshot.pending_count, 1);
     }
 
     /// A limit past the page cap is cut to it rather than refused, so a caller

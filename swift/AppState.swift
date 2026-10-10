@@ -65,7 +65,7 @@ final class AppState {
     let priceAlerts: PriceAlertsState
     let historyPaging = HistoryPagingState()
     let tor: TorState
-    /// The five preferences this platform keeps for itself. Settings core owns
+    /// The six preferences this platform keeps for itself. Settings core owns
     /// are `appSettings`.
     let preferences = AppUserPreferences()
     let diagnostics: WalletDiagnosticsState
@@ -93,9 +93,11 @@ final class AppState {
 
     func adoptAssetPrecision(_ precision: AssetPrecisionCatalog) { assetPrecision = precision }
     var transactionCount: UInt64 = 0
+    /// Core's count of transactions still pending, for the History tab's badge.
+    var pendingTransactionCount: UInt64 = 0
     /// The pending sends core says can still be replaced on their chain.
     /// Adopted with the rest of the transaction-derived views; observed,
-    /// because the composer's Speed Up / Cancel buttons read it.
+    /// because the transaction page's Speed Up / Cancel read it.
     var replaceableSends: [ReplaceableSend] = []
     private(set) var transactionRevision: UInt64 = 0
     /// When each wallet's earliest stored transaction happened, from core's
@@ -149,6 +151,10 @@ final class AppState {
     }
     var isAppLocked: Bool = false
     var appLockError: String? = nil
+    /// Set when core reports the stored data unreadable at launch. Observed:
+    /// nothing works without the store, so the app covers itself with the one
+    /// way out — discarding it — instead of showing an empty wallet list.
+    var isStoreUnreadable = false
     /// Set when core could not be given the keychain-backed secret store.
     /// Observed: nothing that touches a seed or a private key works without
     /// it, so the failure has to reach the user rather than only the log.

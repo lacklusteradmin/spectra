@@ -19,10 +19,27 @@ extension AppState {
         let plan = outcome.plan
         if plan.resetWalletsAndSecrets { resetWalletFlows() }
         if plan.resetHistoryAndCache { resetDiagnosticsViewState() }
-        // The five this platform keeps for itself: hiding balances, appearance,
-        // Face ID, auto-lock and biometric-gated sends. Each writes itself back
-        // to `UserDefaults` as it changes.
+        // The six this platform keeps for itself: hiding balances and small
+        // balances, appearance, Face ID, auto-lock and biometric-gated sends.
+        // Each writes itself back to `UserDefaults` as it changes.
         if plan.resetSettingsAndEndpoints { preferences.resetToDefaults() }
+        return nil
+    }
+    /// Replace a store core could not read. `nil` once the app runs on the
+    /// new, empty store; otherwise why it does not, for the cover to show.
+    func discardUnreadableStore() async -> String? {
+        if let failure = await authenticate(.resetData, reason: AppLocalization.string("Authenticate to reset wallet data")) {
+            return failure
+        }
+        do {
+            try await bridge.discardUnreadableStore()
+        } catch {
+            return userErrorMessage(error)
+        }
+        isStoreUnreadable = false
+        resetWalletFlows()
+        setupRustRefreshEngine()
+        await reloadCoreProjections()
         return nil
     }
     private func resetWalletFlows() {

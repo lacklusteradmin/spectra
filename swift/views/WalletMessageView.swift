@@ -73,10 +73,10 @@ struct WalletMessageView: View {
             case .verify: verifySection
             }
             if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             }
         }
-        .navigationTitle(WalletAction.signMessage.title).navigationBarTitleDisplayMode(.inline)
+        .navigationTitle((canSign ? WalletAction.signMessage : WalletAction.verifyMessage).title).navigationBarTitleDisplayMode(.inline)
         .task { scheme = try? await store.bridge.ready().walletMessageScheme(walletId: wallet.id) }
         .onChange(of: message) { _, _ in
             signed = nil

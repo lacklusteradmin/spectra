@@ -17,6 +17,625 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-09 — A send's review shows its total and a new destination before it is built
+
+- **Before:** the quote and the built review gave the fee alone; what leaves
+  the wallet was left to the reader's arithmetic. "This is a new destination
+  address" appeared only after Build, on the check-and-sign page. The fee sat
+  in the parties card on review and in a card of its own, worded differently,
+  once built.
+- **After:** `OwnedSendPreview.total` and `SendArtifactReview.total` carry the
+  amount plus the fee, exactly, when the coin pays its own fee (`None` for a
+  token, whose fee is another asset). `RecipientCheck.is_new_to_wallet` carries
+  the build's `NewAddress` warning with the quote, by the same rule, never for
+  an own address. Both pages show Network Fee and Total as rows under the
+  parties, and the warning under the address as soon as it is typed.
+- **Why:** the total is the figure a person checks against their balance, and
+  a new destination is worth saying before the build, not after.
+- **CLI check:** `spectra send quote --json …` prints `"warnings":[{"code":"new_address"}]`
+  for a first-time destination, as the build does.
+- **Verification:** `a_total_adds_the_fee_only_where_the_coin_pays_it`. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,329 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 148 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Prepared transactions read as fields
+
+- **Before:** Transaction details showed `prepared_details` as raw JSON led by
+  the payload enum's tag (`"Evm": {…}`), with byte strings as lists of
+  integers; the digest and payload hyphenated where they wrapped.
+- **After:** `prepared_fields(prepared_details)` flattens the prepared
+  transaction into named rows in the order prepared — nested fields by path,
+  byte strings as `0x` hex, nothing as `—` — and the panel lists them. Digests
+  and payloads wrap without hyphens and copy whole.
+- **Why:** a person comparing a digest must not see a character that is not in
+  it; the rows are the same values without the serializer's shape.
+- **CLI check:** none applies — `spectra send` prints `prepared_details`
+  whole, which is the value the rows are read from.
+- **Verification:** `an_evm_transfer_reads_as_its_fields_in_order`,
+  `bytes_read_as_hex_and_lists_by_index`. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,329 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 148 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Fee overrides start from the quote and an unfinished one asks nothing
+
+- **Before:** turning on Manual Nonce or Use Custom Fees showed empty fields,
+  each already an error, and every keystroke that did not parse sent a quote
+  that failed with "Something went wrong", twice on screen.
+- **After:** an override turned on starts from the quote's nonce and fees, and
+  a field's placeholder is the quoted value rather than its own name. While an
+  override does not parse no quote is requested: the field says what is wrong,
+  the last quote and its recipient check stay, and nothing builds from them.
+- **Why:** an override is an edit of what the network asks; a request that can
+  only fail adds a worse-worded copy of the field's own message.
+- **CLI check:** none applies — `spectra send` takes overrides as flags,
+  checked before any request.
+- **Verification:** `overridesStartFromTheQuoteAndKeepWhatWasTyped`,
+  `anUnparsedOverrideAsksForNoQuote`. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,329 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 148 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — The portfolio says what its total leaves out
+
+- **Before:** a test-network holding showed two dashes on Home (no value, no
+  price) and the portfolio read $0.00 with no word on why.
+- **After:** `QuotedTotal.test_network_count` counts holdings with a balance
+  on test networks, which the total leaves out, apart from `unpriced_count`.
+  The hero says "Test network assets are not counted" or how many assets have
+  no price; an unpriced row shows one dash.
+- **Why:** a total that silently omits holdings reads as a total of nothing.
+- **CLI check:** `spectra portfolio --stored --json` prints `testNetworkCount`
+  beside `unpricedCount`.
+- **Verification:** `test_network_holdings_are_counted_as_left_out`;
+  `cli-portfolio.py` checks the shape. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,329 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 148 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — A stored send this build cannot read is left out of the list
+
+- **Before:** one stored send that failed to decode or verify failed the whole
+  list, so Send opened with "Spectra received data it couldn't read" and no
+  saved send could be resumed.
+- **After:** `send_list` leaves out a row it cannot decode or vouch for; the
+  row stays on disk and is never offered to resume or sign. The signed-send
+  queries that decide nonces and reservations still refuse one.
+- **Why:** an unreadable row is not a reason to hide the readable ones, and
+  leaving it out is the safe side: nothing can be signed from it.
+- **CLI check:** on a store whose only send fails its integrity check,
+  `spectra send list` exits 0 with an empty list where it failed with
+  "Prepared transaction was altered".
+- **Verification:** `repaired_artifact_retains_its_reservation_while_other_artifacts_are_refused`
+  covers a garbage row and an altered send. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,329 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 148 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Back from a built send returns to its review
+
+- **Before:** Back on check-and-sign went to the Amount page, skipping the
+  review the send was built from.
+- **After:** Back releases the build (it stays resumable) and shows the review
+  with the form as it was; a send resumed from the list goes back to the list.
+- **Why:** Back is a step back.
+- **CLI check:** none applies — the composer's navigation is the app's.
+- **Verification:** driven in the simulator to check-and-sign and back. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,329 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 148 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Clearing history does not decode what it deletes
+
+- **Before:** `TransactionCommand::Clear` decoded every history record to list
+  the ids it removed. Opening the store reads no history, so a store that
+  opened could still hold a record another build wrote; Reset Wallet then
+  failed with "Spectra received data it couldn't read", after it had already
+  removed the wallets, and the records stayed.
+- **After:** `history_clear` reads the ids straight from the rows and deletes
+  them in one transaction, so a reset clears records this build cannot read.
+- **Why:** a reset is how a user gets out of data the app cannot read; it must
+  not depend on reading it.
+- **CLI check:** with a history row whose payload is only `id`, `kind` and
+  `status`, `spectra settings reset --scope historyAndCache --yes` prints
+  `reset: history and cache`, exits 0 and leaves `history_records` empty.
+- **Verification:** `clearing_removes_records_this_build_cannot_read`. `make
+  lint` clean; `cargo test --workspace` passed (1,324 core tests and 1 CLI
+  test); `make test-cli` passed all 115 checks; the iOS suite was not run for
+  this core-only change.
+
+## 2026-10-09 — A chain search finds a test network by name
+
+- **Before:** with "Show test networks" off, searching the chain list for
+  "Ethereum Sepolia" showed No Results, although the list has that network.
+- **After:** `picked` shows test networks while the switch is on, as before,
+  and also when a search matches no mainnet: the test networks it names are
+  the answer. A search that matches a mainnet still shows only mainnets.
+- **Why:** a search names what it wants, and the switch exists to keep test
+  networks out of browsing, not to hide a network asked for by name.
+- **CLI check:** none applies — the chain list is the app's; `spectra chains`
+  already lists every network.
+- **Verification:** `peercoinReachesThePickerAndWikiWithItsNativeIdentity`
+  checks both sides. `scripts/unused-strings.sh` and `make check-ui` clean; `SeedPhraseEntryTests` and `PresentationCatalogTests` passed (16 tests) on an iPhone 17e simulator; the Swift-only change left core, the CLI and the full iOS suite unrun.
+
+## 2026-10-09 — Seed entry keeps words typed faster than focus moves
+
+- **Before:** a second word typed before the cursor reached the next slot
+  landed in the first slot with the first word; the next key then went to the
+  slot after the first, overwriting it, so a phrase typed quickly lost words.
+  The suggestion bar also appeared and vanished per keystroke, moving the grid.
+- **After:** `SeedPhraseEntry.update` spreads the words over the slots from
+  there on, and the cursor moves past the last of them in the same event. The
+  suggestion bar keeps one height while a slot has focus.
+- **Why:** the model already split several words; the view moved focus as
+  though only one had arrived. Losing a typed word is the worse failure here,
+  since a phrase short a word is refused or, worse, retyped wrongly.
+- **CLI check:** none applies — `spectra wallet import` reads the phrase whole.
+- **Verification:** `severalWordsInOneSlotFillTheSlotsAfterIt`. `scripts/unused-strings.sh` and `make check-ui` clean; `SeedPhraseEntryTests` and `PresentationCatalogTests` passed (16 tests) on an iPhone 17e simulator; the Swift-only change left core, the CLI and the full iOS suite unrun.
+
+## 2026-10-09 — Receive can ask for an amount
+
+- **Before:** the receive page's QR code held the bare address; a payer had to
+  be told the amount, and an exchange-style destination tag, separately.
+- **After:** `Chain::payment_uri_format` names each network's payment request
+  format — BIP-21 (Bitcoin, Litecoin, Dogecoin, Bitcoin Cash, Dash, Zcash,
+  Peercoin), EIP-681 with the chain id (EVM), Solana Pay, `ripple:` with `dt`,
+  SEP-7, `monero:` and `ton://transfer`. `payment_request_uri(chain, address,
+  amount, memo)` writes one, refusing a network with no widely read format, an
+  address of another network, an amount that is not above zero within the
+  coin's precision, and a memo the network's payments do not carry. The
+  receive page offers Request an Amount for the network's coin, with a memo
+  field where the network takes one; the code and Share carry the request.
+- **Why:** a code that carries the amount and tag is the one a sender cannot
+  get wrong; a format only Spectra reads would be worse than none, so those
+  networks are refused rather than given one.
+- **CLI check:** `spectra send request --chain xrp --address r… --amount 25
+  --destination-tag 7` prints `ripple:r…?amount=25&dt=7`; `--chain tron`
+  exits 3.
+- **Verification:** `a_payment_request_reads_back_as_itself` (every format read
+  back through `read_scanned_payment` as its address, amount and memo) and
+  `a_payment_request_refuses_what_it_cannot_say`. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,323 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Funds Finder imports every found account at once
+
+- **Before:** each account the scan found was imported through the setup form
+  one at a time, phrase and all.
+- **After:** Import All builds, for each found account, the commit the single
+  import would (phrase, passphrase, profile and account), with one optional
+  password, and imports them in turn through `importWallets`; core names each
+  `Wallet N`, refuses an account it already signs for, gives a watched one its
+  keys, and the sheet shows each account's answer.
+- **Why:** a scan's usual result is more than one account.
+- **CLI check:** none applies — `spectra wallet import` imports one account per
+  call, which is what Import All does per account.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,323 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — A custom endpoint can be edited in place
+
+- **Before:** a custom endpoint could only be removed and added again, and
+  removing a network's only one also switched off "use only my endpoints".
+- **After:** `AppSettingUpdate::ReplaceCustomEndpoint { chain_id, endpoint,
+  api, new_endpoint, capabilities }` validates the new record and replaces the
+  saved one where it stands, refusing an edit into another saved endpoint or
+  of one that is not saved; "only mine" is untouched. Settings → Endpoints
+  edits a custom row by swipe or menu; `spectra endpoints --replace OLD --add
+  NEW --api … --capabilities …`.
+- **Why:** an edit must never pass through a state with the network unable to
+  ask anyone.
+- **CLI check:** `spectra endpoints --chain base-sepolia --api evm-json-rpc
+  --capabilities balance,verification --replace <url> --add <new>`.
+- **Verification:** core `editing_a_custom_endpoint_keeps_it_and_using_only_custom_ones`;
+  `cli-wallets.py` edits the network's only endpoint and checks "only mine"
+  survives across processes. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,323 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Contacts are saved when core says so, and addresses can be pasted, scanned or picked
+
+- **Before:** New Contact closed before core answered, so a refused save lost
+  what was typed and showed its reason on another page; Save Recipient on a
+  send's result saved "ETH Recipient" without asking; the composer's contact
+  menu showed name and chain but no address; the tool pages' address fields
+  (NFT, MWEB, shielded, network account, multisig) took typing only; a contact
+  could not be paid from its page.
+- **After:** `AddressBookState.add` returns core's answer; the form stays open
+  with the reason on a refusal. Save Recipient opens a Save Contact sheet with
+  the name prefilled. The contact menu shows name and shortened address.
+  `AddressEntryRow` — paste, scan, contacts — is every tool page's recipient
+  field, and core's `read_scanned_address(chain, payload)` reads a scanned
+  code's recipient alone (a token transfer's `address`, never its contract).
+  A contact's page has Send to, from a wallet on its network. Address validity
+  carries a symbol; the list's title is Address Book on both bars.
+- **Why:** a refusal belongs on the form that caused it, and a recipient is
+  entered the same way on every page.
+- **CLI check:** none for the forms; core's `an_address_field_reads_the_recipient_alone`.
+- **Verification:** `AppStateTests` now awaits `add` and checks a refusal
+  reaches the caller. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,323 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — The composer opens on the tab that asked for it
+
+- **Before:** Speed Up or Cancel from History switched to the Home tab and
+  pushed the composer there; Back went to the dashboard.
+- **After:** `SendFlowState.presentingTab` records the tab, and Home and History
+  each push the composer on their own stack (`sendFlowBinding(on:)`); from
+  Settings it opens on Home.
+- **Why:** Back should return to the transaction being replaced.
+- **CLI check:** none applies — navigation.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,323 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Staking shows the balance, the fee's value and each node's answer
+
+- **Before:** the stake form had no balance; the review's fee was crypto only
+  and its From address ungrouped; submissions listed endpoint and raw detail
+  without an outcome; commission was rounded to whole percent (0.5% read 0%);
+  the validator list said "No validators" while loading; amounts and
+  shortcuts used `.` in comma locales.
+- **After:** the form shows what is available to stake; `build_staking` puts
+  the reviewed fee and its display-currency value into
+  `SendArtifactReview.network_fee`/`network_fee_value`, shown as a send's is;
+  From is grouped with a copy button; each attempt shows Node accepted /
+  rejected / uncertain with a symbol (shared with Send); commission keeps up
+  to two places; loading shows progress; filled amounts use the field's
+  separator (`AmountPresentation.decimalFieldText`). No Max: what a stake
+  must leave for its fee and reserve differs per network and core does not
+  compute it, so a guessed Max could sign a transaction that fails on chain.
+- **Why:** funds — refuse to guess a maximum; show what is known.
+- **CLI check:** `spectra staking build …` prints the artifact's
+  `review.network_fee` beside its staking review.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,323 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Settings picks the currency in place; two one-row pages are gone
+
+- **Before:** Pricing was a page holding one currency picker (and repeats of
+  the notices' pricing errors); Report a Problem was a page holding one link;
+  Known Tokens and Crypto Wiki used large titles beside inline ones.
+- **After:** Display Currency is a menu row in Wallets & Data; Report a Problem
+  opens the support page; `PricingSettingsView` and `ReportProblemView` are
+  deleted; catalog pages use inline titles.
+- **Why:** a page per control is a tap to nothing.
+- **CLI check:** `spectra currency` is unchanged.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,323 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Notices can be acted on, and the total says what it counts
+
+- **Before:** the notices badge capped at 9 and was always red; notices had no
+  action; a total that left wallets out did not say so.
+- **After:** the badge reads 9+ and is red only when something failed; pricing
+  notices offer Retry, a degraded network opens Endpoints, and errors can be
+  dismissed. The hero says "N of M wallets counted" when some are excluded,
+  and its wallets link says where it leads.
+- **Why:** a notice with no way forward is noise; a total is read as all of it.
+- **CLI check:** none applies — presentation.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,323 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Smaller corrections from the review's second pass
+
+- Tor's footer says explorer links open in Safari, outside Tor.
+- The seed-phrase password prompt names the order it is asked in.
+- Monero sync shows a status read failure with Retry, its progress in blocks,
+  and padded fields.
+- Verify Message is titled for itself; Donations copies the row tapped;
+  Logs asks before clearing; Payment Proof shows keys and the command whole.
+- Wallet pull to refresh waits for the network's read
+  (`performUserInitiatedRefresh(forChain:)`).
+- The review page shows a loading row, not "enter an amount", while its quote
+  is on its way; EVM fee and nonce fields keep their labels and units.
+- Asset Lives On draws a chevron only on links, makes contracts copyable and
+  reads them to VoiceOver.
+- Send stages use a symbol per state; the From page lists assets in one card
+  with a trailing checkmark and names each wallet's network; a result's hash
+  has a copy button and its errors are red with a symbol.
+- Tool sheets close with Cancel until a node has accepted, then Done
+  (`sendSheetDismissal`).
+- The wallet page's Advanced is Manage; Funds Finder says what providers see;
+  About and Funds Finder use the shared screen inset.
+- **CLI check:** none applies — presentation.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,323 core tests and 1 CLI test); `make test-cli` passed all 115 checks; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Tor on means nothing goes out in the clear
+
+- **Before:** `AppSettings::tor_kill_switch` (default off, `spectra settings
+  set tor-kill-switch`, a toggle on the Tor page) decided whether requests
+  waited for Tor. With it off — the default — every request went out directly
+  while Tor bootstrapped or was down, though the page promised that "your IP
+  address is never sent to any RPC provider". The page also listed the
+  built-in client's SOCKS port as `127.0.0.1:19050`; the client binds a random
+  port. The policy was published before the transport switched, so for a
+  moment a request could see Tor wanted over a proxy not yet installed.
+- **After:** the setting, its update, its CLI key and its toggle are gone.
+  Tor on holds every HTTP, gRPC and TCP request until Tor is ready
+  ("Tor is not connected yet, so the request was not sent."). The policy is
+  published under the transport lock after the new transport is in place.
+  The page says what it does, shows its About rows only for the built-in
+  client, and no longer names a port.
+- **Why:** asking for Tor is asking not to be seen; an option to leak while
+  connecting contradicted the feature and the page's own claim, and one
+  switch fewer is one model fewer. A stored settings blob that still names
+  `torKillSwitch` is refused by `deny_unknown_fields` and reaches the
+  unreadable-store cover below; prelaunch, so no migration.
+- **CLI check:** `spectra settings set tor-kill-switch true` is now an unknown
+  key; `scripts/cli-transport.py` turns Tor on through a loopback SOCKS proxy
+  without it.
+- **Verification:** core `the_kill_switch_engages_only_while_tor_is_wanted_and_not_ready`
+  (over wanted × status) and `tor_settings_persist_and_refuse_an_address_that_is_not_socks5`,
+  which no longer turns Tor on: with Tor wanted and no transport, the
+  process-wide policy would refuse every other test's HTTP call. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — A scanned payment code keeps its amount and memo
+
+- **Before:** `scanned_send_address(chain, payload)` returned only an
+  address. The amount and an exchange's destination tag or memo were dropped,
+  and the payer had to retype them. An EIP-681 token transfer,
+  `ethereum:<token>/transfer?address=<to>&uint256=…`, yielded the **token
+  contract** as the recipient. A code pinned to another EVM chain
+  (`@137`) was read as a payment on this one, and SEP-7's
+  `web+stellar:pay?destination=…` yielded nothing. An unreadable code also
+  raised an alert and an inline message at once.
+- **After:** `send::scanned_payment::read_scanned_payment(chain,
+  token_contract, payload) -> ScannedPayment { address, amount?, memo? }`.
+  BIP-21, Solana Pay, XRP and SEP-7 `amount` and Monero's `tx_amount` are
+  whole units; EIP-681 `value` (wei, `1.5e18` too) and TON `amount`
+  (nanotons) are converted with the network's native decimals. A transfer
+  pays its `address` parameter and must name the selected token; any other
+  contract call, another chain id, or another asset than the selected one is
+  refused. XRP's `dt`/`tag` and SEP-7's `memo`/`memo_type` become the
+  payment memo; a memo kind Spectra cannot send is refused rather than
+  dropped. A coin amount with a token selected is left out. The app fills the
+  amount and memo, says "From the code: …", and shows a refusal once, inline.
+- **Why:** funds — the old reading could pay a token contract, or drop the
+  tag an exchange credits a deposit by. Refuse early rather than guess.
+- **CLI check:** `spectra send scan --chain ethereum
+  'ethereum:0x…@1?value=1.5e18'` prints `amount 1.5`; `--token` names the
+  asset being sent, and `spectra send scan --chain xrp 'ripple:r…?dt=7'`
+  prints the memo.
+- **Verification:** ten tests in `send::scanned_payment`. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — The History tab counts pending transactions
+
+- **Before:** a pending send was visible only by opening History. The tab
+  bar used the older `tabItem` modifiers.
+- **After:** `TransactionSnapshot.pending_count` counts pending records across
+  every wallet, and the History tab badges it (no badge at zero). The tab view
+  uses the `Tab` API and minimizes the bar on scroll.
+- **Why:** something still waiting on its network deserves a glance from any
+  tab; core already reads every pending record for the snapshot, so it
+  counts them too.
+- **CLI check:** `spectra txs --summary --json` prints `pendingCount`; core's
+  `derived_views_use_the_rows_unix_timestamp` asserts it.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Staking asks for the password once
+
+- **Before:** the staking page had a password field in the positions card, the
+  build form, the review and the signing alert, all one value cleared after
+  every step — including a failed one, so a typo meant typing it again, and
+  signing right after building asked again. Every error appeared at the foot
+  of the page. A chosen validator showed as its raw identifier.
+- **After:** one password field at the top of the page, kept across steps and
+  through failures and forgotten when the page closes or another wallet is
+  chosen; the signing alert asks only for a review resumed before one was
+  typed. A positions read's failure shows in the positions card, every other
+  at the step on screen (`vm.positionsError`, `vm.stepError`). The validator
+  is named in the form, the review and the signing alert.
+- **Why:** the steps are one task on one screen; asking four times taught
+  nothing, and an error far from its button read as unrelated.
+- **CLI check:** none applies — the CLI takes the password per command.
+- **Verification:** `StakingViewModelTests` updated (the password typed for
+  the build signs too) and `aFailedBuildKeepsThePasswordAndShowsTheErrorAtTheForm`
+  added. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Custom endpoints can be removed; "only mine" lives in Settings
+
+- **Before:** a custom endpoint could be added but never removed, and the
+  per-network "Use only my endpoints" switch was reachable only from the
+  last page of adding a wallet.
+- **After:** `AppSettingUpdate::RemoveCustomEndpoint { chain_id, endpoint }`;
+  removing a network's last custom endpoint also stops it using only custom
+  ones, so it is never left with nothing to ask. `spectra endpoints --chain X
+  --remove URL`. Settings → Endpoints removes a custom row by swipe or menu,
+  and each network with a custom endpoint (or the switch on) has the switch.
+- **Why:** an add without a remove is half a feature; a privacy switch belongs
+  where the endpoints are managed.
+- **CLI check:** `spectra endpoints --chain base-sepolia --remove <url>`.
+- **Verification:** core `removing_the_last_custom_endpoint_stops_using_only_custom_ones`;
+  `cli-wallets.py` asserts the removal. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — After a broadcast the primary action is Done
+
+- **Before:** once a node accepted a send, the primary button became "View in
+  block explorer", opening Safari from the composer; Done appeared only after
+  confirmation.
+- **After:** `SendExecutionAction.viewTransaction` is gone: an accepted send
+  is `.done`. The receipt card keeps the explorer link as a secondary button.
+- **Why:** the flow is finished once the network has the transaction; leaving
+  the app is an option, not the next step.
+- **CLI check:** none applies — composer presentation.
+- **Verification:** `SendExecutionActionTests` updated. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Recipient checks say core's reason, and wait for typing to pause
+
+- **Before:** "Checking recipient…" flashed on every keystroke; any failure
+  read "Check the address and selected network, then try again." with a
+  Retry beside it, even for a malformed address; two loading rows could show
+  at once; and the destination's history notes showed beside a refusal.
+- **After:** the check row appears after a 350 ms pause; the refusal is core's
+  own sentence; Retry is offered only when the network could not be reached or
+  read; one loading row covers the check and the preview's look at the
+  destination; destination notes show only for a valid address.
+- **Why:** an answer that cannot change on retry should not offer one, and the
+  reason core already has is better than a generic one.
+- **CLI check:** `spectra send destination --chain bitcoin --to nonsense`
+  prints core's refusal.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Biometry is named for the device
+
+- **Before:** every prompt, switch and button said Face ID, on Touch ID and
+  Optic ID devices too; Auto Lock was the only control disabled with the
+  device check off, though signing confirmation and Lock App Now do nothing
+  without it.
+- **After:** `DeviceBiometry` names Face ID, Touch ID, Optic ID or Passcode
+  from `LAContext.biometryType`, in Settings, the lock screen, the seed reveal
+  and its password hint. With the device check off, Auto Lock, Confirm Sends
+  and Lock Now are disabled and the section footer says why.
+- **Why:** a wallet that names the wrong sensor reads as not knowing the
+  device it guards.
+- **CLI check:** none applies — device authentication is the app's.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Settings is a glass tab, regrouped; the Advanced page is gone
+
+- **Before:** Settings was a system `Form`, against IOS-UI's rule for
+  top-level tabs, in nine sections; an Advanced page held signing
+  confirmation, Lock App Now, a manual refresh and status lines that
+  Diagnostics and Operational Logs already had.
+- **After:** `SpectraRowSection` cards over the backdrop: Security & Privacy,
+  Display (with Hide Small Balances), Notifications, Wallets & Data, Help &
+  About, Developer, and a red Reset row. Confirm Sends and Lock Now moved to
+  Security; the Advanced page and its duplicates are deleted.
+- **Why:** one rule for every tab, and a page of duplicates is not a feature.
+- **CLI check:** none applies — presentation.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Reset chooses nothing by default and always confirms
+
+- **Before:** Reset Wallet opened with every category selected and deleted on
+  one tap, under a summary repeating the toggles.
+- **After:** no category is preselected; Reset asks again, naming the chosen
+  categories and that it cannot be undone. The summary is gone.
+- **Why:** an irreversible delete should be chosen, not accepted.
+- **CLI check:** `spectra settings reset --scope …` keeps its own `--yes`
+  gate.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Funds Finder keeps its results through an import
+
+- **Before:** importing a found account wiped the scan (the page's
+  `onDisappear` fired as the import covered it), so a second account meant
+  scanning again; New Scan also cleared the phrase.
+- **After:** the scan is reset only when the page itself closes; New Scan
+  keeps the phrase and passphrase. The phrase card is shielded while the
+  screen is captured.
+- **Why:** a scan finds several accounts to import, one after another.
+- **CLI check:** none applies — page lifetime.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Wallet setup: the password joins the name, and secrets are shielded
+
+- **Before:** create and import had a separate password page; a new phrase
+  was shown, with Copy, as soon as it was generated; seed words were typed in
+  fields with autocorrection and prediction; the default wallet name was
+  Swift's; the new-phrase length, account and path were three advanced
+  entries; a new passphrase had no confirmation.
+- **After:** create is phrase → verify → name and password; import is phrase
+  → name and password, with a step indicator. The new phrase is hidden until
+  revealed, has no Copy, and blurs while the screen is recorded or mirrored,
+  with a warning after a screenshot. Seed words use `SecretWordField` (every
+  keyboard aid off), suggestions and paste from core
+  (`seed_word_suggestions`, `seed_phrase_words_from_text`), and core's
+  `default_wallet_name()`. Advanced holds length (with Regenerate), account
+  and path; a new passphrase is typed twice.
+- **Why:** a secret should not reach the pasteboard, the keyboard's memory or
+  a screen recording; naming and sealing a wallet are one decision.
+- **CLI check:** `spectra wallet create` is unchanged; core's
+  `seed_word_entry_tests` and the import default-name asserts cover the rules.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — The wallet page's everyday actions are Send, Receive and History
+
+- **Before:** the everyday row also held Multisig, Explorer and Add Keys.
+- **After:** those moved to the network section; `Everyday` is Send, Receive
+  and History. Add Wallet leads with the methods, not Funds Finder, and the
+  test-network switch is in the toolbar menu.
+- **Why:** the row is for what is done every day. Decision recorded here: the
+  chain-first model stays — a wallet is on one network, and Add to Another
+  Network reuses its phrase there.
+- **CLI check:** `spectra wallet actions <id>` lists the regrouped actions.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — EVM addresses are shown checksummed
+
+- **Before:** EVM addresses were shown in the stored lowercase.
+- **After:** `display_address(chain, address)` writes EVM addresses in EIP-55
+  for display (receive, send parties, transaction page, wallet card); the
+  stored and signed form is unchanged.
+- **Why:** the checksum lets a reader catch a mistyped character.
+- **CLI check:** none prints display forms; core's `display_address` test.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — History says what happened, and a zero-amount transfer is neutral
+
+- **Before:** rows led with the asset, carried a status pill on every row and
+  a metadata line, grouped older rows as "Older" with counts, and a contract
+  call with no value read as "−0 ETH". Speed Up and Cancel were in the
+  composer, reached from the From page.
+- **After:** a row's title is what happened; the pill shows only an
+  unconfirmed status, with a symbol; rows under Today/Yesterday show the time
+  only; older rows group by month. `transaction_amount_direction(kind,
+  amount)` makes a zero amount neutral (`spectra txs` uses it). History shows
+  a loading placeholder, keeps old rows dimmed during a new query, debounces
+  search, marks an active filter and offers Clear Filters. Speed Up, Recheck,
+  Rebroadcast and Cancel are on the transaction page with their result.
+- **Why:** one place for a pending transaction's actions; a sign on zero is a
+  false direction.
+- **CLI check:** `spectra txs` shows a zero-value call without a sign.
+- **Verification:** core `direction_tests`. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — Home waits for a first balance read, hides dust and balances
+
+- **Before:** a new wallet's zero placeholders read as a $0.00 portfolio; a
+  pinned asset held nowhere showed before anything was read; dust filled the
+  list; Hide Balances masked some figures and not others.
+- **After:** `WalletState.balances_read_at` is set at the first committed read
+  (even of unchanged zeros); until then the total and the rows shimmer and say
+  "Reading balances…". A pinned-unheld row waits for a read on a network the
+  token lives on. `DashboardAssetGroup.is_small` (unpinned, under $1) folds
+  behind "Show N small balances" (`hideSmallBalances`, default on).
+  `BalanceText` masks every balance and value — never a price — with an eye
+  toggle on the hero. Asset detail is live by id, with Send and Receive.
+- **Why:** a zero that is not a balance is a wrong answer, and a privacy mask
+  that misses figures is not one.
+- **CLI check:** none prints the dashboard; core's balance-refresh and
+  dashboard-group tests cover `balances_read_at` and `is_small`.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — The send review names its fee, refuses an unaffordable amount, and survives a failed quote
+
+- **Before:** the signing confirmation and stage view did not repeat the fee
+  that was reviewed; an amount over the balance was refused only at Build;
+  and a failed quote left the last fee on screen as if current, with the
+  composer's own error.
+- **After:** `SendArtifactReview.network_fee` / `network_fee_value` carry the
+  quoted fee into the built artifact, and the signing alert names it.
+  `OwnedSendPreview.amount_refusal` refuses an unaffordable amount on the
+  amount page. A failed quote is `previewError`: the fee row says Unavailable
+  with Retry, and Review waits for a quote. The flow's buttons ride
+  `safeAreaBar`, the tab bar hides, and Back steps back a page.
+- **Why:** what is signed should be what was reviewed, and a refusal belongs
+  where the amount is typed.
+- **CLI check:** `spectra send preview … --amount 10` prints
+  `amount_refusal`; `spectra send build-owned …` prints
+  `review.network_fee`, equal to the preview's (`cli-send.py`).
+- **Verification:** `SendPreviewAdoptionTests` now asserts a quote's failure
+  lands in `previewError` and leaves the session's error alone. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — An unreadable store can be discarded instead of failing every call
+
+- **Before:** a database written by another build, or damaged, failed each
+  call on its own with a decode error; the app showed "couldn't read" on every
+  page and had no way out short of deleting the app.
+- **After:** `open_state` reports `SpectraBridgeError::StoreUnreadable`, and
+  `discard_state(path)` deletes the database, its wallets' sealed secrets and
+  Zcash databases (ids read raw), then opens a fresh store; it refuses a store
+  that is open. The app shows one blocking card with Reset (confirmed and
+  device-authenticated); the CLI names `spectra settings discard --yes`.
+- **Why:** nothing runs without the store, so its failure is one decision, not
+  a failure per call; secrets must not outlive the rows that named them.
+- **CLI check:** on an unreadable `--data-dir`, any command names `settings
+  discard --yes`, which then opens a fresh store.
+- **Verification:** two core tests in `state_secret_deletion`; acceptance
+  "stored data integrity" discard checks. `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
+## 2026-10-09 — One list per card, one empty state per context, one style per tool page
+
+- **Before:** the address book drew a glass card per contact; Price Alerts put
+  glass empty-state cards inside a `Form`; the wallet tool pages each spelled
+  their loading and error rows, errors in red alone; dates and numbers used
+  the system locale beside text in the app's language; some icon buttons had
+  no label.
+- **After:** contacts are rows of one `SpectraRowGroup`; empty states follow
+  IOS-UI's rule (card between cards, content inside a card or Form,
+  `ContentUnavailableView` for a whole screen); tool pages share
+  `WalletToolLoadingSection`, `WalletToolErrorSection` (with a symbol) and
+  `WalletToolEmptySection`; dates and numbers use `AppLocalization.locale`
+  (`Date.appFormatted`); price-alert targets are format keys; diagnostics
+  errors go through `userErrorMessage`; icon-only buttons are labelled.
+- **Why:** glass on glass and per-page spellings of the same state drift
+  apart; colour alone and untranslated dates exclude readers.
+- **CLI check:** none applies — presentation.
+- **Verification:** `make lint` and `make check-ui` clean; `cargo test --workspace` passed (1,319 core tests and 1 CLI test); `make test-cli` passed 114 of 115 checks — the Peercoin suite failed once on its loopback mock server's broken pipe and passed in five reruns on its own; `make test-ios` passed 145 tests on an iPhone 17e simulator.
+
 ## 2026-10-08 — Backing out of a new wallet's phrase no longer crashes
 
 - **Before:** the wallet-setup form had one draft for the app's lifetime,

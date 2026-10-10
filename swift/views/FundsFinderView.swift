@@ -11,9 +11,9 @@ struct FundsFinderHit: Identifiable {
 /// Scan a seed's derivation paths for funded addresses.
 ///
 /// The scan's state is this screen's: nothing else reads it, and leaving the
-/// screen cancels it. It sat on `AppState` as six underscore-prefixed
-/// properties behind six forwarding ones, with a comment claiming
-/// `@Observable` required that shape.
+/// screen cancels it. Importing a found account is not leaving: the import
+/// opens over this screen, and the results are still here on the way back,
+/// for the next account to import.
 struct FundsFinderView: View {
     let store: AppState
     /// The same entry the import page reads a phrase with, so a phrase the
@@ -33,6 +33,7 @@ struct FundsFinderView: View {
     /// chain, worded like any other failed call.
     @State private var unreadChains: [Chain: String] = [:]
     @State private var scanTask: Task<Void, Never>?
+    @State private var isImportingAll = false
 
     private var canStart: Bool { seedEntry.verdict.isValid && !isScanning }
 
@@ -61,9 +62,7 @@ struct FundsFinderView: View {
                         }
                     }
                 }
-                .padding(.horizontal, SpectraLayout.Space.l)
-                .padding(.top, SpectraLayout.Space.l)
-                .padding(.bottom, SpectraLayout.Space.xxl)
+                .spectraScreenPadding()
             }
         }
         .navigationTitle(AppLocalization.string("Funds Finder"))
@@ -71,16 +70,18 @@ struct FundsFinderView: View {
         .toolbar {
             if hasStarted && !isScanning {
                 ToolbarItem(placement: .topBarTrailing) {
+                    // Back to the phrase as it was: the next scan is most often
+                    // the same phrase with a passphrase, or one word fixed.
                     Button(AppLocalization.string("New Scan")) {
                         resetScan()
                         hasStarted = false
-                        seedEntry.reset()
-                        passphrase = ""
                     }
                 }
             }
         }
         .onDisappear {
+            // Covered by the import it opened, not closed.
+            guard !store.walletImport.isPresented else { return }
             resetScan()
         }
         .navigationDestination(
@@ -203,6 +204,7 @@ struct FundsFinderView: View {
         .padding(SpectraLayout.Space.l)
         .frame(maxWidth: .infinity, alignment: .leading)
         .spectraCardFill()
+        .secretShield()
     }
 
     private var passphraseCard: some View {
@@ -229,7 +231,11 @@ struct FundsFinderView: View {
                     Image(systemName: showPassphrase ? "eye.slash" : "eye")
                         .foregroundStyle(.secondary)
                         .font(.subheadline)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string(showPassphrase ? "Hide" : "Show"))
             }
             .padding(SpectraLayout.Space.m)
             .spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
@@ -246,7 +252,7 @@ struct FundsFinderView: View {
             Image(systemName: "lock.shield.fill")
                 .foregroundStyle(.green)
                 .font(.subheadline)
-            Text(AppLocalization.string("Your seed phrase never leaves this device. Derivation and balance checks happen locally and via your configured RPC endpoints."))
+            Text(AppLocalization.string("fundsFinder.privacy"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.leading)
@@ -268,11 +274,10 @@ struct FundsFinderView: View {
             Label(AppLocalization.string("Start Scan"), systemImage: "magnifyingglass")
                 .font(.headline)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, SpectraLayout.Space.l)
+                .frame(minHeight: 46)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.glassProminent)
         .disabled(!canStart)
-        .clipShape(RoundedRectangle(cornerRadius: SpectraLayout.Radius.inner, style: .continuous))
     }
 
     // MARK: - Progress section
@@ -327,24 +332,56 @@ struct FundsFinderView: View {
     private var hitsSection: some View {
         SpectraRowGroup(
             title: AppLocalization.format("%lld paths with funds found", count: hits.count, hits.count),
-            data: hits, dividerInset: SpectraLayout.rowHorizontal
+            data: hits, dividerInset: SpectraLayout.rowHorizontal,
+            footer: {
+                // Every found account at once, each its own wallet — the
+                // scan's usual end is more than one.
+                if hits.count > 1, !isScanning {
+                    Divider().opacity(0.25)
+                    Button {
+                        isImportingAll = true
+                    } label: {
+                        Label(AppLocalization.format("Import All %lld", hits.count), systemImage: "square.and.arrow.down.on.square")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .spectraRowPadding()
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.tint)
+                }
+            }
         ) { hit in
             FundsFinderHitRow(hit: hit) { importHit(hit) }
         }
+        .sheet(isPresented: $isImportingAll) {
+            ImportAllFoundSheet(store: store, hits: hits) { hit, password in
+                importCommit(for: hit, password: password)
+            }
+        }
+    }
+
+    /// The commit the single import would make for `hit`, from a draft set
+    /// up as `importHit` sets one up: the phrase, the passphrase, the
+    /// profile and the account it was found at. No name: core names it.
+    private func importCommit(for hit: FundsFinderHit, password: String) -> WalletImportCommit? {
+        let draft = WalletImportDraft()
+        draft.configure(chain: hit.candidate.chainId, method: .importPhrase)
+        let words = seedEntry.verdict.words
+        draft.seedEntry.load(words, wordCount: words.count)
+        draft.overridePassphrase = passphrase
+        if let profile = hit.candidate.profile {
+            draft.derivationProfile = profile
+            draft.derivationAccount = hit.candidate.account
+        }
+        draft.walletPassword = password
+        draft.walletPasswordConfirmation = password
+        return draft.importCommit(name: "")
     }
 
     private var emptyResultsSection: some View {
-        VStack(spacing: SpectraLayout.Space.s) {
-            Image(systemName: "tray").font(.system(size: 32)).foregroundStyle(.secondary)
-            Text(AppLocalization.string("No funds found")).font(.headline)
-            Text(AppLocalization.string("No balance was detected at any of the scanned derivation paths. Double-check your seed phrase and try with a BIP-39 passphrase if you set one."))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(SpectraLayout.Space.l)
-        .frame(maxWidth: .infinity)
-        .spectraCardFill()
+        SpectraEmptyStateCard(
+            title: "No funds found",
+            message: "No balance was detected at any of the scanned derivation paths. Double-check your seed phrase and try with a BIP-39 passphrase if you set one.",
+            systemImage: "tray")
     }
 
     @ViewBuilder
@@ -364,7 +401,6 @@ struct FundsFinderView: View {
 private struct FundsFinderHitRow: View {
     let hit: FundsFinderHit
     let importAccount: () -> Void
-    @State private var isCopied = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
@@ -383,38 +419,137 @@ private struct FundsFinderHitRow: View {
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(.tint)
             }
+            Text(hit.candidate.derivationPath)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             HStack(spacing: SpectraLayout.Space.xs) {
-                Text(hit.candidate.derivationPath)
+                Text(hit.candidate.address)
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
                 Spacer(minLength: SpectraLayout.Space.xs)
-                Button {
-                    UIPasteboard.general.string = hit.candidate.address
-                    isCopied = true
-                    Task {
-                        try? await Task.sleep(nanoseconds: 1_500_000_000)
-                        isCopied = false
-                    }
-                } label: {
-                    Label(
-                        isCopied ? AppLocalization.string("Copied") : AppLocalization.string("Copy Address"),
-                        systemImage: isCopied ? "checkmark" : "doc.on.doc"
-                    )
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isCopied ? .green : .secondary)
-                }
-                .buttonStyle(.plain)
-                .animation(.spring(duration: 0.25), value: isCopied)
+                CopyButton(value: hit.candidate.address)
             }
-            Text(hit.candidate.address)
-                .font(.caption.monospaced())
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .truncationMode(.middle)
             Button(AppLocalization.string("Import This Account"), action: importAccount)
                 .font(.caption.weight(.semibold)).buttonStyle(.glass)
         }
         .spectraRowPadding()
+    }
+}
+
+/// Importing every found account: one optional password for them all, then
+/// each import in turn and what core said to it.
+private struct ImportAllFoundSheet: View {
+    let store: AppState
+    let hits: [FundsFinderHit]
+    let commit: (FundsFinderHit, String) -> WalletImportCommit?
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var confirmation = ""
+    @State private var importingIndex: Int?
+    /// Each account's answer, by its hit, once its import has run.
+    @State private var results: [UUID: String?] = [:]
+    @State private var isFinished = false
+
+    private var passwordProblem: String? {
+        guard let reason = validateWalletPassword(password: password, confirmation: confirmation) else { return nil }
+        switch reason {
+        case .tooShort(let minChars):
+            return AppLocalization.format("Wallet password must be at least %lld characters, or leave it blank.", Int(minChars))
+        case .confirmationMismatch: return AppLocalization.string("Wallet password confirmation does not match.")
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach(hits) { hit in
+                        HStack(spacing: SpectraLayout.Space.s) {
+                            VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
+                                Text(hit.candidate.chainName).font(.subheadline.weight(.semibold))
+                                Text(hit.candidate.derivationPath).font(.caption.monospaced()).foregroundStyle(.secondary)
+                                if case .some(.some(let refusal)) = results[hit.id] {
+                                    Label(refusal, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red)
+                                }
+                            }
+                            Spacer(minLength: SpectraLayout.Space.s)
+                            status(of: hit)
+                        }
+                    }
+                } footer: {
+                    Text(AppLocalization.string("fundsFinder.importAll.footer"))
+                }
+                if !isFinished {
+                    Section {
+                        SecureField(AppLocalization.string("import_flow.wallet_password_field"), text: $password)
+                        SecureField(AppLocalization.string("import_flow.wallet_password_confirmation_field"), text: $confirmation)
+                    } header: {
+                        Text(AppLocalization.string("import_flow.wallet_password_optional"))
+                    } footer: {
+                        if let passwordProblem {
+                            Label(passwordProblem, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                        } else {
+                            Text(AppLocalization.string("import_flow.wallet_password_subtitle"))
+                        }
+                    }
+                    .disabled(importingIndex != nil)
+                }
+            }
+            .navigationTitle(AppLocalization.string("Import All"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if isFinished {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(AppLocalization.string("Done")) { dismiss() }
+                    }
+                } else {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(AppLocalization.string("Cancel")) { dismiss() }.disabled(importingIndex != nil)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(AppLocalization.string("Import"), action: importAll)
+                            .disabled(importingIndex != nil || passwordProblem != nil)
+                    }
+                }
+            }
+            .interactiveDismissDisabled(importingIndex != nil)
+        }
+    }
+
+    @ViewBuilder
+    private func status(of hit: FundsFinderHit) -> some View {
+        switch results[hit.id] {
+        case .some(.none):
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                .accessibilityLabel(AppLocalization.string("Imported"))
+        case .some(.some):
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                .accessibilityLabel(AppLocalization.string("Not imported"))
+        case .none:
+            if let importingIndex, hits.indices.contains(importingIndex), hits[importingIndex].id == hit.id {
+                ProgressView()
+            }
+        }
+    }
+
+    private func importAll() {
+        let password = password
+        let commits = hits.map { commit($0, password) }
+        importingIndex = 0
+        Task {
+            let built = commits.compactMap { $0 }
+            let refusals = await store.importWallets(built) { importingIndex = $0 }
+            var answers = refusals.makeIterator()
+            for (hit, commit) in zip(hits, commits) {
+                results[hit.id] = commit == nil
+                    ? AppLocalization.string("Not imported") : (answers.next() ?? nil)
+            }
+            importingIndex = nil
+            isFinished = true
+            spectraNotificationHaptic(refusals.allSatisfy { $0 == nil } ? .success : .warning)
+        }
     }
 }

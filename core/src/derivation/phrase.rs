@@ -55,6 +55,15 @@ impl PhraseWordlist {
         }
     }
 
+    /// The list's words that begin with `prefix`, in list order.
+    pub fn words_starting_with(&self, prefix: &str) -> Vec<&'static str> {
+        match self {
+            Self::Bip39(language) => language.words_by_prefix(prefix).to_vec(),
+            Self::Monero(list) => list.words_starting_with(prefix),
+            Self::Polyseed(list) => list.words_starting_with(prefix),
+        }
+    }
+
     /// The code and English name a front end shows and localizes.
     pub fn code_and_name(&self) -> (&'static str, &'static str) {
         match self {

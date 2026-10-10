@@ -97,7 +97,7 @@ struct CryptoWikiLibraryView: View {
             }
         }
         .navigationTitle(AppLocalization.string("Crypto Wiki"))
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: AppLocalization.string("Search coins and chains"))
         .textInputAutocapitalization(.never).autocorrectionDisabled()
         .toolbarBackground(.hidden, for: .navigationBar)

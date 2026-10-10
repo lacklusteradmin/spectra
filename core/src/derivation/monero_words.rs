@@ -56,6 +56,16 @@ impl MoneroWordlist {
             .copied()
     }
 
+    /// The words that begin with `prefix`, case-insensitively.
+    pub fn words_starting_with(&self, prefix: &str) -> Vec<&'static str> {
+        let prefix = prefix.to_lowercase();
+        self.words
+            .iter()
+            .copied()
+            .filter(|word| word.to_lowercase().starts_with(&prefix))
+            .collect()
+    }
+
     pub fn word(&self, index: u32) -> &'static str {
         self.words[index as usize]
     }

@@ -33,6 +33,17 @@ import Foundation
         return svc
     }
 
+    /// Delete a store `openState` reported unreadable, with the secrets of the
+    /// wallets it names, and bind the empty one core opens in its place.
+    func discardUnreadableStore() async throws {
+        let svc = try service()
+        _ = try await svc.discardState(databasePath: sqliteDbPath())
+        if suppliedService == nil {
+            _ = try await svc.configureNetworkRuntime(cacheDir: torCacheDirectory())
+        }
+        stateIsOpen = true
+    }
+
     /// The service without waiting for the database: for synchronous calls
     /// that read the Keychain (seed reveal, funds scan) or register the store.
     /// Those calls block on the Keychain and on key derivation, so callers run

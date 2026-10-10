@@ -17,3 +17,10 @@ func groupedAddress(_ address: String) -> AttributedString {
     }
     return text
 }
+
+/// An address as a person compares it, character by character: core's display
+/// form (an EVM address in its EIP-55 case) in groups of four. Copying goes
+/// through `displayAddress`, never this text, which carries spaces.
+func readableAddress(_ address: String, chain: Chain) -> AttributedString {
+    groupedAddress(displayAddress(chain: chain, address: address))
+}

@@ -62,7 +62,7 @@ extension WalletAction {
         case .verifyMessage: "checkmark.seal"
         case .addToNetwork: "plus.square.on.square"
         case .rename: "pencil"
-        case .revealPhrase: "faceid"
+        case .revealPhrase: DeviceBiometry.current.symbol
         case .exportKeys: "key.horizontal"
         case .delete: "trash"
         }
@@ -76,25 +76,32 @@ extension WalletActions {
     }
 }
 
-/// Send, receive and history: one button each, in core's order.
+/// Send, receive and history: one button each, in core's order, drawn as
+/// Home draws Send and Receive. Side by side while the words fit, stacked
+/// at accessibility sizes, never broken mid-word.
 struct WalletEverydayActionBar: View {
     let offers: [WalletActionOffer]
     let perform: (WalletAction) -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(spacing: SpectraLayout.Space.s) {
-            ForEach(offers, id: \.action) { offer in
-                Button {
-                    spectraHaptic(.medium)
-                    perform(offer.action)
-                } label: {
-                    VStack(spacing: SpectraLayout.Space.xs) {
-                        Image(systemName: offer.action.systemImage).font(.headline)
-                        Text(offer.action.title).font(.caption.weight(.semibold))
-                    }.frame(maxWidth: .infinity, minHeight: 52)
+        GlassEffectContainer(spacing: SpectraLayout.Space.s) {
+            (dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: SpectraLayout.Space.s))
+                : AnyLayout(HStackLayout(spacing: SpectraLayout.Space.s))) {
+                ForEach(offers, id: \.action) { offer in
+                    Button {
+                        spectraHaptic(.medium)
+                        perform(offer.action)
+                    } label: {
+                        Label(offer.action.title, systemImage: offer.action.systemImage)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .buttonStyle(.glass)
+                    .accessibilityHint(AppLocalization.string(offer.note))
                 }
-                .buttonStyle(.glass)
-                .accessibilityHint(AppLocalization.string(offer.note))
             }
         }
     }

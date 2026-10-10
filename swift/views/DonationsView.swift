@@ -23,39 +23,53 @@ struct DonationsView: View {
         }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
             .spectraElevatedFill()
     }
+    /// One card, a row per address. The whole row copies — what the footer
+    /// says a tap does — and says so for a moment.
     private var addressesCard: some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            Text(AppLocalization.string("Addresses")).font(.headline).foregroundStyle(Color.primary)
-            ForEach(copy.destinations, id: \.address) { destination in
-                donationRow(chain: destination.chainId, title: destination.title, address: destination.address)
-                if destination.address != copy.destinations.last?.address {
-                    Divider().opacity(0.25)
-                }
+        SpectraRowGroup(
+            title: AppLocalization.string("Addresses"), data: copy.destinations.map(DonationRow.init),
+            footer: {
+                Text(AppLocalization.string("Tap an address to copy it.")).font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, SpectraLayout.rowHorizontal).padding(.bottom, SpectraLayout.Space.m)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text(AppLocalization.string("Tap an address to copy it.")).font(.caption).foregroundStyle(.secondary)
-        }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
-            .spectraCardFill()
+        ) { row in
+            donationRow(chain: row.destination.chainId, title: row.destination.title, address: row.destination.address)
+        }
+        .task(id: copiedAddress) {
+            guard copiedAddress != nil else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            copiedAddress = nil
+        }
     }
-    @ViewBuilder
+    private struct DonationRow: Identifiable {
+        let destination: DonationDestination
+        var id: String { destination.address }
+    }
     private func donationRow(chain: Chain, title: String, address: String) -> some View {
         let badge = AssetHolding.nativeChainBadge(for: chain) ?? (artworkName: nil, color: Color.mint)
         let isCopied = copiedAddress == address
-        HStack(spacing: SpectraLayout.Space.m) {
-            CoinBadge(artworkName: badge.artworkName, fallbackText: title, color: badge.color, size: 32)
-            VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
-                Text(title).font(.body.weight(.semibold)).foregroundStyle(Color.primary)
-                Text(address).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                    .textSelection(.enabled)
-            }
-            Spacer(minLength: SpectraLayout.Space.s)
-            Button {
-                UIPasteboard.general.string = address
-                copiedAddress = address
-                spectraHaptic(.light)
-            } label: {
+        return Button {
+            UIPasteboard.general.string = address
+            copiedAddress = address
+            spectraHaptic(.light)
+        } label: {
+            HStack(spacing: SpectraLayout.Space.m) {
+                CoinBadge(artworkName: badge.artworkName, fallbackText: title, color: badge.color, size: 36)
+                VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
+                    Text(title).font(.body.weight(.semibold)).foregroundStyle(Color.primary)
+                    Text(address).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: SpectraLayout.Space.s)
                 Image(systemName: isCopied ? "checkmark" : "doc.on.doc").font(.body.weight(.semibold))
-                    .accessibilityLabel(AppLocalization.string(isCopied ? "Copied" : "Copy"))
-            }.buttonStyle(.glass).tint(isCopied ? .green : .accentColor)
-        }.padding(.vertical, SpectraLayout.Space.xs)
+                    .foregroundStyle(isCopied ? Color.green : Color.accentColor)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .spectraRowPadding()
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(AppLocalization.string(isCopied ? "Copied" : "Copy"))
     }
 }

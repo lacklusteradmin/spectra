@@ -182,6 +182,10 @@ struct SpectraLoadingRow: View {
     }
 }
 
+/// An empty state on its own, between the cards of a glass page. Inside a
+/// card, or in a `Form` row, the same words go in `SpectraEmptyStateContent`
+/// — a card in a card stacks glass on glass — and an empty search or a whole
+/// empty list screen is `ContentUnavailableView`.
 struct SpectraEmptyStateCard: View {
     let title: String
     let message: String
@@ -209,6 +213,8 @@ struct SpectraEmptyStateCard: View {
     }
 }
 
+/// An empty state's words and symbol, without a surface: for inside a card
+/// or a `Form` row. See `SpectraEmptyStateCard`.
 struct SpectraEmptyStateContent: View {
     let title: String
     let message: String

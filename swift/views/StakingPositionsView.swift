@@ -13,11 +13,7 @@ struct StakingPositionsView: View {
                 if vm.isBusy { ProgressView() }
             }
             TextField(AppLocalization.string("staking.additional_pool"), text: $vm.extraTarget)
-                .textInputAutocapitalization(.never).autocorrectionDisabled().spectraInputFieldStyle()
-            if vm.rules.positionsRequireAuthorization && requiresPassword {
-                SecureField(AppLocalization.string("Wallet Password"), text: $vm.password)
-                    .spectraInputFieldStyle()
-            }
+                .textInputAutocapitalization(.never).autocorrectionDisabled().padding(SpectraLayout.Space.m).spectraInputFieldStyle()
             Button(AppLocalization.string("staking.refresh_positions")) { vm.begin(.positions) }
                 .buttonStyle(.glass)
                 .disabled(
@@ -26,6 +22,9 @@ struct StakingPositionsView: View {
                             && (!canSign || (requiresPassword && vm.password.isEmpty)))
                 )
                 .accessibilityIdentifier("staking.refresh_positions")
+            if let error = vm.positionsError {
+                StakingErrorText(message: error)
+            }
             if vm.positions.isEmpty {
                 Text(
                     AppLocalization.string(
@@ -61,7 +60,7 @@ struct StakingPositionsView: View {
                     Spacer()
                     Text(
                         Date(timeIntervalSince1970: Double(payoutTime)),
-                        format: .dateTime.year().month().day().hour().minute())
+                        format: .dateTime.year().month().day().hour().minute().locale(AppLocalization.locale))
                 }.font(.caption)
             }
             if let unlock = position.unlockTimeUnix {
@@ -70,7 +69,7 @@ struct StakingPositionsView: View {
                     Spacer()
                     Text(
                         Date(timeIntervalSince1970: Double(unlock)),
-                        format: .dateTime.year().month().day().hour().minute())
+                        format: .dateTime.year().month().day().hour().minute().locale(AppLocalization.locale))
                 }.font(.caption)
             }
             if let epoch = position.unlockEpoch {
@@ -106,6 +105,16 @@ struct StakingPositionsView: View {
     }
 }
 
+/// A staking failure, where the step that raised it is.
+struct StakingErrorText: View {
+    let message: String
+    var body: some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .font(.subheadline).foregroundStyle(.red)
+            .accessibilityIdentifier("staking.error")
+    }
+}
+
 struct StakingValidatorPicker: View {
     let validators: [StakingValidator]
     let isLoading: Bool
@@ -125,8 +134,10 @@ struct StakingValidatorPicker: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                    if isLoading { ProgressView() }
-                    if filtered.isEmpty {
+                    // Loading is not empty: "No validators" waits for the answer.
+                    if isLoading && validators.isEmpty {
+                        ProgressView().frame(maxWidth: .infinity)
+                    } else if filtered.isEmpty {
                         Text(AppLocalization.string("staking.no_validators")).foregroundStyle(.secondary)
                     } else {
                         SpectraRowGroup(data: filtered) { validator in
@@ -141,7 +152,11 @@ struct StakingValidatorPicker: View {
                                         Text(verbatim: validator.identifier).font(.caption.monospaced())
                                             .foregroundStyle(.secondary)
                                         if let commission = validator.commission {
-                                            Text(AppLocalization.format("%.0f%% commission", commission * 100)).font(
+                                            Text(AppLocalization.format(
+                                                "staking.commission_format",
+                                                commission.formatted(
+                                                    .percent.precision(.fractionLength(0...2)).locale(AppLocalization.locale))
+                                            )).font(
                                                 .caption
                                             ).foregroundStyle(.secondary)
                                         }

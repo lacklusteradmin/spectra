@@ -207,10 +207,12 @@ pub(crate) fn history_snapshot(
         let mut seen: std::collections::HashSet<String> =
             records.iter().map(|r| r.id.clone()).collect();
         let mut replaceable = Vec::new();
+        let mut pending_count = 0;
         let rows = pending
             .query_map([], |r| r.get::<_, String>(0))
             .map_err(DbError::from)?;
         for row in rows {
+            pending_count += 1;
             let record: TransactionRecord =
                 serde_json::from_str(&row.map_err(DbError::from)?).map_err(DbError::from)?;
             if let Some(send) = crate::service::history_derived::replaceable_send(&record) {
@@ -238,6 +240,7 @@ pub(crate) fn history_snapshot(
             replaceable,
             earliest,
             total_count,
+            pending_count,
             wallets_with_more_history: Vec::new(),
         })
     })

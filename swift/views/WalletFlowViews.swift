@@ -5,21 +5,27 @@ import CoreImage.CIFilterBuiltins
 import UIKit
 import Vision
 import VisionKit
+/// A transaction's status as a pill: its word and a symbol, never colour
+/// alone. `compact` is the list row's, beside the title.
 struct TransactionStatusBadge: View {
     let status: TransactionStatus
-    private var statusText: String { status.localizedTitle }
+    var compact = false
     private var statusColor: Color { Color.spectraTransactionStatusColor(status) }
-    private var badgeScale: CGFloat {
+    private var systemImage: String {
         switch status {
-        case .pending: return 1.0
-        case .confirmed: return 1.05
-        case .failed: return 0.97
+        case .pending: return "clock"
+        case .confirmed: return "checkmark.circle.fill"
+        case .failed: return "xmark.octagon.fill"
         }
     }
     var body: some View {
-        Text(statusText.uppercased()).font(.caption2.bold()).tracking(0.6).frame(minWidth: 86).padding(.horizontal, SpectraLayout.Space.s).padding(
-            .vertical, SpectraLayout.Space.xs).background(statusColor.opacity(0.16), in: Capsule()).foregroundStyle(statusColor).scaleEffect(badgeScale).animation(
-            .spring(response: 0.35, dampingFraction: 0.74), value: status)
+        Label(status.localizedTitle, systemImage: systemImage)
+            .font((compact ? Font.caption2 : Font.caption).weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, compact ? SpectraLayout.Space.xxs : SpectraLayout.Space.xs)
+            .background(statusColor.opacity(0.16), in: Capsule())
+            .foregroundStyle(statusColor)
+            .fixedSize()
     }
 }
 struct SendQRScannerSheet: View {
@@ -86,6 +92,9 @@ struct WalletCardView: View, Equatable {
         let walletName: String
         let chainTitleText: String
         let totalValueText: String
+        let hidesBalance: Bool
+        /// Core has not read this wallet's balances yet.
+        let isReadingBalances: Bool
         let assetCountText: String
         let isWatchOnly: Bool
         let badgeArtworkName: String?
@@ -97,6 +106,7 @@ struct WalletCardView: View, Equatable {
     private var watchOnlyBadge: some View {
         Image(systemName: "eye").font(.caption.weight(.semibold)).foregroundStyle(.tint).padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, SpectraLayout.Space.xs)
             .background(Color.accentColor.opacity(0.15), in: Capsule())
+            .accessibilityLabel(AppLocalization.string("Watching"))
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -113,12 +123,18 @@ struct WalletCardView: View, Equatable {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: SpectraLayout.Space.xxs) {
-                    Text(presentation.totalValueText).font(.headline).foregroundStyle(Color.primary).spectraNumericTextLayout()
-                    Text(presentation.assetCountText).font(.caption2).foregroundStyle(.secondary)
+                    if presentation.isReadingBalances {
+                        SpectraShimmer(height: 14).frame(width: 70)
+                            .accessibilityLabel(AppLocalization.string("Reading balances…"))
+                    } else {
+                        BalanceText(text: presentation.totalValueText, isHidden: presentation.hidesBalance)
+                            .font(.headline).foregroundStyle(Color.primary).spectraNumericTextLayout()
+                        Text(presentation.assetCountText).font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
                 Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
             }
-        }.contentShape(Rectangle())
+        }
     }
 }
 struct QRCodeRenderer {
@@ -140,38 +156,25 @@ struct ActivityItemSheet: UIViewControllerRepresentable {
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
-@MainActor
-final class PhotoLibraryImageSaver: NSObject {
-    private let completion: (Result<Void, Error>) -> Void
-    init(completion: @escaping (Result<Void, Error>) -> Void) {
-        self.completion = completion
-    }
-    func save(_ image: UIImage) {
-        UIImageWriteToSavedPhotosAlbum(image, self, #selector(saveCompleted(_:didFinishSavingWithError:contextInfo:)), nil)
-    }
-    @objc
-    private func saveCompleted(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer?) {
-        if let error { completion(.failure(error)) } else { completion(.success(())) }
-    }
-}
 struct QRCodeImage: View {
     let address: String
     var body: some View {
-        if let image = qrUIImage {
-            Image(uiImage: image).interpolation(.none).resizable().scaledToFit()
-        } else {
-            Image(systemName: "qrcode").resizable().scaledToFit().padding(SpectraLayout.Space.xl).foregroundStyle(.black)
+        Group {
+            if let image = QRCodeRenderer.makeImage(from: address) {
+                Image(uiImage: image).interpolation(.none).resizable().scaledToFit()
+            } else {
+                Image(systemName: "qrcode").resizable().scaledToFit().padding(SpectraLayout.Space.xl).foregroundStyle(.black)
+            }
         }
+        .accessibilityLabel(AppLocalization.string("QR code of the address"))
     }
-    private var qrUIImage: UIImage? { QRCodeRenderer.makeImage(from: address) }
 }
 struct WalletDetailView: View {
     let store: AppState
     let wallet: WalletView
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
-    @State private var didCopyWalletAddress: Bool = false
-    @State private var isShowingAdvancedPage: Bool = false
+    @State private var isShowingManagePage: Bool = false
     /// Core's answer to what this wallet offers; read again when the wallet
     /// or the endpoints behind its notes change.
     @State private var actions: WalletActions?
@@ -204,12 +207,6 @@ struct WalletDetailView: View {
         let hiddenHoldingPresentations: [HoldingPresentation]
         let walletTotalValueText: String
     }
-    private static let firstActivityFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
     private var isWatchOnly: Bool { displayedWallet.signing.isWatchOnly }
     private var isPrivateKeyWallet: Bool { displayedWallet.signing.isPrivateKey }
     private var displayedWallet: WalletView {
@@ -219,7 +216,7 @@ struct WalletDetailView: View {
         guard let firstDate = store.cachedFirstActivityDateByWalletId[wallet.id] else {
             return AppLocalization.string("No activity yet")
         }
-        return Self.firstActivityFormatter.string(from: firstDate)
+        return firstDate.appFormatted(date: .abbreviated, time: .shortened)
     }
     private var detailPresentation: DetailPresentation {
         let wallet = displayedWallet
@@ -228,8 +225,7 @@ struct WalletDetailView: View {
             HoldingPresentation(
                 coin: holding,
                 amountText: store.amounts.formattedAssetAmount(holding.amount, symbol: holding.symbol, deploymentId: holding.holdingKey),
-                valueText: store.preferences.hideBalances
-                    ? "••••••" : store.amounts.formattedFiat(store.amounts.holdingValue(walletId: wallet.id, coin: holding))
+                valueText: store.amounts.formattedFiat(store.amounts.holdingValue(walletId: wallet.id, coin: holding))
             )
         }
         let holdingPresentations = wallet.shownHoldings.map(presentation)
@@ -242,8 +238,7 @@ struct WalletDetailView: View {
             walletBadge: AssetHolding.nativeChainBadge(for: wallet.family) ?? (nil, .mint),
             visibleHoldingPresentations: holdingPresentations,
             hiddenHoldingPresentations: hiddenPresentations,
-            walletTotalValueText: store.preferences.hideBalances
-                ? "••••••" : store.amounts.formattedWalletTotal(walletId: wallet.id)
+            walletTotalValueText: store.amounts.formattedWalletTotal(walletId: wallet.id)
         )
     }
     /// The wallet's derivation path, named by its profile and account when
@@ -285,17 +280,21 @@ struct WalletDetailView: View {
                 }
             }.spectraScreenPadding()
         }.background(SpectraBackdrop().ignoresSafeArea())
+            // Waits for the read to finish, as Home's does, so the spinner
+            // means something; this wallet's network is what it reads.
             .refreshable {
-                await store.refreshBalances()
+                _ = await store.performUserInitiatedRefresh(forChain: displayedWallet.chain)
             }.navigationTitle(AppLocalization.string("Wallet Details")).navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Advanced")) {
-                    isShowingAdvancedPage = true
+                // Name, keys, other networks and deletion: managing the
+                // wallet, not settings for experts.
+                Button(AppLocalization.string("Manage"), systemImage: "slider.horizontal.3") {
+                    isShowingManagePage = true
                 }
             }
-        }.navigationDestination(isPresented: $isShowingAdvancedPage) {
+        }.navigationDestination(isPresented: $isShowingManagePage) {
             WalletAdvancedDetailsView(
                 store: store, wallet: detailPresentation.wallet,
                 manageOffers: actions?.actions(in: .manage) ?? [],
@@ -310,8 +309,6 @@ struct WalletDetailView: View {
             await loadActions()
         }.task(id: wallet.id) {
             ensName = try? await store.bridge.ready().walletEnsName(walletId: wallet.id)
-        }.onChange(of: wallet.id) { _, _ in
-            didCopyWalletAddress = false
         }.onChange(of: (store.wallet(for: wallet.id) != nil)) { _, walletStillExists in
             handleWalletPresenceChange(walletStillExists: walletStillExists)
         }
@@ -355,7 +352,7 @@ struct WalletDetailView: View {
             if let link = chainFaucetUrl(chain: displayedWallet.chain), let url = URL(string: link) {
                 openURL(url)
             }
-        case .addToNetwork, .rename, .revealPhrase, .exportKeys, .delete: isShowingAdvancedPage = true
+        case .addToNetwork, .rename, .revealPhrase, .exportKeys, .delete: isShowingManagePage = true
         case .history, .multisig, .addKeys, .stake, .scanBlocks, .coins, .tokenApprovals, .nfts, .shieldedFunds,
              .mwebFunds, .networkAccount, .accessKeys, .tokenStorage, .coinObjects, .tokenAccounts, .trustLines,
              .signMessage, .verifyMessage:
@@ -428,8 +425,14 @@ struct WalletDetailView: View {
                     Text(verbatim: ensName).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                Text(presentation.walletTotalValueText).font(.title3.weight(.semibold)).foregroundStyle(Color.primary)
-                    .spectraNumericTextLayout(minimumScaleFactor: 0.7)
+                if presentation.wallet.balancesReadAt == nil {
+                    SpectraShimmer(height: 20).frame(maxWidth: 140)
+                        .accessibilityLabel(AppLocalization.string("Reading balances…"))
+                } else {
+                    BalanceText(text: presentation.walletTotalValueText, isHidden: store.preferences.hideBalances)
+                        .font(.title3.weight(.semibold)).foregroundStyle(Color.primary)
+                        .spectraNumericTextLayout(minimumScaleFactor: 0.7)
+                }
             }
         }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
             .spectraElevatedFill()
@@ -475,31 +478,27 @@ struct WalletDetailView: View {
                     Text(AppLocalization.format("Hidden Assets (%lld)", hidden.count))
                         .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                 }
+                .disclosureGroupStyle(.spectra)
             }
         }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
             .spectraCardFill()
     }
     @ViewBuilder
     private func walletAddressCard(walletAddress: String) -> some View {
+        let chain = displayedWallet.chain
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
             HStack(spacing: SpectraLayout.Space.s) {
-                Image(systemName: "qrcode").font(.subheadline.weight(.semibold)).foregroundStyle(.tint)
                 Text(AppLocalization.string("Wallet Address")).font(.headline).foregroundStyle(Color.primary)
                 Spacer()
-                Button {
-                    UIPasteboard.general.string = walletAddress
-                    didCopyWalletAddress = true
-                    spectraHaptic(.light)
-                } label: {
-                    Label(
-                        didCopyWalletAddress ? AppLocalization.string("Copied") : AppLocalization.string("Copy"),
-                        systemImage: didCopyWalletAddress ? "checkmark" : "doc.on.doc"
-                    ).font(.caption.weight(.semibold))
-                }.buttonStyle(.glass).tint(.accentColor)
+                CopyButton(value: displayAddress(chain: chain, address: walletAddress), title: "Copy")
             }
-            Text(walletAddress).font(.footnote.monospaced()).foregroundStyle(.secondary).textSelection(
-                .enabled
-            ).padding(.horizontal, SpectraLayout.Space.m).padding(.vertical, SpectraLayout.Space.s).frame(maxWidth: .infinity, alignment: .leading).spectraInsetFill()
+            // Grouped and in its checksummed case, so it is compared a group
+            // at a time; never hyphenated where it wraps.
+            Text(readableAddress(walletAddress, chain: chain)).font(.body.monospaced())
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, SpectraLayout.Space.m).padding(.vertical, SpectraLayout.Space.s)
+                .frame(maxWidth: .infinity, alignment: .leading).spectraInsetFill()
+                .accessibilityLabel(Text(verbatim: walletAddress))
             // An ICP account is a hash of its principal; each names the
             // wallet to a different kind of sender.
             if let principal = displayedWallet.icpPrincipal {
@@ -525,8 +524,10 @@ struct WalletDetailView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: SpectraLayout.Space.xxs) {
-                Text(holding.amountText).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary).spectraNumericTextLayout()
-                Text(holding.valueText).font(.caption).foregroundStyle(.secondary).spectraNumericTextLayout()
+                BalanceText(text: holding.amountText, isHidden: store.preferences.hideBalances)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary).spectraNumericTextLayout()
+                BalanceText(text: holding.valueText, isHidden: store.preferences.hideBalances)
+                    .font(.caption).foregroundStyle(.secondary).spectraNumericTextLayout()
             }
         }.padding(.vertical, SpectraLayout.Space.xs)
     }
@@ -545,7 +546,6 @@ private struct WalletAdvancedDetailsView: View {
     let firstActivityDateText: String
     @Environment(\.scenePhase) private var scenePhase
     @State private var seedReveal = SeedPhraseRevealState()
-    @State private var didCopySeedPhrase = false
     @State private var isShowingDeleteWalletAlert: Bool = false
     private var displayedWallet: WalletView {
         store.wallet(for: wallet.id) ?? wallet
@@ -600,11 +600,11 @@ private struct WalletAdvancedDetailsView: View {
                     } label: {
                         Label(
                             seedReveal.isRevealing
-                                ? AppLocalization.string("Checking Face ID...")
+                                ? AppLocalization.format("Checking %@…", DeviceBiometry.current.name)
                                 : (requiresSeedPhrasePassword
                                     ? AppLocalization.string("Show Seed Phrase (Password)")
                                     : AppLocalization.string("Show Seed Phrase")),
-                            systemImage: requiresSeedPhrasePassword ? "lock.shield" : "faceid"
+                            systemImage: requiresSeedPhrasePassword ? "lock.shield" : DeviceBiometry.current.symbol
                         )
                     }.disabled(seedReveal.isRevealing || !displayedWallet.signing.hasSeedPhrase)
                 }
@@ -646,7 +646,7 @@ private struct WalletAdvancedDetailsView: View {
                     }
                 }
             }
-        }.navigationTitle(AppLocalization.string("Advanced")).navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle(AppLocalization.string("Manage Wallet")).navigationBarTitleDisplayMode(.inline)
         .navigationDestination(
             isPresented: Binding(
                 get: { store.walletImport.isPresented && store.walletImport.editingWalletId == wallet.id },
@@ -671,7 +671,7 @@ private struct WalletAdvancedDetailsView: View {
         ) {
             Button(AppLocalization.string("OK"), role: .cancel) {}
         } message: {
-            Text(seedReveal.errorMessage ?? "Unknown error")
+            Text(seedReveal.errorMessage ?? AppLocalization.string("Something went wrong. Try again."))
         }.onChange(of: (store.wallet(for: wallet.id) != nil)) { _, walletStillExists in
             if !walletStillExists {
                 isShowingDeleteWalletAlert = false
@@ -695,8 +695,7 @@ private struct WalletAdvancedDetailsView: View {
                 ZStack {
                     VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                         Text(
-                            AppLocalization.string(
-                                "This wallet has an optional seed phrase password. Enter it after Face ID to reveal the recovery phrase.")
+                            AppLocalization.format("seedReveal.password_hint_format", DeviceBiometry.current.name)
                         ).font(.subheadline).foregroundStyle(.secondary)
                         SecureField(AppLocalization.string("Wallet Password"), text: $seedReveal.passwordInput)
                             .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive().padding(SpectraLayout.Space.m)
@@ -727,7 +726,6 @@ private struct WalletAdvancedDetailsView: View {
             isPresented: $seedReveal.isShowingPhraseSheet,
             onDismiss: {
                 seedReveal.clearPhrase()
-                didCopySeedPhrase = false
             }
         ) {
             NavigationStack {
@@ -738,22 +736,11 @@ private struct WalletAdvancedDetailsView: View {
                                 AppLocalization.string(
                                     "Write this down and keep it offline. Anyone with this phrase can control your funds.")
                             ).font(.subheadline).foregroundStyle(.secondary)
-                            Text(seedReveal.phrase).font(.body.monospaced()).foregroundStyle(Color.primary).privacySensitive().padding(SpectraLayout.Space.m)
-                                .frame(maxWidth: .infinity, alignment: .leading).spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
-                            // Copying is how one phrase reaches a second
-                            // network's import: each wallet is on one network.
-                            Button {
-                                copySecretToPasteboard(seedReveal.phrase)
-                                didCopySeedPhrase = true
-                            } label: {
-                                Label(
-                                    AppLocalization.string(didCopySeedPhrase ? "Copied" : "Copy"),
-                                    systemImage: didCopySeedPhrase ? "checkmark" : "doc.on.doc"
-                                ).font(.subheadline.weight(.semibold))
-                            }.buttonStyle(.glass).tint(.accentColor).disabled(seedReveal.phrase.isEmpty)
-                            Text(AppLocalization.string("A copied phrase stays on this device and leaves the clipboard after a minute."))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }.padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+                            // Numbered as it was shown when created, so it is copied
+                            // down in order. No Copy: Add to Another Network takes a
+                            // phrase to another network without the clipboard.
+                            SeedPhraseWordGrid(words: seedReveal.phrase.split(whereSeparator: \.isWhitespace).map(String.init))
+                        }.secretShield().padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
                             .padding(SpectraLayout.Space.l)
                     }
                 }.navigationTitle(AppLocalization.string("Seed Phrase")).navigationBarTitleDisplayMode(.inline).toolbar {

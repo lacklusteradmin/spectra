@@ -62,6 +62,7 @@ extension AppState {
             setTransactionProjection(snapshot.recentAndPending)
             replaceableSends = snapshot.replaceable
             transactionCount = snapshot.totalCount
+            pendingTransactionCount = snapshot.pendingCount
             historyPaging.adopt(walletsWithMoreHistory: Set(snapshot.walletsWithMoreHistory))
             let firstActivity = Dictionary(uniqueKeysWithValues: snapshot.earliest.map {
                 ($0.walletId, Date(timeIntervalSince1970: $0.earliestCreatedAtUnix))

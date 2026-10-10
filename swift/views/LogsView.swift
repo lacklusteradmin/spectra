@@ -9,6 +9,7 @@ struct LogsView: View {
     private let allCategoryFilter = "__all__"
     @State private var selectedCategoryFilter: String = "__all__"
     @State private var copiedNotice: SpectraTransientNotice?
+    @State private var isConfirmingClear = false
     @State private var cachedAvailableCategories: [String] = ["__all__"]
     @State private var cachedFilteredLogs: [DiagnosticLog] = []
     private var diagnosticsState: WalletDiagnosticsState { store.diagnostics }
@@ -78,7 +79,7 @@ struct LogsView: View {
                         VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
                             HStack(spacing: SpectraLayout.Space.s) {
                                 Image(systemName: iconName(for: event.level)).foregroundStyle(color(for: event.level))
-                                Text(log.timestamp.formatted(date: .abbreviated, time: .standard)).font(.caption.bold()).foregroundStyle(
+                                Text(log.timestamp.appFormatted(date: .abbreviated, time: .standard)).font(.caption.bold()).foregroundStyle(
                                     .secondary)
                                 Text(event.category).font(.caption2.weight(.semibold)).foregroundStyle(.secondary).padding(.horizontal, SpectraLayout.Space.xs)
                                     .padding(.vertical, SpectraLayout.Space.xxs).background(Color.secondary.opacity(0.12), in: Capsule())
@@ -127,9 +128,16 @@ struct LogsView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button(AppLocalization.string("Clear"), role: .destructive) {
-                    diagnosticsState.clearOperationalLogs()
+                    isConfirmingClear = true
                 }.disabled(diagnosticsState.operationalLogs.isEmpty)
             }
+        }
+        // The log is what a problem report is made from; clearing it is not
+        // undone.
+        .confirmationDialog(
+            AppLocalization.string("Clear every log entry?"), isPresented: $isConfirmingClear, titleVisibility: .visible
+        ) {
+            Button(AppLocalization.string("Clear"), role: .destructive) { diagnosticsState.clearOperationalLogs() }
         }
     }
     private func iconName(for level: DiagnosticLogLevel) -> String {

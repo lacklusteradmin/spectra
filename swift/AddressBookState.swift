@@ -23,15 +23,13 @@ final class AddressBookState {
     }
 
     /// Save a recipient. Core trims, normalizes the address, validates it,
-    /// rejects duplicates and assigns the entry's id.
-    func add(name: String, address: String, chain: Chain, note: String = "") {
-        send(.addAddressBookEntry(name: name, chainId: chain, address: address, note: note))
-    }
-    func saveRecipient(of transaction: TransactionRecord) {
-        guard transaction.kind == .send else { return }
-        add(
-            name: AppLocalization.format("%@ Recipient", transaction.symbol), address: transaction.address,
-            chain: transaction.chain, note: AppLocalization.string("Saved from recent send"))
+    /// rejects duplicates and assigns the entry's id. Returns once core has
+    /// answered: `nil` when it stored the entry, or why not, so the form that
+    /// asked stays open with what was typed.
+    @discardableResult
+    func add(name: String, address: String, chain: Chain, note: String = "") async -> String? {
+        _ = try? await send(.addAddressBookEntry(name: name, chainId: chain, address: address, note: note)).value
+        return error
     }
     func rename(id: String, to newName: String) {
         send(.renameAddressBookEntry(id: id, name: newName))
@@ -42,7 +40,8 @@ final class AddressBookState {
 
     /// A refusal arrives as an `addressBookRejected` event carrying the reason
     /// core decided on.
-    private func send(_ command: StateCommand) {
+    @discardableResult
+    private func send(_ command: StateCommand) -> Task<StateTransition, Error> {
         commands.enqueue(command) { [weak self] result in
             guard let self else { return }
             switch result {

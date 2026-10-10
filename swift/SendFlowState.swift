@@ -20,7 +20,9 @@ final class SendFlowState {
     /// The destination tag or memo for the recipient, where the network takes one.
     var memoKind: PaymentMemoKind? = nil
     var memoText: String = ""
-    var destinationRiskWarning: String? = nil
+    /// What core's recipient check says deserves a second look: an address
+    /// this wallet has never sent to, one with no history on chain.
+    var destinationWarnings: [String] = []
     var destinationInfoMessage: String? = nil
     /// The recipient is checked inside the preview request.
     var isCheckingDestination: Bool {
@@ -31,18 +33,45 @@ final class SendFlowState {
     var verificationNoticeIsWarning: Bool = false
     var isPreparingReplacement: Bool = false
     var isPreparingPreview: Bool = false
+    /// Why the last quote failed. Separate from `session.error`, which is the
+    /// build's, the signature's or the broadcast's: a quote that did not land
+    /// leaves the fee unknown, and no build goes ahead without one.
+    var previewError: String? = nil
     let session = SendSession()
     var savedArtifacts: [SendArtifact] = []
     let previewStore = SendPreviewStore()
-    var useCustomEvmFees: Bool = false
+    /// An override turned on starts from the quote's own terms: an edit of
+    /// what the network asks, not a blank field that reads as an error the
+    /// moment it appears.
+    var useCustomEvmFees: Bool = false {
+        didSet {
+            guard useCustomEvmFees, !oldValue, let terms = quotedEvmTerms,
+                  customEvmMaxFeeGwei.isEmpty, customEvmPriorityFeeGwei.isEmpty else { return }
+            customEvmMaxFeeGwei = AmountPresentation.decimalFieldText(terms.maxFeePerGasGwei)
+            customEvmPriorityFeeGwei = AmountPresentation.decimalFieldText(terms.maxPriorityFeePerGasGwei)
+        }
+    }
     var customEvmMaxFeeGwei: String = ""
     var customEvmPriorityFeeGwei: String = ""
-    var evmManualNonceEnabled: Bool = false
+    var evmManualNonceEnabled: Bool = false {
+        didSet {
+            guard evmManualNonceEnabled, !oldValue, let terms = quotedEvmTerms, evmManualNonce.isEmpty else { return }
+            evmManualNonce = String(terms.nonce)
+        }
+    }
     var evmManualNonce: String = ""
+    /// The last quote's EVM terms, when it was an EVM quote.
+    var quotedEvmTerms: EvmSendPreview? {
+        guard case .ethereum(let terms)? = previewStore.quote?.preview else { return nil }
+        return terms
+    }
     @ObservationIgnored var previewRequestId = UUID() // Reject every completion of a superseded preview.
     var isPresented: Bool = false {
         didSet { if oldValue && !isPresented { resetComposer() } }
     }
+    /// The tab whose stack the composer is pushed on: the one it was opened
+    /// from, so Back returns to the page that opened it.
+    var presentingTab: MainAppTab = .home
 
     init(bridge: WalletServiceBridge) { self.bridge = bridge }
 
@@ -63,12 +92,13 @@ final class SendFlowState {
     func clearPreview() {
         previewRequestId = UUID()
         previewStore.reset()
+        previewError = nil
         isPreparingPreview = false
         isShowingHighRiskConfirmation = false
     }
 
     func clearDestinationCheck() {
-        destinationRiskWarning = nil
+        destinationWarnings = []
         destinationInfoMessage = nil
     }
 

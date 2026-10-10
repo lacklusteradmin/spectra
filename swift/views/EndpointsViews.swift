@@ -5,6 +5,7 @@ struct EndpointCatalogSettingsView: View {
     @State private var entries: [EndpointDirectoryEntry] = []
     @State private var loadError: String?
     @State private var sourceFilter = "All"
+    @State private var editingEntry: EndpointDirectoryEntry?
     private let copy = EndpointsContentCopy.current
 
     private var endpointSections: [Chain] {
@@ -19,7 +20,44 @@ struct EndpointCatalogSettingsView: View {
                 && (sourceFilter == "All" || $0.isBuiltIn == (sourceFilter == "Built-In"))
         }
     }
+    /// A custom endpoint can be edited or removed by a swipe or from its
+    /// menu; a built-in one is the catalog's.
+    @ViewBuilder
     private func endpointRow(_ entry: EndpointDirectoryEntry) -> some View {
+        if entry.isBuiltIn {
+            endpointText(entry)
+        } else {
+            endpointText(entry)
+                .swipeActions {
+                    Button(AppLocalization.string("Remove"), systemImage: "trash", role: .destructive) { remove(entry) }
+                    Button(AppLocalization.string("Edit"), systemImage: "pencil") { editingEntry = entry }
+                }
+                .contextMenu {
+                    Button(AppLocalization.string("Edit"), systemImage: "pencil") { editingEntry = entry }
+                    Button(AppLocalization.string("Remove"), systemImage: "trash", role: .destructive) { remove(entry) }
+                }
+        }
+    }
+    private func remove(_ entry: EndpointDirectoryEntry) {
+        store.updateSetting(.removeCustomEndpoint(chainId: entry.record.chainId, endpoint: entry.record.endpoint))
+    }
+    /// Only the user's endpoints on one network: offered once there is one to
+    /// use, since with none the network would have nothing to ask — or while
+    /// it is on, so it can be turned off.
+    @ViewBuilder
+    private func onlyMineToggle(for chain: Chain) -> some View {
+        if store.appSettings.customEndpointsOnly.contains(chain)
+            || entries.contains(where: { !$0.isBuiltIn && $0.record.chainId == chain })
+        {
+            Toggle(isOn: Binding(
+                get: { store.appSettings.customEndpointsOnly.contains(chain) },
+                set: { store.updateSetting(.customEndpointsOnly(chainId: chain, value: $0)) }
+            )) {
+                Text(AppLocalization.string("Use only my endpoints")).font(.subheadline)
+            }
+        }
+    }
+    private func endpointText(_ entry: EndpointDirectoryEntry) -> some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
             Text(entry.record.endpoint).font(.caption.monospaced()).textSelection(.enabled).lineLimit(3)
             let tags = [entry.apiName] + entry.record.capabilities.map {
@@ -41,19 +79,22 @@ struct EndpointCatalogSettingsView: View {
                         ForEach(groups, id: \.chainId) { group in
                             let groupRows = rows.filter { $0.record.chainId == group.chainId }
                             if !groupRows.isEmpty {
-                                VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-                                    Text(group.title).font(.subheadline.weight(.semibold))
-                                    ForEach(groupRows, id: \.record.id) { endpointRow($0) }
-                                }.padding(.vertical, SpectraLayout.Space.xxs)
+                                Text(group.title).font(.subheadline.weight(.semibold))
+                                ForEach(groupRows, id: \.record.id) { endpointRow($0) }
+                                onlyMineToggle(for: group.chainId)
                             }
                         }
                     } else {
                         ForEach(rows, id: \.record.id) { endpointRow($0) }
+                        onlyMineToggle(for: chain)
                     }
                 }
             }
         }
         .navigationTitle(copy.navigationTitle)
+        .navigationDestination(item: $editingEntry) { entry in
+            AddCustomEndpointView(store: store, editing: entry)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {

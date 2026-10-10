@@ -8,6 +8,10 @@ pub struct QuotedTotal {
     pub total: f64,
     pub unpriced_count: u64,
     pub fiat_total: Option<f64>,
+    /// Holdings with a balance on a test network. Test coins are worth
+    /// nothing, so the total leaves them out, and says how many it left.
+    #[uniffi(default = 0)]
+    pub test_network_count: u64,
 }
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
@@ -103,8 +107,13 @@ pub(super) fn total<'a>(
 ) -> QuotedTotal {
     let mut total = 0.0;
     let mut unpriced_count = 0;
+    let mut test_network_count = 0;
     for holding in holdings {
-        if (holding.chain_id.is_testnet()) || crate::decimal::is_zero(&holding.amount) {
+        if crate::decimal::is_zero(&holding.amount) {
+            continue;
+        }
+        if holding.chain_id.is_testnet() {
+            test_network_count += 1;
             continue;
         }
         match value(state, holding) {
@@ -117,6 +126,7 @@ pub(super) fn total<'a>(
         total,
         unpriced_count,
         fiat_total: rate.map(|rate| total * rate).filter(|v| v.is_finite()),
+        test_network_count,
     }
 }
 
@@ -201,6 +211,21 @@ mod tests {
             total(&state, std::iter::once(&coin)).fiat_total,
             Some(5400.0)
         );
+    }
+
+    /// Test coins are left out of a total, and counted as left out rather
+    /// than as unpriced; an empty one is neither.
+    #[test]
+    fn test_network_holdings_are_counted_as_left_out() {
+        let state = ResidentState::default();
+        let mut sepolia = crate::registry::Chain::EthereumSepolia.native_holding_template();
+        sepolia.amount = "0.05".into();
+        let mut empty = sepolia.clone();
+        empty.amount = "0".into();
+        let result = total(&state, [&sepolia, &empty].into_iter());
+        assert_eq!(result.total, 0.0);
+        assert_eq!(result.unpriced_count, 0);
+        assert_eq!(result.test_network_count, 1);
     }
 
     /// A testnet coin is never quoted, even when a price is keyed by its id.

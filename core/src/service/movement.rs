@@ -124,6 +124,7 @@ mod tests {
             icp_principal: None,
             near_account_key: None,
             multisig_policy: None,
+            balances_read_at: None,
         });
         s.quotes.prices.insert("ethereum:native".into(), 1000.0);
         s

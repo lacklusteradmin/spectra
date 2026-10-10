@@ -18,7 +18,7 @@ struct WalletNftsView: View {
         List {
             if let nfts {
                 if nfts.nfts.isEmpty {
-                    Section { Text(AppLocalization.string("This wallet holds no NFTs.")).foregroundStyle(.secondary) }
+                    WalletToolEmptySection(message: "This wallet holds no NFTs.")
                 }
                 Section {
                     ForEach(nfts.nfts) { row($0) }
@@ -28,9 +28,9 @@ struct WalletNftsView: View {
                     }
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.nfts.title).navigationBarTitleDisplayMode(.inline)
@@ -129,8 +129,9 @@ private struct SendNftView: View {
                 }
             } else {
                 Section {
-                    TextField(AppLocalization.string("Destination Address"), text: $recipient)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                    AddressEntryRow(
+                        title: AppLocalization.string("Destination Address"), text: $recipient, chain: wallet.chain,
+                        contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
                     if nft.standard == .erc1155 {
                         TextField(AppLocalization.string("Quantity"), text: $quantity)
                             .keyboardType(.numberPad).monospacedDigit()
@@ -151,11 +152,7 @@ private struct SendNftView: View {
                 submittedText: AppLocalization.string("Submitted. The token moves once it confirms."))
         }
         .navigationTitle(AppLocalization.string("Send NFT")).navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
     }
 
     private func review() async {

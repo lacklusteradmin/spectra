@@ -75,8 +75,14 @@ pub enum TransactionDirection {
     Incoming,
     Neutral,
 }
+/// Which way a transaction moved its amount. A transfer of nothing — a
+/// zero-value contract call recorded as a send — moved nothing, whatever its
+/// kind, and reads neither as money out nor in.
 #[uniffi::export]
-pub fn transaction_kind_direction(kind: TransactionKind) -> TransactionDirection {
+pub fn transaction_amount_direction(kind: TransactionKind, amount: String) -> TransactionDirection {
+    if crate::decimal::is_zero(&amount) {
+        return TransactionDirection::Neutral;
+    }
     match kind {
         TransactionKind::Send | TransactionKind::Stake => TransactionDirection::Outgoing,
         TransactionKind::Receive | TransactionKind::Withdraw | TransactionKind::ClaimRewards => {
@@ -357,6 +363,10 @@ pub struct WalletView {
     pub near_account_key: Option<String>,
     /// A multisig account's descriptor; `None` for a single-key wallet.
     pub multisig_policy: Option<String>,
+    /// When the wallet's balances were first read; `None` while its holdings
+    /// are still the import's zero placeholders.
+    #[uniffi(default = None)]
+    pub balances_read_at: Option<f64>,
 }
 
 impl WalletView {
@@ -436,6 +446,7 @@ impl WalletView {
             icp_principal: self.icp_principal.clone(),
             near_account_key: self.near_account_key.clone(),
             multisig_policy: self.multisig_policy.clone(),
+            balances_read_at: self.balances_read_at,
         })
     }
 }
@@ -476,6 +487,7 @@ impl crate::store::state::WalletState {
             icp_principal: self.icp_principal.clone(),
             near_account_key: self.near_account_key.clone(),
             multisig_policy: self.multisig_policy.clone(),
+            balances_read_at: self.balances_read_at,
         }
     }
 }
@@ -544,7 +556,16 @@ pub struct DashboardAssetGroup {
     pub identity: AssetHolding,
     pub holdings: Vec<DashboardAssetHolding>,
     pub is_pinned: bool,
+    /// Worth less than `DASHBOARD_SMALL_BALANCE_USD` in all: the dust and
+    /// airdropped tokens a front end may fold away. Never a pinned row, and
+    /// never an unpriced one, whose worth is unknown.
+    #[uniffi(default = false)]
+    pub is_small: bool,
 }
+
+/// Below this many US dollars in all, a dashboard row is `is_small`. One
+/// threshold, in USD so it needs no exchange rate.
+pub const DASHBOARD_SMALL_BALANCE_USD: f64 = 1.0;
 
 /// An asset the dashboard can pin. `deployment_id` is the place it is drawn
 /// from — the colour and artwork follow the deployment, never the ticker.
@@ -592,6 +613,28 @@ mod token_preference_tests {
         assert_eq!(
             entry.id(),
             "bnb:bep-20:0x1111111111111111111111111111111111111111"
+        );
+    }
+}
+
+#[cfg(test)]
+mod direction_tests {
+    use super::*;
+
+    #[test]
+    fn a_transfer_of_nothing_moves_neither_way() {
+        let send =
+            |amount: &str| transaction_amount_direction(TransactionKind::Send, amount.into());
+        assert_eq!(send("0.5"), TransactionDirection::Outgoing);
+        assert_eq!(send("0"), TransactionDirection::Neutral);
+        assert_eq!(send("0.000"), TransactionDirection::Neutral);
+        assert_eq!(
+            transaction_amount_direction(TransactionKind::Receive, "0".into()),
+            TransactionDirection::Neutral
+        );
+        assert_eq!(
+            transaction_amount_direction(TransactionKind::ClaimRewards, "1".into()),
+            TransactionDirection::Incoming
         );
     }
 }

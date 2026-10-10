@@ -678,6 +678,7 @@ mod refresh_entry_tests {
             icp_principal: None,
             near_account_key: None,
             multisig_policy: None,
+            balances_read_at: None,
         }
     }
 

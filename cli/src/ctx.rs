@@ -105,9 +105,16 @@ impl Ctx {
     /// Opened fresh per command on purpose: a short-lived process never holds
     /// a snapshot old enough to overwrite a newer store with.
     pub fn service(&self) -> CliResult<Arc<WalletService>> {
+        let service = self.unopened_service()?;
+        self.prepare_transport(&service)?;
+        Ok(service)
+    }
+
+    /// The service with its secret store but no database: for discarding a
+    /// store `open_state` cannot read.
+    pub fn unopened_service(&self) -> CliResult<Arc<WalletService>> {
         let service = WalletService::new_catalog().map_err(CliError::from)?;
         service.set_secret_store(self.secrets.clone());
-        self.prepare_transport(&service)?;
         Ok(service)
     }
 

@@ -40,6 +40,17 @@ extension SendFlowState {
         previewRequestId = requestId
         let start = target()
         let input = previewInput(for: start)
+        previewError = nil
+        // An override still being typed is pointed out beside its field.
+        // Until it parses there is nothing to quote, and a refused quote
+        // would only say so again, worse worded. The last quote and its
+        // recipient check stay as what the network said — the fields'
+        // placeholders, the estimate rows, the destination warnings — and
+        // the quote is not current, so nothing builds from it.
+        guard evmNonceValidationError == nil, customEvmFeeValidationError == nil else {
+            isPreparingPreview = false
+            return
+        }
         clearDestinationCheck()
         guard start.coin != nil else {
             isPreparingPreview = false
@@ -49,12 +60,9 @@ extension SendFlowState {
         isPreparingPreview = true
         defer { if previewRequestId == requestId { isPreparingPreview = false } }
         do {
-            // Capture and validate all inputs before the first suspension.
+            // Capture all inputs before the first suspension.
             let nonce = try explicitEvmNonce().map(Int64.init)
             let fees = customEvmFeeConfiguration()
-            if let error = customEvmFeeValidationError {
-                throw DisplayedError(error)
-            }
             let preview = try await bridge.ready().previewOwnedSend(
                 walletId: input.walletId, holdingKey: input.holdingKey, amount: input.amount,
                 destination: input.destination, explicitNonce: nonce, customFees: fees)
@@ -71,31 +79,36 @@ extension SendFlowState {
         switch result {
         case .success(let preview):
             previewStore.apply(preview)
-            session.error = nil
+            previewError = nil
             clearVerificationNotice()
             adoptRecipientCheck(preview?.recipient, coin: current.coin)
         case .failure(let error):
             guard !(error is CancellationError) else { return }
             previewStore.reset()
-            session.error = userErrorMessage(error)
+            previewError = userErrorMessage(error)
         }
     }
 
     /// Core checks the destination beside the quote; this only words it.
     /// An own address says so and nothing else: whether it is funded or
     /// fresh is no reason to double-check a transfer between the user's
-    /// own wallets.
+    /// own wallets. A new destination is said here, before the build, in
+    /// the words the build's review uses for it.
     private func adoptRecipientCheck(_ check: RecipientCheck?, coin: AssetHolding?) {
         guard let check, let coin else { return }
         if check.isOwnAddress {
-            destinationRiskWarning = nil
+            destinationWarnings = []
             destinationInfoMessage = AppLocalization.string("This address belongs to one of your wallets.")
-        } else if let activity = check.activity {
+            return
+        }
+        var warnings = check.isNewToWallet ? highRiskSendMessages([.newAddress]) : []
+        if let activity = check.activity {
             let messages = chainRiskProbeMessages(chainName: coin.chainName, symbol: coin.symbol, activity: activity)
-            destinationRiskWarning = messages.warning
+            warnings += messages.warning.map { [$0] } ?? []
             destinationInfoMessage = messages.info
         } else {
             destinationInfoMessage = AppLocalization.string("Unable to verify this address's activity. Try again later.")
         }
+        destinationWarnings = warnings
     }
 }

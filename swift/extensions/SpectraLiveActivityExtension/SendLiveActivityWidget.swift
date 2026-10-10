@@ -74,7 +74,7 @@ private struct SendTransactionLockScreenView: View {
                 }}
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: "wallet.pass").foregroundStyle(.white.opacity(0.65))
+                    Image(systemName: "wallet.bifold").foregroundStyle(.white.opacity(0.65))
                     Text(state.destinationPreview).font(.footnote.monospaced()).foregroundStyle(.white.opacity(0.82)).lineLimit(1)
                 }
                 Text(state.detailText).font(.footnote).foregroundStyle(.white.opacity(0.76)).lineLimit(2)

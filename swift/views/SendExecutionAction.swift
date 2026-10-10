@@ -3,15 +3,17 @@ import Foundation
 /// Native action labels over core's build, submission and chain-status projections.
 /// An acceptance receipt is never evidence that a transaction has confirmed.
 enum SendExecutionAction: Equatable {
-    case build, sign, broadcast, retry, viewTransaction, done
+    case build, sign, broadcast, retry, done
 
     init(artifact: SendArtifact?, transaction: TransactionRecord?) {
         guard let artifact else { self = .build; return }
         let transaction = transaction?.id == artifact.id ? transaction : nil
         if let transaction, transaction.status != .pending { self = .done; return }
         if artifact.stage == .prepared { self = .sign; return }
+        // Once a node has accepted it the send is out of the flow's hands:
+        // the receipt follows it, and its explorer link is there to follow.
         if artifact.attempts.contains(where: { $0.outcome == .accepted }) {
-            self = transaction?.explorerLink == nil ? .done : .viewTransaction
+            self = .done
         } else {
             self = artifact.attempts.isEmpty ? .broadcast : .retry
         }
@@ -29,7 +31,6 @@ enum SendExecutionAction: Equatable {
         case .sign: "Sign Transaction"
         case .broadcast: "Broadcast Transaction"
         case .retry: "Retry Same Transaction"
-        case .viewTransaction: "View in block explorer"
         case .done: "Done"
         }
     }
@@ -40,17 +41,21 @@ enum SendExecutionAction: Equatable {
         case .sign: "signature"
         case .broadcast: "antenna.radiowaves.left.and.right"
         case .retry: "arrow.clockwise"
-        case .viewTransaction: "safari"
         case .done: "checkmark"
         }
     }
 }
 
 @MainActor
-func sendSigningConfirmationMessage(artifact: SendArtifact) -> String {
+func sendSigningConfirmationMessage(artifact: SendArtifact, amounts: AmountPresentation) -> String {
     let amount = AmountPresentation.localizedDecimal(artifact.amount)
-    var lines = [
-        "\(amount) \(artifact.symbol) · \(artifact.chainId.displayName)",
+    var lines = ["\(amount) \(artifact.symbol) · \(artifact.chainId.displayName)"]
+    if let fee = artifact.review.networkFee {
+        lines.append(AppLocalization.format(
+            "Network Fee: %@",
+            "≈ " + amounts.compactNetworkFee(fee, value: artifact.review.networkFeeValue, chain: artifact.chainId)))
+    }
+    lines += [
         AppLocalization.string("Recipient"),
         artifact.recipient,
         "",

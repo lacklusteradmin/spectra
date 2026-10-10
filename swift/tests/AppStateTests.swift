@@ -269,7 +269,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         await store.loadCoreOwnedState()
         await clearAddressBook(store)
         for index in 1...3 {
-            store.addressBook.add(
+            await store.addressBook.add(
                 name: "Contact \(index)",
                 address: "0x" + String(repeating: String(index), count: 40),
                 chain: .ethereum)
@@ -292,7 +292,7 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         await store.loadCoreOwnedState()
         await clearAddressBook(store)
 
-        store.addressBook.add(
+        await store.addressBook.add(
             name: "  Cold Wallet  ", address: "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
             chain: .bitcoin, note: " vault ")
         await store.stateCommands.awaitPending()
@@ -318,11 +318,11 @@ struct AppStatePlatformBridgeTests: IsolatedAppStateSuite {
         _ = try await bridge.ready()
         await store.loadCoreOwnedState()
         await clearAddressBook(store)
-        store.addressBook.add(
+        let refusal = await store.addressBook.add(
             name: "Typo", address: "definitely-not-an-address", chain: .bitcoin)
-        await store.stateCommands.awaitPending()
         #expect(store.addressBook.entries.isEmpty)
-        #expect(store.addressBook.error != nil)
+        #expect(refusal != nil, "the form that asked hears why, before it closes")
+        #expect(store.addressBook.error == refusal)
     }
 
     @Test func torDoesNotActivateOrStopForAnUncommittedToggle() async throws {

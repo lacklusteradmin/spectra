@@ -21,12 +21,12 @@ struct ReceiveView: View {
     }
 
     private var walletList: some View {
-        ReceiveScreen(store: store, title: "Receive") {
+        ReceiveScreen(title: "Receive") {
             if store.receiveEnabledWallets.isEmpty {
                 SpectraEmptyStateCard(
                     title: "No receive wallets",
                     message: "Import a wallet to generate receive addresses.",
-                    systemImage: "wallet.pass"
+                    systemImage: "wallet.bifold"
                 )
             } else {
                 SpectraRowGroup(data: store.receiveEnabledWallets) { wallet in
@@ -55,11 +55,15 @@ private struct ReceiveAddressView: View {
     @Bindable var store: AppState
     @State private var didCopy: Bool = false
     @State private var isShowingShareSheet: Bool = false
-    @State private var qrExportMessage: String?
-    @State private var qrImageSaver: PhotoLibraryImageSaver?
     /// What an account on a reserve network must first receive to exist,
     /// read from the network while the wallet holds nothing.
     @State private var reserve: AccountReserve?
+    /// An amount, and a memo where the network takes one, to ask the sender
+    /// for. Empty asks for nothing and the code is the address alone.
+    @State private var requestedAmount = ""
+    @State private var requestMemoKind: PaymentMemoKind?
+    @State private var requestMemo = ""
+    @State private var isRequestingAmount = false
 
     private var selectedWallet: WalletView? {
         store.receiveEnabledWallets.first(where: { $0.id == store.receiveFlow.walletId })
@@ -69,37 +73,57 @@ private struct ReceiveAddressView: View {
         store.selectedReceiveCoin(for: store.receiveFlow.walletId)
     }
 
-    private var resolvedAddress: String {
-        store.receiveFlow.resolvedAddress
+    /// The address as it is shown, copied, shared and encoded: core's display
+    /// form, an EVM address in its checksummed case.
+    private var address: String? {
+        let resolved = store.receiveFlow.resolvedAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !resolved.isEmpty, !store.receiveFlow.isResolving, let chain = selectedCoin?.chain ?? selectedWallet?.chain
+        else { return nil }
+        return displayAddress(chain: chain, address: resolved)
     }
 
-    private var canUseResolvedAddress: Bool {
-        !resolvedAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !store.receiveFlow.isResolving
-    }
-
-    /// The QR as an image, for sharing and saving. `nil` until an address
-    /// resolves, which is what disables both buttons.
-    private var qrImage: UIImage? {
-        let address = resolvedAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        return canUseResolvedAddress ? QRCodeRenderer.makeImage(from: address) : nil
+    /// Core's payment code for the amount asked, or why it cannot be one.
+    /// `nil` while nothing is asked: the code is then the address.
+    private var paymentRequest: Result<String, Error>? {
+        guard isRequestingAmount, let address, let chain = selectedCoin?.chain else { return nil }
+        let amount = AmountPresentation.canonicalDecimalInput(requestedAmount)
+        let memoText = requestMemo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !amount.isEmpty || !memoText.isEmpty else { return nil }
+        let kinds = paymentMemoKinds(chain: chain)
+        let memo = memoText.isEmpty || kinds.isEmpty
+            ? nil : PaymentMemo(kind: requestMemoKind.flatMap { kinds.contains($0) ? $0 : nil } ?? kinds[0], value: memoText)
+        return Result {
+            try paymentRequestUri(chain: chain, address: address, amount: amount.isEmpty ? nil : amount, memo: memo)
+        }
     }
 
     var body: some View {
-        ReceiveScreen(store: store, title: "Receive") {
-            receiveAddressHero
-            receiveActionCard
+        let address = address
+        let request = try? paymentRequest?.get()
+        // What the code holds: the request when one is asked, else the address.
+        let encoded = request ?? address
+        // Rendered once per pass, for the code on screen and for sharing.
+        let qrImage = encoded.flatMap { QRCodeRenderer.makeImage(from: $0) }
+        ReceiveScreen(title: "Receive") {
+            if selectedWallet?.signing.isWatchOnly == true { watchOnlyNotice }
+            receiveAddressHero(address: address, qrImage: qrImage, isRequest: request != nil)
+            if let chain = selectedCoin?.chain, selectedCoin?.isNativeCoin == true, paymentRequestsSupported(chain: chain) {
+                requestAmountCard(chain: chain)
+            }
+            receiveActionCard(address: address)
         }
         .sheet(isPresented: $isShowingShareSheet) {
-            if let qrImage { ActivityItemSheet(activityItems: [qrImage]) }
+            if let encoded {
+                // The text first, so a message or a note carries the address
+                // — or the whole request — itself; the image goes with it
+                // where it can.
+                ActivityItemSheet(activityItems: [encoded] + (qrImage.map { [$0] } ?? []))
+            }
         }
-        .alert(
-            AppLocalization.string("QR Code Export"),
-            isPresented: .isPresent($qrExportMessage)
-        ) {
-            Button(AppLocalization.string("OK"), role: .cancel) { qrExportMessage = nil }
-        } message: {
-            if let qrExportMessage { Text(verbatim: qrExportMessage) }
+        .onChange(of: store.receiveFlow.holdingKey) {
+            requestedAmount = ""
+            requestMemo = ""
+            isRequestingAmount = false
         }
         .task(id: "\(store.receiveFlow.walletId)|\(store.receiveFlow.holdingKey)") {
             await store.refreshReceiveAddress()
@@ -113,24 +137,80 @@ private struct ReceiveAddressView: View {
         }
     }
 
-    private var receiveAddressHero: some View {
+    /// Spectra holds no key for a watched address. Funds sent to it are only
+    /// the user's if another wallet holds that key.
+    private var watchOnlyNotice: some View {
+        Label(
+            AppLocalization.string("receive.watchOnly.warning"),
+            systemImage: "eye.trianglebadge.exclamationmark"
+        )
+        .font(.subheadline)
+        .foregroundStyle(.spectraWarning)
+        .padding(SpectraLayout.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular.tint(.spectraWarning.opacity(0.08)), in: .rect(cornerRadius: SpectraLayout.Radius.card))
+    }
+
+    /// Asking for an amount: the network's coin only — a request's amount is
+    /// in it — and a memo where the network's payments carry one.
+    private func requestAmountCard(chain: Chain) -> some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+            Toggle(isOn: $isRequestingAmount.animation()) {
+                Label(AppLocalization.string("Request an Amount"), systemImage: "qrcode")
+                    .font(.subheadline.weight(.semibold))
+            }
+            if isRequestingAmount {
+                HStack(spacing: SpectraLayout.Space.s) {
+                    TextField(AppLocalization.string("Amount"), text: $requestedAmount)
+                        .keyboardType(.decimalPad).monospacedDigit()
+                    Text(verbatim: chain.gasTokenSymbol).foregroundStyle(.secondary)
+                }
+                .padding(SpectraLayout.Space.m)
+                .spectraInputFieldStyle()
+                if case let kinds = paymentMemoKinds(chain: chain), !kinds.isEmpty {
+                    SendPaymentMemoField(kinds: kinds, kind: $requestMemoKind, text: $requestMemo)
+                }
+                if case .failure(let error) = paymentRequest {
+                    Label(userErrorMessage(error), systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.red)
+                } else {
+                    Text(AppLocalization.string("receive.request.hint"))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(SpectraLayout.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .spectraCardFill()
+    }
+
+    private func receiveAddressHero(address: String?, qrImage: UIImage?, isRequest: Bool) -> some View {
         let wallet = selectedWallet
         let coin = selectedCoin
         return VStack(spacing: SpectraLayout.Space.m) {
             // The network is named here and on the wallet line under the
             // code; a third mark above this sentence said it again.
             if let coin {
-                Text(AppLocalization.format("Receive only %@ assets on this network. Check the sender's network before transferring.", coin.chainName))
-                    .font(.subheadline)
-                    .multilineTextAlignment(.center)
+                Label(
+                    AppLocalization.format("Receive only %@ assets on this network. Check the sender's network before transferring.", coin.chainName),
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                .font(.subheadline)
+                .foregroundStyle(.spectraWarning)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if canUseResolvedAddress {
-                QRCodeImage(address: resolvedAddress)
+            if let qrImage {
+                Image(uiImage: qrImage).interpolation(.none).resizable().scaledToFit()
                     .frame(width: 184, height: 184)
                     .padding(SpectraLayout.Space.l)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: SpectraLayout.Radius.card, style: .continuous))
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: SpectraLayout.Radius.inner, style: .continuous))
+                    .accessibilityLabel(AppLocalization.string(isRequest ? "QR code of the payment request" : "QR code of the address"))
+            } else if let error = store.receiveFlow.error {
+                receiveError(error)
             } else {
                 receiveQRCodePlaceholder(size: 216)
+                    .accessibilityLabel(AppLocalization.string("Loading receive address…"))
             }
 
             // The address takes any asset on the chain, so the line names the
@@ -163,84 +243,80 @@ private struct ReceiveAddressView: View {
                 )
                 .font(.footnote).foregroundStyle(.spectraWarning).multilineTextAlignment(.center)
             }
-            Text(canUseResolvedAddress ? resolvedAddress : (store.receiveFlow.error ?? AppLocalization.string("Loading receive address…")))
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .multilineTextAlignment(.center)
-                .textSelection(.enabled)
+            if let address {
+                // Grouped, so a sender compares it a group at a time.
+                Text(groupedAddress(address))
+                    .font(.body.monospaced())
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(Text(verbatim: address))
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(SpectraLayout.Space.l)
         .spectraElevatedFill()
     }
 
-    private var receiveActionCard: some View {
-        VStack(spacing: SpectraLayout.Space.s) {
+    /// The address could not be read: why, and the way to ask again.
+    private func receiveError(_ error: String) -> some View {
+        VStack(spacing: SpectraLayout.Space.m) {
+            Image(systemName: "exclamationmark.triangle.fill").font(.largeTitle).foregroundStyle(.red)
+            Text(error).font(.subheadline).foregroundStyle(.red).multilineTextAlignment(.center)
             Button {
-                guard canUseResolvedAddress else { return }
-                UIPasteboard.general.string = resolvedAddress
-                didCopy = true
-                spectraHaptic(.light)
-                Task {
-                    try? await Task.sleep(for: .seconds(1.5))
-                    didCopy = false
-                }
+                Task { await store.refreshReceiveAddress() }
             } label: {
-                Label(
-                    AppLocalization.string(didCopy ? "Copied" : "Copy Address"),
-                    systemImage: didCopy ? "checkmark" : "doc.on.doc"
-                )
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 46)
-            }
-            .buttonStyle(.glassProminent)
-            .disabled(!canUseResolvedAddress)
-
-            Button {
-                guard qrImage != nil else { return }
-                isShowingShareSheet = true
-            } label: {
-                Label(AppLocalization.string("Share QR Code"), systemImage: "square.and.arrow.up")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, SpectraLayout.Space.s)
+                Label(AppLocalization.string("Retry"), systemImage: "arrow.clockwise").font(.subheadline.weight(.semibold))
             }
             .buttonStyle(.glass)
-            .disabled(qrImage == nil)
-
-            Button {
-                guard let qrImage else { return }
-                let saver = PhotoLibraryImageSaver { result in
-                    switch result {
-                    case .success: qrExportMessage = AppLocalization.string("QR code saved to Photos.")
-                    case .failure(let error): qrExportMessage = userErrorMessage(error)
-                    }
-                    qrImageSaver = nil
-                }
-                qrImageSaver = saver
-                saver.save(qrImage)
-            } label: {
-                Label(AppLocalization.string("Save QR Code"), systemImage: "square.and.arrow.down")
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, SpectraLayout.Space.s)
-            }
-            .buttonStyle(.glass)
-            .disabled(qrImage == nil)
         }
-        .padding(SpectraLayout.Space.l)
-        .frame(maxWidth: .infinity)
-        .spectraCardFill()
+        .frame(width: 216, height: 216)
     }
 
-    /// Choosing a wallet is the step forward; there is no separate Continue.
+    private func receiveActionCard(address: String?) -> some View {
+        GlassEffectContainer(spacing: SpectraLayout.Space.s) {
+            HStack(spacing: SpectraLayout.Space.s) {
+                Button {
+                    guard let address else { return }
+                    UIPasteboard.general.string = address
+                    didCopy = true
+                    spectraHaptic(.light)
+                } label: {
+                    Label(
+                        AppLocalization.string(didCopy ? "Copied" : "Copy Address"),
+                        systemImage: didCopy ? "checkmark" : "doc.on.doc"
+                    )
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 46)
+                    .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.glassProminent)
+                .disabled(address == nil)
+
+                Button {
+                    isShowingShareSheet = true
+                } label: {
+                    Label(AppLocalization.string("Share"), systemImage: "square.and.arrow.up")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 46)
+                }
+                .buttonStyle(.glass)
+                .disabled(address == nil)
+            }
+        }
+        .task(id: didCopy) {
+            guard didCopy else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            didCopy = false
+        }
+    }
 }
 
-/// The backdrop, scrolling column and close button both receive pages share.
+/// The backdrop and scrolling column both receive pages share. The pages are
+/// pushed, so the navigation bar's back button is their one way out.
 private struct ReceiveScreen<Content: View>: View {
-    let store: AppState
     let title: String
     @ViewBuilder var content: Content
 
@@ -256,16 +332,7 @@ private struct ReceiveScreen<Content: View>: View {
         .navigationTitle(AppLocalization.string(title))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    store.cancelReceive()
-                } label: {
-                    Image(systemName: "xmark")
-                }
-                .accessibilityLabel(AppLocalization.string("Close"))
-            }
-        }
+        .toolbar(.hidden, for: .tabBar)
     }
 }
 

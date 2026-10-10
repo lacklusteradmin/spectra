@@ -48,11 +48,10 @@ struct TorSettingsView: View {
     var body: some View {
         Form {
             torMainSection
-            if store.appSettings.torEnabled {
-                connectionModeSection
-                if !store.appSettings.torUseCustomProxy { privacySection }
-            }
-            aboutSection
+            if store.appSettings.torEnabled { connectionModeSection }
+            // What the built-in client does; a proxy of the user's is theirs
+            // to vouch for.
+            if !store.appSettings.torUseCustomProxy { aboutSection }
         }
         .navigationTitle(AppLocalization.string("Tor Network"))
         .toolbarBackground(.hidden, for: .navigationBar)
@@ -73,7 +72,7 @@ struct TorSettingsView: View {
         } header: {
             Text(AppLocalization.string("Tor Network"))
         } footer: {
-            Text(AppLocalization.string("Routes all blockchain requests through the Tor network so your IP address is never sent to any RPC provider or block explorer."))
+            Text(AppLocalization.string("tor.footer"))
         }
     }
 
@@ -131,22 +130,9 @@ struct TorSettingsView: View {
         }
     }
 
-    private var privacySection: some View {
-        Section {
-            Toggle(isOn: store.settingBinding(\.torKillSwitch) { .torKillSwitch(value: $0) }) {
-                Label(AppLocalization.string("Kill Switch"), systemImage: "shield.lefthalf.filled.slash")
-            }
-        } header: {
-            Text(AppLocalization.string("Privacy"))
-        } footer: {
-            Text(AppLocalization.string("When enabled, network requests are paused if the Tor circuit drops instead of falling back to a direct connection."))
-        }
-    }
-
     private var aboutSection: some View {
         Section(AppLocalization.string("About")) {
-            LabeledContent(AppLocalization.string("Tor client"), value: "Arti (embedded)")
-            LabeledContent(AppLocalization.string("SOCKS5 port"), value: store.appSettings.torUseCustomProxy ? store.appSettings.torCustomProxyAddress : "127.0.0.1:19050")
+            LabeledContent(AppLocalization.string("Tor client"), value: AppLocalization.string("tor.client.arti"))
             LabeledContent(AppLocalization.string("Stream isolation"), value: AppLocalization.string("Per connection"))
             LabeledContent(AppLocalization.string("Onion routing hops"), value: "3")
         }

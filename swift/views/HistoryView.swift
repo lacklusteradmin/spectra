@@ -1,48 +1,67 @@
 import SwiftUI
 private struct HistoryRowPresentation: Identifiable, Equatable {
     let transaction: TransactionRecord
-    let amountText: String?
-    let amountColor: Color?
+    let titleText: String
+    let amountText: String
+    let amountColor: Color
     let subtitleText: String
-    let fullTimestampText: String
-    let metadataText: String?
+    let timeText: String
+    let hidesBalance: Bool
     var id: String { transaction.id }
 }
 
+/// What the transaction did, then the amount it moved: a stake reads as a
+/// stake, not as a send, and a fee-only operation still names itself.
 private struct HistoryTransactionRowView: View, Equatable {
     let row: HistoryRowPresentation
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.row == rhs.row }
     var body: some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-            HStack(spacing: SpectraLayout.Space.s) {
-                CoinBadge(
-                    artworkName: row.transaction.artworkName, fallbackText: row.transaction.symbol,
-                    color: row.transaction.badgeColor, size: 36)
+        HStack(spacing: SpectraLayout.Space.m) {
+            CoinBadge(
+                artworkName: row.transaction.artworkName, fallbackText: row.transaction.symbol,
+                color: row.transaction.badgeColor, size: 36)
+            if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
-                    if let amountText = row.amountText {
-                        Text(amountText).font(.headline.weight(.semibold)).foregroundStyle(row.amountColor ?? Color.primary)
-                            .spectraNumericTextLayout()
-                    }
-                    Text(row.subtitleText).spectraHintText().lineLimit(1)
+                    titleLine
+                    amount
+                    Text(row.subtitleText).font(.caption).foregroundStyle(.secondary)
+                    Text(row.timeText).font(.caption2).foregroundStyle(.secondary)
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: SpectraLayout.Space.xs) {
-                    TransactionStatusBadge(status: row.transaction.status)
-                    Text(row.fullTimestampText).font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(
-                        .trailing)
+                Spacer(minLength: 0)
+            } else {
+                VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
+                    titleLine
+                    Text(row.subtitleText).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                Spacer(minLength: SpectraLayout.Space.s)
+                VStack(alignment: .trailing, spacing: SpectraLayout.Space.xxs) {
+                    amount.spectraNumericTextLayout()
+                    Text(row.timeText).font(.caption2).foregroundStyle(.secondary)
+                }
             }
-            if let metadataText = row.metadataText {
-                Text(metadataText).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+        }
+    }
+    private var titleLine: some View {
+        HStack(spacing: SpectraLayout.Space.xs) {
+            Text(row.titleText).font(.headline).foregroundStyle(Color.primary).lineLimit(2)
+            // A confirmed row says nothing more; only the exceptions do.
+            if row.transaction.status != .confirmed {
+                TransactionStatusBadge(status: row.transaction.status, compact: true)
             }
-        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        }
+    }
+    private var amount: some View {
+        BalanceText(text: row.amountText, isHidden: row.hidesBalance)
+            .font(.subheadline.weight(.semibold)).foregroundStyle(row.amountColor)
     }
 }
-/// Where a row sits in time, newest first. A pending row with no date sorts
-/// as the newest: core puts it there.
-private enum HistoryDateGroup: CaseIterable {
-    case unconfirmed, today, yesterday, older
+/// Where a row sits in time, newest first: the unconfirmed with no date,
+/// today, yesterday, then one group per month.
+private enum HistoryDateGroup: Hashable, Comparable {
+    case unconfirmed, today, yesterday
+    case month(year: Int, month: Int)
 
     init(_ transaction: TransactionRecord, calendar: Calendar) {
         if !transaction.hasKnownDate, transaction.status == .pending {
@@ -52,8 +71,22 @@ private enum HistoryDateGroup: CaseIterable {
         } else if calendar.isDateInYesterday(transaction.createdDate) {
             self = .yesterday
         } else {
-            self = .older
+            let parts = calendar.dateComponents([.year, .month], from: transaction.createdDate)
+            self = .month(year: parts.year ?? 0, month: parts.month ?? 0)
         }
+    }
+
+    /// Newest first.
+    static func < (lhs: Self, rhs: Self) -> Bool {
+        func rank(_ group: Self) -> (Int, Int) {
+            switch group {
+            case .unconfirmed: return (0, 0)
+            case .today: return (1, 0)
+            case .yesterday: return (2, 0)
+            case .month(let year, let month): return (3, -(year * 12 + month))
+            }
+        }
+        return rank(lhs) < rank(rhs)
     }
 
     var title: String {
@@ -61,7 +94,18 @@ private enum HistoryDateGroup: CaseIterable {
         case .unconfirmed: return AppLocalization.string("Unconfirmed")
         case .today: return AppLocalization.string("Today")
         case .yesterday: return AppLocalization.string("Yesterday")
-        case .older: return AppLocalization.string("Older")
+        case .month(let year, let month):
+            let date = Calendar.current.date(from: DateComponents(year: year, month: month)) ?? .distantPast
+            return date.formatted(.dateTime.month(.wide).year().locale(AppLocalization.locale))
+        }
+    }
+
+    /// Inside today and yesterday the header gives the day; a month header
+    /// gives only the month.
+    var showsDate: Bool {
+        switch self {
+        case .today, .yesterday: return false
+        case .unconfirmed, .month: return true
         }
     }
 }
@@ -70,12 +114,18 @@ private struct HistoryPresentationSection: Identifiable {
     let group: HistoryDateGroup
     let rows: [HistoryRowPresentation]
     var id: HistoryDateGroup { group }
-    var title: String { group.title }
 }
 struct HistoryView: View {
     let store: AppState
     var body: some View {
-        NavigationStack { HistoryListView(store: store) }
+        NavigationStack {
+            HistoryListView(store: store)
+                // Speed Up and Cancel open the composer over the transaction
+                // they replace, and Back returns to it.
+                .navigationDestination(isPresented: store.sendFlowBinding(on: .history)) {
+                    SendView(store: store)
+                }
+        }
     }
 }
 /// Every wallet's history, or one wallet's: the History tab, and the list a
@@ -90,6 +140,9 @@ struct HistoryListView: View {
     @State private var hidesSmallAmounts = false
     @State private var searchText: String = ""
     @State private var pageRecords: [TransactionRecord] = []
+    /// A page has landed for the query on screen. Until then an empty list
+    /// is not an answer, and says nothing about matches.
+    @State private var hasLoadedPage = false
     @State private var nextCursor: String?
     @State private var hasMoreStoredHistory = false
     @State private var pageError: String?
@@ -99,6 +152,8 @@ struct HistoryListView: View {
     /// Rows the next reload adds beyond those on screen; cleared once a reload lands.
     @State private var pendingGrowth = 0
     @State private var isRetrying = false
+    /// What a recheck or rebroadcast from a row's menu came to.
+    @State private var actionNotice: SpectraTransientNotice?
     init(store: AppState, walletId: String? = nil) {
         self.store = store
         fixedWalletId = walletId
@@ -125,62 +180,100 @@ struct HistoryListView: View {
                             }.buttonStyle(.glass).disabled(isRetrying)
                         }.padding(SpectraLayout.cardPadding).frame(maxWidth: .infinity, alignment: .leading).spectraCardFill()
                     }
-                    if visibleTransactions.isEmpty && historyError == nil {
+                    if !hasLoadedPage && historyError == nil {
+                        loadingPlaceholder
+                    } else if pageRecords.isEmpty && historyError == nil {
                         historyEmptyStateCard
                     }
                     ForEach(groupedSections) { section in
-                            VStack(spacing: 0) {
-                                HStack {
-                                    Text(AppLocalization.format("history.section.titleCount", section.title, section.rows.count))
-                                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).textCase(.uppercase)
-                                    Spacer()
-                                }.padding(.horizontal, SpectraLayout.rowHorizontal).padding(.vertical, SpectraLayout.cardHeaderVertical)
-                                Divider().opacity(0.25)
-                                VStack(spacing: 0) {
-                                    ForEach(Array(section.rows.enumerated()), id: \.element.id) { index, row in
-                                        NavigationLink {
-                                            TransactionDetailView(store: store, transaction: row.transaction)
-                                        } label: {
-                                            HistoryTransactionRowView(row: row).equatable()
-                                                .padding(.horizontal, SpectraLayout.rowHorizontal).padding(.vertical, SpectraLayout.rowVertical)
-                                        }.buttonStyle(.plain).contextMenu {
-                                            if row.transaction.actions.recheckUnavailableReason == nil {
-                                                Button {
-                                                    spectraHaptic(.light)
-                                                    Task { _ = await store.retryUTXOTransactionStatus(for: row.transaction.id) }
-                                                } label: {
-                                                    Label(AppLocalization.string("Recheck"), systemImage: "arrow.clockwise")
-                                                }
-                                            }
-                                            if row.transaction.actions.rebroadcastUnavailableReason == nil {
-                                                Button {
-                                                    spectraHaptic(.light)
-                                                    Task { _ = await store.rebroadcastSignedTransaction(for: row.transaction.id) }
-                                                } label: {
-                                                    Label(AppLocalization.string("Rebroadcast"), systemImage: "dot.radiowaves.up.forward")
-                                                }
-                                            }
-                                        }
-                                        if index < section.rows.count - 1 { Divider().padding(.leading, SpectraLayout.rowDividerInset).opacity(0.25) }
-                                    }
-                                }.padding(.vertical, SpectraLayout.Space.xs)
-                            }.frame(maxWidth: .infinity).glassEffect(
-                                .regular.tint(SpectraLayout.GlassTint.content).interactive(),
-                                in: .rect(cornerRadius: SpectraLayout.Radius.card))
+                        SpectraRowGroup(title: section.group.title, data: section.rows) { row in
+                            NavigationLink {
+                                TransactionDetailView(store: store, transaction: row.transaction)
+                            } label: {
+                                HistoryTransactionRowView(row: row).equatable().spectraRowPadding()
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu { rowActions(row.transaction) }
                         }
+                    }
+                    // A new query keeps the old rows until its answer lands,
+                    // dimmed, rather than flashing an empty list.
+                    .opacity(isLoadingPage && loadedFilterKey != filterKey ? 0.5 : 1)
                     if shouldShowPagingControls { historyPagingControls }
                 }.spectraScreenPadding()
             }.refreshable {
                 await store.performUserInitiatedRefresh()
             }.scrollBounceBehavior(.always)
-        }.searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
-                     prompt: AppLocalization.string("Search wallet, asset, symbol, or address"))
+        }
+        .overlay(alignment: .bottom) {
+            if let actionNotice {
+                Text(actionNotice.text).font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, SpectraLayout.Space.l).padding(.vertical, SpectraLayout.Space.m)
+                    .spectraElevatedFill()
+                    .padding(.horizontal, SpectraLayout.screenHorizontal).padding(.bottom, SpectraLayout.Space.l)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .spectraTransientNotice($actionNotice, seconds: 4)
+        .animation(.snappy, value: actionNotice)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always),
+                     prompt: AppLocalization.string("Search history"))
         .textInputAutocapitalization(.never).autocorrectionDisabled()
         .navigationTitle(AppLocalization.string("History")).navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { historyFilterMenu }
-        }.task(id: queryKey) { await loadPage(reset: true) }
+        }.task(id: queryKey) {
+            // Typing searches once it pauses, not on every keystroke.
+            if loadedFilterKey != nil, loadedFilterKey != filterKey, !searchText.isEmpty {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+            }
+            await loadPage(reset: true)
+        }
+    }
+    @ViewBuilder
+    private func rowActions(_ transaction: TransactionRecord) -> some View {
+        if transaction.actions.recheckUnavailableReason == nil {
+            Button {
+                spectraHaptic(.light)
+                Task { actionNotice = SpectraTransientNotice(await store.retryUTXOTransactionStatus(for: transaction.id)) }
+            } label: {
+                Label(AppLocalization.string("Recheck"), systemImage: "arrow.clockwise")
+            }
+        }
+        if transaction.actions.rebroadcastUnavailableReason == nil {
+            Button {
+                spectraHaptic(.light)
+                Task { actionNotice = SpectraTransientNotice(await store.rebroadcastSignedTransaction(for: transaction.id)) }
+            } label: {
+                Label(AppLocalization.string("Rebroadcast"), systemImage: "dot.radiowaves.up.forward")
+            }
+        }
+    }
+    private var loadingPlaceholder: some View {
+        VStack(spacing: SpectraLayout.Space.m) {
+            ForEach(0..<4, id: \.self) { _ in
+                HStack(spacing: SpectraLayout.Space.m) {
+                    Circle().fill(SpectraLayout.insetFill).frame(width: 36, height: 36)
+                    VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
+                        SpectraShimmer(height: 14).frame(maxWidth: 150)
+                        SpectraShimmer(height: 10).frame(maxWidth: 90)
+                    }
+                    Spacer(minLength: 0)
+                    SpectraShimmer(height: 14).frame(width: 70)
+                }
+            }
+        }
+        .padding(SpectraLayout.cardPadding)
+        .frame(maxWidth: .infinity)
+        .spectraCardFill()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(AppLocalization.string("Loading"))
+    }
+    /// Anything the filter menu narrows the list by.
+    private var filtersAreActive: Bool {
+        (fixedWalletId == nil && selectedWalletId != nil) || selectedFilter != .all || hidesSmallAmounts
     }
     private var historyFilterMenu: some View {
         Menu {
@@ -203,9 +296,21 @@ struct HistoryListView: View {
             // The app-wide switch style has no menu form; a menu shows a switch
             // as a disabled item. `.automatic` is the checkmark item.
             .toggleStyle(.automatic)
+            if filtersAreActive {
+                Button(AppLocalization.string("Clear Filters"), systemImage: "xmark.circle", action: clearFilters)
+            }
         } label: {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-        }.accessibilityLabel(AppLocalization.string("Filter history"))
+            Image(systemName: filtersAreActive
+                ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+        }
+        .accessibilityLabel(AppLocalization.string("Filter history"))
+        .accessibilityValue(filtersAreActive ? AppLocalization.string("Filtered") : "")
+    }
+    private func clearFilters() {
+        if fixedWalletId == nil { selectedWalletId = nil }
+        selectedFilter = .all
+        hidesSmallAmounts = false
+        searchText = ""
     }
 
     private var historyWalletIds: Set<String> {
@@ -216,20 +321,16 @@ struct HistoryListView: View {
     private var shouldShowPagingControls: Bool {
         hasMoreStoredHistory || canLoadMoreVisibleHistory || store.historyPaging.isLoadingMore
     }
-    private var pagedRows: [HistoryRowPresentation] {
-        visibleTransactions.map(historyRowPresentation)
-    }
     private var groupedSections: [HistoryPresentationSection] {
         let calendar = Calendar.current
-        let grouped = Dictionary(grouping: pagedRows) { HistoryDateGroup($0.transaction, calendar: calendar) }
-        let order = selectedSortOrder == .newest ? HistoryDateGroup.allCases : HistoryDateGroup.allCases.reversed()
+        let grouped = Dictionary(grouping: pageRecords) { HistoryDateGroup($0, calendar: calendar) }
+        let order = selectedSortOrder == .newest ? grouped.keys.sorted() : grouped.keys.sorted().reversed()
         return order.compactMap { group in
-            guard let rows = grouped[group], !rows.isEmpty else { return nil }
-            return HistoryPresentationSection(group: group, rows: rows)
+            guard let records = grouped[group], !records.isEmpty else { return nil }
+            return HistoryPresentationSection(group: group, rows: records.map { historyRowPresentation(for: $0, in: group) })
         }
     }
     private var historyError: String? { pageError ?? store.historyReadError }
-    private var visibleTransactions: [TransactionRecord] { pageRecords }
     private var filterKey: String {
         "\(selectedWalletId ?? "")|\(selectedFilter)|\(selectedSortOrder)|\(hidesSmallAmounts)|\(searchText)"
     }
@@ -237,11 +338,7 @@ struct HistoryListView: View {
     private static let pageSize = 20
     private func loadPage(reset: Bool) async {
         let key = queryKey
-        if loadedFilterKey != filterKey {
-            pageRecords = []
-            hasMoreStoredHistory = false
-            loadedFilterKey = filterKey
-        }
+        let filter = filterKey
         let requestId = UUID()
         pageRequestId = requestId
         isLoadingPage = true
@@ -250,7 +347,9 @@ struct HistoryListView: View {
             let bridge = try await store.bridge.ready()
             // A reload keeps every row already on screen, so a refresh or an
             // on-chain fetch does not snap the list back to its first page.
-            let target = reset ? max(Self.pageSize, pageRecords.count + pendingGrowth) : Self.pageSize
+            // A new filter starts from one page.
+            let sameQuery = loadedFilterKey == filter
+            let target = reset ? max(Self.pageSize, sameQuery ? pageRecords.count + pendingGrowth : 0) : Self.pageSize
             var records: [TransactionRecord] = []
             var cursor = reset ? nil : nextCursor
             var hasMore = false
@@ -273,6 +372,8 @@ struct HistoryListView: View {
                 let present = Set(pageRecords.map(\.id))
                 pageRecords += records.filter { !present.contains($0.id) }
             }
+            loadedFilterKey = filter
+            hasLoadedPage = true
             nextCursor = cursor
             hasMoreStoredHistory = hasMore
             pageError = nil
@@ -305,37 +406,34 @@ struct HistoryListView: View {
         .buttonStyle(.glass)
         .disabled(store.historyPaging.isLoadingMore || isLoadingPage)
     }
+    @ViewBuilder
     private var historyEmptyStateCard: some View {
-        SpectraEmptyStateCard(
-            title: emptyStateTitle,
-            message: emptyStateMessage,
-            systemImage: store.transactionCount == 0 ? "clock.arrow.circlepath" : "magnifyingglass"
-        )
-    }
-    private var emptyStateTitle: String {
-        store.transactionCount == 0
-            ? AppLocalization.string("No activity yet")
-            : AppLocalization.string("No matches found")
-    }
-    private var emptyStateMessage: String {
-        if store.wallets.isEmpty { return AppLocalization.string("No wallets are currently loaded. Import a wallet to view activity.") }
-        if store.transactionCount == 0 {
-            return AppLocalization.string("Send funds or receive funds to build a persistent transaction log.")
+        if store.wallets.isEmpty {
+            SpectraEmptyStateCard(
+                title: "No activity yet", message: "Add a wallet to see its activity here.",
+                systemImage: "clock.arrow.circlepath", actionTitle: "Add Wallet", actionSystemImage: "plus"
+            ) {
+                store.selectedMainTab = .home
+                store.isShowingAddWalletEntry = true
+            }
+        } else if filtersAreActive || !searchText.isEmpty {
+            SpectraEmptyStateCard(
+                title: "No matches found", message: "Try a different filter or search term.",
+                systemImage: "magnifyingglass", actionTitle: "Clear Filters", actionSystemImage: "xmark.circle",
+                action: clearFilters)
+        } else {
+            SpectraEmptyStateCard(
+                title: "No activity yet", message: "Send funds or receive funds to build a persistent transaction log.",
+                systemImage: "clock.arrow.circlepath")
         }
-        return AppLocalization.string("Try a different filter or search term.")
     }
-    private func historyRowPresentation(for transaction: TransactionRecord) -> HistoryRowPresentation {
+    private func historyRowPresentation(for transaction: TransactionRecord, in group: HistoryDateGroup) -> HistoryRowPresentation {
         HistoryRowPresentation(
-            transaction: transaction, amountText: signedAmountText(for: transaction), amountColor: amountColor(for: transaction),
-            subtitleText: transaction.walletName, fullTimestampText: transaction.fullTimestampText,
-            metadataText: store.amounts.historyMetadataText(for: transaction)
+            transaction: transaction, titleText: transaction.titleText,
+            amountText: transaction.amountSign + store.amounts.formattedTransactionAmount(transaction),
+            amountColor: transaction.amountColor, subtitleText: transaction.walletName,
+            timeText: transaction.timestampText(showsDate: group.showsDate),
+            hidesBalance: store.preferences.hideBalances
         )
-    }
-    private func signedAmountText(for transaction: TransactionRecord) -> String? {
-        let amountText = store.amounts.formattedTransactionAmount(transaction)
-        return transaction.amountSign + amountText
-    }
-    private func amountColor(for transaction: TransactionRecord) -> Color {
-        transaction.amountColor
     }
 }

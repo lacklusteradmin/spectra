@@ -101,7 +101,7 @@ struct DiagnosticsHubView: View {
                 }
                 let payload = try store.importDiagnosticsBundle(from: fileURL)
                 diagnosticsNotice = AppLocalization.format(
-                    "Imported diagnostics bundle (%@).", payload.generatedAtDate.formatted(date: .abbreviated, time: .shortened))
+                    "Imported diagnostics bundle (%@).", payload.generatedAtDate.appFormatted(date: .abbreviated, time: .shortened))
             } catch {
                 diagnosticsNotice = AppLocalization.format("Import failed: %@", userErrorMessage(error))
             }
@@ -242,7 +242,7 @@ struct StandardChainDiagnosticsView: View {
             } catch {
                 guard !Task.isCancelled else { return }
                 cachedKeypoolDiagnostics = []
-                keypoolError = error.localizedDescription
+                keypoolError = userErrorMessage(error)
             }
         }.task(id: runs.diagnosticsRevision) {
             do {
@@ -252,7 +252,7 @@ struct StandardChainDiagnosticsView: View {
                 recordedError = nil
             } catch {
                 guard !Task.isCancelled else { return }
-                recordedError = error.localizedDescription
+                recordedError = userErrorMessage(error)
             }
             let events = await store.operationalEvents(for: chain)
             guard !Task.isCancelled else { return }
@@ -266,7 +266,7 @@ struct StandardChainDiagnosticsView: View {
     private var historySources: [DiagnosticsSourceCount] { recorded?.historySources ?? [] }
     private var endpoints: [EndpointProbe] { recorded?.endpoints ?? [] }
     private func formattedTime(_ unix: Double) -> String {
-        Date(timeIntervalSince1970: unix).formatted(date: .abbreviated, time: .shortened)
+        Date(timeIntervalSince1970: unix).appFormatted(date: .abbreviated, time: .shortened)
     }
     /// An endpoint nothing knows how to probe is unchecked, not a pass.
     private func endpointStatusIconName(for row: EndpointProbe) -> String {
@@ -331,4 +331,8 @@ struct StandardChainDiagnosticsView: View {
 }
 private func formatCopy(_ format: String, _ arguments: CVarArg...) -> String {
     String(format: format, locale: AppLocalization.locale, arguments: arguments)
+}
+
+func refreshOutcomeMessage(succeeded: Bool) -> String {
+    AppLocalization.string(succeeded ? "Manual refresh completed." : "Refresh failed or completed partially. See refresh errors.")
 }

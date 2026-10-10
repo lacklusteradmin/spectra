@@ -38,6 +38,25 @@ impl WalletService {
         }
     }
 
+    /// The name an import given none would take now: the first "Wallet N"
+    /// no wallet holds. A form shows it where the name is typed, so leaving
+    /// the field blank is not a guess.
+    pub async fn default_wallet_name(&self) -> Result<String, SpectraBridgeError> {
+        let this = self.clone();
+        crate::worker::run(async move {
+            let used: std::collections::HashSet<String> = this
+                .wallet_state
+                .read()
+                .await
+                .wallets
+                .iter()
+                .map(|wallet| wallet.name.clone())
+                .collect();
+            free_wallet_name(&used)
+        })
+        .await
+    }
+
     /// What `import_wallets` would store for `commit`, without sealing or
     /// storing anything and without touching the network: the planning the
     /// import runs, so the two cannot disagree. The password is the import's
@@ -138,14 +157,8 @@ impl WalletService {
                         .iter()
                         .map(|wallet| wallet.name.clone())
                         .collect();
-                    let mut index = 1u64;
                     for wallet in &mut wallets {
-                        while used.contains(&format!("Wallet {index}")) {
-                            index = index.checked_add(1).ok_or_else(|| {
-                                SpectraBridgeError::failure("Wallet names exhausted")
-                            })?;
-                        }
-                        wallet.name = format!("Wallet {index}");
+                        wallet.name = free_wallet_name(&used)?;
                         used.insert(wallet.name.clone());
                     }
                 }
@@ -562,6 +575,16 @@ pub(super) fn plan_import(
 
 /// The address a planned wallet shows: its own, or for a watched account the
 /// first receive address of the key.
+/// The first "Wallet N" that `used` does not hold.
+fn free_wallet_name(
+    used: &std::collections::HashSet<String>,
+) -> Result<String, SpectraBridgeError> {
+    (1u64..)
+        .map(|index| format!("Wallet {index}"))
+        .find(|name| !used.contains(name))
+        .ok_or_else(|| SpectraBridgeError::failure("Wallet names exhausted"))
+}
+
 fn preview_address(
     wallet: &crate::store::wallet_domain::WalletView,
 ) -> Result<String, SpectraBridgeError> {

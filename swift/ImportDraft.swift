@@ -49,6 +49,10 @@ final class WalletImportDraft {
     // These are converted to WalletDerivationOverrides at import time via
     // `resolvedDerivationOverrides`.
     var overridePassphrase: String = ""
+    /// A new wallet's passphrase, typed again. Nothing else can catch a typo
+    /// in it: backup verification checks the words, and a mistyped
+    /// passphrase derives a different wallet that can never be restored.
+    var overridePassphraseConfirmation: String = ""
     var overrideHmacKey: String = ""
     /// The length a created phrase is generated at: one of `createdLengths`.
     var selectedSeedPhraseWordCount: Int = 12 {
@@ -227,7 +231,12 @@ final class WalletImportDraft {
             guard let chain else { return false }
             return isValidPrivateKey(chain: chain, rawValue: privateKeyInput)
         }
-        return seedEntry.verdict.isValid && isRestoreHeightValid
+        return seedEntry.verdict.isValid && isRestoreHeightValid && passphraseConfirmationError == nil
+    }
+    /// Creating a wallet, a passphrase must be typed the same twice.
+    var passphraseConfirmationError: String? {
+        guard isCreateMode, !overridePassphrase.isEmpty, overridePassphrase != overridePassphraseConfirmation else { return nil }
+        return AppLocalization.string("The passphrase and its confirmation do not match.")
     }
     var requiresBackupVerification: Bool { isCreateMode }
     var isBackupVerificationComplete: Bool {
@@ -294,6 +303,7 @@ final class WalletImportDraft {
         derivationAccount = 0
         customDerivationPath = ""
         overridePassphrase = ""
+        overridePassphraseConfirmation = ""
         overrideHmacKey = ""
         selectedSeedPhraseWordCount = 12
         watchOnlyInput = ""

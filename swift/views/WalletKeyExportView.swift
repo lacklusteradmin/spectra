@@ -124,7 +124,7 @@ struct WalletKeyExportView: View {
                     }.buttonStyle(.glass).tint(.accentColor)
                     Text(AppLocalization.string("A copied key stays on this device and leaves the clipboard after a minute."))
                         .font(.caption).foregroundStyle(.secondary)
-                }.padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill().padding(SpectraLayout.Space.l)
+                }.secretShield().padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill().padding(SpectraLayout.Space.l)
             }
             .navigationTitle(export.kind.title).navigationBarTitleDisplayMode(.inline)
             .toolbar {

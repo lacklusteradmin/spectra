@@ -24,9 +24,9 @@ struct WalletShieldedFundsView: View {
                     addressSection(address)
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.shieldedFunds.title).navigationBarTitleDisplayMode(.inline)
@@ -178,8 +178,9 @@ private struct ShieldedTransactionView: View {
                 reviewSection(artifact)
             } else if flow == .send {
                 Section {
-                    TextField(AppLocalization.string("Destination Address"), text: $recipient)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                    AddressEntryRow(
+                        title: AppLocalization.string("Destination Address"), text: $recipient, chain: wallet.chain,
+                        contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
                     TextField(AppLocalization.string("Amount"), text: $amount)
                         .keyboardType(.decimalPad).monospacedDigit()
                     TextField(AppLocalization.string("Memo (Optional)"), text: $memo, axis: .vertical)
@@ -204,11 +205,7 @@ private struct ShieldedTransactionView: View {
                          ? AppLocalization.string("Shield Transparent Funds")
                          : AppLocalization.string("Send Shielded Funds"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
         .task {
             if flow == .moveIn { await review() }
         }

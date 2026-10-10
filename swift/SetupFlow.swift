@@ -25,8 +25,8 @@ struct SetupFlow {
 enum WalletSetupPage: Hashable {
     case watchAddresses
     case seedPhrase
-    case password
     case backupVerification
+    /// The name, and the optional password a wallet with a secret may take.
     case walletName
 }
 
@@ -34,9 +34,11 @@ extension SetupFlow {
     /// The pages for adding a wallet by `method`. The network was chosen
     /// before the form opened, so no flow asks for it.
     static func forMethod(_ method: WalletSetupMethod) -> SetupFlow {
+        // A new phrase is checked straight after it is written down, while
+        // the paper is still in hand; the name and password come last.
         switch method {
-        case .createPhrase: SetupFlow(pages: [.seedPhrase, .password, .backupVerification, .walletName])
-        case .importPhrase, .importPrivateKey: SetupFlow(pages: [.seedPhrase, .password, .walletName])
+        case .createPhrase: SetupFlow(pages: [.seedPhrase, .backupVerification, .walletName])
+        case .importPhrase, .importPrivateKey: SetupFlow(pages: [.seedPhrase, .walletName])
         case .watchAddresses, .watchAccountXpub, .watchViewKey, .watchMultisig:
             SetupFlow(pages: [.watchAddresses, .walletName])
         }
@@ -64,16 +66,17 @@ extension WalletSetupPage {
             if mode == .edit {
                 return WalletSetupPageCopy(title: content.editWalletTitle, subtitle: content.editWalletSubtitle)
             }
+            if mode.takesWalletPassword {
+                return WalletSetupPageCopy(
+                    title: AppLocalization.string("import_flow.name_your_wallet"),
+                    subtitle: AppLocalization.string("import_flow.name_and_password_hint"))
+            }
             return WalletSetupPageCopy(
                 title: AppLocalization.string("import_flow.name_your_wallet"),
                 subtitle: AppLocalization.string("import_flow.wallet_name_hint"))
         case .backupVerification:
             return WalletSetupPageCopy(
                 title: content.backupVerificationTitle, subtitle: content.backupVerificationSubtitle)
-        case .password:
-            return WalletSetupPageCopy(
-                title: AppLocalization.string("import_flow.wallet_password_title"),
-                subtitle: AppLocalization.string("import_flow.wallet_password_subtitle"))
         case .watchAddresses:
             if mode == .setup(.watchAccountXpub) {
                 return WalletSetupPageCopy(
@@ -101,6 +104,17 @@ extension WalletSetupPage {
             return WalletSetupPageCopy(
                 title: isCreating ? content.recordSeedPhraseTitle : content.enterSeedPhraseTitle,
                 subtitle: isCreating ? content.saveRecoveryPhraseSubtitle : content.enterRecoveryPhraseSubtitle)
+        }
+    }
+}
+
+extension WalletDraftMode {
+    /// A wallet added with a phrase or a key may seal it under a password;
+    /// a watched one has nothing to seal, and a rename changes no secret.
+    var takesWalletPassword: Bool {
+        switch self {
+        case .setup(.createPhrase), .setup(.importPhrase), .setup(.importPrivateKey): true
+        case .setup, .edit: false
         }
     }
 }

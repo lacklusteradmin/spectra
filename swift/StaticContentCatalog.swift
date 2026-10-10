@@ -34,7 +34,6 @@ struct SettingsContentCopy {
     var aboutSubtitle: String { AppLocalization.string("settings.aboutSubtitle") }
     var aboutEthosTitle: String { AppLocalization.string("settings.aboutEthosTitle") }
     var aboutNarrativeTitle: String { AppLocalization.string("settings.aboutNarrativeTitle") }
-    var reportProblemActionTitle: String { AppLocalization.string("settings.reportProblemActionTitle") }
     var buyProvidersIntro: String { AppLocalization.string("settings.buyProvidersIntro") }
     var buyWarning: String { AppLocalization.string("settings.buyWarning") }
     var buyOnrampNote: String { AppLocalization.string("settings.buyOnrampNote") }
@@ -83,8 +82,6 @@ struct ImportFlowContent {
     var saveRecoveryPhraseSubtitle: String { AppLocalization.string("import_flow.saveRecoveryPhraseSubtitle") }
     var enterRecoveryPhraseSubtitle: String { AppLocalization.string("import_flow.enterRecoveryPhraseSubtitle") }
     var editWalletSubtitle: String { AppLocalization.string("import_flow.editWalletSubtitle") }
-    var createSeedLengthTitle: String { AppLocalization.string("import_flow.createSeedLengthTitle") }
-    var createSeedLengthSubtitle: String { AppLocalization.string("import_flow.createSeedLengthSubtitle") }
     var createSeedPhraseWarning: String { AppLocalization.string("import_flow.createSeedPhraseWarning") }
     var privateKeyTitle: String { AppLocalization.string("import_flow.privateKeyTitle") }
     var privateKeyPrompt: String { AppLocalization.string("import_flow.privateKeyPrompt") }
@@ -92,8 +89,6 @@ struct ImportFlowContent {
     var backupVerificationButtonTitle: String { AppLocalization.string("import_flow.backupVerificationButtonTitle") }
     var backupVerifiedMessage: String { AppLocalization.string("import_flow.backupVerifiedMessage") }
     var backupVerificationHint: String { AppLocalization.string("import_flow.backupVerificationHint") }
-    var addressesToWatchTitle: String { AppLocalization.string("import_flow.addressesToWatchTitle") }
-    var addressesToWatchSubtitle: String { AppLocalization.string("import_flow.addressesToWatchSubtitle") }
 }
 
 struct CommonLocalizationContent {

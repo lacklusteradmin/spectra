@@ -104,7 +104,7 @@ final class WalletDiagnosticsState {
         let copy = DiagnosticsContentCopy.current
         if let lastGood = lastGoodSyncByChain[chain] {
             return String(
-                format: copy.degradedLastGoodSyncFormat, lastGood.formatted(date: .abbreviated, time: .shortened)
+                format: copy.degradedLastGoodSyncFormat, lastGood.appFormatted(date: .abbreviated, time: .shortened)
             )
         }
         return copy.degradedNoPriorSuccessfulSyncYet

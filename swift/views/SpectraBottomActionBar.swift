@@ -1,35 +1,19 @@
 import SwiftUI
 
-/// The bar carrying a flow's back and primary actions, pinned under its
-/// content with `safeAreaInset(edge: .bottom)`.
+/// The row carrying a flow's primary actions, placed with
+/// `.safeAreaBar(edge: .bottom)`.
 ///
-/// One implementation for the setup, send and receive flows, which had three.
-/// They disagreed on the two things that decide how the bar meets the screen,
-/// and each got one of them right:
-///
-/// - **What it is made of.** Send and receive used `.background(.regularMaterial)`,
-///   an opaque slab that flattens the backdrop where
-///   [docs/IOS-UI.md](../../docs/IOS-UI.md) asks for glass.
-/// - **Where it stops.** `background(_ style:)` ignores the safe area by
-///   default, which is the only reason those two reached the bottom edge.
-///   Setup's `glassEffect` is clipped to the bar's own bounds, so its glass
-///   ended in a seam above the tab bar with the backdrop showing below it.
-///
-/// Glass, in a background that ignores the bottom edge, is both at once.
+/// The bar draws nothing behind its buttons. The buttons are glass, and
+/// `safeAreaBar` gives the content scrolling under them the system's scroll
+/// edge effect, so the bar reads as part of the screen rather than a slab
+/// laid over it. A background of its own — a material, a glass rectangle, a
+/// divider — is what made it one.
 struct SpectraBottomActionBar<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(spacing: 0) {
-            Divider().opacity(0.4)
-            HStack(spacing: SpectraLayout.Space.m) { content }
-                .padding(.horizontal, SpectraLayout.Space.l)
-                .padding(.vertical, SpectraLayout.Space.m)
-        }
-        .background {
-            Color.clear
-                .glassEffect(.regular.tint(SpectraLayout.GlassTint.elevated), in: Rectangle())
-                .ignoresSafeArea(edges: .bottom)
-        }
+        HStack(spacing: SpectraLayout.Space.m) { content }
+            .padding(.horizontal, SpectraLayout.Space.l)
+            .padding(.vertical, SpectraLayout.Space.s)
     }
 }

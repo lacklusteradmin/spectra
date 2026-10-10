@@ -11,7 +11,8 @@ struct ContentView: View {
     /// anything of the user. The lock guards use and stays until unlocked.
     private var cover: AppCover? {
         if scenePhase != .active { return .snapshot }
-        return store.isAppLocked ? .locked : nil
+        if store.isAppLocked { return .locked }
+        return store.isStoreUnreadable ? .unreadableStore : nil
     }
 
     private func handleScenePhase(_ phase: ScenePhase) {
@@ -52,7 +53,7 @@ struct ContentView: View {
 }
 
 private enum AppCover: Equatable {
-    case snapshot, locked
+    case snapshot, locked, unreadableStore
 }
 
 private struct AppCoverView: View {
@@ -67,6 +68,8 @@ private struct AppCoverView: View {
                 SpectraLogo()
             case .locked:
                 lockCard
+            case .unreadableStore:
+                UnreadableStoreCard(store: store)
             }
         }
     }
@@ -81,9 +84,48 @@ private struct AppCoverView: View {
             Button {
                 Task { await store.unlockApp() }
             } label: {
-                Label(AppLocalization.string("content.locked.unlock"), systemImage: "faceid")
+                Label(AppLocalization.format("Unlock with %@", DeviceBiometry.current.name), systemImage: DeviceBiometry.current.symbol)
                     .font(.body.weight(.semibold)).frame(maxWidth: 220).padding(.vertical, SpectraLayout.Space.xs)
             }.buttonStyle(.glassProminent).controlSize(.large)
+        }.padding(SpectraLayout.Space.xl).spectraElevatedFill().padding(SpectraLayout.Space.xl)
+    }
+}
+
+/// The store holds data this build cannot read. Nothing else can run, so
+/// this is the whole app until the data is discarded.
+private struct UnreadableStoreCard: View {
+    let store: AppState
+    @State private var isConfirming = false
+    @State private var isDiscarding = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        VStack(spacing: SpectraLayout.Space.m) {
+            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(.spectraWarning)
+            Text(AppLocalization.string("content.unreadable.title")).font(.title3.weight(.semibold))
+                .multilineTextAlignment(.center)
+            Text(AppLocalization.string("content.unreadable.detail")).font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            if let errorMessage { Text(errorMessage).font(.caption).foregroundStyle(.red) }
+            Button(role: .destructive) {
+                isConfirming = true
+            } label: {
+                Label(AppLocalization.string("content.unreadable.reset"), systemImage: "trash")
+                    .font(.body.weight(.semibold)).frame(maxWidth: 220).padding(.vertical, SpectraLayout.Space.xs)
+            }
+            .buttonStyle(.glassProminent).tint(.red).controlSize(.large).disabled(isDiscarding)
+            .confirmationDialog(
+                AppLocalization.string("content.unreadable.confirm"), isPresented: $isConfirming, titleVisibility: .visible
+            ) {
+                Button(AppLocalization.string("content.unreadable.reset"), role: .destructive) {
+                    Task {
+                        isDiscarding = true
+                        errorMessage = await store.discardUnreadableStore()
+                        isDiscarding = false
+                    }
+                }
+            }
         }.padding(SpectraLayout.Space.xl).spectraElevatedFill().padding(SpectraLayout.Space.xl)
     }
 }

@@ -35,7 +35,7 @@ func highRiskSendMessages(_ warnings: [HighRiskSendWarning]) -> [String] {
             return AppLocalization.format(
                 "ENS name '%@' resolved to %@. Confirm this resolved address before sending.", name, address)
         case .largeSend(let percent, let symbol):
-            let formatted = (Double(percent) / 100.0).formatted(.percent.precision(.fractionLength(0)))
+            let formatted = (Double(percent) / 100.0).formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.locale))
             return AppLocalization.format("This send is %@ of your %@ balance.", formatted, symbol)
         case .nonEvmOnEvm(let chain):
             return AppLocalization.format("Destination appears to be a non-EVM address while sending on %@.", chain.displayName)
@@ -93,10 +93,21 @@ func userErrorMessage(_ error: Error) -> String {
             return AppLocalization.string("Couldn't reach the network. Check your connection and try again.")
         case .Decode:
             return AppLocalization.string("Spectra received data it couldn't read. Try again later.")
+        case .StoreUnreadable:
+            return AppLocalization.string("content.unreadable.subtitle")
         }
     }
     let description = error.localizedDescription
     // Every other UniFFI error is worded the same way and has no sentence.
     return description == String(reflecting: error)
         ? AppLocalization.string("Something went wrong. Try again.") : description
+}
+
+extension Date {
+    /// This date in the app's language and the reader's region. The words
+    /// around a date are in the app's language, which need not be the
+    /// system's, so the date's month names and order are too.
+    func appFormatted(date: Date.FormatStyle.DateStyle, time: Date.FormatStyle.TimeStyle) -> String {
+        formatted(Date.FormatStyle(date: date, time: time).locale(AppLocalization.locale))
+    }
 }

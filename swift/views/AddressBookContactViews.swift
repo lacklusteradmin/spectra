@@ -16,6 +16,9 @@ struct NewAddressBookContactView: View {
     @State private var note: String = ""
     @State private var isChoosingChain = false
     @State private var chainSearchText: String = ""
+    @State private var isSaving = false
+    /// Core's reason for refusing the save, shown here with what was typed.
+    @State private var refusal: String?
 
     private var trimmedAddress: String { address.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canSave: Bool {
@@ -37,27 +40,31 @@ struct NewAddressBookContactView: View {
                     contactCard
                     destinationCard
                 }
-                .padding(SpectraLayout.Space.l)
+                .spectraScreenPadding()
             }
             .scrollDismissesKeyboard(.interactively)
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            SpectraBottomActionBar {
-                Button {
-                    guard let chain else { return }
-                    spectraNotificationHaptic(.success)
-                    addressBook.add(name: name, address: address, chain: chain, note: note)
-                    dismiss()
-                } label: {
-                    Label(AppLocalization.string("Save Contact"), systemImage: "checkmark")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .frame(minHeight: 46)
+        .safeAreaBar(edge: .bottom) {
+            VStack(spacing: SpectraLayout.Space.s) {
+                if let refusal {
+                    Label(refusal, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline).foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, SpectraLayout.screenHorizontal)
                 }
-                .buttonStyle(.glassProminent)
-                .disabled(!canSave)
+                SpectraBottomActionBar {
+                    Button(action: save) {
+                        Label(AppLocalization.string("Save Contact"), systemImage: "checkmark")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 46)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(!canSave || isSaving)
+                }
             }
         }
+        .navigationTitle(AppLocalization.string("New Contact"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $isChoosingChain) {
@@ -71,6 +78,26 @@ struct NewAddressBookContactView: View {
                     isChoosingChain = false
                 }
             )
+        }
+    }
+
+    /// Closes only once core has stored the contact; a refusal keeps the
+    /// form, and what was typed, on screen with core's reason.
+    private func save() {
+        guard let chain else { return }
+        isSaving = true
+        Task {
+            let refused = await addressBook.add(name: name, address: address, chain: chain, note: note)
+            isSaving = false
+            if let refused {
+                refusal = refused
+                // Said here; the list need not say it again on the way back.
+                addressBook.error = nil
+                spectraNotificationHaptic(.error)
+            } else {
+                spectraNotificationHaptic(.success)
+                dismiss()
+            }
         }
     }
 
@@ -95,23 +122,22 @@ struct NewAddressBookContactView: View {
         spectraDetailCard(title: "Saved Address") {
             chainRow
 
-            // `axis: .vertical` keeps the field's placeholder — the chain's own
-            // format hint — while letting a 42-character address wrap instead
-            // of scrolling out of sight to the left.
-            TextField(addressPrompt, text: $address, axis: .vertical)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(.callout.monospaced())
-                .lineLimit(1...4)
-                .padding(SpectraLayout.Space.m)
-                .spectraInputFieldStyle()
-                .foregroundStyle(Color.primary)
+            // The placeholder is the chain's own format hint; the address
+            // wraps rather than scrolling out of sight, and can be pasted or
+            // scanned as on the send page.
+            if let chain {
+                AddressEntryRow(title: addressPrompt, text: $address, chain: chain)
+                    .padding(SpectraLayout.Space.m)
+                    .spectraInputFieldStyle()
+                    .foregroundStyle(Color.primary)
+            }
 
-            // Only show validation feedback once there is input to judge.
+            // Only show validation feedback once there is input to judge, and
+            // never by colour alone.
             if !trimmedAddress.isEmpty {
-                Text(addressValidationMessage)
+                Label(addressValidationMessage, systemImage: isAddressValid ? "checkmark.circle.fill" : "exclamationmark.circle")
                     .font(.caption)
-                    .foregroundStyle(addressValidationColor)
+                    .foregroundStyle(isAddressValid ? Color.green : Color.spectraWarning)
             }
         }
     }
@@ -163,13 +189,17 @@ struct NewAddressBookContactView: View {
         return addressBookAddressValidationMessage(for: address, chain: chain)
     }
 
-    private var addressValidationColor: Color { canSave ? .green : .secondary }
+    private var isAddressValid: Bool {
+        guard let chain else { return false }
+        return isValidSendAddress(chain: chain, address: trimmedAddress)
+    }
 }
 
 /// A saved recipient with rename and delete actions.
 struct AddressBookContactView: View {
-    let addressBook: AddressBookState
+    let store: AppState
     let entry: AddressBookEntry
+    private var addressBook: AddressBookState { store.addressBook }
     @Environment(\.dismiss) private var dismiss
     @State private var editedName: String = ""
     @State private var isConfirmingDelete = false
@@ -193,10 +223,11 @@ struct AddressBookContactView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                     contactHero
+                    sendButton
                     labelCard
                     deleteButton
                 }
-                .padding(SpectraLayout.Space.l)
+                .spectraScreenPadding()
             }
             .scrollDismissesKeyboard(.interactively)
         }
@@ -271,6 +302,35 @@ struct AddressBookContactView: View {
         .spectraElevatedFill()
     }
 
+    /// A wallet that can pay this contact: one on its network that signs.
+    private var payingWallet: WalletView? {
+        store.sendEnabledWallets.first { $0.chain == contact.chainId }
+    }
+
+    /// Opens the composer from that wallet with this address filled in.
+    @ViewBuilder
+    private var sendButton: some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
+            Button {
+                guard let payingWallet else { return }
+                spectraHaptic(.light)
+                store.beginSend(walletId: payingWallet.id)
+                store.sendFlow.address = contact.address
+            } label: {
+                Label(AppLocalization.format("Send to %@", contact.name), systemImage: "arrow.up")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, SpectraLayout.Space.s)
+            }
+            .buttonStyle(.glassProminent)
+            .disabled(payingWallet == nil)
+            if payingWallet == nil {
+                Text(AppLocalization.format("No wallet on %@ can send yet.", contact.chainName))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
     private var labelCard: some View {
         spectraDetailCard(title: "Label") {
             Text(
@@ -313,6 +373,66 @@ struct AddressBookContactView: View {
                 dismiss()
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
+        }
+    }
+}
+
+/// Naming a recipient just sent to before it is saved: a name of the user's,
+/// prefilled, and core's answer shown here rather than on a page the user is
+/// not on.
+struct SaveContactSheet: View {
+    let addressBook: AddressBookState
+    let chain: Chain
+    let address: String
+    @State var name: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var refusal: String?
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(AppLocalization.string("Name"), text: $name)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                } footer: {
+                    Text(verbatim: address).font(.caption.monospaced())
+                }
+                if let refusal {
+                    Section {
+                        Label(refusal, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle(AppLocalization.string("Save Contact"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(AppLocalization.string("Cancel")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(AppLocalization.string("Save"), action: save)
+                        .disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func save() {
+        isSaving = true
+        Task {
+            let refused = await addressBook.add(
+                name: name, address: address, chain: chain, note: AppLocalization.string("Saved from recent send"))
+            isSaving = false
+            if let refused {
+                refusal = refused
+                addressBook.error = nil
+            } else {
+                spectraNotificationHaptic(.success)
+                dismiss()
+            }
         }
     }
 }

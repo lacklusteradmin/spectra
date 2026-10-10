@@ -17,7 +17,7 @@ struct WalletTrustLinesView: View {
         List {
             if let lines {
                 if lines.lines.isEmpty {
-                    Section { Text(AppLocalization.string("No trust lines.")).foregroundStyle(.secondary) }
+                    WalletToolEmptySection(message: "No trust lines.")
                 } else {
                     Section {
                         ForEach(lines.lines, id: \.asset) { row($0) }
@@ -42,9 +42,9 @@ struct WalletTrustLinesView: View {
                     }
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.trustLines.title).navigationBarTitleDisplayMode(.inline)
@@ -137,11 +137,7 @@ private struct TrustLineChangeView: View {
         }
         .navigationTitle(AppLocalization.string(change.remove ? "Remove Trust Line" : "Trust Asset"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
         .task {
             await session.load(
                 operation: .build,

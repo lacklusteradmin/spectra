@@ -65,22 +65,30 @@ enum ChainPickerFilter: Hashable {
 }
 
 extension [ChainSelectionDescriptor] {
-    /// The rows a picker shows. Test networks appear only while the picker
-    /// shows them, each after its mainnet.
+    /// The rows a picker shows. Test networks appear while the picker shows
+    /// them, each after its mainnet — or when a search finds nothing else: a
+    /// test network asked for by name is the answer, not "No Results" for a
+    /// network the list has.
     func picked(
         filter: ChainPickerFilter, query: String, order: ChainPickerOrder, showsTestNetworks: Bool
     ) -> [ChainSelectionDescriptor] {
-        let rows = self.filter { row in
+        let rows = matching(filter: filter, query: query, showsTestNetworks: showsTestNetworks)
+        let shown = rows.isEmpty && !showsTestNetworks && !query.isEmpty
+            ? matching(filter: filter, query: query, showsTestNetworks: true) : rows
+        switch order {
+        case .popular: return shown
+        case .name: return shown.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        }
+    }
+
+    private func matching(filter: ChainPickerFilter, query: String, showsTestNetworks: Bool) -> [ChainSelectionDescriptor] {
+        self.filter { row in
             if row.isTestnet, !showsTestNetworks { return false }
             if !query.isEmpty, !row.matches(query) { return false }
             switch filter {
             case .all: return true
             case .tag(let tag): return row.tags.contains(tag)
             }
-        }
-        switch order {
-        case .popular: return rows
-        case .name: return rows.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         }
     }
 }

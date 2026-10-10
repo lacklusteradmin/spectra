@@ -80,3 +80,22 @@ struct SendArtifactStageSections: View {
         }
     }
 }
+
+extension View {
+    /// A send sheet's way out: Cancel, where Cancel goes, until a node has
+    /// accepted the transaction; then Done, where Done goes. "Done" before
+    /// anything was done read as a confirmation of nothing.
+    func sendSheetDismissal(session: SendSession, dismiss: @escaping () -> Void) -> some View {
+        toolbar {
+            if session.artifact?.attempts.contains(where: { $0.outcome == .accepted }) == true {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(AppLocalization.string("Done"), action: dismiss)
+                }
+            } else {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(AppLocalization.string("Cancel"), action: dismiss)
+                }
+            }
+        }
+    }
+}

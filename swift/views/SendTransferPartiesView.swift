@@ -11,7 +11,8 @@ struct SendTransferPartiesView: View {
     let recipient: String
     /// The destination tag or memo the transaction carries to the recipient.
     var memo: PaymentMemo? = nil
-    var saveRecipient: (() -> Void)? = nil
+    /// The name a save to the address book starts from; `nil` offers none.
+    var suggestedContactName: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
@@ -26,7 +27,7 @@ struct SendTransferPartiesView: View {
             }
             SendTransferPartyView(
                 store: store, walletId: walletId, chain: chain,
-                address: recipient, isSender: false, saveRecipient: saveRecipient)
+                address: recipient, isSender: false, suggestedContactName: suggestedContactName)
             if let memo {
                 PaymentMemoRow(memo: memo)
                     .accessibilityIdentifier("send.review.memo")
@@ -42,8 +43,9 @@ private struct SendTransferPartyView: View {
     let chain: Chain
     let address: String
     let isSender: Bool
-    var saveRecipient: (() -> Void)? = nil
+    var suggestedContactName: String? = nil
     @State private var holder: EndpointHolder?
+    @State private var isSavingContact = false
     @State private var lookupCompleted = false
 
     var body: some View {
@@ -57,7 +59,10 @@ private struct SendTransferPartyView: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
                     Text(verbatim: name).font(.headline)
-                    if holder != nil {
+                    // Two lines for every party once core has answered, so
+                    // the sender and the recipient sit the same way above
+                    // their addresses.
+                    if let role {
                         Text(AppLocalization.string(role))
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -65,23 +70,20 @@ private struct SendTransferPartyView: View {
                 }
             }
 
-            Text(groupedAddress(address))
-                .font(.subheadline.monospaced())
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel(Text(verbatim: address))
-                .accessibilityIdentifier(isSender ? "send.review.sender" : "send.review.recipient")
-                .contextMenu {
-                    Button {
-                        UIPasteboard.general.string = address
-                    } label: {
-                        Label(AppLocalization.string("Copy"), systemImage: "doc.on.doc")
-                    }
-                }
+            HStack(alignment: .firstTextBaseline, spacing: SpectraLayout.Space.s) {
+                Text(readableAddress(address, chain: chain))
+                    .font(.subheadline.monospaced())
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(Text(verbatim: address))
+                    .accessibilityIdentifier(isSender ? "send.review.sender" : "send.review.recipient")
+                CopyButton(value: displayAddress(chain: chain, address: address))
+            }
 
-            if !isSender, lookupCompleted, holder == nil, let saveRecipient {
+            if !isSender, lookupCompleted, holder == nil, let suggestedContactName {
                 Button {
                     spectraHaptic(.light)
-                    saveRecipient()
+                    isSavingContact = true
                 } label: {
                     Label(AppLocalization.string("Save Recipient To Address Book"), systemImage: "book.closed")
                         .font(.subheadline.weight(.semibold))
@@ -89,6 +91,11 @@ private struct SendTransferPartyView: View {
                         .padding(.vertical, SpectraLayout.Space.s)
                 }
                 .buttonStyle(.glass)
+                .sheet(isPresented: $isSavingContact) {
+                    SaveContactSheet(
+                        addressBook: store.addressBook, chain: chain,
+                        address: displayAddress(chain: chain, address: address), name: suggestedContactName)
+                }
             }
         }
         .task(id: LookupIdentity(
@@ -115,19 +122,19 @@ private struct SendTransferPartyView: View {
         }
     }
 
-    private var role: String {
-        if isSender { return "Sending wallet" }
+    private var role: String? {
+        if isSender { return holder == nil ? nil : "Sending wallet" }
         switch holder {
         case .contact: return "Saved contact"
         case .wallet: return "Your wallet"
-        case nil: return "Recipient"
+        case nil: return lookupCompleted ? "Not in your address book" : nil
         }
     }
 
     private var systemImage: String {
-        if isSender { return "wallet.pass" }
+        if isSender { return "wallet.bifold" }
         switch holder {
-        case .wallet: return "wallet.pass"
+        case .wallet: return "wallet.bifold"
         case .contact, nil: return "person.crop.circle"
         }
     }

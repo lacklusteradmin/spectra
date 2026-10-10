@@ -41,12 +41,11 @@ struct WalletCopyView: View {
                         .padding(SpectraLayout.cardPadding).frame(maxWidth: .infinity, alignment: .leading)
                         .spectraCardFill()
                 } else if let targets {
-                    if let chain { form(chain) }
                     SpectraRowGroup(title: AppLocalization.string("Network"), data: targets) { descriptor in
                         ChainSelectionRow(descriptor: descriptor, isSelected: chain == descriptor.id) {
                             select(descriptor.id)
                         }
-                    }.spectraCardFill()
+                    }
                 } else {
                     ProgressView().frame(maxWidth: .infinity)
                 }
@@ -57,6 +56,23 @@ struct WalletCopyView: View {
         .navigationTitle(WalletAction.addToNetwork.title).navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .task { await loadTargets() }
+        // The chosen network's form opens over the list, where it is seen,
+        // rather than above a row the list may have scrolled far from.
+        .sheet(isPresented: Binding(get: { chain != nil && added == nil }, set: { if !$0 { chain = nil } })) {
+            if let chain {
+                NavigationStack {
+                    ScrollView(showsIndicators: false) { form(chain).spectraScreenPadding() }
+                        .background(SpectraBackdrop().ignoresSafeArea())
+                        .navigationTitle(chain.displayName).navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(AppLocalization.string("Cancel")) { self.chain = nil }
+                            }
+                        }
+                }
+                .presentationDetents([.medium, .large])
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { password = "" }
         }
@@ -66,8 +82,7 @@ struct WalletCopyView: View {
     @ViewBuilder
     private func form(_ chain: Chain) -> some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            Text(chain.displayName).font(.headline)
-            TextField(AppLocalization.string("import_flow.wallet_name_placeholder"), text: $name)
+            TextField(AppLocalization.string("import_flow.wallet_name"), text: $name)
                 .padding(SpectraLayout.Space.m).spectraInputFieldStyle()
             if needsPassword {
                 SecureField(AppLocalization.string("Wallet Password"), text: $password)

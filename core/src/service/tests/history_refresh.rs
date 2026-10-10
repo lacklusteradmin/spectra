@@ -28,6 +28,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         icp_principal: None,
         near_account_key: None,
         multisig_policy: None,
+        balances_read_at: None,
     }
 }
 

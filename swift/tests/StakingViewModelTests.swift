@@ -118,7 +118,7 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
             signs += 1
             #expect(id == "staking-review")
             #expect(digest == "immutable-review")
-            #expect(password == "sign-password")
+            #expect(password == "build-password", "The password typed once signs too")
             return StakingTestSupport.artifact(stage: .signed)
         }
         operations.broadcast = { id, endpoints in
@@ -139,8 +139,7 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
         await vm.perform(try #require(vm.request?.id), store: store)
         #expect(builds == 1 && signs == 0 && broadcasts == 0)
         #expect(vm.session.selectedEndpoints.isEmpty)
-        #expect(vm.password.isEmpty)
-        vm.password = "sign-password"
+        #expect(vm.password == "build-password")
         vm.begin(.sign)
         await vm.perform(try #require(vm.request?.id), store: store)
         #expect(signs == 1 && broadcasts == 0)
@@ -212,7 +211,25 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
         #expect(reads == 1 && authorizations == 1)
         #expect(keyActions == 0, "A receipt query never signs or repeats a staking operation")
         #expect(vm.session.artifact?.id == "staking-review")
-        #expect(vm.password.isEmpty)
+        #expect(vm.password == "read-password", "Kept for the page's next step")
+    }
+
+    @Test func aFailedBuildKeepsThePasswordAndShowsTheErrorAtTheForm() async throws {
+        var operations = StakingTestSupport.operations()
+        operations.build = { _, _ in
+            throw SpectraBridgeError.InvalidInput(message: LocalizableMessage(template: "Wrong password", args: []))
+        }
+        let vm = StakingViewModel(
+            chain: .solana, bridge: bridge, operations: operations, authentication: { _ in nil })
+        vm.selectWallet("wallet")
+        vm.validatorId = "validator"
+        vm.amount = "1"
+        vm.password = "typo"
+        vm.begin(.build)
+        await vm.perform(try #require(vm.request?.id), store: makeState())
+        #expect(vm.password == "typo")
+        #expect(vm.stepError != nil)
+        #expect(vm.positionsError == nil)
     }
 
     @Test func resumingLoadsTheSavedReviewWithoutBuildingOrSigningAgain() async throws {
@@ -261,7 +278,7 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
             signs += 1
             #expect(id == "staking-review")
             #expect(digest == "reviewed-recovery")
-            #expect(password == "sign-password")
+            #expect(password == "repair-password", "The password typed once signs too")
             var signed = recovered
             signed.stage = .signed
             return signed
@@ -285,8 +302,7 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
         #expect(vm.session.artifact == recovered)
         #expect(vm.session.selectedEndpoints.isEmpty)
         #expect(vm.transaction == nil)
-        #expect(vm.password.isEmpty)
-        vm.password = "sign-password"
+        #expect(vm.password == "repair-password")
         vm.begin(.sign)
         await vm.perform(try #require(vm.request?.id), store: store)
         #expect(signs == 1 && broadcasts == 0)

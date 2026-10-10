@@ -16,7 +16,7 @@ struct WalletTokenAccountsView: View {
         List {
             if let empty {
                 if empty.accounts.isEmpty {
-                    Section { Text(AppLocalization.string("No empty token accounts.")).foregroundStyle(.secondary) }
+                    WalletToolEmptySection(message: "No empty token accounts.")
                 } else {
                     Section {
                         ForEach(empty.accounts, id: \.address) { row($0) }
@@ -34,9 +34,9 @@ struct WalletTokenAccountsView: View {
                     }
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.tokenAccounts.title).navigationBarTitleDisplayMode(.inline)
@@ -106,11 +106,7 @@ private struct CloseTokenAccountsView: View {
                 submittedText: AppLocalization.string("Submitted. The rent is back once it confirms."))
         }
         .navigationTitle(AppLocalization.string("Close Token Accounts")).navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
         .task {
             await session.load(
                 operation: .build,

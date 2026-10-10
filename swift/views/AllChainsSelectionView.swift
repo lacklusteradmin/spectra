@@ -1,13 +1,15 @@
 import SwiftUI
 
 /// Every chain in one list, ordered by popularity or name and narrowed by a
-/// tag filter and a search. Test networks join the list behind a switch.
+/// tag filter and a search. Test networks join the list from the toolbar
+/// menu, beside the sort: an option for the few who want them, not a card
+/// every user reads past.
 ///
 /// Self-contained — takes its dependencies as bindings/closures and doesn't
 /// reach into AppState. Callers pass the descriptors in popular order, the
-/// chosen chain, if any, what picking one does, and optionally a header above
+/// chosen chain, if any, what picking one does, and optionally a footer under
 /// the list.
-struct AllChainsSelectionView<Header: View>: View {
+struct AllChainsSelectionView<Footer: View>: View {
     @Binding var chainSearchText: String
     let title: String
     let descriptors: [ChainSelectionDescriptor]
@@ -16,7 +18,7 @@ struct AllChainsSelectionView<Header: View>: View {
     /// chosen row.
     var accessory: ChainSelectionRow.Accessory = .checkmark
     let toggleSelection: (Chain) -> Void
-    @ViewBuilder var header: () -> Header
+    @ViewBuilder var footer: () -> Footer
     @State private var order: ChainPickerOrder = .popular
     @State private var filter: ChainPickerFilter = .all
     @State private var showsTestNetworks = false
@@ -32,14 +34,6 @@ struct AllChainsSelectionView<Header: View>: View {
             tag != .testnet && descriptors.contains { $0.tags.contains(tag) }
         }
         return [.all] + tags.map { .tag($0) }
-    }
-    private var testNetworkSwitch: some View {
-        Toggle(isOn: $showsTestNetworks) {
-            Label(AppLocalization.string("Show test networks"), systemImage: "testtube.2")
-                .font(.body.weight(.semibold))
-        }
-        .spectraRowPadding()
-        .spectraCardFill()
     }
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -83,10 +77,16 @@ struct AllChainsSelectionView<Header: View>: View {
                 Label(AppLocalization.string("Popular"), systemImage: "flame").tag(ChainPickerOrder.popular)
                 Label(AppLocalization.string("Name"), systemImage: "textformat").tag(ChainPickerOrder.name)
             }
+            Toggle(isOn: $showsTestNetworks) {
+                Label(AppLocalization.string("Show test networks"), systemImage: "testtube.2")
+            }
+            // The app-wide switch style has no menu form; `.automatic` is the
+            // checkmark item.
+            .toggleStyle(.automatic)
         } label: {
-            Image(systemName: "arrow.up.arrow.down")
+            Image(systemName: showsTestNetworks ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
         }
-        .accessibilityLabel(AppLocalization.string("Sort"))
+        .accessibilityLabel(AppLocalization.string("Sort and Filter"))
     }
     @ViewBuilder
     private var gasTokenInfoSheet: some View {
@@ -107,7 +107,7 @@ struct AllChainsSelectionView<Header: View>: View {
                     .padding(SpectraLayout.Space.l)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: SpectraLayout.Radius.inner, style: .continuous).fill(Color.accentColor.opacity(0.08))
+                        RoundedRectangle(cornerRadius: SpectraLayout.Radius.card, style: .continuous).fill(Color.accentColor.opacity(0.08))
                     )
                     VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
                         Label(AppLocalization.string("L2s and Native Tokens"), systemImage: "square.stack.3d.up.fill")
@@ -123,7 +123,7 @@ struct AllChainsSelectionView<Header: View>: View {
                     .padding(SpectraLayout.Space.l)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: SpectraLayout.Radius.inner, style: .continuous).fill(Color.accentColor.opacity(0.08))
+                        RoundedRectangle(cornerRadius: SpectraLayout.Radius.card, style: .continuous).fill(Color.accentColor.opacity(0.08))
                     )
                     VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
                         Label(AppLocalization.string("Missing a Chain?"), systemImage: "plus.circle.fill")
@@ -139,17 +139,16 @@ struct AllChainsSelectionView<Header: View>: View {
                     .padding(SpectraLayout.Space.l)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: SpectraLayout.Radius.inner, style: .continuous).fill(Color.accentColor.opacity(0.08))
+                        RoundedRectangle(cornerRadius: SpectraLayout.Radius.card, style: .continuous).fill(Color.accentColor.opacity(0.08))
                     )
                 }
-                .padding(SpectraLayout.Space.l)
+                .spectraScreenPadding()
             }
             .navigationTitle(AppLocalization.string("Chain Info"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(AppLocalization.string("Done")) { isShowingInfo = false }
-                        .buttonStyle(.borderedProminent)
                 }
             }
         }
@@ -159,10 +158,9 @@ struct AllChainsSelectionView<Header: View>: View {
             SpectraBackdrop().ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                    header()
                     filterBar.padding(.horizontal, -SpectraLayout.screenHorizontal)
-                    testNetworkSwitch
                     list
+                    footer()
                 }
                 .spectraScreenPadding()
             }
@@ -191,13 +189,13 @@ struct AllChainsSelectionView<Header: View>: View {
     }
 }
 
-extension AllChainsSelectionView where Header == EmptyView {
+extension AllChainsSelectionView where Footer == EmptyView {
     init(
         chainSearchText: Binding<String>, title: String, descriptors: [ChainSelectionDescriptor],
         selectedChains: Set<Chain>, toggleSelection: @escaping (Chain) -> Void
     ) {
         self.init(
             chainSearchText: chainSearchText, title: title, descriptors: descriptors, selectedChains: selectedChains,
-            toggleSelection: toggleSelection, header: { EmptyView() })
+            toggleSelection: toggleSelection, footer: { EmptyView() })
     }
 }

@@ -33,6 +33,7 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         icp_principal: None,
         near_account_key: None,
         multisig_policy: None,
+        balances_read_at: None,
     });
     crate::wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state)
         .expect("save");
@@ -95,6 +96,7 @@ fn an_unreadable_wallet_refuses_loading_without_deleting_rows() {
         icp_principal: None,
         near_account_key: None,
         multisig_policy: None,
+        balances_read_at: None,
     };
 
     let mut state = ResidentState::default();

@@ -11,7 +11,7 @@ struct AboutView: View {
                     aboutHero
                     aboutCard(title: copy.aboutEthosTitle, lines: copy.aboutEthosLines)
                     aboutNarrativeCard
-                }.padding(SpectraLayout.Space.l)
+                }.spectraScreenPadding()
             }
         }.navigationTitle(AppLocalization.string("About Spectra")).navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar).onAppear {

@@ -82,11 +82,21 @@ final class SeedPhraseEntry {
         fitSlots(shrinking: false)
     }
 
-    /// Replace the whole entry with a pasted phrase.
+    /// Replace the whole entry with a pasted phrase, as core reads one kept
+    /// numbered, on lines or between commas.
     func paste(_ text: String) {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let words = seedPhraseWordsFromText(text: text)
+        guard !words.isEmpty else { return }
         slots = Array(repeating: "", count: wordCountOverride ?? initialSlotCount)
-        update(at: 0, with: text)
+        update(at: 0, with: words.joined(separator: " "))
+    }
+
+    /// Up to four words of the entry's wordlist that `prefix` may become.
+    func suggestions(for prefix: String) -> [String] {
+        seedWordSuggestions(
+            check: SeedPhraseCheck(
+                words: slots, language: language, wordCount: wordCountOverride.map(UInt32.init), chain: chain),
+            prefix: prefix, limit: 4)
     }
 
     func clear() {

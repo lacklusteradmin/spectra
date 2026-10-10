@@ -45,6 +45,8 @@ pub(crate) struct PolyseedWordlist {
     has_prefix: bool,
     /// Accents are ignored when matching.
     has_accents: bool,
+    /// Each word as written, for a suggestion to show.
+    words: Vec<&'static str>,
     /// Each word as it is matched: NFKD, accents dropped where ignored.
     keys: Vec<String>,
     by_key: HashMap<String, u16>,
@@ -58,8 +60,9 @@ impl PolyseedWordlist {
         has_accents: bool,
         raw: &'static str,
     ) -> Self {
-        let keys: Vec<String> = raw
-            .lines()
+        let words: Vec<&'static str> = raw.lines().collect();
+        let keys: Vec<String> = words
+            .iter()
             .map(|word| match_key(word, has_accents))
             .collect();
         assert_eq!(keys.len(), 2048, "{code}");
@@ -73,9 +76,21 @@ impl PolyseedWordlist {
             name,
             has_prefix,
             has_accents,
+            words,
             keys,
             by_key,
         }
+    }
+
+    /// The words that begin with `prefix`, compared as `index_of` compares.
+    pub fn words_starting_with(&self, prefix: &str) -> Vec<&'static str> {
+        let prefix = match_key(prefix, self.has_accents);
+        self.keys
+            .iter()
+            .zip(&self.words)
+            .filter(|(key, _)| key.starts_with(&prefix))
+            .map(|(_, word)| *word)
+            .collect()
     }
 
     /// The index `word` matches: the whole word, or in a prefix language

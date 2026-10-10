@@ -548,9 +548,15 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
         input.derivation_path = Some(format!("m/44'/501'/{account}'/0'"));
         input
     };
+    assert_eq!(service.default_wallet_name().await.unwrap(), "Wallet 1");
     let mut named = on_account(0);
     named.request.wallet_name = "Wallet 1".into();
     service.import_wallets(named).await.unwrap();
+    assert_eq!(
+        service.default_wallet_name().await.unwrap(),
+        "Wallet 2",
+        "the name the next import takes"
+    );
     let (one, two) = tokio::join!(
         service.import_wallets(on_account(1)),
         service.import_wallets(on_account(2))

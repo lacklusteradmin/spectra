@@ -115,6 +115,18 @@ if command -v sqlite3 >/dev/null 2>&1; then
     contains_exit 1 "an incompatible wallet refuses loading" "wallet_load_all decode" spectra wallet list
     rewrite_row "$STALE" "$FRESH"
     contains "failed loading leaves the stored wallet intact" "Acceptance SOL" spectra wallet list
+    # Discarding runs on a copy: the store and secrets below are still needed.
+    DISCARD_DIR="$(mktemp -d)"
+    cp -R "$DATA_DIR/." "$DISCARD_DIR/"
+    sqlite3 "$DISCARD_DIR/spectra.sqlite" "UPDATE wallets SET payload = REPLACE(payload, '$FRESH', '$STALE');"
+    contains_exit 1 "an unreadable store names the way out" "settings discard --yes" \
+        "$BIN" --data-dir "$DISCARD_DIR" wallet list
+    check "discarding it asks for --yes"        $USAGE "$BIN" --data-dir "$DISCARD_DIR" settings discard
+    check "discards it"                         $OK "$BIN" --data-dir "$DISCARD_DIR" settings discard --yes
+    pass_if "with the secrets of the wallets it named" \
+        '[[ -z "$(find "$DISCARD_DIR/secrets" -type f -not -path "*/device_key/*" 2>/dev/null)" ]]'
+    contains "and starts an empty store"        "no wallets yet" "$BIN" --data-dir "$DISCARD_DIR" wallet list
+    rm -rf "$DISCARD_DIR"
 else
     printf '  \033[33m-\033[0m %s\n' "skipped (no sqlite3): undecodable wallet row"
 fi

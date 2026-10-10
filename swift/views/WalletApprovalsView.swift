@@ -16,7 +16,7 @@ struct WalletApprovalsView: View {
         List {
             if let approvals {
                 if approvals.approvals.isEmpty {
-                    Section { Text(AppLocalization.string("This wallet has no standing token approvals.")).foregroundStyle(.secondary) }
+                    WalletToolEmptySection(message: "This wallet has no standing token approvals.")
                 }
                 Section {
                     ForEach(approvals.approvals, id: \.id) { approval in
@@ -28,9 +28,9 @@ struct WalletApprovalsView: View {
                     }
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.tokenApprovals.title).navigationBarTitleDisplayMode(.inline)
@@ -112,11 +112,7 @@ private struct RevokeApprovalView: View {
                 submittedText: AppLocalization.string("Submitted. The allowance is zero once it confirms."))
         }
         .navigationTitle(AppLocalization.string("Revoke Approval")).navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
         .task {
             await session.load(
                 operation: .build,

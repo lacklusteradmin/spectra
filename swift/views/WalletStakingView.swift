@@ -20,6 +20,11 @@ struct WalletStakingView: View {
     }
 
     private var wallet: WalletView? { store.wallet(for: vm.walletId) }
+    /// The wallet's balance of the network's coin, as its rows show it.
+    private var availableToStake: String? {
+        guard let coin = store.availableSendCoins(for: vm.walletId).first(where: \.isNativeCoin) else { return nil }
+        return store.amounts.formattedAssetAmount(coin.amount, symbol: coin.symbol, deploymentId: coin.holdingKey)
+    }
     private var requiresPassword: Bool { wallet?.signing.requiresPassword ?? true }
 
     var body: some View {
@@ -28,6 +33,8 @@ struct WalletStakingView: View {
                 if let entry = CoreReferenceTables.stakingEntry(for: chain) { mechanics(entry) }
                 if wallet?.signing.isWatchOnly == true {
                     Text(AppLocalization.string("staking.watch_only")).font(.caption).foregroundStyle(.secondary)
+                } else if requiresPassword {
+                    passwordCard
                 }
                 if !vm.walletId.isEmpty {
                     if let artifact = vm.session.artifact {
@@ -41,10 +48,6 @@ struct WalletStakingView: View {
                         preparation
                         savedTransactions
                     }
-                }
-                if let error = vm.error ?? vm.session.error {
-                    Text(verbatim: error).font(.subheadline).foregroundStyle(.red)
-                        .accessibilityIdentifier("staking.error")
                 }
             }.spectraScreenPadding()
         }
@@ -73,17 +76,20 @@ struct WalletStakingView: View {
                 selected: $vm.validatorId)
         }
         .alert(AppLocalization.string("Sign this transaction?"), isPresented: $confirmsSigning) {
-            if requiresPassword {
+            // Asked here only for a review resumed before the password was
+            // typed; otherwise the page's password signs.
+            if requiresPassword && vm.password.isEmpty {
                 SecureField(AppLocalization.string("Wallet Password"), text: $vm.password)
             }
-            Button(AppLocalization.string("Cancel"), role: .cancel) { vm.password = "" }
+            Button(AppLocalization.string("Cancel"), role: .cancel) {}
             Button(AppLocalization.string("Sign Transaction"), role: .destructive) { vm.begin(.sign) }
                 .disabled(requiresPassword && vm.password.isEmpty)
         } message: {
             if let artifact = vm.session.artifact, let intent = artifact.staking {
+                let validator = intent.validatorId.flatMap(vm.validatorName).map { "\($0)\n" } ?? ""
                 Text(
                     verbatim:
-                        "\(intent.action.localizedTitle) · \(chain.displayName)\n\(artifact.amount) \(artifact.symbol)\n\(artifact.recipient)\n\n\(AppLocalization.string("Signing authorizes this transaction. You will choose nodes and broadcast it separately."))"
+                        "\(intent.action.localizedTitle) · \(chain.displayName)\n\(AmountPresentation.localizedDecimal(artifact.amount)) \(artifact.symbol)\n\(validator)\(artifact.recipient)\n\n\(AppLocalization.string("Signing authorizes this transaction. You will choose nodes and broadcast it separately."))"
                 )
             }
         }
@@ -97,9 +103,15 @@ struct WalletStakingView: View {
         } message: {
             Text(AppLocalization.string("staking.broadcast_confirmation"))
         }
-        .onChange(of: confirmsSigning) { _, showing in
-            if !showing && vm.request?.id == nil { vm.password = "" }
-        }
+    }
+
+    /// The one place the password is typed; every step reads it.
+    private var passwordCard: some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+            SecureField(AppLocalization.string("Wallet Password"), text: $vm.password)
+                .textContentType(.password).padding(SpectraLayout.Space.m).spectraInputFieldStyle()
+            Text(AppLocalization.string("staking.password_once")).font(.caption).foregroundStyle(.secondary)
+        }.padding(SpectraLayout.cardPadding).spectraCardFill()
     }
 
     private func mechanics(_ entry: StakingChainEntry) -> some View {
@@ -119,8 +131,8 @@ struct WalletStakingView: View {
                 Text(AppLocalization.string(entry.explanation)).font(.subheadline).foregroundStyle(
                     .secondary
                 )
-                .padding(.top, SpectraLayout.Space.s)
             }
+            .disclosureGroupStyle(.spectra)
         }.padding(SpectraLayout.cardPadding).spectraElevatedFill()
     }
 
@@ -140,7 +152,10 @@ struct WalletStakingView: View {
             }
             if vm.rules.validatorRequired {
                 TextField(AppLocalization.string("staking.validator_identifier"), text: $vm.validatorId)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled().spectraInputFieldStyle()
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().padding(SpectraLayout.Space.m).spectraInputFieldStyle()
+                if let name = vm.validatorName(vm.validatorId) {
+                    Label(name, systemImage: "checkmark.seal").font(.caption.weight(.semibold))
+                }
                 Button(AppLocalization.string("staking.choose_validator")) { showsValidators = true }
                     .buttonStyle(.glass)
             }
@@ -149,8 +164,17 @@ struct WalletStakingView: View {
                     AppLocalization.string(vm.rules.amountRequired ? "Amount" : "staking.optional_amount"),
                     text: $vm.amount
                 )
-                .keyboardType(.decimalPad).spectraInputFieldStyle()
-                Text(verbatim: chain.gasTokenSymbol).font(.caption).foregroundStyle(.secondary)
+                .keyboardType(.decimalPad).padding(SpectraLayout.Space.m).spectraInputFieldStyle()
+                    .overlay(alignment: .trailing) {
+                        Text(verbatim: chain.gasTokenSymbol).font(.subheadline).foregroundStyle(.secondary)
+                            .padding(.trailing, SpectraLayout.Space.m)
+                    }
+                // What there is to stake. No Max: what a stake must leave for
+                // its fee and the network's reserve differs by network, and
+                // core does not yet answer it, so the figure is the user's.
+                if vm.action == .stake, let available = availableToStake {
+                    Text(AppLocalization.format("Available: %@", available)).font(.caption).foregroundStyle(.secondary)
+                }
                 if !vm.rules.amountRequired {
                     Text(AppLocalization.string("staking.full_withdrawal")).font(.caption).foregroundStyle(
                         .secondary)
@@ -158,13 +182,9 @@ struct WalletStakingView: View {
             }
             if vm.rules.lockupRequired {
                 TextField(AppLocalization.string("staking.dissolve_delay"), text: $vm.lockupSeconds)
-                    .keyboardType(.numberPad).spectraInputFieldStyle()
+                    .keyboardType(.numberPad).padding(SpectraLayout.Space.m).spectraInputFieldStyle()
                 Text(AppLocalization.string("staking.dissolve_delay_help")).font(.caption).foregroundStyle(
                     .secondary)
-            }
-            if requiresPassword {
-                SecureField(AppLocalization.string("Wallet Password"), text: $vm.password)
-                    .spectraInputFieldStyle()
             }
             Text(AppLocalization.string("staking.build_explanation")).font(.caption).foregroundStyle(
                 .secondary)
@@ -176,6 +196,9 @@ struct WalletStakingView: View {
                 .disabled(wallet?.signing.isWatchOnly != false || (requiresPassword && vm.password.isEmpty))
                 .accessibilityIdentifier("staking.build")
             if vm.isBusy { ProgressView() }
+            if let error = vm.stepError {
+                StakingErrorText(message: error)
+            }
         }.padding(SpectraLayout.cardPadding).spectraCardFill().disabled(vm.isBusy)
     }
 
@@ -190,7 +213,7 @@ struct WalletStakingView: View {
                     VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
                         Text(saved.staking?.action.localizedTitle ?? AppLocalization.string("Staking")).font(
                             .subheadline.weight(.semibold))
-                        Text(verbatim: "\(saved.amount) \(saved.symbol)").font(.caption).foregroundStyle(
+                        Text(verbatim: "\(AmountPresentation.localizedDecimal(saved.amount)) \(saved.symbol)").font(.caption).foregroundStyle(
                             .secondary)
                         Text(AppLocalization.string(saved.stage == .prepared ? "Awaiting signing" : "Signed"))
                             .font(.caption).foregroundStyle(.secondary)

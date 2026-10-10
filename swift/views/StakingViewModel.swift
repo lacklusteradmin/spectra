@@ -12,6 +12,10 @@ import Foundation
         let id = UUID()
         let operation: Operation
     }
+    /// Where a failure is shown: beside what raised it, not at the foot of
+    /// the page — the positions card, or the step on screen (the form, or
+    /// the review once there is one).
+    enum ErrorPlace { case positions, step }
 
     let chain: Chain
     let session = SendSession()
@@ -25,12 +29,17 @@ import Foundation
     var amount = ""
     var lockupSeconds = ""
     var extraTarget = ""
+    /// Asked for once and used by every step on the page — reading
+    /// positions, building, signing, checking — and kept through a failure
+    /// so it can be corrected rather than retyped. Forgotten when the page
+    /// closes or another wallet is chosen.
     var password = ""
     var transaction: TransactionRecord?
     var request: Request?
     var isLoading = false
     var hasLoadedPositions = false
     var error: String?
+    var errorPlace: ErrorPlace = .step
     @ObservationIgnored private let operations: StakingOperations
     @ObservationIgnored private let authentication: (@MainActor (String) async -> String?)?
     @ObservationIgnored private let broadcastCompletion: (@MainActor (SendArtifact) async -> Void)?
@@ -76,7 +85,6 @@ import Foundation
         positionId = nil
         amount = ""
         lockupSeconds = ""
-        password = ""
         error = nil
     }
 
@@ -91,9 +99,8 @@ import Foundation
             ? position.withdrawableAmountSmallestUnit : position.stakedAmountSmallestUnit
         amount =
             stakingInputRules(chain: chain, action: action).amountAllowed
-            ? formatNativeAmount(chain: chain, smallestUnit: units) ?? "" : ""
+            ? formatNativeAmount(chain: chain, smallestUnit: units).map { AmountPresentation.decimalFieldText($0) } ?? "" : ""
         lockupSeconds = ""
-        password = ""
         error = nil
     }
 
@@ -114,6 +121,21 @@ import Foundation
 
     private func current(_ token: UUID) -> Bool { generation == token && !Task.isCancelled }
 
+    private func fail(_ error: Error, at place: ErrorPlace) {
+        self.error = userErrorMessage(error)
+        errorPlace = place
+    }
+
+    /// The failure of the positions read, shown in its card.
+    var positionsError: String? { errorPlace == .positions ? error : nil }
+    /// The failure of the step on screen: the form's, or the review's.
+    var stepError: String? { (errorPlace == .step ? error : nil) ?? session.error }
+
+    /// The validator `identifier` names, by its name, once the list has it.
+    func validatorName(_ identifier: String) -> String? {
+        validators.first { $0.identifier == identifier }.map(\.displayName)
+    }
+
     func loadValidators() async {
         guard !isLoading else { return }
         isLoading = true
@@ -122,7 +144,7 @@ import Foundation
             let result = try await operations.validators(chain)
             guard !Task.isCancelled else { return }
             validators = result
-        } catch { if !Task.isCancelled { self.error = userErrorMessage(error) } }
+        } catch { if !Task.isCancelled { fail(error, at: .step) } }
     }
 
     func loadWalletData() async {
@@ -136,7 +158,7 @@ import Foundation
                 try await readPositions(wallet: wallet, password: nil, token: token)
             }
         } catch {
-            if current(token), wallet == walletId { self.error = userErrorMessage(error) }
+            if current(token), wallet == walletId { fail(error, at: .positions) }
         }
     }
 
@@ -151,7 +173,7 @@ import Foundation
             guard current(token), wallet == walletId, savedRead == query else { return }
             savedArtifacts = saved.filter { $0.staking != nil && $0.chainId == chain && $0.walletId == wallet }
         } catch {
-            if current(token), wallet == walletId, savedRead == query { self.error = userErrorMessage(error) }
+            if current(token), wallet == walletId, savedRead == query { fail(error, at: .step) }
         }
     }
 
@@ -196,7 +218,6 @@ import Foundation
         let requiresPassword =
             store.wallet(for: session.artifact?.walletId ?? wallet)?.signing.requiresPassword ?? true
         let suppliedPassword = requiresPassword ? password : nil
-        password = ""
         defer { if self.request?.id == id { self.request = nil } }
         do {
             switch request.operation {
@@ -282,7 +303,10 @@ import Foundation
                     transactionRead = UUID()
                 }
             }
-        } catch { if current(token) { self.error = userErrorMessage(error) } }
+        } catch {
+            guard current(token) else { return }
+            if case .positions = request.operation { fail(error, at: .positions) } else { fail(error, at: .step) }
+        }
     }
 
     func loadTransaction() async {
@@ -302,7 +326,7 @@ import Foundation
             transaction = result
         } catch {
             if current(token), session.artifact?.reviewDigest == artifact.reviewDigest, transactionRead == query {
-                self.error = userErrorMessage(error)
+                fail(error, at: .step)
             }
         }
     }

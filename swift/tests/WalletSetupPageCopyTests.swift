@@ -27,7 +27,7 @@ struct WalletSetupPageCopyTests {
 
     /// Nothing may come back blank, on any page a flow visits.
     @Test func everyPageNamesItselfInEveryMode() {
-        let pages: [WalletSetupPage] = [.watchAddresses, .seedPhrase, .password, .backupVerification, .walletName]
+        let pages: [WalletSetupPage] = [.watchAddresses, .seedPhrase, .backupVerification, .walletName]
         let flowPages = modes.flatMap { mode -> [WalletSetupPage] in
             switch mode {
             case .edit: SetupFlow.editWallet.pages

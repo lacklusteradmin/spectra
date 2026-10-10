@@ -29,9 +29,9 @@ struct WalletTokenStorageView: View {
                     }
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.tokenStorage.title).navigationBarTitleDisplayMode(.inline)
@@ -104,11 +104,7 @@ private struct RefundTokenStorageView: View {
                 submittedText: AppLocalization.string("Submitted. The deposit is back once it confirms."))
         }
         .navigationTitle(AppLocalization.string("Get Deposit Back")).navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
         .task {
             await session.load(
                 operation: .build,

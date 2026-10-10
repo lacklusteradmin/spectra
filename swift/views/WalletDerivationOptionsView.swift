@@ -1,9 +1,10 @@
 import SwiftUI
 
-/// Per-chain derivation paths and the passphrase and HMAC overrides for a seed
-/// wallet. A sheet over the secret step rather than a page of the setup flow:
-/// every field has a working default, so the linear flow never routes through
-/// it and most people never open it.
+/// Everything about a seed wallet that has a working default: a new phrase's
+/// length, the account and path it derives, and the passphrase and HMAC
+/// overrides. A sheet over the secret step rather than a page of the setup
+/// flow, so the linear flow never routes through it and most people never
+/// open it.
 struct WalletDerivationOptionsView: View {
     let store: AppState
     @Bindable var draft: WalletImportDraft
@@ -15,6 +16,13 @@ struct WalletDerivationOptionsView: View {
                 if !draft.isCreateMode {
                     SeedPhraseReadingSection(entry: draft.seedEntry)
                         .padding([.horizontal, .top], SpectraLayout.Space.l)
+                } else {
+                    VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+                        NewPhraseLengthSection(draft: draft)
+                        DerivationAccountCard(draft: draft)
+                        JunctionPathCard(draft: draft)
+                    }
+                    .padding([.horizontal, .top], SpectraLayout.Space.l)
                 }
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                     Text(AppLocalization.string("Control the derivation path this wallet uses."))
@@ -156,6 +164,17 @@ private struct PowerUserOverridesSection: View {
                 title: AppLocalization.string("Passphrase"),
                 detail: AppLocalization.string("BIP-39 passphrase (“25th word”). Blank = none."),
                 text: $draft.overridePassphrase, isSecure: true)
+            // A new wallet's passphrase is typed twice: a typo in it makes a
+            // wallet no one can restore, and nothing else would catch it.
+            if draft.isCreateMode, !draft.overridePassphrase.isEmpty {
+                AdvancedOverrideTextField(
+                    title: AppLocalization.string("Confirm Passphrase"),
+                    detail: AppLocalization.string("Type the passphrase again, exactly."),
+                    text: $draft.overridePassphraseConfirmation, isSecure: true)
+                if let error = draft.passphraseConfirmationError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red)
+                }
+            }
             AdvancedOverrideTextField(
                 title: AppLocalization.string("HMAC Master Key"),
                 detail: AppLocalization.string(
@@ -171,23 +190,85 @@ private struct AdvancedOverrideTextField: View {
     @Binding var text: String
     var isSecure: Bool = false
     var keyboard: UIKeyboardType = .default
+    /// A secret field can be shown: its spaces count, and a hidden field
+    /// hides them.
+    @State private var isRevealed = false
     var body: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
             Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            inputField.font(.subheadline.monospaced()).padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, SpectraLayout.Space.s)
-                .spectraInsetFill(cornerRadius: SpectraLayout.Radius.control)
-                .overlay(
-                    RoundedRectangle(cornerRadius: SpectraLayout.Radius.control, style: .continuous).stroke(Color.primary.opacity(0.1), lineWidth: 1))
+            HStack(spacing: SpectraLayout.Space.s) {
+                inputField.font(.subheadline.monospaced())
+                if isSecure {
+                    Button { isRevealed.toggle() } label: {
+                        Image(systemName: isRevealed ? "eye.slash" : "eye").font(.subheadline)
+                            .frame(minWidth: 32, minHeight: 32)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .accessibilityLabel(AppLocalization.string(isRevealed ? "Hide" : "Show"))
+                }
+            }
+            .padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, SpectraLayout.Space.s)
+            .spectraInsetFill(cornerRadius: SpectraLayout.Radius.control)
+            .overlay(
+                RoundedRectangle(cornerRadius: SpectraLayout.Radius.control, style: .continuous).stroke(Color.primary.opacity(0.1), lineWidth: 1))
             Text(detail).font(.caption2).foregroundStyle(.secondary)
         }
     }
     @ViewBuilder
     private var inputField: some View {
-        if isSecure {
+        if isSecure && !isRevealed {
             SecureField(AppLocalization.string("(default)"), text: $text)
+        } else if isSecure {
+            TextField(AppLocalization.string("(default)"), text: $text)
+                .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
         } else {
             TextField(AppLocalization.string("(default)"), text: $text)
                 .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(keyboard)
         }
+    }
+}
+
+/// A new phrase's length, as core offers the network's created format, and a
+/// fresh phrase at it. Changing either replaces the phrase on the page.
+private struct NewPhraseLengthSection: View {
+    @Bindable var draft: WalletImportDraft
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(AppLocalization.string("Phrase Length")).font(.subheadline.weight(.semibold))
+                Spacer()
+                Button {
+                    draft.regenerateSeedPhrase()
+                } label: {
+                    Label(AppLocalization.string("Regenerate"), systemImage: "arrow.clockwise").font(.caption.weight(.semibold))
+                }.buttonStyle(.glass).tint(.accentColor)
+            }
+            // A network whose created format has one length — Monero's 25,
+            // TON's 24 — has nothing to choose.
+            if draft.createdLengths.count > 1 {
+                HStack(spacing: SpectraLayout.Space.xs) {
+                    ForEach(draft.createdLengths, id: \.wordCount) { length in
+                        let count = Int(length.wordCount)
+                        let isSelected = draft.selectedSeedPhraseWordCount == count
+                        Button {
+                            draft.selectedSeedPhraseWordCount = count
+                        } label: {
+                            Text(AppLocalization.format("%lld words", count: count, count))
+                                .font(.subheadline.weight(.semibold).monospacedDigit())
+                                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .spectraSelectableFill(isSelected: isSelected, accent: .accentColor, cornerRadius: SpectraLayout.Radius.inner)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                    }
+                }
+            }
+            Text(AppLocalization.string("Twelve words are enough for most wallets; longer phrases are as safe and longer to write down."))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
     }
 }

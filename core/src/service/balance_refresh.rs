@@ -185,7 +185,13 @@ impl WalletService {
             };
             let before = wallet.holdings.clone();
             merge_balances(&mut wallet.holdings, holdings);
-            if wallet.holdings != before {
+            // The first read replaces the import's placeholders, even with
+            // the same zeros: from here on they are balances.
+            let first_read = wallet.balances_read_at.is_none();
+            if first_read {
+                wallet.balances_read_at = Some(crate::store::now_unix());
+            }
+            if first_read || wallet.holdings != before {
                 if let Some(database) = service.state_binding.connection().await {
                     let updated = wallet.clone();
                     tokio::task::spawn_blocking(move || {
@@ -438,6 +444,51 @@ mod tests {
         );
     }
 
+    /// The import's zero is a placeholder; a first read of the same zero is a
+    /// balance, and is stored as read even though no amount changed.
+    #[tokio::test]
+    async fn a_first_read_of_unchanged_zeros_still_marks_the_balances_read() {
+        let service = WalletService::new(vec![]).unwrap();
+        let mut w = WalletState::single_address(
+            "w",
+            "W",
+            crate::registry::Chain::Ethereum,
+            "0x1111111111111111111111111111111111111111",
+            None,
+            true,
+        );
+        let coin = native_coin_template(crate::registry::Chain::Ethereum).unwrap();
+        w.holdings = vec![coin.clone()];
+        service
+            .apply_state_command(StateCommand::UpsertWallet { wallet: w })
+            .await
+            .unwrap();
+        assert!(
+            service.app_state().await.wallets[0]
+                .balances_read_at
+                .is_none()
+        );
+        let entry = refresh_entries_for(&service.app_state().await).remove(0);
+        let read = service
+            .commit_balance_result(entry.clone(), vec![coin.clone()])
+            .await
+            .unwrap();
+        let first = read.balances_read_at.expect("read");
+        assert_eq!(
+            service.app_state().await.wallets[0].balances_read_at,
+            Some(first)
+        );
+        let again = service
+            .commit_balance_result(entry, vec![coin])
+            .await
+            .unwrap();
+        assert_eq!(
+            again.balances_read_at,
+            Some(first),
+            "only the first read is recorded"
+        );
+    }
+
     #[tokio::test]
     async fn balance_commit_preserves_metadata_and_refuses_stale_network() {
         let service = WalletService::new(vec![]).unwrap();
@@ -472,6 +523,10 @@ mod tests {
             .unwrap();
         assert_eq!(updated.name, "Original");
         assert_eq!(updated.holdings[0].amount, "0");
+        assert!(
+            updated.balances_read_at.is_some(),
+            "the first read marks the balances read"
+        );
         let database = rusqlite::Connection::open(&path).unwrap();
         database.execute_batch("CREATE TRIGGER reject_balance BEFORE UPDATE ON wallets BEGIN SELECT RAISE(FAIL, 'balance write refused'); END;").unwrap();
         coin.amount = "7".into();

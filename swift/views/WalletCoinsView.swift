@@ -15,9 +15,9 @@ struct WalletCoinsView: View {
             if let coins {
                 content(coins)
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.coins.title).navigationBarTitleDisplayMode(.inline)

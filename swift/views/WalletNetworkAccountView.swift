@@ -25,9 +25,9 @@ struct WalletNetworkAccountView: View {
                     }
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.networkAccount.title).navigationBarTitleDisplayMode(.inline)
@@ -249,8 +249,9 @@ private struct CloseAccountView: View {
                 }
             } else {
                 Section {
-                    TextField(AppLocalization.string("Destination Address"), text: $destination)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                    AddressEntryRow(
+                        title: AppLocalization.string("Destination Address"), text: $destination, chain: wallet.chain,
+                        contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
                     if !memoKinds.isEmpty {
                         SendPaymentMemoField(kinds: memoKinds, kind: $memoKind, text: $memoText)
                     }
@@ -269,11 +270,7 @@ private struct CloseAccountView: View {
                 canSign: understood)
         }
         .navigationTitle(AppLocalization.string("Close Account")).navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
     }
 
     private func review() async {

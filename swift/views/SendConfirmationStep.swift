@@ -5,8 +5,7 @@ struct SendConfirmationStep: View {
     @Bindable var store: AppState
     let quoteIsCurrent: Bool
     let recipientAddress: String
-
-    private var isSendBusy: Bool { store.sendFlow.session.isBusy || store.sendFlow.isPreparingPreview }
+    let retryQuote: () -> Void
     private var selectedCoin: AssetHolding? {
         store.availableSendCoins(for: store.sendFlow.walletId).first(where: { $0.holdingKey == store.sendFlow.holdingKey })
     }
@@ -24,34 +23,48 @@ struct SendConfirmationStep: View {
                         store: store, walletId: store.sendFlow.walletId, chain: selectedCoin.chain,
                         sender: store.selectedWalletForSend()?.address(on: selectedCoin.chain),
                         recipient: recipientAddress)
-                    Divider().opacity(0.35)
-                    confirmationRow(label: "Network Fee", value: networkFeeText ?? AppLocalization.string("Estimating…"))
+                    Divider().opacity(0.4)
+                    SendCostRows(fee: networkFeeText, total: totalText)
+                    if let error = store.sendFlow.previewError {
+                        HStack(alignment: .firstTextBaseline, spacing: SpectraLayout.Space.s) {
+                            Label(error, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption).foregroundStyle(.red)
+                            Spacer(minLength: 0)
+                            Button(AppLocalization.string("Retry"), action: retryQuote)
+                                .font(.caption.weight(.semibold))
+                        }
+                    } else if let refusal = store.sendAmountRefusal {
+                        Label(refusal, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption).foregroundStyle(.red)
+                    }
                 }
                 .padding(SpectraLayout.cardPadding)
                 .spectraCardFill()
             }
+            // Under the parties they are about, before anything else on the
+            // page, as the built transaction's review puts its warnings.
+            ForEach(store.sendFlow.destinationWarnings, id: \.self) { warning in
+                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(.spectraWarning)
+            }
             DisclosureGroup(AppLocalization.string("Fee and advanced settings")) {
                 SendNetworkStep(store: store)
-                    .padding(.top, SpectraLayout.Space.s)
+                    .keyboardAnchor()
             }
             .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, SpectraLayout.Space.xs)
+            .disclosureGroupStyle(.spectra)
 
-            Label(AppLocalization.string("Check the full address and amount. You can review the built transaction again before signing."), systemImage: "viewfinder")
+            Label(AppLocalization.string("Check the full address and amount. You can review the built transaction again before signing."), systemImage: "checkmark.shield")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if store.sendFlow.isCheckingDestination || isSendBusy {
+            if store.sendFlow.session.isBusy {
                 SpectraLoadingRow(
-                    title: isSendBusy ? "Preparing transaction..." : "Checking recipient...",
-                    subtitle: isSendBusy ? "Keep this screen open while Spectra prepares the transfer." : nil
+                    title: "Preparing transaction...",
+                    subtitle: "Keep this screen open while Spectra prepares the transfer."
                 )
-            }
-            if let warning = store.sendFlow.destinationRiskWarning {
-                Label(warning, systemImage: "exclamationmark.triangle.fill")
-                    .font(.subheadline)
-                    .foregroundStyle(.spectraWarning)
             }
         }
     }
@@ -66,23 +79,32 @@ struct SendConfirmationStep: View {
         }
     }
 
-    private func confirmationRow(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: SpectraLayout.Space.m) {
-            Text(AppLocalization.string(label)).font(.subheadline).foregroundStyle(.secondary)
-            Spacer(minLength: SpectraLayout.Space.s)
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .multilineTextAlignment(.trailing)
-                .spectraNumericTextLayout(minimumScaleFactor: 0.8)
-        }
-    }
-
     private var confirmedQuote: OwnedSendPreview? { quoteIsCurrent ? store.sendQuoteForEnteredAmount : nil }
 
-    private var networkFeeText: String? {
-        guard let quote = confirmedQuote, let fee = quote.networkFee else { return nil }
-        let chain = quote.chainId
-        return store.amounts.compactNetworkFee(fee, value: quote.networkFeeValue, chain: chain)
+    /// The fee as far as it is known: being quoted, quoted, unavailable, or —
+    /// on a network whose fee only the built transaction fixes — set at build.
+    /// A quote that is not yet asked for (typing pauses first) is on its way,
+    /// not absent; an override still being typed is answered beside its field.
+    private var networkFeeText: String {
+        if store.sendFlow.evmNonceValidationError != nil || store.sendFlow.customEvmFeeValidationError != nil {
+            return AppLocalization.string("Unavailable")
+        }
+        if store.sendFlow.previewError != nil { return AppLocalization.string("Unavailable") }
+        if store.sendFlow.isPreparingPreview || !quoteIsCurrent { return AppLocalization.string("Estimating…") }
+        guard let quote = confirmedQuote, let fee = quote.networkFee else {
+            return AppLocalization.string("Set when the transaction is built")
+        }
+        return "≈ " + store.amounts.compactNetworkFee(fee, value: quote.networkFeeValue, chain: quote.chainId)
+    }
+
+    /// The amount and the quoted fee together, when the coin pays its own
+    /// fee, at the coin's display precision as every amount is. The row
+    /// stays while the fee is being quoted, so the card does not jump.
+    private var totalText: String? {
+        guard let coin = selectedCoin, coin.isNativeCoin else { return nil }
+        guard let total = confirmedQuote?.total, !store.sendFlow.isPreparingPreview,
+              store.sendFlow.previewError == nil, quoteIsCurrent else { return networkFeeText }
+        return "≈ " + store.amounts.formattedAssetAmount(total, symbol: coin.symbol, deploymentId: coin.holdingKey)
     }
 }
 

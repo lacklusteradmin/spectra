@@ -18,10 +18,6 @@ extension AppState {
         receiveFlow.holdingKey = selectedReceiveCoin(for: receiveFlow.walletId)?.holdingKey ?? ""
         receiveFlow.clearAddress()
     }
-    func cancelReceive() {
-        receiveFlow.isPresented = false
-        receiveFlow.clearAddress()
-    }
     func refreshReceiveAddress() async {
         let requestId = UUID()
         receiveFlow.requestId = requestId

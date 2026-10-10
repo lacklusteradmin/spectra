@@ -23,8 +23,9 @@ struct WalletMultisigView: View {
             if let account, let sessions {
                 MultisigPolicySections(store: store, account: account)
                 Section {
-                    TextField(AppLocalization.string("Recipient"), text: $recipient)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().font(.callout.monospaced())
+                    AddressEntryRow(
+                        title: AppLocalization.string("Recipient"), text: $recipient, chain: wallet.chain,
+                        contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
                     TextField(AppLocalization.format("Amount (%@)", wallet.chain.gasTokenSymbol), text: $amount)
                         .keyboardType(.decimalPad)
                     if case let kinds = paymentMemoKinds(chain: wallet.chain), !kinds.isEmpty {
@@ -53,11 +54,11 @@ struct WalletMultisigView: View {
                         }
                     }
                 }
-                if let error { Section { Text(error).foregroundStyle(.red) } }
+                if let error { WalletToolErrorSection(message: error) }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.multisig.title).navigationBarTitleDisplayMode(.inline)
@@ -271,7 +272,7 @@ private struct MultisigSessionView: View {
                 Text(AppLocalization.format("%lld of %lld signed", Int64(session.signedWeight), Int64(session.threshold)))
             }
             actions
-            if let error { Section { Text(error).foregroundStyle(.red) } }
+            if let error { WalletToolErrorSection(message: error) }
         }
         .navigationTitle(AppLocalization.string("Multisig Transaction")).navigationBarTitleDisplayMode(.inline)
     }

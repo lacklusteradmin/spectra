@@ -61,29 +61,28 @@ static TOR_STATE: LazyLock<Mutex<TorInternalState>> =
 
 // ── Policy ───────────────────────────────────────────────────────────────────
 //
-// What the user asked for, as opposed to what Tor is currently doing. Both are
-// core state (`AppSettings::tor_enabled` / `tor_kill_switch`); the service
-// pushes them here whenever that state changes, so the HTTP layer can consult
-// them without reading the store on every request.
+// What the user asked for, as opposed to what Tor is currently doing.
+// `AppSettings::tor_enabled` is core state; the service pushes it here
+// whenever it changes, so the HTTP layer can consult it without reading the
+// store on every request.
+//
+// Tor on means nothing goes out in the clear. There is no setting that lets a
+// request fall back to a direct connection while Tor connects or is down: the
+// kill switch is what asking for Tor means, not an option beside it.
 
 static TOR_WANTED: AtomicBool = AtomicBool::new(false);
-static KILL_SWITCH: AtomicBool = AtomicBool::new(false);
 
 /// Adopt the stored Tor policy. Called by the service on load and on change.
-pub(crate) fn apply_policy(tor_enabled: bool, kill_switch: bool) {
+pub(crate) fn apply_policy(tor_enabled: bool) {
     TOR_WANTED.store(tor_enabled, Ordering::Relaxed);
-    KILL_SWITCH.store(kill_switch, Ordering::Relaxed);
 }
 
-/// True when the user asked for Tor with the kill switch on and Tor is not
-/// carrying traffic — the moment a request would otherwise go out in the
-/// clear.
+/// True when the user asked for Tor and Tor is not carrying traffic — the
+/// moment a request would otherwise go out in the clear.
 pub(crate) fn kill_switch_engaged() -> bool {
-    // The loads short-circuit before the status lock, so a request pays only
-    // an atomic read when the switch is off — which is every request until a
-    // user turns it on.
-    KILL_SWITCH.load(Ordering::Relaxed)
-        && kill_switch_verdict(true, TOR_WANTED.load(Ordering::Relaxed), &tor_status())
+    // The load short-circuits before the status lock, so a request pays only
+    // an atomic read while Tor is off.
+    TOR_WANTED.load(Ordering::Relaxed) && kill_switch_verdict(true, &tor_status())
 }
 
 /// Keep routing policy and the HTTP client snapshot in the same critical
@@ -91,8 +90,7 @@ pub(crate) fn kill_switch_engaged() -> bool {
 /// then clone the direct client installed by a concurrent stop.
 pub(crate) fn with_routing_guard<T>(read: impl FnOnce(bool) -> T) -> T {
     let state = TOR_STATE.lock();
-    let blocked = KILL_SWITCH.load(Ordering::Relaxed)
-        && TOR_WANTED.load(Ordering::Relaxed)
+    let blocked = TOR_WANTED.load(Ordering::Relaxed)
         && !matches!(
             *state,
             TorInternalState::Running { .. } | TorInternalState::CustomProxy
@@ -102,8 +100,8 @@ pub(crate) fn with_routing_guard<T>(read: impl FnOnce(bool) -> T) -> T {
 
 /// The rule itself, over values rather than globals, so it can be asserted
 /// without engaging a process-wide switch other tests share.
-pub(crate) fn kill_switch_verdict(kill_switch: bool, tor_wanted: bool, status: &TorStatus) -> bool {
-    kill_switch && tor_wanted && !matches!(status, TorStatus::Ready)
+pub(crate) fn kill_switch_verdict(tor_wanted: bool, status: &TorStatus) -> bool {
+    tor_wanted && !matches!(status, TorStatus::Ready)
 }
 
 // ── FFI surface ──────────────────────────────────────────────────────────────
@@ -132,8 +130,8 @@ pub(crate) fn reconcile(
         RuntimeConfiguration::Embedded(data_dir.into())
     };
     let mut configuration = CONFIGURATION.lock();
-    apply_policy(settings.tor_enabled, settings.tor_kill_switch);
     if !restart && configuration.as_ref() == Some(&desired) {
+        apply_policy(settings.tor_enabled);
         return;
     }
     let mut state = TOR_STATE.lock();
@@ -158,6 +156,10 @@ pub(crate) fn reconcile(
             *state = TorInternalState::Bootstrapping { percent, task };
         }
     }
+    // Under the state lock, once the transport it names is in place: a
+    // request sees the old policy over the old transport or the new over the
+    // new, never Tor wanted over a proxy that is not there yet.
+    apply_policy(settings.tor_enabled);
     *configuration = Some(desired);
     drop(state);
     drop(configuration);

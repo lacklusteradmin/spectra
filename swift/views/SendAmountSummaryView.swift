@@ -51,7 +51,7 @@ struct SendAmountSummaryView: View {
                     .foregroundStyle(statusColor)
                     .padding(.horizontal, SpectraLayout.Space.s)
                     .padding(.vertical, SpectraLayout.Space.xs)
-                    .spectraInsetFill(cornerRadius: SpectraLayout.Radius.control)
+                    .spectraInsetFill(cornerRadius: SpectraLayout.Radius.inner)
                     .accessibilityIdentifier("send.review.status")
             }
         }

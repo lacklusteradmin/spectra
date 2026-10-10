@@ -40,6 +40,6 @@ struct DiagnosticsExportsBrowserView: View {
     }
     private func exportTimestamp(for url: URL) -> String {
         let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
-        return date == .distantPast ? AppLocalization.string("Unknown date") : date.formatted(date: .abbreviated, time: .shortened)
+        return date == .distantPast ? AppLocalization.string("Unknown date") : date.appFormatted(date: .abbreviated, time: .shortened)
     }
 }

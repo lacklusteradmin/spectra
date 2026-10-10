@@ -107,6 +107,12 @@ pub enum SpectraBridgeError {
     /// changed underneath the request.
     #[error("{message}")]
     Failure { message: LocalizableMessage },
+    /// The stored database holds a row this build cannot decode — written by
+    /// an older build, or damaged. Only `open_state` raises it: nothing runs
+    /// without the store, so a front end offers `discard_state` instead of
+    /// letting every later call fail on its own.
+    #[error("{message}")]
+    StoreUnreadable { message: String },
 }
 
 impl SpectraBridgeError {

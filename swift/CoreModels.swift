@@ -161,10 +161,10 @@ extension TransactionRecord: Identifiable {
         switch kind {
         case .send: return String(format: copy.transactionSentTitleFormat, symbol)
         case .receive: return String(format: copy.transactionReceivedTitleFormat, symbol)
-        case .stake: return AppLocalization.string("staking.stake") + " " + symbol
-        case .unstake: return AppLocalization.string("staking.unstake") + " " + symbol
-        case .withdraw: return AppLocalization.string("staking.withdraw") + " " + symbol
-        case .claimRewards: return AppLocalization.string("staking.claim_rewards") + " " + symbol
+        case .stake: return AppLocalization.format("transaction.title.stake", symbol)
+        case .unstake: return AppLocalization.format("transaction.title.unstake", symbol)
+        case .withdraw: return AppLocalization.format("transaction.title.withdraw", symbol)
+        case .claimRewards: return AppLocalization.format("transaction.title.claimRewards", symbol)
         case .revokeApproval: return AppLocalization.format("Revoke %@ Approval", symbol)
         case .deleteAccessKey: return AppLocalization.string("Delete Access Key")
         case .mergeCoins: return AppLocalization.format("Merge %@ Coins", symbol)
@@ -193,7 +193,7 @@ extension TransactionRecord: Identifiable {
         }
     }
     var isSubmittedOperation: Bool { transactionKindIsSubmitted(kind: kind) }
-    var amountDirection: TransactionDirection { transactionKindDirection(kind: kind) }
+    var amountDirection: TransactionDirection { transactionAmountDirection(kind: kind, amount: amount) }
     var amountSign: String {
         switch amountDirection {
         case .incoming: return "+"
@@ -233,9 +233,19 @@ extension TransactionRecord: Identifiable {
     }
     /// Core stores a time it does not know as a date before any chain existed.
     var hasKnownDate: Bool { createdAtUnix > 0 }
+    /// When it happened, in the app's language: the date and the second,
+    /// for the transaction page.
     var fullTimestampText: String {
-        hasKnownDate
-            ? createdDate.formatted(date: .abbreviated, time: .standard) : AppLocalization.string("Unknown date")
+        guard hasKnownDate else { return AppLocalization.string("Unknown date") }
+        return createdDate.formatted(
+            Date.FormatStyle(date: .abbreviated, time: .standard).locale(AppLocalization.locale))
+    }
+    /// When it happened, as a list row shows it: the time alone under a day
+    /// header, the date and time under a month's.
+    func timestampText(showsDate: Bool) -> String {
+        guard hasKnownDate else { return AppLocalization.string("Unknown date") }
+        return createdDate.formatted(
+            Date.FormatStyle(date: showsDate ? .abbreviated : .omitted, time: .shortened).locale(AppLocalization.locale))
     }
     /// The button that opens this transaction on its network's explorer.
     var explorerLink: (label: String, url: URL)? {

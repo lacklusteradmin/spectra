@@ -86,6 +86,11 @@ pub struct WalletState {
     /// with its checksum: the policy every address and signature follows.
     /// `None` for every single-key wallet.
     pub multisig_policy: Option<String>,
+    /// When a balance read for this wallet first committed, as Unix seconds.
+    /// `None` until then: the holdings an import writes are zero
+    /// placeholders, not balances, and are shown as still loading.
+    #[uniffi(default = None)]
+    pub balances_read_at: Option<f64>,
 }
 
 // Plain `impl` — deliberately not `#[uniffi::export]`. These are Rust-side
@@ -145,6 +150,7 @@ impl WalletState {
             icp_principal: None,
             near_account_key: None,
             multisig_policy: None,
+            balances_read_at: None,
         }
     }
 
@@ -282,9 +288,6 @@ pub struct AppSettings {
     /// Where that proxy is. Validated on write, so a value that cannot be a
     /// SOCKS5 endpoint is never stored and cannot be handed to the HTTP layer.
     pub tor_custom_proxy_address: String,
-    /// Refuse network requests while Tor is wanted but not ready, rather than
-    /// falling back to a direct connection.
-    pub tor_kill_switch: bool,
 
     // ── Alerting ──────────────────────────────────────────────────────────
     pub use_price_alerts: bool,
@@ -547,7 +550,6 @@ impl Default for AppSettings {
             tor_enabled: false,
             tor_use_custom_proxy: false,
             tor_custom_proxy_address: default_tor_custom_proxy_address(),
-            tor_kill_switch: false,
         }
     }
 }
@@ -623,6 +625,25 @@ pub enum AppSettingUpdate {
         api: String,
         endpoint: String,
     },
+    /// Remove one of the user's endpoints. Removing a network's last one
+    /// also stops using only the user's endpoints there, which would leave
+    /// the network with none to ask.
+    RemoveCustomEndpoint {
+        chain_id: crate::registry::Chain,
+        endpoint: String,
+    },
+    /// Change one of the user's endpoints in place — its address, its API or
+    /// what it is asked for — keeping its network and its place in the list.
+    /// One update, so editing a network's only endpoint never leaves it,
+    /// even for a moment, with none and "only mine" switched off.
+    ReplaceCustomEndpoint {
+        chain_id: crate::registry::Chain,
+        /// The saved endpoint being changed.
+        endpoint: String,
+        api: String,
+        new_endpoint: String,
+        capabilities: Vec<crate::EndpointCapability>,
+    },
     /// Use only the user's endpoints on a network, or the catalog's too.
     CustomEndpointsOnly {
         chain_id: crate::registry::Chain,
@@ -659,9 +680,6 @@ pub enum AppSettingUpdate {
     /// SOCKS5 URL is refused and nothing is stored.
     TorCustomProxyAddress {
         value: String,
-    },
-    TorKillSwitch {
-        value: bool,
     },
 }
 
@@ -1001,6 +1019,59 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
             }
             settings.custom_endpoints.insert(0, endpoint);
         }
+        AppSettingUpdate::RemoveCustomEndpoint { chain_id, endpoint } => {
+            settings
+                .custom_endpoints
+                .retain(|saved| !(saved.chain_id == chain_id && saved.endpoint == endpoint));
+            if !settings
+                .custom_endpoints
+                .iter()
+                .any(|saved| saved.chain_id == chain_id)
+            {
+                settings
+                    .custom_endpoints_only
+                    .retain(|chain| *chain != chain_id);
+            }
+        }
+        AppSettingUpdate::ReplaceCustomEndpoint {
+            chain_id,
+            endpoint,
+            api,
+            new_endpoint,
+            capabilities,
+        } => {
+            let Some(index) = settings
+                .custom_endpoints
+                .iter()
+                .position(|saved| saved.chain_id == chain_id && saved.endpoint == endpoint)
+            else {
+                return false;
+            };
+            let Ok(replacement) = crate::service::CustomEndpoint::validated(
+                chain_id,
+                api,
+                new_endpoint,
+                capabilities,
+            ) else {
+                return false;
+            };
+            // Another saved endpoint already says the same; the one edited
+            // may of course say what it said before.
+            if settings
+                .custom_endpoints
+                .iter()
+                .enumerate()
+                .any(|(other, saved)| {
+                    other != index
+                        && saved.chain_id == replacement.chain_id
+                        && saved.api == replacement.api
+                        && saved.endpoint == replacement.endpoint
+                })
+            {
+                return false;
+            }
+            settings.custom_endpoints[index] = replacement;
+        }
         AppSettingUpdate::CustomEndpointsOnly { chain_id, value } => {
             settings
                 .custom_endpoints_only
@@ -1034,7 +1105,6 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
                 settings.tor_custom_proxy_address = parsed;
             }
         }
-        AppSettingUpdate::TorKillSwitch { value } => settings.tor_kill_switch = value,
         AppSettingUpdate::LargeMovementAlertPercentThreshold { value } => {
             settings.large_movement_alert_percent_threshold =
                 clamp(value, LARGE_MOVEMENT_PERCENT_RANGE)
@@ -1527,6 +1597,7 @@ mod tests {
             icp_principal: None,
             near_account_key: None,
             multisig_policy: None,
+            balances_read_at: None,
         }
     }
 

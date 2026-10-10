@@ -11,12 +11,14 @@ struct WalletSecretStep: View {
     private let copy = ImportFlowContent.current
     @State private var isShowingDerivationOptions = false
     @State private var isFindingUsedAccounts = false
+    @State private var isEditingPrivateKey = false
+    /// A new phrase stays covered until asked for, so it is never on screen
+    /// by surprise; leaving the page covers it again.
+    @State private var isPhraseRevealed = false
+    @State private var focusedVerificationSlot: Int?
 
     private var isCreateMode: Bool { draft.isCreateMode }
     private var isEditingWallet: Bool { draft.isEditingWallet }
-    private let seedPhraseGridColumns = [
-        GridItem(.flexible(), spacing: SpectraLayout.Space.xs), GridItem(.flexible(), spacing: SpectraLayout.Space.xs), GridItem(.flexible(), spacing: SpectraLayout.Space.xs),
-    ]
     private var isPrivateKeyImportMode: Bool { draft.isPrivateKeyImportMode }
     private var canContinueFromSecretStep: Bool {
         draft.isSecretComplete && !store.walletImport.isBusy
@@ -36,6 +38,7 @@ struct WalletSecretStep: View {
         .sheet(isPresented: $isFindingUsedAccounts) {
             UsedAccountsSheet(store: store, draft: draft)
         }
+        .onDisappear { isPhraseRevealed = false }
     }
 
     private func backupVerificationBinding(for index: Int) -> Binding<String> {
@@ -46,82 +49,30 @@ struct WalletSecretStep: View {
             }, set: { draft.updateBackupVerificationEntry(at: index, with: $0) }
         )
     }
-    @ViewBuilder
-    private func seedPhraseLengthPicker(title: String, subtitle: String, showsRegenerateButton: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            HStack(alignment: .firstTextBaseline, spacing: SpectraLayout.Space.s) {
-                VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
-                    Text(AppLocalization.string(title)).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary)
-                    Text(AppLocalization.string(subtitle)).font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if showsRegenerateButton {
-                    Button {
-                        draft.regenerateSeedPhrase()
-                    } label: {
-                        Label(AppLocalization.string("Regenerate"), systemImage: "arrow.clockwise").font(.caption.weight(.semibold))
-                    }.buttonStyle(.glass).tint(.accentColor)
-                }
-            }
-            // A network whose created format has one length — Monero's 25,
-            // TON's 24 — has nothing to choose.
-            if draft.createdLengths.count > 1 {
-                HStack(spacing: SpectraLayout.Space.xs) {
-                    ForEach(draft.createdLengths, id: \.wordCount) { length in
-                        seedPhraseLengthChip(length)
-                    }
-                }
-            }
-        }
-    }
-    /// One chip per core-defined length, labelled with its entropy.
-    @ViewBuilder
-    private func seedPhraseLengthChip(_ length: SeedPhraseLength) -> some View {
-        let wordCount = Int(length.wordCount)
-        let isSelected = draft.selectedSeedPhraseWordCount == wordCount
-        Button {
-            draft.selectedSeedPhraseWordCount = wordCount
-        } label: {
-            VStack(spacing: SpectraLayout.Space.xxs) {
-                Text("\(wordCount)").font(.title3.weight(.bold).monospacedDigit()).foregroundStyle(
-                    isSelected ? Color.white : Color.primary)
-                Text("\(length.entropyBits)b").font(.caption2.weight(.semibold)).foregroundStyle(
-                    isSelected ? Color.white.opacity(0.8) : .secondary)
-            }.frame(maxWidth: .infinity, minHeight: 56).spectraSelectableFill(isSelected: isSelected, accent: .accentColor, cornerRadius: SpectraLayout.Radius.inner)
-        }.buttonStyle(.plain)
-    }
+    /// The new phrase: what it is for, then its words, covered until the
+    /// user asks to see them. Length, account and path are under Advanced.
     @ViewBuilder
     private var createWalletSeedPhraseSection: some View {
-        seedPhraseLengthPicker(
-            title: copy.createSeedLengthTitle, subtitle: copy.createSeedLengthSubtitle, showsRegenerateButton: true
-        )
-        Text(copy.createSeedPhraseWarning).font(.footnote).foregroundStyle(.secondary)
-        seedPhraseDisplayHeader
-        LazyVGrid(columns: seedPhraseGridColumns, spacing: SpectraLayout.Space.xs) {
-            // Each cell is given its word, not an index into a list that may
-            // be shorter by the time the cell is drawn.
-            ForEach(Array(draft.seedPhraseWords.enumerated()), id: \.offset) { index, word in
-                SeedPhraseWordCell(index: index) {
-                    Text(word).font(.system(.callout, design: .monospaced).weight(.medium))
-                        .foregroundStyle(Color.primary).lineLimit(1).minimumScaleFactor(0.7)
+        Label(copy.createSeedPhraseWarning, systemImage: "exclamationmark.triangle.fill")
+            .font(.subheadline).foregroundStyle(.spectraWarning)
+            .fixedSize(horizontal: false, vertical: true)
+        SeedPhraseWordGrid(words: draft.seedPhraseWords)
+            .blur(radius: isPhraseRevealed ? 0 : 10)
+            .accessibilityHidden(!isPhraseRevealed)
+            .overlay {
+                if !isPhraseRevealed {
+                    Button {
+                        spectraHaptic(.light)
+                        isPhraseRevealed = true
+                    } label: {
+                        Label(AppLocalization.string("Tap to Reveal"), systemImage: "eye.fill")
+                            .font(.headline).padding(.horizontal, SpectraLayout.Space.l).padding(.vertical, SpectraLayout.Space.s)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .accessibilityHint(AppLocalization.string("secret.reveal.hint"))
                 }
             }
-        }
-    }
-    @ViewBuilder
-    private var seedPhraseDisplayHeader: some View {
-        HStack(spacing: SpectraLayout.Space.s) {
-            Label(AppLocalization.string("Recovery Phrase"), systemImage: "key.fill").font(.caption.weight(.semibold)).foregroundStyle(
-                .tint
-            ).padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, SpectraLayout.Space.xs).background(
-                Capsule(style: .continuous).fill(Color.accentColor.opacity(0.12)))
-            Spacer()
-            Button {
-                copySecretToPasteboard(draft.seedPhraseWords.joined(separator: " "))
-            } label: {
-                Label(AppLocalization.string("Copy"), systemImage: "doc.on.doc").font(.caption.weight(.semibold))
-            }.buttonStyle(.glass).tint(.accentColor).disabled(draft.seedPhraseWords.isEmpty)
-        }
+            .secretShield()
     }
     @ViewBuilder
     private var privateKeyImportFields: some View {
@@ -154,16 +105,10 @@ struct WalletSecretStep: View {
         let borderColor: Color? =
             isInvalidShape
             ? Color.red.opacity(0.85) : (isLikelyValid ? Color.green.opacity(0.55) : nil)
-        ZStack(alignment: .topLeading) {
-            TextEditor(text: $draft.privateKeyInput).textInputAutocapitalization(.never).autocorrectionDisabled().scrollContentBackground(
-                .hidden
-            ).font(.system(.footnote, design: .monospaced)).foregroundStyle(Color.primary).frame(minHeight: 96).padding(.horizontal, SpectraLayout.Space.s)
-                .padding(.vertical, SpectraLayout.Space.s).spectraInputFieldStyle(borderColor: borderColor)
-            if trimmed.isEmpty {
-                Text(copy.privateKeyPlaceholder).font(.system(.footnote, design: .monospaced)).foregroundStyle(.secondary).padding(
-                    .horizontal, SpectraLayout.Space.l).padding(.vertical, SpectraLayout.Space.l).allowsHitTesting(false)
-            }
-        }
+        AddressInput(text: $draft.privateKeyInput, isFocused: $isEditingPrivateKey, prompt: copy.privateKeyPlaceholder)
+            .frame(minHeight: 96, alignment: .topLeading)
+            .padding(SpectraLayout.Space.m).spectraInputFieldStyle(borderColor: borderColor)
+            .privacySensitive()
     }
     /// The formats the network takes, from its setup descriptor. The shape is
     /// core's to judge, so this row only names it; the border and the feedback
@@ -175,7 +120,10 @@ struct WalletSecretStep: View {
             if !draft.privateKeyInput.isEmpty {
                 Button(role: .destructive) { draft.privateKeyInput = "" } label: {
                     Image(systemName: "xmark.circle.fill").font(.caption.weight(.semibold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }.buttonStyle(.plain).foregroundStyle(.secondary)
+                .accessibilityLabel(AppLocalization.string("Clear"))
             }
         }
     }
@@ -203,81 +151,30 @@ struct WalletSecretStep: View {
         if isCreateMode {
             VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
                 createWalletSeedPhraseSection
+                Divider().opacity(0.4)
                 derivationOptionsLink
             }
             .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
-            derivationAccountCard
-            junctionPathCard
-            WalletAddressPreviewCard(store: store, draft: draft)
         } else if isPrivateKeyImportMode {
             privateKeyImportFields
+                .secretShield()
                 .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+                .keyboardAnchor()
             namedAccountCard
             tonWalletVersionCard
             WalletAddressPreviewCard(store: store, draft: draft)
         } else {
             SeedPhraseEntryView(entry: draft.seedEntry)
+                .secretShield()
                 .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+                .keyboardAnchor()
             if draft.asksRestoreHeight { RestoreHeightCard(draft: draft) }
-            derivationAccountCard
-            junctionPathCard
+            DerivationAccountCard(draft: draft) { findUsedAccountsButton }
+            JunctionPathCard(draft: draft)
             namedAccountCard
             tonWalletVersionCard
             WalletAddressPreviewCard(store: store, draft: draft)
             advancedCard
-        }
-    }
-    /// Which account the phrase derives: the network's profile, chosen when
-    /// it has several, and the account index on it — both core's, from the
-    /// setup descriptor. A custom path under Advanced replaces them.
-    @ViewBuilder
-    private var derivationAccountCard: some View {
-        if !draft.derivationProfiles.isEmpty {
-            VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-                Text(AppLocalization.string("Account")).font(.subheadline.weight(.semibold))
-                if draft.customDerivationPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    if draft.derivationProfiles.count > 1 {
-                        HStack {
-                            Text(AppLocalization.string("Address Type")).font(.subheadline)
-                            Spacer()
-                            Picker(AppLocalization.string("Address Type"), selection: $draft.derivationProfile) {
-                                ForEach(draft.derivationProfiles, id: \.self) { profile in
-                                    Text(profile.title).tag(Optional(profile))
-                                }
-                            }.pickerStyle(.menu).tint(.secondary)
-                        }
-                    }
-                    Stepper(value: $draft.derivationAccount, in: 0...UInt32(Int32.max)) {
-                        Text(AppLocalization.format("Account %lld", Int(draft.derivationAccount))).font(.subheadline)
-                    }
-                } else {
-                    Text(AppLocalization.string("The custom path under Advanced replaces the account."))
-                        .font(.caption).foregroundStyle(.spectraWarning)
-                }
-                if let path = draft.derivationPath {
-                    Text(path).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
-                }
-                findUsedAccountsButton
-            }
-            .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
-        }
-    }
-    /// A Substrate network's account below the phrase's root: hard and soft
-    /// junctions, as its wallets write them. The preview below shows the
-    /// address it derives; core refuses a path it cannot read one way.
-    @ViewBuilder
-    private var junctionPathCard: some View {
-        if draft.asksJunctionPath {
-            VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-                Text(AppLocalization.string("Derivation Path (Optional)")).font(.subheadline.weight(.semibold))
-                TextField("//polkadot//0", text: $draft.junctionPathInput)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
-                    .padding(SpectraLayout.Space.m).spectraInputFieldStyle()
-                Text(AppLocalization.string(
-                    "Hard (//) and soft (/) junctions, as Polkadot wallets write them. Leave it blank for the phrase's root account."
-                )).font(.caption).foregroundStyle(.secondary)
-            }
-            .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
         }
     }
     /// Restoring, the phrase may have been used on another account or wallet
@@ -331,10 +228,11 @@ struct WalletSecretStep: View {
             .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
         }
     }
+    /// The words asked for back, each judged once it is left: a field moved
+    /// past says whether it was right, so a wrong word is found by its row.
     @ViewBuilder
     private var backupVerificationStepSection: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            Text(copy.backupVerificationTitle).font(.headline).foregroundStyle(Color.primary)
             if !draft.backupVerificationPromptLabel.isEmpty {
                 Text(draft.backupVerificationPromptLabel).font(.subheadline).foregroundStyle(.secondary)
             }
@@ -344,28 +242,55 @@ struct WalletSecretStep: View {
                 }.buttonStyle(.glass)
             } else {
                 ForEach(Array(draft.backupVerificationWordIndices.enumerated()), id: \.offset) { offset, wordIndex in
-                    HStack(spacing: SpectraLayout.Space.s) {
-                        Text(AppLocalization.format("Word #%lld", wordIndex + 1)).font(.caption.weight(.bold)).foregroundStyle(.secondary).frame(width: 72, alignment: .leading)
-                        TextField("", text: backupVerificationBinding(for: offset)).textInputAutocapitalization(
-                            .never
-                        ).autocorrectionDisabled()
-                        .font(.system(.footnote, design: .monospaced).weight(.medium))
-                        .foregroundStyle(Color.primary)
-                    }.padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, SpectraLayout.Space.s).spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
+                    verificationRow(offset: offset, wordIndex: wordIndex)
                 }
                 if draft.isBackupVerificationComplete {
-                    Text(copy.backupVerifiedMessage).font(.footnote).foregroundStyle(.green.opacity(0.9))
+                    Label(copy.backupVerifiedMessage, systemImage: "checkmark.circle.fill").font(.footnote).foregroundStyle(.green)
                 } else {
                     Text(copy.backupVerificationHint).font(.footnote).foregroundStyle(.secondary)
                 }
             }
-        }.padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+        }
+        .secretShield()
+        .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+    }
+    private func verificationRow(offset: Int, wordIndex: Int) -> some View {
+        let label = AppLocalization.format("Word #%lld", wordIndex + 1)
+        let entered = draft.backupVerificationEntries.indices.contains(offset) ? draft.backupVerificationEntries[offset] : ""
+        let expected = draft.seedPhraseWords.indices.contains(wordIndex) ? draft.seedPhraseWords[wordIndex] : nil
+        // Judged once left, never while typed.
+        let verdict: Bool? = (focusedVerificationSlot == offset || entered.isEmpty) ? nil : entered == expected
+        return HStack(spacing: SpectraLayout.Space.s) {
+            Text(label).font(.caption.weight(.bold)).foregroundStyle(.secondary).fixedSize()
+            SecretWordField(
+                text: backupVerificationBinding(for: offset), isFocused: focusedVerificationSlot == offset,
+                accessibilityLabel: label, isInvalid: verdict == false,
+                onFocus: { focusedVerificationSlot = offset },
+                onSubmit: {
+                    let next = offset + 1
+                    focusedVerificationSlot = next < draft.backupVerificationWordIndices.count ? next : nil
+                })
+            if let verdict {
+                Image(systemName: verdict ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(verdict ? Color.green : Color.red)
+                    .accessibilityLabel(AppLocalization.string(verdict ? "Correct" : "Incorrect"))
+            }
+        }
+        .padding(.horizontal, SpectraLayout.Space.m).padding(.vertical, SpectraLayout.Space.s)
+        .frame(minHeight: 44)
+        .spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
     }
     /// The derivation options the sheet has moved off their defaults, by
     /// name. The entry to the sheet is deliberately quiet, so it says when
     /// something behind it changes which addresses the seed derives.
     private var customizedDerivationOptionNames: [String] {
         var names: [String] = []
+        if isCreateMode, let shortest = draft.createdLengths.first, draft.selectedSeedPhraseWordCount != Int(shortest.wordCount) {
+            names.append(AppLocalization.string("Phrase Length"))
+        }
+        if draft.derivationAccount != 0 || draft.derivationProfile != draft.derivationProfiles.first {
+            names.append(AppLocalization.string("Account"))
+        }
         if !isCreateMode, draft.seedEntry.wordCountOverride != nil { names.append(AppLocalization.string("Word Count")) }
         if !isCreateMode, draft.seedEntry.language != nil { names.append(AppLocalization.string("Wordlist")) }
         if !draft.customDerivationPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -432,5 +357,98 @@ struct WalletSecretStep: View {
                 Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
             }.padding(.vertical, SpectraLayout.Space.xs).contentShape(Rectangle())
         }.buttonStyle(.plain)
+    }
+}
+
+/// A phrase's words as shown, numbered, each whole on one line: three
+/// columns, two at accessibility sizes. A word shrinks to fit rather than
+/// wrap, because a wrapped word takes a hyphen that reads as part of it, and
+/// rather than be cut, which would hide letters.
+struct SeedPhraseWordGrid: View {
+    let words: [String]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let columns = Array(
+            repeating: GridItem(.flexible(), spacing: SpectraLayout.Space.xs),
+            count: dynamicTypeSize.isAccessibilitySize ? 2 : 3)
+        LazyVGrid(columns: columns, spacing: SpectraLayout.Space.xs) {
+            // Each cell is given its word, not an index into a list that may
+            // be shorter by the time the cell is drawn.
+            ForEach(Array(words.enumerated()), id: \.offset) { index, word in
+                SeedPhraseWordCell(index: index) {
+                    Text(verbatim: word).font(.system(.callout, design: .monospaced).weight(.medium))
+                        .foregroundStyle(Color.primary).lineLimit(1).minimumScaleFactor(0.5)
+                        .privacySensitive()
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+}
+
+/// Which account the phrase derives: the network's profile, chosen when it
+/// has several, and the account index on it — both core's, from the setup
+/// descriptor. A custom path under Advanced replaces them.
+struct DerivationAccountCard<Accessory: View>: View {
+    @Bindable var draft: WalletImportDraft
+    @ViewBuilder var accessory: Accessory
+
+    var body: some View {
+        if !draft.derivationProfiles.isEmpty {
+            VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+                Text(AppLocalization.string("Account")).font(.subheadline.weight(.semibold))
+                if draft.customDerivationPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if draft.derivationProfiles.count > 1 {
+                        HStack {
+                            Text(AppLocalization.string("Address Type")).font(.subheadline)
+                            Spacer()
+                            Picker(AppLocalization.string("Address Type"), selection: $draft.derivationProfile) {
+                                ForEach(draft.derivationProfiles, id: \.self) { profile in
+                                    Text(profile.title).tag(Optional(profile))
+                                }
+                            }.pickerStyle(.menu).tint(.secondary)
+                        }
+                    }
+                    Stepper(value: $draft.derivationAccount, in: 0...99) {
+                        Text(AppLocalization.format("Account %lld", Int(draft.derivationAccount))).font(.subheadline)
+                    }
+                } else {
+                    Text(AppLocalization.string("The custom path under Advanced replaces the account."))
+                        .font(.caption).foregroundStyle(.spectraWarning)
+                }
+                if let path = draft.derivationPath {
+                    Text(path).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+                accessory
+            }
+            .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+        }
+    }
+}
+
+extension DerivationAccountCard where Accessory == EmptyView {
+    init(draft: WalletImportDraft) { self.init(draft: draft) { EmptyView() } }
+}
+
+/// A Substrate network's account below the phrase's root: hard and soft
+/// junctions, as its wallets write them. Core refuses a path it cannot read
+/// one way.
+struct JunctionPathCard: View {
+    @Bindable var draft: WalletImportDraft
+
+    var body: some View {
+        if draft.asksJunctionPath {
+            VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+                Text(AppLocalization.string("Derivation Path (Optional)")).font(.subheadline.weight(.semibold))
+                TextField("//polkadot//0", text: $draft.junctionPathInput)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                    .padding(SpectraLayout.Space.m).spectraInputFieldStyle()
+                Text(AppLocalization.string(
+                    "Hard (//) and soft (/) junctions, as Polkadot wallets write them. Leave it blank for the phrase's root account."
+                )).font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
+        }
     }
 }

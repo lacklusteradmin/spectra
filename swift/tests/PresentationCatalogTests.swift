@@ -23,6 +23,9 @@ struct PresentationCatalogTests {
         #expect(mainnet.artworkName == "peercoin")
         #expect(!mainnet.isTestnet)
         #expect(!mainnetRows.contains { $0.id == .peercoinTestnet })
+        // A search that names only a test network finds it with the switch off.
+        let searched = rows.picked(filter: .all, query: "Ethereum Sepolia", order: .popular, showsTestNetworks: false)
+        #expect(searched.map(\.id) == [.ethereumSepolia])
         let testnetRows = rows.picked(filter: .all, query: "Peercoin", order: .name, showsTestNetworks: true)
         let testnet = try #require(testnetRows.first { $0.id == .peercoinTestnet })
         #expect(testnet.isTestnet)

@@ -40,15 +40,15 @@ struct SendExecutionActionTests {
 
     @Test func retryAvailabilityComesFromCore() {
         var unresolved = transaction(status: .pending)
-        #expect(SendExecutionAction(artifact: artifact(outcome: .accepted), transaction: unresolved) == .viewTransaction)
+        #expect(SendExecutionAction(artifact: artifact(outcome: .accepted), transaction: unresolved) == .done)
         #expect(SendExecutionAction.canRetry(artifact: artifact(outcome: .accepted), transaction: unresolved))
         unresolved.actions.rebroadcastUnavailableReason = "Unavailable"
         #expect(!SendExecutionAction.canRetry(artifact: artifact(outcome: .accepted), transaction: unresolved))
     }
 
-    @Test func acceptedSubmissionCanBeInspectedWhileUncertainSubmissionCanBeRetried() {
+    @Test func anAcceptedSubmissionIsDoneWhileAnUncertainOneCanBeRetried() {
         let pending = transaction(status: .pending)
-        #expect(SendExecutionAction(artifact: artifact(outcome: .accepted), transaction: pending) == .viewTransaction)
+        #expect(SendExecutionAction(artifact: artifact(outcome: .accepted), transaction: pending) == .done)
         #expect(SendExecutionAction.canRetry(artifact: artifact(outcome: .accepted), transaction: pending))
         #expect(SendExecutionAction(artifact: artifact(outcome: .uncertain), transaction: pending) == .retry)
         #expect(SendExecutionAction(artifact: artifact(outcome: .rejected), transaction: nil) == .retry)
@@ -70,14 +70,26 @@ struct SendExecutionActionTests {
 
     @Test func signingSummaryUsesExactImmutableAmountAndCompleteRecipient() {
         var built = artifact(stage: .prepared)
-        let message = sendSigningConfirmationMessage(artifact: built)
+        let amounts = AmountPresentation(assetPrecision: nil, valuation: nil, selectedFiatCurrency: .usd)
+        let message = sendSigningConfirmationMessage(artifact: built, amounts: amounts)
         #expect(message.contains(AmountPresentation.localizedDecimal(built.amount)))
         #expect(message.contains(built.symbol))
         #expect(message.contains(built.recipient))
         #expect(message.contains(built.chainId.displayName))
         #expect(!message.contains(built.asset))
+        #expect(!message.contains(AppLocalization.format("Network Fee: %@", "")))
         built.review.requiresSelfSendConfirmation = true
-        #expect(sendSigningConfirmationMessage(artifact: built).contains(
+        #expect(sendSigningConfirmationMessage(artifact: built, amounts: amounts).contains(
             AppLocalization.string("This destination belongs to your wallet. Confirm intentional self-send.")))
+    }
+
+    @Test func signingSummaryStatesTheReviewedNetworkFee() {
+        var built = artifact(stage: .prepared)
+        built.review.networkFee = "0.00042"
+        let amounts = AmountPresentation(assetPrecision: nil, valuation: nil, selectedFiatCurrency: .usd)
+        let message = sendSigningConfirmationMessage(artifact: built, amounts: amounts)
+        #expect(message.contains(AppLocalization.format("Network Fee: %@", "")))
+        #expect(message.contains(AmountPresentation.localizedDecimal("0.00042")))
+        #expect(message.contains(Chain.ethereum.gasTokenSymbol))
     }
 }

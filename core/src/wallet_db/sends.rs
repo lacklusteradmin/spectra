@@ -165,6 +165,13 @@ fn merge_receipts(
     Ok(())
 }
 
+/// Every stored send this build can read and vouch for, newest first.
+///
+/// A row that does not decode, or fails its integrity check — written by
+/// another build, or altered — is left out rather than failing the list: it
+/// is never offered to resume or sign, and one bad row does not hide every
+/// good one. It stays on disk. The signed-send queries below stay strict,
+/// since they decide nonces and reservations.
 pub(crate) fn send_list(database: &WalletDatabase) -> Result<Vec<StoredSend>, DbError> {
     with_conn(database, |conn| {
         let mut stmt = conn
@@ -173,15 +180,17 @@ pub(crate) fn send_list(database: &WalletDatabase) -> Result<Vec<StoredSend>, Db
         let rows = stmt
             .query_map([], |r| r.get::<_, String>(0))
             .map_err(DbError::from)?;
-        rows.map(|row| {
-            let stored: StoredSend =
-                serde_json::from_str(&row.map_err(DbError::from)?).map_err(DbError::from)?;
-            stored
-                .validate()
-                .map_err(|e| DbError::Corrupt(e.to_string()))?;
-            Ok(stored)
-        })
-        .collect()
+        let mut sends = Vec::new();
+        for row in rows {
+            let Ok(stored) = serde_json::from_str::<StoredSend>(&row.map_err(DbError::from)?)
+            else {
+                continue;
+            };
+            if stored.validate().is_ok() {
+                sends.push(stored);
+            }
+        }
+        Ok(sends)
     })
 }
 
@@ -395,6 +404,29 @@ mod query_tests {
         refresh(&mut conflicting);
         assert!(send_save(&db, &conflicting, &[resource]).is_err());
         assert!(!send_exists(&db, "another-artifact").unwrap());
+
+        // A row that is not a send, and a send altered after its review, are
+        // left out of the list rather than failing it: the good one stays.
+        let mut altered = stored.clone();
+        altered.view.id = "altered".into();
+        altered.view.amount = "2".into();
+        with_conn(&db, |conn| {
+            conn.execute("INSERT INTO send_artifacts VALUES ('garbage', 0, '{}')", [])
+                .unwrap();
+            conn.execute(
+                "INSERT INTO send_artifacts VALUES ('altered', 0, ?1)",
+                params![serde_json::to_string(&altered).unwrap()],
+            )
+            .unwrap();
+            Ok::<_, DbError>(())
+        })
+        .unwrap();
+        let listed: Vec<String> = send_list(&db)
+            .unwrap()
+            .into_iter()
+            .map(|send| send.view.id)
+            .collect();
+        assert_eq!(listed, vec!["repair".to_string()]);
     }
 
     #[test]

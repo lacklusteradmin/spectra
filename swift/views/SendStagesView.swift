@@ -17,14 +17,30 @@ struct SendStagesView: View {
 
             if showsImmediateNodeChoice { broadcastDestinations }
 
-            SendTransferPartiesView(
-                store: store, walletId: artifact.walletId, chain: artifact.chainId,
-                sender: artifact.sender, recipient: artifact.recipient, memo: artifact.memo,
-                saveRecipient: displayedTransaction.map { record in
-                    { store.addressBook.saveRecipient(of: record) }
-                })
-                .padding(SpectraLayout.cardPadding)
-                .spectraCardFill()
+            VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
+                SendTransferPartiesView(
+                    store: store, walletId: artifact.walletId, chain: artifact.chainId,
+                    sender: artifact.sender, recipient: artifact.recipient, memo: artifact.memo,
+                    // Offered once the send is on record, named for what it sent;
+                    // the sheet asks before anything is saved.
+                    suggestedContactName: displayedTransaction.map { _ in
+                        AppLocalization.format("%@ Recipient", artifact.symbol)
+                    })
+                // What the quote the send was built from estimated, as the
+                // review put it. A receipt states the fee paid instead.
+                if !hasFinalHistoryStatus, let fee = artifact.review.networkFee {
+                    Divider().opacity(0.4)
+                    SendCostRows(
+                        fee: "≈ " + store.amounts.compactNetworkFee(
+                            fee, value: artifact.review.networkFeeValue, chain: artifact.chainId),
+                        total: artifact.review.total.map {
+                            "≈ " + store.amounts.formattedAssetAmount(
+                                $0, symbol: artifact.symbol, deploymentId: artifact.chainId.entry?.nativeDeploymentId)
+                        })
+                }
+            }
+            .padding(SpectraLayout.cardPadding)
+            .spectraCardFill()
 
             if artifact.attempts.isEmpty { reviewWarnings }
 
@@ -33,9 +49,9 @@ struct SendStagesView: View {
                 if !artifact.attempts.isEmpty {
                     DisclosureGroup(AppLocalization.string("View submission results")) {
                         submissionResults
-                            .padding(.top, SpectraLayout.Space.s)
                     }
                     .font(.subheadline.weight(.semibold))
+                    .disclosureGroupStyle(.spectra)
                 }
             } else if !artifact.attempts.isEmpty {
                 submissionResults
@@ -47,15 +63,15 @@ struct SendStagesView: View {
             if showsRetryNodeChoice {
                 DisclosureGroup(AppLocalization.string("Retry submission")) {
                     broadcastDestinations
-                        .padding(.top, SpectraLayout.Space.s)
                 }
                 .font(.subheadline.weight(.semibold))
+                .disclosureGroupStyle(.spectra)
             }
 
             if let transactionError {
-                Text(transactionError)
+                Label(transactionError, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.red)
             }
         }
     }
@@ -84,35 +100,40 @@ struct SendStagesView: View {
             && SendExecutionAction.canRetry(artifact: artifact, transaction: displayedTransaction)
     }
 
+    /// Where a stage stands. Each has its own symbol, as the composer's step
+    /// bar does, so the current stage is not told from a waiting one by colour.
+    private enum StageState { case done, current, waiting }
+
     private var stageProgress: some View {
-        HStack(alignment: .top, spacing: SpectraLayout.Space.s) {
-            progressLabel("Built", systemImage: "checkmark.circle", isCurrent: false)
+        let signed = artifact.stage != .prepared
+        let submitted = !artifact.attempts.isEmpty
+        return HStack(alignment: .top, spacing: SpectraLayout.Space.s) {
+            progressLabel("Built", state: .done)
+            progressLabel(signed ? "Signed" : "Awaiting signing", state: signed ? .done : .current)
             progressLabel(
-                artifact.stage == .prepared ? "Awaiting signing" : "Signed",
-                systemImage: artifact.stage == .prepared ? "circle" : "checkmark.circle",
-                isCurrent: artifact.stage == .prepared)
-            progressLabel(
-                artifact.attempts.isEmpty ? "Awaiting submission" : "Submitted",
-                systemImage: artifact.attempts.isEmpty ? "circle" : "antenna.radiowaves.left.and.right",
-                isCurrent: artifact.stage == .signed && artifact.attempts.isEmpty)
+                submitted ? "Submitted" : "Awaiting submission",
+                state: submitted ? .done : (signed ? .current : .waiting))
         }
         .padding(.vertical, SpectraLayout.Space.s)
         .accessibilityIdentifier("send.review.stages")
     }
 
-    private func progressLabel(_ title: String, systemImage: String, isCurrent: Bool) -> some View {
+    private func progressLabel(_ title: String, state: StageState) -> some View {
         VStack(spacing: SpectraLayout.Space.xs) {
-            Image(systemName: systemImage)
+            Image(systemName: state == .done ? "checkmark.circle.fill" : (state == .current ? "circle.inset.filled" : "circle"))
                 .font(.subheadline.weight(.semibold))
                 .accessibilityHidden(true)
             Text(AppLocalization.string(title))
-                .font(.caption.weight(.semibold))
+                .font(.caption.weight(state == .current ? .semibold : .regular))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
-        .foregroundStyle(isCurrent ? Color.accentColor : Color.primary)
+        // As the composer's step bar: what is done and what is current in
+        // the accent, what is still to come in grey.
+        .foregroundStyle(state == .waiting ? Color.secondary : Color.accentColor)
         .accessibilityElement(children: .combine)
+        .accessibilityValue(state == .current ? AppLocalization.string("Current") : "")
     }
 
     private var amountSummary: some View {
@@ -247,9 +268,9 @@ struct SendStagesView: View {
                     Text(verbatim: attempt.endpoint)
                         .font(.caption.monospaced())
                         .textSelection(.enabled)
-                    Label(AppLocalization.string(outcomeText(attempt.outcome)), systemImage: outcomeSystemImage(attempt.outcome))
+                    Label(attempt.outcome.title, systemImage: attempt.outcome.systemImage)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(outcomeColor(attempt.outcome))
+                        .foregroundStyle(attempt.outcome.color)
                     DisclosureGroup(AppLocalization.string("Submission details")) {
                         Text(verbatim: attempt.detail)
                             .font(.caption)
@@ -259,6 +280,7 @@ struct SendStagesView: View {
                         }
                     }
                     .font(.caption)
+                    .disclosureGroupStyle(.spectra)
                 }
             }
             if !hasFinalHistoryStatus, let hash = displayedTransaction?.transactionHash ?? artifact.transactionHash {
@@ -299,7 +321,7 @@ struct SendStagesView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, SpectraLayout.Space.s)
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.glass)
                 }
             }
             .padding(SpectraLayout.cardPadding)
@@ -312,17 +334,16 @@ struct SendStagesView: View {
             Text(AppLocalization.string("Transaction Hash"))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text(groupedAddress(hash))
-                .font(.caption.monospaced())
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel(Text(verbatim: hash))
-                .contextMenu {
-                    Button {
-                        UIPasteboard.general.string = hash
-                    } label: {
-                        Label(AppLocalization.string("Copy"), systemImage: "doc.on.doc")
-                    }
-                }
+            // Copied from a button in view, as an address is; a long press
+            // was the only way, and said nothing when it worked.
+            HStack(alignment: .firstTextBaseline, spacing: SpectraLayout.Space.s) {
+                Text(groupedAddress(hash))
+                    .font(.caption.monospaced())
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(Text(verbatim: hash))
+                CopyButton(value: hash)
+            }
         }
     }
 
@@ -330,7 +351,7 @@ struct SendStagesView: View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
             DisclosureGroup(AppLocalization.string("Transaction details")) {
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-                    technicalValue("Prepared transaction", value: artifact.preparedDetails)
+                    preparedFieldRows
                     technicalValue("Review digest", value: artifact.reviewDigest)
                     if !artifact.signingPayloadHex.isEmpty {
                         technicalValue("Signing payload", value: artifact.signingPayloadHex)
@@ -344,25 +365,76 @@ struct SendStagesView: View {
                         }
                     }
                 }
-                .padding(.top, SpectraLayout.Space.s)
             }
             if let payload = artifact.signedPayload {
                 DisclosureGroup(AppLocalization.string("Signed payload")) {
-                    Text(verbatim: payload)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .padding(.top, SpectraLayout.Space.s)
+                    technicalText(payload)
                 }
             }
         }
         .font(.subheadline.weight(.semibold))
-        .padding(.horizontal, SpectraLayout.Space.xs)
+        .disclosureGroupStyle(.spectra)
+    }
+
+    /// The prepared transaction field by field, exactly as it will be
+    /// signed: core's names and base units, never re-rounded here.
+    private var preparedFieldRows: some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
+            Text(AppLocalization.string("Prepared transaction")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                let fields = preparedFields(preparedDetails: artifact.preparedDetails)
+                ForEach(Array(fields.enumerated()), id: \.offset) { index, field in
+                    if index > 0 { Divider().opacity(0.3) }
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline, spacing: SpectraLayout.Space.m) {
+                            fieldName(field.name)
+                            Spacer(minLength: SpectraLayout.Space.s)
+                            fieldValue(field.value).fixedSize()
+                        }
+                        VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
+                            fieldName(field.name)
+                            fieldValue(field.value).fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.vertical, SpectraLayout.Space.s)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .padding(.horizontal, SpectraLayout.Space.m)
+            .spectraInsetFill()
+        }
+    }
+
+    @ViewBuilder
+    private func fieldName(_ name: String) -> some View {
+        if !name.isEmpty {
+            Text(verbatim: name).font(.caption.monospaced()).foregroundStyle(.secondary)
+        }
+    }
+
+    private func fieldValue(_ value: String) -> some View {
+        Text(verbatim: breakableAnywhere(value)).font(.caption.monospaced().weight(.regular))
+            .accessibilityLabel(Text(verbatim: value))
     }
 
     private func technicalValue(_ title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
             Text(AppLocalization.string(title)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            Text(verbatim: value).font(.caption.monospaced()).textSelection(.enabled)
+            technicalText(value)
+        }
+    }
+
+    /// A digest or payload: wrapped anywhere, so no hyphen appears in it, and
+    /// copied whole from its button, since the wrapped text is not the value.
+    private func technicalText(_ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: SpectraLayout.Space.s) {
+            Text(verbatim: breakableAnywhere(value))
+                .font(.caption.monospaced().weight(.regular))
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(Text(verbatim: value))
+            CopyButton(value: value)
         }
     }
 
@@ -377,7 +449,7 @@ struct SendStagesView: View {
     @ViewBuilder
     private var stageNotice: some View {
         if artifact.stage == .prepared {
-            Label(AppLocalization.string("Review the complete addresses. Signing and broadcasting remain separate actions."), systemImage: "viewfinder")
+            Label(AppLocalization.string("Review the complete addresses. Signing and broadcasting remain separate actions."), systemImage: "checkmark.shield")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         } else if !hasFinalHistoryStatus, !artifact.attempts.isEmpty {
@@ -396,24 +468,29 @@ struct SendStagesView: View {
         }
     }
 
-    private func outcomeText(_ outcome: SubmissionOutcome) -> String {
-        switch outcome {
-        case .accepted: "Node accepted"
-        case .rejected: "Node rejected"
-        case .uncertain: "Submission uncertain"
+}
+
+/// What a node said to a submission, as every send and staking page shows
+/// it: a word, a symbol and a colour, never the colour alone.
+extension SubmissionOutcome {
+    var title: String {
+        switch self {
+        case .accepted: AppLocalization.string("Node accepted")
+        case .rejected: AppLocalization.string("Node rejected")
+        case .uncertain: AppLocalization.string("Submission uncertain")
         }
     }
 
-    private func outcomeSystemImage(_ outcome: SubmissionOutcome) -> String {
-        switch outcome {
+    var systemImage: String {
+        switch self {
         case .accepted: "checkmark.circle"
         case .rejected: "xmark.circle"
         case .uncertain: "questionmark.circle"
         }
     }
 
-    private func outcomeColor(_ outcome: SubmissionOutcome) -> Color {
-        switch outcome {
+    var color: Color {
+        switch self {
         case .accepted: .green
         case .rejected: .red
         case .uncertain: .spectraWarning

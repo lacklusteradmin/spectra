@@ -86,10 +86,11 @@ impl WalletService {
                     if is_new {
                         crate::wallet_db::app_state_save(&source, &loaded)?;
                     }
-                    Ok::<_, SpectraBridgeError>((loaded, keypool, owned, discovered))
+                    Ok::<_, crate::wallet_db::error::DbError>((loaded, keypool, owned, discovered))
                 })
                 .await
-                .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))??;
+                .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
+                .map_err(unreadable_on_open)?;
                 let keypool = keypool
                     .into_iter()
                     .flat_map(|(chain, per_wallet)| {
@@ -122,7 +123,10 @@ impl WalletService {
                             SpectraBridgeError::failure(format!("spawn_blocking: {e}"))
                         })??;
                 }
-                service.history_pagination.bind(database.clone())?;
+                service
+                    .history_pagination
+                    .bind(database.clone())
+                    .map_err(unreadable_on_open)?;
                 // Publish only after every fallible initialization step succeeds.
                 let discovered = discovered
                     .into_iter()
@@ -141,6 +145,49 @@ impl WalletService {
             .await
         })
         .await
+    }
+
+    /// Delete a store `open_state` reported unreadable, with the secrets and
+    /// shielded databases of every wallet it names, and open a new one in its
+    /// place. Keychain items outlive the app, so leaving them would strand
+    /// keys no wallet can reach.
+    ///
+    /// Refused for the store this service has open: that one reads, and
+    /// `reset_data` is how it is cleared.
+    pub async fn discard_state(
+        &self,
+        database_path: String,
+    ) -> Result<ResidentState, SpectraBridgeError> {
+        let this = self.clone();
+        let path = database_path.clone();
+        crate::worker::run(async move {
+            if this.state_binding.is_bound_to(&path).await {
+                return Err(SpectraBridgeError::failure(
+                    "the store is open and readable: reset it with reset_data",
+                ));
+            }
+            let store = this.secrets()?;
+            let source = path.clone();
+            let wallet_ids =
+                tokio::task::spawn_blocking(move || crate::wallet_db::stored_wallet_ids(&source))
+                    .await
+                    .map_err(SpectraBridgeError::failure)??;
+            let database = crate::wallet_db::WalletDatabase::new(&path);
+            for id in &wallet_ids {
+                crate::store::wallet_secrets::delete(&*store, id)?;
+                if let Ok(shielded) = crate::wallet_db::zcash::zcash_db_path(&database, id) {
+                    crate::wallet_db::delete_sqlite_files(&shielded)?;
+                }
+            }
+            tokio::task::spawn_blocking(move || {
+                crate::wallet_db::delete_sqlite_files(std::path::Path::new(&path))
+            })
+            .await
+            .map_err(SpectraBridgeError::failure)??;
+            Ok::<_, SpectraBridgeError>(())
+        })
+        .await?;
+        self.open_state(database_path).await
     }
 
     /// Apply a command to the owned state, persist it, and return the result.
@@ -562,7 +609,7 @@ impl WalletService {
             // A Zcash wallet's shielded database holds its viewing keys and
             // what they found, and goes with them.
             if let Ok(path) = crate::wallet_db::zcash::zcash_db_path(&database, &id) {
-                crate::wallet_db::zcash::delete_zcash_db(&path).map_err(|error| {
+                crate::wallet_db::delete_sqlite_files(&path).map_err(|error| {
                     SpectraBridgeError::failure(format!(
                         "wallet {id} was removed; shielded data cleanup is pending and will be retried: {error}"
                     ))
@@ -594,6 +641,29 @@ impl WalletService {
         &self,
     ) -> Result<Arc<crate::wallet_db::WalletDatabase>, SpectraBridgeError> {
         self.state_binding.required_connection().await
+    }
+}
+
+/// Opening reads every stored row, so one this build cannot decode — or a
+/// file SQLite cannot read as a database at all — makes the whole store
+/// unreadable, not a failure of whatever asks next.
+fn unreadable_on_open(error: crate::wallet_db::error::DbError) -> SpectraBridgeError {
+    use crate::wallet_db::error::DbError;
+    use rusqlite::ErrorCode::{DatabaseCorrupt, NotADatabase};
+    let damaged = |source: &rusqlite::Error| {
+        matches!(
+            source.sqlite_error_code(),
+            Some(NotADatabase | DatabaseCorrupt)
+        )
+    };
+    match error {
+        DbError::Corrupt(message) => SpectraBridgeError::StoreUnreadable { message },
+        DbError::Sqlite(ref source) | DbError::Open { ref source, .. } if damaged(source) => {
+            SpectraBridgeError::StoreUnreadable {
+                message: error.to_string(),
+            }
+        }
+        other => other.into(),
     }
 }
 
@@ -968,11 +1038,16 @@ fn dashboard_groups_from(
                 crate::decimal::add(&sum, &h.coin.amount)
             })
             .ok_or_else(|| SpectraBridgeError::failure("asset total out of range"))?;
+        let is_pinned = pinned.contains(&key);
         groups.push(DashboardAssetGroup {
             total_amount,
             total_value: display_of(total_usd),
             price: valuation::display_price(state, &largest.coin),
-            is_pinned: pinned.contains(&key),
+            is_pinned,
+            is_small: !is_pinned
+                && total_usd.is_some_and(|usd| {
+                    usd < crate::store::wallet_domain::DASHBOARD_SMALL_BALANCE_USD
+                }),
             identity: largest.coin.clone(),
             holdings,
             id: key,
@@ -980,7 +1055,28 @@ fn dashboard_groups_from(
     }
 
     // A pinned token the user holds none of still gets a row, named by the
-    // catalog and holding nothing.
+    // catalog and holding nothing — where an included wallet is on a network
+    // the token lives on and has read its balances. With no such wallet the
+    // row would show a zero balance of an asset there is no account for, and
+    // while one is still reading, zero is not yet known.
+    let wallet_chains = |read: bool| -> std::collections::HashSet<crate::registry::Chain> {
+        state
+            .wallets
+            .iter()
+            .filter(|w| w.include_in_portfolio_total && w.balances_read_at.is_some() == read)
+            .map(|w| w.chain_id)
+            .collect()
+    };
+    let (read_chains, reading_chains) = (wallet_chains(true), wallet_chains(false));
+    let catalog = crate::tokens::list_token_deployments(None);
+    let token_chains = |token_id: &str| -> Vec<crate::registry::Chain> {
+        catalog
+            .iter()
+            .chain(state.token_preferences.iter().map(|e| &e.token))
+            .filter(|token| token.token_id == token_id)
+            .map(|token| token.chain_id)
+            .collect()
+    };
     let row_symbol = |g: &DashboardAssetGroup| -> String { g.identity.symbol.to_uppercase() };
     let row_value = |g: &DashboardAssetGroup| {
         g.holdings.iter().try_fold(0.0, |sum, holding| {
@@ -989,6 +1085,12 @@ fn dashboard_groups_from(
     };
     let present: std::collections::HashSet<String> = groups.iter().map(|g| g.id.clone()).collect();
     for symbol in pinned.iter().filter(|s| !present.contains(*s)) {
+        let chains = token_chains(symbol);
+        if !chains.iter().any(|chain| read_chains.contains(chain))
+            || chains.iter().any(|chain| reading_chains.contains(chain))
+        {
+            continue;
+        }
         let Some(prototype) = pinned_prototype(state, symbol, derived) else {
             continue;
         };
@@ -1000,6 +1102,7 @@ fn dashboard_groups_from(
             identity: prototype,
             holdings: Vec::new(),
             is_pinned: true,
+            is_small: false,
         });
     }
 

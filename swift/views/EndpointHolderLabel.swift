@@ -23,7 +23,7 @@ struct EndpointHolderLabel: View {
 
     private var systemImage: String {
         switch holder {
-        case .wallet: "wallet.pass"
+        case .wallet: "wallet.bifold"
         case .contact: "person.crop.circle"
         }
     }

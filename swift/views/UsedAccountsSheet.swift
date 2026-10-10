@@ -38,7 +38,9 @@ struct UsedAccountsSheet: View {
             .navigationTitle(AppLocalization.string("Find Used Accounts"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                // Done, where Done goes: the sheet reads and lists, and
+                // leaving it cancels nothing.
+                ToolbarItem(placement: .confirmationAction) {
                     Button(AppLocalization.string("Done")) { dismiss() }
                 }
             }

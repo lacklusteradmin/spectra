@@ -203,6 +203,14 @@ pub struct EndpointsArgs {
     /// are never contacted, or the catalog's too (`false`). Requires --chain.
     #[arg(long, requires = "chain", conflicts_with_all = ["catalog", "add"], action = clap::ArgAction::Set)]
     custom_only: Option<bool>,
+    /// Remove one of your endpoints from this network. Removing its last one
+    /// also stops using only yours there. Requires --chain.
+    #[arg(long, requires = "chain", conflicts_with_all = ["catalog", "add", "custom_only"])]
+    remove: Option<String>,
+    /// Edit one of your endpoints in place: the saved URL to change, with
+    /// --add naming what it becomes, and its --api and --capabilities.
+    #[arg(long, requires = "add")]
+    replace: Option<String>,
 }
 
 /// Check read methods for every API, including testnets and history indexers.
@@ -225,23 +233,46 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         }));
         return Ok(());
     }
-    if let Some(url) = args.add {
+    if let Some(url) = args.remove {
         let transition = ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting {
-            update: spectra_core::store::state::AppSettingUpdate::AddCustomEndpoint {
+            update: spectra_core::store::state::AppSettingUpdate::RemoveCustomEndpoint {
+                chain_id: chains[0],
+                endpoint: url,
+            },
+        })?;
+        out.emit(serde_json::json!({
+            "ok": true,
+            "customEndpoints": transition.state.settings.custom_endpoints,
+            "customEndpointsOnly": transition.state.settings.custom_endpoints_only,
+        }));
+        return Ok(());
+    }
+    if let Some(url) = args.add {
+        let capabilities = args
+            .capabilities
+            .iter()
+            .map(|name| {
+                name.parse()
+                    .map_err(|e: spectra_core::SpectraBridgeError| CliError::usage(e.to_string()))
+            })
+            .collect::<CliResult<_>>()?;
+        let update = match args.replace {
+            Some(saved) => spectra_core::store::state::AppSettingUpdate::ReplaceCustomEndpoint {
+                chain_id: chains[0],
+                endpoint: saved,
+                api: args.api.unwrap(),
+                new_endpoint: url,
+                capabilities,
+            },
+            None => spectra_core::store::state::AppSettingUpdate::AddCustomEndpoint {
                 chain_id: chains[0],
                 api: args.api.unwrap(),
                 endpoint: url,
-                capabilities: args
-                    .capabilities
-                    .iter()
-                    .map(|name| {
-                        name.parse().map_err(|e: spectra_core::SpectraBridgeError| {
-                            CliError::usage(e.to_string())
-                        })
-                    })
-                    .collect::<CliResult<_>>()?,
+                capabilities,
             },
-        })?;
+        };
+        let transition =
+            ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting { update })?;
         if transition
             .events
             .contains(&spectra_core::store::state::StateEvent::AppSettingRejected)

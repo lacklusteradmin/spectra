@@ -46,11 +46,6 @@ struct StakingTransactionView: View {
                     .buttonStyle(.glassProminent).disabled(vm.isBusy || vm.session.selectedEndpoints.isEmpty)
                     .accessibilityIdentifier("staking.broadcast")
             }
-            if canCheckStatus || offersRepair {
-                if needsReadPassword {
-                    SecureField(AppLocalization.string("Wallet Password"), text: $vm.password).spectraInputFieldStyle()
-                }
-            }
             if canCheckStatus {
                 Button(AppLocalization.string("staking.check_status")) { vm.begin(.recheck) }
                     .buttonStyle(.glass).disabled(vm.isBusy || (needsReadPassword && vm.password.isEmpty))
@@ -65,9 +60,12 @@ struct StakingTransactionView: View {
                 Link(AppLocalization.string("View in block explorer"), destination: link.url).buttonStyle(
                     .glass)
             }
+            if vm.isBusy { ProgressView() }
+            if let error = vm.stepError {
+                StakingErrorText(message: error)
+            }
             Button(AppLocalization.string("staking.close_review")) { vm.startStake() }
                 .buttonStyle(.glass).disabled(vm.isBusy)
-            if vm.isBusy { ProgressView() }
         }
     }
 
@@ -84,7 +82,13 @@ struct StakingTransactionView: View {
                         .foregroundStyle(.secondary)
                 }
                 if let validator = intent.validatorId {
-                    reviewRow(AppLocalization.string("staking.validator_identifier"), value: validator)
+                    if let name = vm.validatorName(validator) {
+                        reviewRow(AppLocalization.string("staking.validator"), value: name)
+                        Text(verbatim: validator).font(.caption.monospaced()).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    } else {
+                        reviewRow(AppLocalization.string("staking.validator_identifier"), value: validator)
+                    }
                 }
                 if let position = intent.positionId {
                     reviewRow(AppLocalization.string("staking.position"), value: position)
@@ -98,7 +102,16 @@ struct StakingTransactionView: View {
             reviewRow(
                 AppLocalization.string("Wallet"),
                 value: store.wallet(for: artifact.walletId)?.name ?? artifact.walletId)
-            reviewRow(AppLocalization.string("From"), value: artifact.sender)
+            VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
+                Text(AppLocalization.string("From")).font(.caption).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: SpectraLayout.Space.s) {
+                    Text(readableAddress(artifact.sender, chain: artifact.chainId)).font(.subheadline.monospaced())
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel(Text(verbatim: artifact.sender))
+                    CopyButton(value: displayAddress(chain: artifact.chainId, address: artifact.sender))
+                }
+            }
             if let entry = CoreReferenceTables.stakingEntry(for: artifact.chainId) {
                 reviewRow(
                     AppLocalization.string("Unbonding"), value: AppLocalization.string(entry.unbondingPeriod))
@@ -109,11 +122,11 @@ struct StakingTransactionView: View {
                 }
                 let label = AppLocalization.string(
                     review.feeIsUpperBound ? "staking.fee_upper_bound" : "Network Fee")
+                // With its display-currency value, as a send's fee is shown.
                 reviewRow(
                     label,
-                    value:
-                        "\(AmountPresentation.localizedDecimal(review.networkFee)) \(artifact.chainId.gasTokenSymbol)"
-                )
+                    value: store.amounts.compactNetworkFee(
+                        review.networkFee, value: artifact.review.networkFeeValue, chain: artifact.chainId))
                 if review.feeIsDeductedFromAmount {
                     Text(AppLocalization.string("staking.fee_deducted")).font(.caption).foregroundStyle(.secondary)
                 }
@@ -167,6 +180,8 @@ struct StakingTransactionView: View {
             ForEach(Array(artifact.attempts.enumerated()), id: \.offset) { _, attempt in
                 VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
                     Text(verbatim: attempt.endpoint).font(.caption.monospaced())
+                    Label(attempt.outcome.title, systemImage: attempt.outcome.systemImage)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(attempt.outcome.color)
                     Text(verbatim: attempt.detail).font(.caption).foregroundStyle(.secondary)
                 }
             }

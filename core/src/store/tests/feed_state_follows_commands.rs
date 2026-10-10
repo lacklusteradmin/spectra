@@ -178,3 +178,152 @@ async fn a_history_run_records_its_rows_and_the_chains_health() {
     );
     let _ = std::fs::remove_file(&path);
 }
+
+/// A network's last custom endpoint gone, using only custom endpoints there
+/// goes too: it would leave the network nothing to ask.
+#[tokio::test]
+async fn removing_the_last_custom_endpoint_stops_using_only_custom_ones() {
+    let service = crate::service::WalletService::new(Vec::new()).unwrap();
+    let chain = crate::registry::Chain::Bitcoin;
+    for endpoint in ["https://one.example/api", "https://two.example/api"] {
+        service
+            .apply_state_command(StateCommand::SetAppSetting {
+                update: AppSettingUpdate::AddCustomEndpoint {
+                    capabilities: crate::endpoint_capability_options(
+                        chain,
+                        crate::EndpointApi::Esplora,
+                    ),
+                    chain_id: chain,
+                    api: "esplora".into(),
+                    endpoint: endpoint.into(),
+                },
+            })
+            .await
+            .unwrap();
+    }
+    let set = |update| StateCommand::SetAppSetting { update };
+    service
+        .apply_state_command(set(AppSettingUpdate::CustomEndpointsOnly {
+            chain_id: chain,
+            value: true,
+        }))
+        .await
+        .unwrap();
+    let remove = |endpoint: &str| {
+        set(AppSettingUpdate::RemoveCustomEndpoint {
+            chain_id: chain,
+            endpoint: endpoint.into(),
+        })
+    };
+    let state = service
+        .apply_state_command(remove("https://one.example/api"))
+        .await
+        .unwrap()
+        .state;
+    assert_eq!(state.settings.custom_endpoints.len(), 1);
+    assert_eq!(
+        state.settings.custom_endpoints_only,
+        vec![chain],
+        "one is left to ask"
+    );
+    let state = service
+        .apply_state_command(remove("https://two.example/api"))
+        .await
+        .unwrap()
+        .state;
+    assert!(state.settings.custom_endpoints.is_empty());
+    assert!(
+        state.settings.custom_endpoints_only.is_empty(),
+        "none is left to ask"
+    );
+    let unchanged = service
+        .apply_state_command(remove("https://two.example/api"))
+        .await
+        .unwrap();
+    assert!(
+        unchanged.events.is_empty(),
+        "removing what is not there changes nothing"
+    );
+}
+
+/// An edit changes the endpoint where it stands, and a network using only
+/// the user's endpoints keeps doing so: the edit is never a removal of its
+/// only one. An edit into another saved endpoint is refused.
+#[tokio::test]
+async fn editing_a_custom_endpoint_keeps_it_and_using_only_custom_ones() {
+    let service = crate::service::WalletService::new(Vec::new()).unwrap();
+    let chain = crate::registry::Chain::Bitcoin;
+    let set = |update| StateCommand::SetAppSetting { update };
+    let capabilities = crate::endpoint_capability_options(chain, crate::EndpointApi::Esplora);
+    for endpoint in ["https://one.example/api", "https://two.example/api"] {
+        service
+            .apply_state_command(set(AppSettingUpdate::AddCustomEndpoint {
+                capabilities: capabilities.clone(),
+                chain_id: chain,
+                api: "esplora".into(),
+                endpoint: endpoint.into(),
+            }))
+            .await
+            .unwrap();
+    }
+    service
+        .apply_state_command(set(AppSettingUpdate::CustomEndpointsOnly {
+            chain_id: chain,
+            value: true,
+        }))
+        .await
+        .unwrap();
+    let replace = |from: &str, to: &str| {
+        set(AppSettingUpdate::ReplaceCustomEndpoint {
+            chain_id: chain,
+            endpoint: from.into(),
+            api: "esplora".into(),
+            new_endpoint: to.into(),
+            capabilities: capabilities.clone(),
+        })
+    };
+    let state = service
+        .apply_state_command(replace(
+            "https://two.example/api",
+            "https://three.example/api",
+        ))
+        .await
+        .unwrap()
+        .state;
+    let endpoints: Vec<_> = state
+        .settings
+        .custom_endpoints
+        .iter()
+        .map(|e| e.endpoint.as_str())
+        .collect();
+    assert_eq!(
+        endpoints,
+        ["https://three.example/api", "https://one.example/api"]
+    );
+    assert_eq!(state.settings.custom_endpoints_only, vec![chain]);
+
+    let refused = service
+        .apply_state_command(replace(
+            "https://three.example/api",
+            "https://one.example/api",
+        ))
+        .await
+        .unwrap();
+    assert!(
+        refused
+            .events
+            .contains(&crate::store::state::StateEvent::AppSettingRejected)
+    );
+    let unknown = service
+        .apply_state_command(replace(
+            "https://nowhere.example/api",
+            "https://four.example/api",
+        ))
+        .await
+        .unwrap();
+    assert!(
+        unknown
+            .events
+            .contains(&crate::store::state::StateEvent::AppSettingRejected)
+    );
+}

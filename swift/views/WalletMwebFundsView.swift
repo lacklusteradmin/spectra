@@ -24,9 +24,9 @@ struct WalletMwebFundsView: View {
                     addressSection(address)
                 }
             } else if let error {
-                Section { Text(error).foregroundStyle(.red) }
+                WalletToolErrorSection(message: error)
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                WalletToolLoadingSection()
             }
         }
         .navigationTitle(WalletAction.mwebFunds.title).navigationBarTitleDisplayMode(.inline)
@@ -163,8 +163,9 @@ private struct MwebTransactionView: View {
             } else {
                 Section {
                     if flow == .send {
-                        TextField(AppLocalization.string("Destination Address"), text: $recipient)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled().font(.body.monospaced())
+                        AddressEntryRow(
+                            title: AppLocalization.string("Destination Address"), text: $recipient, chain: wallet.chain,
+                            contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
                     }
                     TextField(AppLocalization.string("Amount"), text: $amount)
                         .keyboardType(.decimalPad).monospacedDigit()
@@ -190,11 +191,7 @@ private struct MwebTransactionView: View {
                          ? AppLocalization.string("Move LTC into MWEB")
                          : AppLocalization.string("Send from MWEB"))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(AppLocalization.string("Done")) { dismiss() }
-            }
-        }
+        .sendSheetDismissal(session: session) { dismiss() }
     }
 
     @ViewBuilder

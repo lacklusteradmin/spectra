@@ -16,7 +16,7 @@ struct MoneroPaymentProofView: View {
                 copyRow(AppLocalization.string("Transaction ID"), proof.txid)
                 copyRow(AppLocalization.string("Transaction Key"), proof.txKey)
                 copyRow(AppLocalization.string("Address"), proof.address)
-                LabeledContent(AppLocalization.string("Proves"), value: "\(proof.amount) XMR")
+                LabeledContent(AppLocalization.string("Proves"), value: "\(AmountPresentation.localizedDecimal(proof.amount)) XMR")
             } footer: {
                 Text(AppLocalization.string("Anyone with these three can see that this address received the amount, and nothing else about the wallet. Share them only with whoever needs to check the payment."))
             }
@@ -27,6 +27,13 @@ struct MoneroPaymentProofView: View {
             }
         }
         .navigationTitle(AppLocalization.string("Payment Proof")).navigationBarTitleDisplayMode(.inline)
+        // "Copied" says so for a moment, then the row is ready to copy again.
+        .task(id: copied) {
+            guard copied != nil else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            copied = nil
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(AppLocalization.string("Done")) { dismiss() }
@@ -46,8 +53,11 @@ struct MoneroPaymentProofView: View {
                     Spacer()
                     Image(systemName: copied == value ? "checkmark" : "doc.on.doc").font(.caption).foregroundStyle(.tint)
                 }
-                Text(verbatim: value).font(.caption.monospaced()).foregroundStyle(Color.primary)
-                    .lineLimit(3).truncationMode(.middle)
+                // Whole: a key or a command cut in the middle cannot be read
+                // back or checked against what was pasted.
+                Text(verbatim: breakableAnywhere(value)).font(.caption.monospaced()).foregroundStyle(Color.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(Text(verbatim: value))
             }
         }.buttonStyle(.plain)
     }

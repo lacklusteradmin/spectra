@@ -13,9 +13,10 @@ struct LargeMovementAlertsSettingsView: View {
             }
             Section(AppLocalization.string("Alert Controls")) {
                 Stepper(
-                    String(
-                        format: AppLocalization.string("Large movement threshold: %@"),
-                        (settings.largeMovementAlertPercentThreshold / 100).formatted(.percent.precision(.fractionLength(0)))
+                    AppLocalization.format(
+                        "Large movement threshold: %@",
+                        (settings.largeMovementAlertPercentThreshold / 100).formatted(
+                            .percent.precision(.fractionLength(0)).locale(AppLocalization.locale))
                     ),
                     value: store.settingBinding(\.largeMovementAlertPercentThreshold) {
                         .largeMovementAlertPercentThreshold(value: $0)
@@ -28,7 +29,7 @@ struct LargeMovementAlertsSettingsView: View {
                         value: store.settingBinding(\.largeMovementAlertUsdThreshold) {
                             .largeMovementAlertUsdThreshold(value: $0)
                         },
-                        format: .number.grouping(.never)
+                        format: .number.grouping(.never).locale(AppLocalization.locale)
                     )
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)

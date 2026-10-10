@@ -109,9 +109,9 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
                 store: state, isShowingQRScanner: .constant(false), qrScannerErrorMessage: .constant(nil),
                 validationError: nil, isValidating: false, validatedResolution: resolution, retryValidation: {}))
         case .amount:
-            AnyView(SendAmountPage(store: state, quoteIsCurrent: true))
+            AnyView(SendAmountPage(store: state, quoteIsCurrent: true, retryQuote: {}))
         case .review:
-            AnyView(SendConfirmationStep(store: state, quoteIsCurrent: true, recipientAddress: recipient))
+            AnyView(SendConfirmationStep(store: state, quoteIsCurrent: true, recipientAddress: recipient, retryQuote: {}))
         }
     }
 

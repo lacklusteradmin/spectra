@@ -25,6 +25,7 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
 /// Appearance and balance privacy must be available before the first frame.
 private enum PlatformDefaults {
     static let hideBalances = "settings.platform.hideBalances"
+    static let hideSmallBalances = "settings.platform.hideSmallBalances"
     static let appearanceMode = "settings.appearanceMode"
     static let useFaceId = "settings.platform.useFaceId"
     static let useAutoLock = "settings.platform.useAutoLock"
@@ -36,7 +37,7 @@ private enum PlatformDefaults {
     static func set(_ value: Bool, _ key: String) { UserDefaults.standard.set(value, forKey: key) }
 }
 
-/// The five preferences this platform keeps for itself, split out of
+/// The six preferences this platform keeps for itself, split out of
 /// `AppState` so that views which only read them are not invalidated whenever
 /// wallets, balances or transactions change. Settings core owns are
 /// `AppState.appSettings`.
@@ -46,6 +47,11 @@ final class AppUserPreferences {
     // ── UI ──────────────────────────────────────────────────────────────
     var hideBalances: Bool = PlatformDefaults.bool(PlatformDefaults.hideBalances, default: false) {
         didSet { if hideBalances != oldValue { PlatformDefaults.set(hideBalances, PlatformDefaults.hideBalances) } }
+    }
+    /// Fold Home's rows worth less than core's small-balance threshold — the
+    /// dust and airdropped tokens anyone can send an address — behind one row.
+    var hideSmallBalances: Bool = PlatformDefaults.bool(PlatformDefaults.hideSmallBalances, default: true) {
+        didSet { if hideSmallBalances != oldValue { PlatformDefaults.set(hideSmallBalances, PlatformDefaults.hideSmallBalances) } }
     }
     var appearanceMode: AppearanceMode = {
         if let raw = UserDefaults.standard.string(forKey: PlatformDefaults.appearanceMode),
@@ -86,6 +92,7 @@ final class AppUserPreferences {
     /// `UserDefaults` as it changes.
     func resetToDefaults() {
         hideBalances = false
+        hideSmallBalances = true
         appearanceMode = .system
         useFaceId = true
         useAutoLock = false
