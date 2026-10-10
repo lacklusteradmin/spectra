@@ -16,14 +16,11 @@ weight's, its canonical inputs' signatures and the peg-in rules of
 `IsStandardTx` — before it is mined and journaled, with what it paid whom as
 the wallet's and an outsider's keys read it.
 
-The wallet scans for its MWEB funds, pays an MWEB address, pegs out to a
-transparent one, pegs its transparent funds in, and pays an MWEB address from
-transparent funds by a peg-in; a second data directory restored from the
-same phrase, at another path, finds what is left. Refused: a scan with no
-node, with the wrong password, of a key-only wallet, of a second wallet of the
-same phrase, and of a node on another network; a payment past the balance,
-to another network's MWEB address, or below a peg-out's dust threshold;
-watching an MWEB address."""
+The wallet scans for its MWEB funds over several processes, pays an MWEB
+address, pegs out to a transparent one and pegs its transparent funds in; a
+second data directory restored from the same phrase, at another path, finds
+what is left. A testnet wallet refuses a mainnet node. What a payment or a
+scan refuses before any node is read is tested in core."""
 import json
 import os
 import pathlib
@@ -89,8 +86,6 @@ class MwebTests(unittest.TestCase):
 
     def tearDown(self):
         for directory in self.directories:
-            journal = pathlib.Path(directory.name) / 'network.jsonl'
-            assert not journal.exists() or not journal.read_text().strip(), journal.read_text()
             directory.cleanup()
 
     def data_directory(self):
@@ -98,28 +93,18 @@ class MwebTests(unittest.TestCase):
         self.directories.append(directory)
         return directory.name
 
-    def run_cli(self, directory, *args, success=True, env=None):
+    def run_cli(self, directory, *args, success=True):
         p = subprocess.run([binary, '--data-dir', directory, '--json', *args], capture_output=True, text=True,
                            timeout=600,
-                           env={**os.environ, 'SPECTRA_LOOPBACK_ONLY': str(pathlib.Path(directory) / 'network.jsonl'),
-                                'SPECTRA_PASSWORD': 'fixture-password', 'SPECTRA_SEED': PHRASE, **(env or {})})
+                           env={**os.environ, 'SPECTRA_PASSWORD': 'fixture-password', 'SPECTRA_SEED': PHRASE})
         assert (p.returncode == 0) == success, (args, p.returncode, p.stdout, p.stderr)
         return json.loads(p.stdout) if success else (p.returncode, p.stdout + p.stderr)
 
-    def refuses(self, directory, words, *args, code=3, env=None):
-        returned, output = self.run_cli(directory, *args, success=False, env=env)
-        assert returned == code and words in output, (words, returned, output)
-
-    def endpoints(self, directory, chain='litecoin', node=True):
-        """The fixture's indexer, and its node unless `node` is false, as the
-        network's only endpoints."""
+    def endpoints(self, directory, chain='litecoin'):
+        """The fixture's indexer and node as the network's only endpoints."""
         self.run_cli(directory, 'endpoints', '--chain', chain, '--custom-only', 'true')
         self.run_cli(directory, 'endpoints', '--chain', chain, '--api', 'esplora', '--capabilities',
                      INDEXER_CAPABILITIES, '--add', self.chain.url)
-        if node:
-            self.add_node(directory, chain)
-
-    def add_node(self, directory, chain='litecoin'):
         self.run_cli(directory, 'endpoints', '--chain', chain, '--api', 'litecoin-p2p', '--capabilities',
                      'history', '--add', self.chain.node)
 
@@ -157,23 +142,8 @@ class MwebTests(unittest.TestCase):
         info = self.chain.info
         wallet, outsider = info['wallet'], info['outsider']
 
-        # Without a node there is nothing to scan from.
         self.run_cli(data, 'wallet', 'import', '--chain', 'litecoin', '--name', 'MWEB')
-        self.endpoints(data, node=False)
-        self.refuses(data, 'needs a Litecoin node', 'wallet', 'mweb-sync', 'MWEB')
-        self.add_node(data)
-        offers = [o['action'] for o in self.run_cli(data, 'wallet', 'actions', 'MWEB')['actions']['actions']]
-        assert 'mwebFunds' in offers, offers
-        status = self.status(data)
-        assert (status['ready'], status['address'], status['spendable']) == (False, None, '0'), status
-        for build in (['send-mweb', 'MWEB', '--to', outsider['mweb'], '--amount', '0.1'],
-                      ['mweb-pegin', 'MWEB', '--amount', '0.1']):
-            self.refuses(data, 'Sync the MWEB funds', 'wallet', *build)
-
-        # The first batch derives the keys from the seed: a wrong password
-        # derives nothing.
-        self.refuses(data, 'password', 'wallet', 'mweb-sync', 'MWEB', env={'SPECTRA_PASSWORD': 'wrong'})
-        assert not self.status(data)['ready']
+        self.endpoints(data)
 
         # One batch reads eight pages, less than the unspent set; the rest
         # follow, and the wallet's outputs are among them, at the address
@@ -240,27 +210,6 @@ class MwebTests(unittest.TestCase):
         assert ('shield', '0.2', 'confirmed', wallet['pegin']) in self.history(data), self.history(data)
         assert self.run_cli(data, 'balance', 'MWEB')['amount'] == '1.8499046'
 
-        # From transparent funds, an MWEB address is paid by a peg-in to it.
-        built = self.run_cli(data, 'send', 'build', '--from', 'MWEB', '--to', outsider['mweb'],
-                             '--amount', '0.05', '--endpoint', self.chain.url)['artifact']
-        prepared = json.loads(built['prepared_details'])['LitecoinPegIn']
-        assert (prepared['recipient'], prepared['amount'], prepared['mweb_fee']) == \
-            (outsider['mweb'], 5_000_000, 2_100), prepared
-        mined = self.send(data, built)
-        assert mined['mweb_outputs'] == [{'owner': 'outsider', 'index': 2, 'value': 5_000_000}], mined
-
-        # Refused before anything is signed: more than the balance, another
-        # network's MWEB address, dust to a transparent one, more than the
-        # transparent funds into MWEB.
-        self.refuses(data, 'cannot cover', 'wallet', 'send-mweb', 'MWEB', '--to', outsider['mweb'],
-                     '--amount', '5')
-        self.refuses(data, 'Not a Litecoin address on this network', 'wallet', 'send-mweb', 'MWEB', '--to',
-                     outsider['other_network_mweb'], '--amount', '0.1')
-        self.refuses(data, 'dust threshold', 'wallet', 'send-mweb', 'MWEB', '--to', outsider['legacy'],
-                     '--amount', '0.00001')
-        returned, output = self.run_cli(data, 'wallet', 'mweb-pegin', 'MWEB', '--amount', '5', success=False)
-        assert returned != 0 and 'nsufficient' in output, (returned, output)
-
         # Another device, restored from the phrase at another path, finds
         # what is left: the outputs received at the addresses the wallet
         # gives out, its change and its peg-in.
@@ -273,27 +222,15 @@ class MwebTests(unittest.TestCase):
         assert self.history(recovered, 'Restored') == [('receive', '0.1', 'confirmed', ''),
                                                        ('receive', '0.25', 'confirmed', '')], \
             self.history(recovered, 'Restored')
-        # One wallet of a phrase holds its MWEB funds.
-        self.run_cli(recovered, 'wallet', 'import', '--chain', 'litecoin', '--name', 'Again')
-        self.refuses(recovered, 'already holds this phrase', 'wallet', 'mweb-sync', 'Again')
 
-    def test_what_holds_no_mweb_funds_is_refused(self):
+    def test_a_node_on_another_network_is_refused(self):
+        # A testnet wallet's handshake with the mainnet node does not finish.
         data = self.data_directory()
-        outsider = self.chain.info['outsider']
-        # A key-only wallet has no phrase to derive MWEB keys from.
-        self.run_cli(data, 'wallet', 'import', '--chain', 'litecoin', '--name', 'Key',
-                     '--private-key-env', 'KEY', env={'KEY': '11' * 32})
-        self.endpoints(data)
-        offers = [o['action'] for o in self.run_cli(data, 'wallet', 'actions', 'Key')['actions']['actions']]
-        assert 'mwebFunds' not in offers, offers
-        self.refuses(data, 'restored from its seed phrase', 'wallet', 'mweb-sync', 'Key')
-        # An MWEB address shows nothing anyone could watch.
-        self.refuses(data, 'valid address', 'wallet', 'watch', '--chain', 'litecoin', '--address', outsider['mweb'])
-        # A node on another network does not finish the handshake.
         self.run_cli(data, 'wallet', 'import', '--chain', 'litecoin-testnet', '--name', 'Testnet')
         self.endpoints(data, chain='litecoin-testnet')
         returned, output = self.run_cli(data, 'wallet', 'mweb-sync', 'Testnet', success=False)
-        assert returned == 1 and 'Litecoin node' in output, (returned, output)
+        # The node drops the handshake; the reset's wording is the OS's.
+        assert returned == 1 and 'Litecoin node:' in output, (returned, output)
         assert not self.status(data, 'Testnet')['ready']
 
 

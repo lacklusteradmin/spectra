@@ -452,3 +452,7 @@ impl WalletService {
         Ok(reviewed.transaction_id)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/multisig_stellar.rs"]
+mod multisig_stellar_tests;

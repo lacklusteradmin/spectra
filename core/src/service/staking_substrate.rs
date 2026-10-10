@@ -304,4 +304,91 @@ mod tests {
                 .is_err()
         );
     }
+
+    /// `prepared`, reviewed as a stored staking send from `owner`.
+    fn reviewed(
+        request: StakingRequest,
+        prepared: crate::send::polkadot::PreparedPolkadotTransaction,
+        owner: &str,
+    ) -> StoredSend {
+        use crate::send::stages::{SendArtifact, SendArtifactReview, SendStage};
+        StoredSend {
+            view: SendArtifact {
+                id: "reviewed".into(),
+                revision: 0,
+                stage: SendStage::Prepared,
+                wallet_id: request.wallet_id.clone(),
+                chain_id: Chain::Polkadot,
+                sender: owner.into(),
+                recipient: "7".into(),
+                memo: None,
+                amount: "1".into(),
+                asset: "DOT".into(),
+                symbol: "DOT".into(),
+                staking: Some(request.clone()),
+                operation: None,
+                created_at: 0.0,
+                review_digest: String::new(),
+                review: SendArtifactReview::default(),
+                prepared_details: String::new(),
+                signing_payload_hex: String::new(),
+                signed_payload: None,
+                transaction_hash: None,
+                attempts: vec![],
+                selected_endpoints: vec![],
+            },
+            request: crate::send::SendExecutionRequest {
+                chain_id: Chain::Polkadot,
+                wallet_id: request.wallet_id,
+                password: None,
+                to_address: "7".into(),
+                amount_str: "1".into(),
+                contract_address: None,
+                token_standard: None,
+                token_decimals: None,
+                fee_rate_svb: None,
+                fee_sat: None,
+                gas_budget: None,
+                fee_amount: None,
+                evm_overrides: None,
+                sign_only: false,
+                memo: None,
+            },
+            prepared: PreparedPayload::Substrate(prepared),
+            submission: None,
+            signed_digest: None,
+            substrate_verified_through: None,
+            icp_staking_receipts: vec![],
+        }
+    }
+
+    /// Signing builds the pool call again from the chain's current state: a
+    /// fee above the reviewed one is refused.
+    #[tokio::test]
+    async fn a_pool_fee_above_the_reviewed_one_is_refused_at_signing() {
+        let (_, state, server) = node().await;
+        let service = WalletService::new(vec![ChainEndpoints {
+            chain_id: Chain::Polkadot,
+            capabilities: vec![EndpointCapability::Staking],
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap();
+        let owner = crate::derivation::primitives::encode_ss58(&[7; 32], 0);
+        let stake = request(StakingAction::Stake, Some("1"));
+        let stored = reviewed(stake.clone(), prepare(&service, stake).await, &owner);
+        service
+            .validate_substrate_staking_state(&stored)
+            .await
+            .unwrap();
+        state.lock().unwrap().fee *= 2;
+        let error = service
+            .validate_substrate_staking_state(&stored)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("Nomination pool state or fee changed"),
+            "{error}"
+        );
+    }
 }

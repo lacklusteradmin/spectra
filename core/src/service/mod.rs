@@ -436,6 +436,10 @@ mod a_primary_endpoint_can_serve_a_primary_read {
 #[path = "tests/app_boundary.rs"]
 mod app_boundary_tests;
 
+#[cfg(test)]
+#[path = "tests/loopback_service.rs"]
+pub(crate) mod loopback_service;
+
 impl WalletService {
     pub async fn update_endpoints(
         &self,

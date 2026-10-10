@@ -2217,3 +2217,27 @@ fn stellar_signing_key(
     key[32..].copy_from_slice(&public);
     Ok((key, public))
 }
+
+#[cfg(test)]
+#[path = "tests/send_stage_support.rs"]
+pub(super) mod send_stage_support;
+
+#[cfg(test)]
+#[path = "tests/send_memos.rs"]
+mod send_memos_tests;
+
+#[cfg(test)]
+#[path = "tests/send_substrate.rs"]
+mod send_substrate_tests;
+
+#[cfg(test)]
+#[path = "tests/send_cardano.rs"]
+mod send_cardano_tests;
+
+#[cfg(test)]
+#[path = "tests/trc10.rs"]
+mod trc10_tests;
+
+#[cfg(test)]
+#[path = "tests/send_tokens.rs"]
+mod send_tokens_tests;

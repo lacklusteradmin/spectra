@@ -17,6 +17,92 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-10 — CLI acceptance keeps only what the binary shows
+
+- **Before:** 43 Python suites, about 12,100 lines with the shell harness,
+  drove the `spectra` binary through rules that belong to core: address and
+  signing vectors, fee arithmetic, refusals, pagination, valuation. About 260
+  of their checks repeated a cargo test. About 190 were the only test of their
+  rule, among them every multisig session service (`service/multisig_*.rs`,
+  some 5,700 lines without a cargo test) and most of the sign-time "changed
+  since review" refusals in `send_stage_protocols.rs`. Eight suites pointed
+  `SPECTRA_LOOPBACK_ONLY` at a journal nothing read, so the harness's final
+  network check could not see them.
+- **After:** each of those rules is a cargo test in core, against wiremock
+  nodes and the existing fixtures: 169 new tests, 1,328 to 1,497. The suites
+  keep what only the binary shows: state across processes and data
+  directories, files on disk, exit codes and `--yes` gates, and one staged
+  build, sign and broadcast-once flow per distinct path. 26 suites remain,
+  about 4,500 lines with the harness.
+  - Deleted: `cli-wallets`, `cli-portfolio`, `cli-history`, `cli-transport`,
+    `cli-token-preferences`, `cli-chain-coverage`, `cli-receipt-fees`,
+    `cli-finality-account-chains`, `cli-send-local-digests`, `cli-send-utxo`,
+    `cli-litecoin`, `cli-peercoin`, `cli-account-utxo`, `cli-send-monero`,
+    `cli-send-xrp`, `cli-payment-memos` and `cli-multisig-p2sh`.
+    `cli-multisig-sui-aptos` is `cli-multisig-aptos`. The Bittensor and Nile
+    reruns are gone.
+  - Every suite runs under the harness's one network journal.
+  - New binary-only check: `multisig submit` and `multisig discard` ask for
+    `--yes`.
+  - The Zcash and MWEB fixtures lose the options and fields only the deleted
+    checks used.
+  - Earlier entries in this file that name a deleted suite as their CLI check
+    are now covered by the cargo tests that replaced it.
+- **Why:** a rule is tested in core and the CLI suite covers what only the
+  binary shows (AGENTS.md). A rule checked only through the binary was
+  untested where it lives, and a repeated one was a second test of the same
+  thing that drifted on its own.
+- **CLI check:** `make test-cli` — 61 checks in 83 seconds against a prebuilt
+  binary, where the suites alone took about 200 before.
+- **Verification:** `make lint` clean, every scan at 0; `make test` passed
+  1,497; `make test-cli` passed 61; `make test-ios` passed 154 tests on an
+  iPhone 17e simulator.
+
+## 2026-10-10 — Dead code removed from core, the app and the scripts
+
+- **Before:** `DiagnosticCommand` had a `Reset` that only an uncalled Swift
+  `WalletDiagnosticsState.reset()` and a hand-typed
+  `spectra diagnostics state --command '"Reset"'` could send; resetting
+  history and cache already clears diagnostics in core. A log line carried
+  `wallet_id` and `metadata`, which no writer in core or the app ever set,
+  yet the Logs screen, its search and the copied log text had places for
+  them, and removing a wallet dropped its lines by a `wallet_id` none had.
+  The icon scripts still normalized and exported an `icons/fiat` group
+  removed on 2026-10-04.
+- **After:** `Reset` is gone. A log line is level, category, message,
+  chain, transaction hash and source; the Logs search prompt reads "Search
+  message, chain, tx hash". Every log line the app writes is an error, so
+  `appendOperationalLog` takes no level. The icon scripts handle
+  `icons/crypto` and the app icon only. Deleted with no behaviour change:
+  - fourteen API clients' `fetch_history` first-page wrappers; production
+    calls `fetch_history_page`, and the two tests that used a wrapper now do
+    too;
+  - `HistoryScope`, whose one-wallet variant nothing built, and
+    `HistoryPaginationStore::reset`;
+  - fields nothing read (`EsploraAddressStats.address`,
+    `EvmTokenTransferItem.decimals` and `log_index`), `FileSecretStore::root`,
+    `TokenPreferenceEntry::id`, the test-only `SecretHex`, and 53 `pub use`
+    re-exports no consumer names; `HighRiskSendWarning::code` is test-only;
+  - `prost` and `blake2b_simd` from `tools/zcash-fixture`;
+  - in the app, unreferenced members (`TransactionRecord.statusText`,
+    `isWatchOnlyMode`, `WalletActions.offers`, `Chain.isTestnet`,
+    `SpectraLayout.Space.xxl`, a `formattedNetworkFee` overload and others),
+    parameters every caller passed the same value, and the only `#Preview`;
+  - four tracked `.pyc` files (`__pycache__/` is now ignored), completed
+    items in OPEN-ITEMS.md, and the finished `UI-FIX.md`.
+- **Why:** dead code, and a log model with two fields and a cleanup that no
+  writer fed. The name-based scans miss a function whose name another one
+  shares; these were found by compiling core with every `pub` made
+  crate-private, so rustc's own dead-code lint ran across the crate, then
+  checking each finding against the CLI and the tests, and by a
+  reachability pass over the app's Xcode index.
+- **CLI check:** `spectra diagnostics state --command '"Reset"'` exits 1 with
+  "unknown variant `Reset`"; `spectra --json diagnostics state` shows log
+  inputs without `wallet_id` or `metadata`.
+- **Verification:** `make lint` clean, all scans at 0; `make test` passed
+  1328; `make test-cli` passed 115; `make test-ios` passed 154 tests on an
+  iPhone 17e simulator, with no Swift compiler warnings.
+
 ## 2026-10-10 — Reset Wallet is a Settings page, not a sheet
 
 - **Before:** the red Reset Wallet row was a button that raised the reset

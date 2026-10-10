@@ -402,3 +402,7 @@ impl WalletService {
         Ok(hash)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/multisig_aptos.rs"]
+mod multisig_aptos_tests;

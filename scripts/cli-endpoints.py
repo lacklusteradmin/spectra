@@ -1,71 +1,42 @@
 #!/usr/bin/env python3
-"""Typed endpoint persistence, source filters and API selection, offline."""
+"""The CLI's own endpoint views, offline: the listing's source filter and the
+health verdict it aggregates from core's probes."""
+import http.server
 import json
 import subprocess
 import sys
+import threading
 import tempfile
 
 with tempfile.TemporaryDirectory(prefix="spectra-endpoints-") as directory:
-    def run(*args, success=True):
-        result = subprocess.run([sys.argv[1], "--data-dir", directory, "--json", *args], capture_output=True, text=True, timeout=30)
-        assert (result.returncode == 0) == success, (args, result.stdout, result.stderr)
+    def run(*args):
+        result = subprocess.run([sys.argv[1], "--data-dir", directory, "--json", *args],
+                                capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, (args, result.stdout, result.stderr)
         return json.loads(result.stdout)
 
-    catalog = run("endpoints", "--catalog", "--source", "built-in")
-    types = {(row["chainId"], row["api"]): row["supportedCapabilities"] for row in catalog["endpoints"] if row["supportedCapabilities"]}
-    for index, (chain, api) in enumerate(sorted(types)):
-        # A Litecoin node is reached peer to peer, at a host and port.
-        url = f"tcp://custom-{index}.example:9333" if api == "litecoin-p2p" else f"https://custom-{index}.example/api"
-        run("endpoints", "--chain", chain, "--api", api, "--capabilities", ",".join(types[(chain, api)]), "--add", url)
-    custom = run("endpoints", "--catalog", "--source", "custom")
-    assert len(custom["endpoints"]) == len(types)
-    assert all(not row["isBuiltIn"] for row in custom["endpoints"])
-    assert {(row["chainId"], row["api"]) for row in custom["endpoints"]} == set(types)
-    built_in = run("endpoints", "--catalog", "--source", "built-in")
-    assert built_in["endpoints"] == catalog["endpoints"]
-    # Selection lists only endpoints the process may contact, and acceptance
-    # confines it to loopback: these nodes are listed, never called.
-    run("endpoints", "--chain", "solana", "--api", "solana-json-rpc", "--capabilities", "broadcast", "--add", "http://127.0.0.1:1/node")
-    configured = run("send", "configured-endpoints", "solana")
-    assert "http://127.0.0.1:1/node" in json.dumps(configured)
-    assert "http://127.0.0.1:1/node" not in json.dumps(run("send", "configured-endpoints", "solana-devnet"))
-    for url, caps in [("http://127.0.0.1:2/balance-only", "balance"), ("http://127.0.0.1:3/broadcast-only", "broadcast")]:
-        run("endpoints", "--chain", "ethereum", "--api", "evm-json-rpc", "--capabilities", caps, "--add", url)
-    saved = run("endpoints", "--catalog", "--chain", "ethereum", "--source", "custom")["endpoints"]
-    assert next(row for row in saved if row["endpoint"] == "http://127.0.0.1:2/balance-only")["capabilities"] == ["balance"]
-    assert next(row for row in saved if row["endpoint"] == "http://127.0.0.1:3/broadcast-only")["capabilities"] == ["broadcast"]
-    destinations = run("send", "configured-endpoints", "ethereum")["endpoints"]
-    assert "http://127.0.0.1:2/balance-only" not in destinations
-    assert "http://127.0.0.1:3/broadcast-only" in destinations
-    print(f"{len(types)} catalog network/API pairs persist; source filters and capability routing passed")
+    def listed(source):
+        return run("endpoints", "--catalog", "--source", source)["endpoints"]
 
-# Missing built-in providers stay empty, while supported custom APIs still work.
-# (Zcash testnet's transparent API has none either, but its shielded funds
-# read a built-in lightwalletd, which a health probe would contact.)
-with tempfile.TemporaryDirectory(prefix="spectra-empty-endpoints-") as directory:
-    for chain, api in [("bitcoin-cash-testnet", "blockbook"),
-                       ("dash-testnet", "blockbook"), ("dogecoin-testnet", "blockcypher"),
-                       ("decred-testnet", "insight")]:
-        assert run("send", "configured-endpoints", chain)["endpoints"] == [], chain
-        health = run("endpoints", "--chain", chain)
-        assert not health["ok"] and health["networksWithoutApis"] == [chain], health
-        url = "http://127.0.0.1:4/" + chain
-        run("endpoints", "--chain", chain, "--api", api, "--capabilities", "fee,broadcast", "--add", url)
-        assert run("send", "configured-endpoints", chain)["endpoints"] == [url], chain
-    print("Missing providers remain empty and supported custom APIs work")
+    catalog = listed("built-in")
+    assert catalog and all(row["isBuiltIn"] for row in catalog)
+    url = "http://127.0.0.1:1/node"
+    run("endpoints", "--chain", "solana", "--api", "solana-json-rpc", "--capabilities", "broadcast", "--add", url)
+    custom = listed("custom")
+    assert [(row["endpoint"], row["isBuiltIn"]) for row in custom] == [(url, False)], custom
+    assert listed("built-in") == catalog
+    print("The listing filters the catalog by source")
 
-# A testnet without public providers can exercise the real health command offline.
-import http.server
-import threading
-with tempfile.TemporaryDirectory(prefix="spectra-health-") as directory:
-    # Every EVM network now has public providers, so this runs on Blockbook;
-    # EVM's identity-then-reads order is covered by core's endpoint_health tests.
+    # A network with no API configured is reported apart, and is not healthy.
+    health = run("endpoints", "--chain", "dash-testnet")
+    assert not health["ok"] and health["networksWithoutApis"] == ["dash-testnet"], health
+    assert health["total"] == 0, health
+
+    # One endpoint, answering as it should and then not.
     state = {"fail": False}
-    seen = []
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_): pass
         def do_GET(self):
-            seen.append(self.path)
             response = {"error": "Internal server error"} if state["fail"] else {"blockbook": {"bestHeight": 123}}
             payload = json.dumps(response).encode()
             self.send_response(200); self.send_header("Content-Length", str(len(payload)))
@@ -73,15 +44,15 @@ with tempfile.TemporaryDirectory(prefix="spectra-health-") as directory:
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
     try:
-        url = f"http://127.0.0.1:{server.server_port}"
-        run("endpoints", "--chain", "dash-testnet", "--api", "blockbook", "--capabilities", "balance,fee,broadcast", "--add", url)
+        node = f"http://127.0.0.1:{server.server_port}"
+        run("endpoints", "--chain", "dash-testnet", "--api", "blockbook", "--capabilities", "balance,fee,broadcast", "--add", node)
         health = run("endpoints", "--chain", "dash-testnet")
-        assert health["ok"] and health["uncheckedApis"] == 0, health
-        assert seen == ["/api/v2"], seen
+        assert health["ok"] and health["networksWithoutApis"] == [], health
+        assert (health["total"], health["unreachable"], health["uncheckedApis"]) == (1, 0, 0), health
         state["fail"] = True
         health = run("endpoints", "--chain", "dash-testnet")
         assert not health["ok"] and health["unreachable"] == 1, health
         assert health["endpoints"][0]["detail"], health
     finally:
         server.shutdown(); server.server_close(); worker.join()
-    print("CLI health rejects a node that answers without the fields it must report")
+    print("The health verdict counts networks without APIs and unreachable endpoints")

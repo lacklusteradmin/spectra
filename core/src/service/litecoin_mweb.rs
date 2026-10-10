@@ -1008,3 +1008,7 @@ impl WalletService {
         .await
     }
 }
+
+#[cfg(test)]
+#[path = "tests/litecoin_mweb.rs"]
+mod tests;

@@ -687,3 +687,56 @@ mod strict_amount_tests {
 #[cfg(test)]
 #[path = "tests/blockbook_peercoin.rs"]
 mod peercoin_tests;
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use serde_json::json;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::path};
+
+    /// A row is what the transaction did to this address: its own outputs
+    /// less its own inputs, not the transaction's total value, which counts
+    /// every party's outputs. A transaction that nets nothing for it is not a
+    /// row.
+    #[tokio::test]
+    async fn a_row_nets_the_addresss_own_outputs_against_its_own_inputs() {
+        let address = "XmineXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+        let io = |owner: &str, value: &str| json!({"addresses": [owner], "value": value});
+        let server = MockServer::start().await;
+        Mock::given(path(format!("/api/v2/address/{address}")))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"transactions": [
+                    {"txid": "ab".repeat(32), "blockHeight": 42, "blockTime": 1_700_000_000u64,
+                     "value": "223456789", "fees": "1000",
+                     "vin": [io(address, "50000000"), io("someone-else", "173457789")],
+                     "vout": [io(address, "123456789"), io("someone-else", "100000000")]},
+                    {"txid": "cd".repeat(32), "blockHeight": 41, "blockTime": 1_699_999_000u64,
+                     "value": "5", "fees": "1",
+                     "vin": [io("someone-else", "6")], "vout": [io("another", "5")]},
+                ]})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client =
+            BlockbookClient::new(Arc::new(vec![server.uri()]), crate::registry::Chain::Dash);
+        let page = client.fetch_history_page(address, None).await.unwrap();
+        assert_eq!(page.next_cursor, None);
+        let rows: Vec<_> = page
+            .items
+            .iter()
+            .map(|row| {
+                (
+                    row.txid.as_str(),
+                    row.net_sats,
+                    row.fee_sats,
+                    row.block_height,
+                )
+            })
+            .collect();
+        assert_eq!(
+            rows,
+            [(&*"ab".repeat(32), 73_456_789, Some(1000), Some(42))]
+        );
+    }
+}

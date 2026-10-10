@@ -437,3 +437,7 @@ impl WalletService {
         Ok(reviewed.transaction_id)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/multisig_cardano.rs"]
+mod multisig_cardano_tests;

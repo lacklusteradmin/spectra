@@ -311,6 +311,26 @@ mod tests {
         assert_eq!(updated.holdings, [current]);
     }
 
+    /// A token whose read failed is left out of what the refresh brings back,
+    /// and keeps the balance it had; the balances that were read replace
+    /// theirs, a zero included.
+    #[test]
+    fn a_token_the_refresh_could_not_read_keeps_its_stored_balance() {
+        let chain = Chain::Ethereum;
+        let token = crate::tokens::catalog()
+            .iter()
+            .find(|token| token.chain_id == chain && token.symbol == "USDC")
+            .unwrap();
+        let mut native = native_coin_template(chain).unwrap();
+        native.amount = "1".into();
+        let mut held = token.holding_template();
+        held.amount = "2".into();
+        let mut stored = vec![native.clone(), held.clone()];
+        native.amount = "0".into();
+        merge_balances(&mut stored, vec![native.clone()]);
+        assert_eq!(stored, [native, held]);
+    }
+
     #[tokio::test]
     async fn trc10_and_trc20_refresh_as_distinct_assets_and_survive_reopen() {
         use wiremock::{

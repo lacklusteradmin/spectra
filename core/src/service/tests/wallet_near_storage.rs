@@ -115,3 +115,198 @@ async fn a_refund_refuses_held_tokens_and_missing_deposits() {
         assert!(error.contains(words), "{contract}: {error}");
     }
 }
+
+mod service {
+    //! What the wallet's account lists and refunds, read through the service
+    //! from a node and indexer answering for one account.
+
+    use super::super::*;
+    use super::DEPOSIT;
+    use crate::service::wallet_near_keys::tests::{NearAccount, access_key, ed25519, near_wallet};
+    use serde_json::{Value, json};
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    fn registered(deposit: u128) -> Value {
+        json!({"total": deposit.to_string(), "available": "0"})
+    }
+
+    fn token(storage: Value, balance: &str) -> HashMap<&'static str, Value> {
+        HashMap::from([
+            ("storage_balance_of", storage),
+            ("ft_balance_of", json!(balance)),
+        ])
+    }
+
+    /// An account the indexer says held four tokens, whose wallet tracks a
+    /// fifth and whose history names a sixth.
+    async fn account() -> (
+        Arc<Mutex<NearAccount>>,
+        crate::service::loopback_service::OpenService,
+        wiremock::MockServer,
+        String,
+        String,
+    ) {
+        let state = Arc::new(Mutex::new(NearAccount {
+            inventory: vec![
+                ("empty.near", "0"),
+                ("held.near", "5"),
+                ("unregistered.near", "0"),
+                ("nostorage.near", "0"),
+            ],
+            tokens: HashMap::from([
+                ("empty.near", token(registered(DEPOSIT), "0")),
+                ("held.near", token(registered(DEPOSIT), "5")),
+                ("unregistered.near", token(Value::Null, "0")),
+                (
+                    "nostorage.near",
+                    HashMap::from([("ft_balance_of", json!("0"))]),
+                ),
+                ("holding.near", token(registered(2 * DEPOSIT), "0")),
+                ("history.near", token(registered(DEPOSIT), "0")),
+            ]),
+            ..NearAccount::default()
+        }));
+        let (service, server, wallet, account) = near_wallet(&state).await;
+        state.lock().unwrap().keys = vec![access_key(&ed25519(&account), json!("FullAccess"))];
+        service
+            .use_endpoint(
+                Chain::Near,
+                crate::EndpointApi::Nearblocks,
+                &[
+                    EndpointCapability::History,
+                    EndpointCapability::TokenHistory,
+                    EndpointCapability::TokenDiscovery,
+                ],
+                &server.uri(),
+            )
+            .await;
+        let mut stored = service
+            .app_state()
+            .await
+            .wallets
+            .into_iter()
+            .find(|w| w.id == wallet)
+            .unwrap();
+        stored.holdings.push(
+            serde_json::from_value(json!({"name": "Holding", "symbol": "HOLD",
+                "coingeckoId": "", "chainId": "near", "tokenStandard": "NEP-141",
+                "contractAddress": "holding.near", "amount": "0"}))
+            .unwrap(),
+        );
+        service
+            .apply_state_command(StateCommand::UpsertWallet { wallet: stored })
+            .await
+            .unwrap();
+        let received: crate::store::persistence_models::TransactionRecord =
+            serde_json::from_value(json!({"id": "received", "walletId": wallet,
+                "kind": "receive", "status": "confirmed", "walletName": "NEAR",
+                "assetDisplayName": "History", "symbol": "HIST", "chainId": "near",
+                "amount": "1", "address": account,
+                "deploymentId": "near:nep-141:history.near", "createdAtUnix": 1.0}))
+            .unwrap();
+        service
+            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(
+                received,
+            )])
+            .await
+            .unwrap();
+        (state, service, server, wallet, account)
+    }
+
+    /// The contracts the indexer's inventory, the wallet's holdings and its
+    /// history name, each asked for its deposit: those holding one beside an
+    /// empty balance are listed with the token's symbol where the wallet
+    /// knows it, and their deposits summed.
+    #[tokio::test]
+    async fn deposits_are_found_from_the_inventory_holdings_and_history() {
+        let (_state, service, _server, wallet, account) = account().await;
+        let storage = service.wallet_token_storage(wallet).await.unwrap();
+        let listed: Vec<_> = storage
+            .deposits
+            .iter()
+            .map(|d| (d.contract.as_str(), d.symbol.as_str(), d.refund.as_str()))
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("empty.near", "empty.near", "0.00125"),
+                ("history.near", "history.near", "0.00125"),
+                ("holding.near", "HOLD", "0.0025"),
+            ]
+        );
+        assert_eq!(
+            (storage.refundable.as_str(), storage.account.as_str()),
+            ("0.005", account.as_str())
+        );
+    }
+
+    /// What is not a token contract, and any refund from a watched account,
+    /// is refused before anything is built.
+    #[tokio::test]
+    async fn a_refund_needs_a_token_contract_and_a_signing_wallet() {
+        let (_state, service, _server, wallet, _account) = account().await;
+        let refusal = service
+            .build_token_storage_refund(wallet, "Not A Contract".into())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refusal.contains("is not a NEAR token contract"),
+            "{refusal}"
+        );
+        let mut watch = crate::derivation::setup::tests::fixture(
+            Chain::Near,
+            crate::derivation::setup::WalletSetupMethod::WatchAddresses,
+        );
+        watch.request.kind = crate::derivation::import::WalletImportKind::WatchAddresses {
+            addresses: vec!["22".repeat(32)],
+        };
+        let watched = service.import(watch).await;
+        let refusal = service
+            .build_token_storage_refund(watched, "history.near".into())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refusal.contains("a watch-only wallet cannot send"),
+            "{refusal}"
+        );
+        assert!(service.list_sends().await.unwrap().is_empty());
+    }
+
+    /// Unregistering refuses while the account holds the token, so a token
+    /// that arrives between the review and signing stops the signature.
+    #[tokio::test]
+    async fn a_token_arriving_before_signing_stops_the_refund() {
+        let (state, service, _server, wallet, _account) = account().await;
+        let built = service
+            .build_token_storage_refund(wallet, "empty.near".into())
+            .await
+            .unwrap();
+        let balance = |amount: &str| {
+            state
+                .lock()
+                .unwrap()
+                .tokens
+                .get_mut("empty.near")
+                .unwrap()
+                .insert("ft_balance_of", json!(amount));
+        };
+        balance("1");
+        let refusal = service
+            .sign_send(built.id.clone(), built.review_digest.clone(), None)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(refusal.contains("still holds this token"), "{refusal}");
+        let stored = service.inspect_send(built.id.clone()).await.unwrap();
+        assert_eq!(stored.stage, crate::send::stages::SendStage::Prepared);
+        balance("0");
+        let signed = service
+            .sign_send(built.id, built.review_digest, None)
+            .await
+            .unwrap();
+        assert_eq!(signed.stage, crate::send::stages::SendStage::Signed);
+    }
+}

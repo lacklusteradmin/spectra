@@ -1551,3 +1551,45 @@ impl SolanaClient {
         serde_json::from_value(value).map_err(ApiError::from)
     }
 }
+
+#[cfg(test)]
+mod transaction_status_tests {
+    use super::*;
+    use crate::api::transaction_status::TransactionStatus;
+
+    /// A signature settles only once finalized, by its error; confirmed but
+    /// not finalized, or not yet known, it is still pending. One signature
+    /// asked is one row answered.
+    #[test]
+    fn a_signature_settles_only_when_finalized() {
+        let read = |rows: Vec<Value>| solana_transaction_status(&json!({"value": rows}));
+        let row = |error: Value, finality: &str| json!({"slot": 42, "err": error, "confirmationStatus": finality});
+        let failure = json!({"InstructionError": [0, "Custom"]});
+        assert_eq!(
+            read(vec![row(Value::Null, "finalized")]),
+            Ok(TransactionStatus::Confirmed {
+                succeeded: true,
+                block: Some(42)
+            })
+        );
+        assert_eq!(
+            read(vec![row(failure.clone(), "finalized")]),
+            Ok(TransactionStatus::Confirmed {
+                succeeded: false,
+                block: Some(42)
+            })
+        );
+        assert_eq!(
+            read(vec![row(failure, "confirmed")]),
+            Ok(TransactionStatus::Pending)
+        );
+        assert_eq!(read(vec![Value::Null]), Ok(TransactionStatus::Pending));
+        let finalized = row(Value::Null, "finalized");
+        assert_eq!(
+            read(vec![finalized.clone(), finalized]),
+            Err(ApiError::decode(
+                "Solana status: expected one signature result"
+            ))
+        );
+    }
+}

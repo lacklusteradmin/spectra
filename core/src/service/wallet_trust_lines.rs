@@ -293,3 +293,7 @@ impl WalletService {
         Ok(stored.view)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/issued_assets.rs"]
+mod issued_assets_tests;

@@ -88,3 +88,44 @@ async fn service_holds_connection_until_rebind_or_drop() {
     drop(service);
     assert!(active.upgrade().is_none());
 }
+
+/// The history table takes only a record a page can read: a JSON payload
+/// with a text id, a known kind and a known status. Anything else is refused
+/// on write, before it can reach a page.
+#[test]
+fn a_history_row_without_a_text_id_or_with_an_unknown_kind_or_status_is_refused() {
+    let database = WalletDatabase::new(&path());
+    database
+        .with_connection(|conn| {
+            let insert = |payload: &str| {
+                conn.execute(
+                    "INSERT INTO history_records (id, chain_id, created_at, payload)
+                     VALUES ('row', 'bitcoin', 0, ?1)",
+                    [payload],
+                )
+            };
+            for payload in [
+                "{}",
+                r#"{"id":42,"kind":"receive","status":"confirmed"}"#,
+                r#"{"id":"row","kind":"airdrop","status":"confirmed"}"#,
+                r#"{"id":"row","kind":"receive","status":"unknown"}"#,
+            ] {
+                let refused = insert(payload).unwrap_err().to_string();
+                assert!(
+                    refused.contains("CHECK constraint failed"),
+                    "{payload}: {refused}"
+                );
+            }
+            let count = |conn: &rusqlite::Connection| {
+                conn.query_row("SELECT count(*) FROM history_records", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap()
+            };
+            assert_eq!(count(conn), 0);
+            insert(r#"{"id":"row","kind":"receive","status":"confirmed"}"#).unwrap();
+            assert_eq!(count(conn), 1);
+            Ok::<_, DbError>(())
+        })
+        .unwrap();
+}

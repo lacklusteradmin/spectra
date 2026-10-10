@@ -205,6 +205,22 @@ async fn explicit_recheck_refuses_invalid_scope_before_network_or_tracker_mutati
     assert!(service.status_trackers.read().await.is_empty());
 }
 
+/// A recheck asks about a 64-digit hex hash and nothing else: a hash that is
+/// not one is refused by name before any provider is asked.
+#[test]
+fn a_recheck_needs_a_hex_transaction_hash() {
+    let mut row = record("utxo", Chain::Bitcoin, "failed");
+    assert_eq!(recheck_chain(&row).unwrap(), Chain::Bitcoin);
+    for hash in ["invalid".to_string(), "zz".repeat(32), "ab".repeat(33)] {
+        row.transaction_hash = Some(hash.clone());
+        assert_eq!(
+            recheck_chain(&row).unwrap_err().to_string(),
+            "This transaction has no valid hash to recheck.",
+            "{hash}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn explicit_recheck_failed_or_mismatched_provider_preserves_saved_state() {
     for response in [

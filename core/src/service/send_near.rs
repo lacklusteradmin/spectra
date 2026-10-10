@@ -225,3 +225,7 @@ impl WalletService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/send_near.rs"]
+mod send_near_tests;

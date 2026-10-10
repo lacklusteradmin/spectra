@@ -42,6 +42,34 @@ fn status(error: tonic::Status) -> ApiError {
     }
 }
 
+/// Refuses `endpoint` when its `GetLightdInfo` reply names another network
+/// than `chain`'s `network`: by chain name, or by a Sapling activation
+/// height that is not the network's.
+fn serves_network(
+    chain: Chain,
+    network: zcash_protocol::consensus::Network,
+    endpoint: &str,
+    info: &service::LightdInfo,
+) -> Result<(), ApiError> {
+    let expected_name = match network.network_type() {
+        zcash_protocol::consensus::NetworkType::Main => "main",
+        zcash_protocol::consensus::NetworkType::Test => "test",
+        zcash_protocol::consensus::NetworkType::Regtest => "regtest",
+    };
+    let sapling = network
+        .activation_height(NetworkUpgrade::Sapling)
+        .map(u64::from)
+        .unwrap_or_default();
+    if info.chain_name != expected_name || info.sapling_activation_height != sapling {
+        return Err(ApiError::Decode(format!(
+            "{endpoint} serves the {} network, not {}",
+            info.chain_name,
+            chain.chain_display_name()
+        )));
+    }
+    Ok(())
+}
+
 impl LightwalletdClient {
     pub fn new(endpoints: Arc<Vec<String>>) -> Self {
         Self { endpoints }
@@ -52,15 +80,6 @@ impl LightwalletdClient {
     /// one whose Sapling activation is not the network's, is skipped.
     pub(crate) async fn session(&self, chain: Chain) -> Result<LightwalletdSession, ApiError> {
         let network = chain.zcash_network()?;
-        let expected_name = match network.network_type() {
-            zcash_protocol::consensus::NetworkType::Main => "main",
-            zcash_protocol::consensus::NetworkType::Test => "test",
-            zcash_protocol::consensus::NetworkType::Regtest => "regtest",
-        };
-        let sapling = network
-            .activation_height(NetworkUpgrade::Sapling)
-            .map(u64::from)
-            .unwrap_or_default();
         let mut last = ApiError::NoEndpoint;
         for endpoint in self.endpoints.iter() {
             let attempt = async {
@@ -72,13 +91,7 @@ impl LightwalletdClient {
                     .await
                     .map_err(status)?
                     .into_inner();
-                if info.chain_name != expected_name || info.sapling_activation_height != sapling {
-                    return Err(ApiError::Decode(format!(
-                        "{endpoint} serves the {} network, not {}",
-                        info.chain_name,
-                        chain.chain_display_name()
-                    )));
-                }
+                serves_network(chain, network, endpoint, &info)?;
                 let tip = client
                     .get_latest_block(service::ChainSpec {})
                     .await
@@ -246,5 +259,44 @@ impl LightwalletdSession {
             )));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn info(chain_name: &str, sapling_activation_height: u64) -> service::LightdInfo {
+        service::LightdInfo {
+            chain_name: chain_name.into(),
+            sapling_activation_height,
+            ..Default::default()
+        }
+    }
+
+    /// A server is on a network when it names the network and its Sapling
+    /// activation height; one naming another network, or Mainnet with
+    /// another height, is refused.
+    #[test]
+    fn a_server_on_another_network_is_refused() {
+        let check = |chain: Chain, info: &service::LightdInfo| {
+            serves_network(chain, chain.zcash_network().unwrap(), "http://node", info)
+        };
+        assert!(check(Chain::Zcash, &info("main", 419_200)).is_ok());
+        assert!(check(Chain::ZcashTestnet, &info("test", 280_000)).is_ok());
+        for (chain, reply, network) in [
+            (Chain::Zcash, info("test", 280_000), "test"),
+            (Chain::Zcash, info("main", 280_000), "main"),
+            (Chain::ZcashTestnet, info("main", 419_200), "main"),
+        ] {
+            let refusal = check(chain, &reply).unwrap_err().to_string();
+            assert!(
+                refusal.contains(&format!(
+                    "http://node serves the {network} network, not {}",
+                    chain.chain_display_name()
+                )),
+                "{refusal}"
+            );
+        }
     }
 }

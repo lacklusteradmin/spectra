@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Send review, replacement and password-protected broadcast with local nodes.
+"""A password-protected owned send, reviewed and broadcast in one process.
+
+`send owned-broadcast` is refused without --yes; with it, and the wallet's
+password from the environment, the node receives the signed transaction
+exactly once. Review, fees and the history it records are core's rules,
+tested with `cargo test`.
 
 Run: python3 scripts/cli-send.py [path/to/spectra] [TestClass.test_name]
-Uses temporary stores and loopback nodes; no public network is required.
+Uses a temporary store and a loopback node; no public network is required.
 """
 import http.server
 import json
@@ -20,108 +25,26 @@ binary = str(pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else
 
 
 class SendTests(unittest.TestCase):
-    def test_aptos_total_gas_budget_is_affordable_and_bound_to_signing(self):
-        """APT gas price is per unit; the complete reserved fee limits every build."""
-        live = {'gas_price': 100, 'balance': 100000000}
-        submitted = []
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *_): pass
-            def reply(self, value):
-                body = json.dumps(value).encode()
-                self.send_response(200); self.send_header('Content-Length', str(len(body)))
-                self.end_headers(); self.wfile.write(body)
-            def do_GET(self):
-                if self.path == '/':
-                    self.reply({'chain_id': 1, 'ledger_version': '1'})
-                elif self.path == '/estimate_gas_price':
-                    self.reply({'gas_estimate': live['gas_price']})
-                elif self.path.startswith('/accounts/'):
-                    self.reply({'sequence_number': '7'})
-                else:
-                    raise AssertionError(self.path)
-            def do_POST(self):
-                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-                if self.path == '/view':
-                    assert body['function'] == '0x1::coin::balance', body
-                    self.reply([str(live['balance'])])
-                elif self.path == '/transactions':
-                    submitted.append(body)
-                    self.reply({'hash': '0x' + 'ab' * 32})
-                else:
-                    raise AssertionError(self.path)
-        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
-        try:
-            with tempfile.TemporaryDirectory(prefix='spectra-aptos-gas-budget-') as directory:
-                env = {**os.environ,
-                       'SPECTRA_LOOPBACK_ONLY': str(pathlib.Path(directory) / 'network.jsonl'),
-                       'SPECTRA_SEED': 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'}
-                def run(*args, success=True):
-                    result = subprocess.run([binary, '--data-dir', directory, '--json', *args],
-                                            capture_output=True, text=True, timeout=60, env=env)
-                    assert (result.returncode == 0) == success, (args, result.stdout, result.stderr)
-                    return json.loads(result.stdout)
-                endpoint = f'http://127.0.0.1:{server.server_port}'
-                run('wallet', 'import', '--chain', 'aptos', '--name', 'APT', '--no-password')
-                run('endpoints', '--chain', 'aptos', '--api', 'aptos-rest',
-                    '--capabilities', 'balance,fee,verification,broadcast', '--add', endpoint)
-                with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
-                    wid, payload = db.execute('SELECT id,payload FROM wallets').fetchone()
-                    wallet = json.loads(payload)
-                    wallet['holdings'] = [dict(name='Aptos', symbol='APT', coingeckoId='aptos',
-                        chainId='aptos', tokenStandard='Native', contractAddress=None, amount='1')]
-                    db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
-                destination = '0x' + '22' * 32
-                owned = ('--wallet', 'APT', '--holding', 'aptos:native', '--destination', destination)
-                preview = run('send', 'preview', *owned, '--amount', '0.99')['preview']
-                assert preview['network_fee'] == '0.01', preview
-                assert preview['details']['maxSendable'] == '0.99', preview
-                quote = run('send', 'quote', *owned, '--amount', '0.99')['quote']
-                assert quote['request']['fee_amount'] == '0.01', quote
-                run('send', 'build-owned', *owned, '--amount', '0.99000001', success=False)
-                direct = ('send', 'build', '--from', 'APT', '--to', destination, '--endpoint', endpoint)
-                run(*direct, '--amount', '1', success=False)
-                with sqlite3.connect(pathlib.Path(directory) / 'spectra.sqlite') as db:
-                    assert db.execute('SELECT COUNT(*) FROM send_artifacts').fetchone()[0] == 0
-                prepared = run(*direct, '--amount', '0.99')['artifact']
-                body = json.loads(prepared['prepared_details'])['Aptos']['body']
-                assert body['max_gas_amount'] == '10000' and body['gas_unit_price'] == '100', body
-                # Signing uses the reviewed transaction even after the provider raises its price.
-                live['gas_price'] = 500
-                signed = run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
-                             '--endpoint', endpoint)['artifact']
-                signed_body = json.loads(json.loads(signed['signed_payload'])['signed_body_json'])
-                assert signed_body['max_gas_amount'] == '10000' and signed_body['gas_unit_price'] == '100', signed_body
-                assert signed_body['payload']['arguments'][1] == '99000000', signed_body
-                assert run('send', 'inspect', signed['id'])['artifact'] == signed
-                assert submitted == [], submitted
-        finally:
-            server.shutdown(); server.server_close(); worker.join()
-
     def test_password_protected_broadcast(self):
-        """Wrong passwords never broadcast; the right password sends exactly once."""
-        seen = []
+        """Refused without --yes; with it and the password, sent exactly once."""
         submitted = []
-
-        chain_id = '0x1'
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self, *_): pass
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 def answer(call):
-                    method = call['method']; seen.append(method)
+                    method = call['method']
                     if method == 'eth_sendRawTransaction':
                         submitted.append(call['params'][0])
+                        # The hash the stored transaction was signed to, as a node answers.
                         with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
                             artifacts = [json.loads(row[0]) for row in db.execute('SELECT payload FROM send_artifacts')]
                         artifact = next(a for a in artifacts if a['submission'] and a['submission']['payload'] == call['params'][0])
                         return {'jsonrpc':'2.0', 'id':call['id'], 'result':artifact['view']['transaction_hash']}
-                    values = {'eth_chainId': chain_id, 'eth_blockNumber': '0x123',
-                              'eth_getBalance': '0x8ac7230489e80000', 'eth_estimateGas': '0x5208',
+                    values = {'eth_chainId': '0x1', 'eth_getBalance': '0x8ac7230489e80000', 'eth_estimateGas': '0x5208',
                               'eth_getCode': '0x', 'eth_getTransactionCount': '0x7',
-                              'eth_feeHistory': {'baseFeePerGas':['0x3b9aca00'], 'reward':[['0x77359400']]},
-                              'eth_sendRawTransaction': '0x'+'11'*32}
+                              'eth_feeHistory': {'baseFeePerGas':['0x3b9aca00'], 'reward':[['0x77359400']]}}
                     assert method in values, method
                     return {'jsonrpc':'2.0', 'id':call['id'], 'result':values[method]}
                 result = list(map(answer, body)) if isinstance(body,list) else answer(body)
@@ -133,7 +56,7 @@ class SendTests(unittest.TestCase):
                 p=subprocess.run([binary,'--data-dir',directory,'--json',*args],capture_output=True,text=True,
                                  env={**os.environ, **(env or {})}, timeout=30)
                 assert (p.returncode==0)==success,(args,p.stdout,p.stderr)
-                return json.loads(p.stdout)
+                return p
             server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
             worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
             try:
@@ -144,6 +67,7 @@ class SendTests(unittest.TestCase):
                 run('wallet','import','--chain','ethereum','--name','Sealed',env={
                     'SPECTRA_PASSWORD':password,
                     'SPECTRA_SEED':'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'})
+                # The holding a balance refresh would have stored.
                 with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
                     wid,payload=db.execute('SELECT id,payload FROM wallets').fetchone()
                     wallet=json.loads(payload)
@@ -151,148 +75,15 @@ class SendTests(unittest.TestCase):
                         tokenStandard='Native',contractAddress=None,amount='10')]
                     db.execute('UPDATE wallets SET payload=? WHERE id=?',(json.dumps(wallet),wid))
                 args=('send','owned-broadcast','--wallet','Sealed','--holding','ethereum:native','--amount','1',
-                      '--destination','0x'+'22'*20,'--yes')
-                for wrong in ['', 'incorrect']:
-                    run(*args,success=False,env={'SPECTRA_PASSWORD':wrong})
-                    assert 'eth_sendRawTransaction' not in seen,seen
-                sent=run(*args,env={'SPECTRA_PASSWORD':password})
+                      '--destination','0x'+'22'*20)
+                refused=run(*args,success=False,env={'SPECTRA_PASSWORD':password})
+                assert refused.returncode==3 and '--yes' in json.loads(refused.stdout)['error'],refused
+                assert not submitted,submitted
+                sent=json.loads(run(*args,'--yes',env={'SPECTRA_PASSWORD':password}).stdout)
                 assert sent['transactionHash'].startswith('0x') and len(sent['transactionHash']) == 66,sent
-                assert seen.count('eth_sendRawTransaction')==1,seen
-                assert len(submitted) == 1 and submitted[0].startswith('0x'), submitted
-                assert len(bytes.fromhex(submitted[0][2:])) > 65, submitted
-                with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
-                    saved = [json.loads(row[0]) for row in db.execute('SELECT payload FROM history_records')]
-                sent_records = [row for row in saved if row.get('transactionHash') == sent['transactionHash']]
-                assert len(sent_records) == 1, saved
-                record = sent_records[0]
-                assert record['walletId'] == wid and record['chainId'] == 'ethereum', record
-                assert record['amount'] == '1' and record['address'] == '0x'+'22'*20, record
-                assert record['status'] == 'pending', record
+                assert len(submitted) == 1, submitted
             finally:
                 server.shutdown();server.server_close();worker.join()
-
-    def test_review_and_replacement(self):
-        """Validate send review, self-send confirmation, fees and replacement identity."""
-        requests = []
-
-        fail = False
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def log_message(self, *_): pass
-            def do_POST(self):
-                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-                def answer(call):
-                    method = call['method']; requests.append(method)
-                    values = {'eth_chainId': '0x1', 'eth_getBalance': '0x8ac7230489e80000', 'eth_estimateGas': '0x5208',
-                              'eth_getCode': '0x', 'eth_getTransactionCount': '0x7', 'eth_getTransactionByHash': {'nonce':'0x7'},
-                              'eth_feeHistory': {'baseFeePerGas':['0x3b9aca00'], 'reward':[['0x77359400']]}}
-                    assert method in values, method
-                    return {'jsonrpc':'2.0', 'id':call['id'], 'result':None if fail else values[method]}
-                result = list(map(answer, body)) if isinstance(body,list) else answer(body)
-                data=json.dumps(result).encode(); self.send_response(200)
-                self.send_header('Content-Length',str(len(data))); self.end_headers(); self.wfile.write(data)
-
-        with tempfile.TemporaryDirectory(prefix='spectra-review-') as directory:
-            def run(*args, success=True, rejection=None):
-                p=subprocess.run([binary,'--data-dir',directory,'--json',*args],capture_output=True,text=True, timeout=60)
-                assert (p.returncode==0)==success,(args,p.stdout,p.stderr)
-                if rejection is not None:
-                    assert p.returncode == 3,(args,p.stdout,p.stderr)
-                    assert rejection in json.loads(p.stdout)['error'].lower(),(args,p.stdout,p.stderr)
-                return json.loads(p.stdout) if success else None
-            addresses=['0x'+'11'*20, '0x'+'22'*20]
-            for name,address in zip(['Source','Other'],addresses):
-                run('wallet','watch','--chain','ethereum','--address',address,'--name',name)
-            dbpath=pathlib.Path(directory)/'spectra.sqlite'
-            def update_wallets(change):
-                with sqlite3.connect(dbpath) as db:
-                    for id,payload in db.execute('SELECT id,payload FROM wallets').fetchall():
-                        w=json.loads(payload); change(w)
-                        db.execute('UPDATE wallets SET payload=? WHERE id=?',(json.dumps(w),id))
-            def seed(w):
-                w['holdings']=[dict(name='Ethereum',symbol='ETH',coingeckoId='ethereum',chainId='ethereum',
-                    tokenStandard='Native',contractAddress=None,amount='10')]
-            update_wallets(seed)
-            base=['--wallet','Source','--holding','ethereum:native']
-            assert run('send','self-check',*base,'--destination',addresses[1])['ownAddress']
-            assert not run('send','self-check',*base,'--destination','0x'+'33'*20)['ownAddress']
-            for amount in ['NaN','-1','0.0000000000000000001']:
-                run('send','preview',*base,f'--amount={amount}',success=False,rejection='amount')
-            run('send','owned-broadcast',*base,'--amount','1','--destination',addresses[1],success=False)
-            server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Handler)
-            worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
-            try:
-                run('endpoints','--chain','ethereum','--api','evm-json-rpc','--capabilities','balance,fee,broadcast,verification,token-balance','--add',f'http://127.0.0.1:{server.server_port}')
-                quote=run('send','quote',*base,'--amount','1','--destination',addresses[1])['quote']
-                assert quote['request']['chain_id']=='ethereum',quote
-                assert quote['request']['amount_str']=='1' and quote['request']['to_address']==addresses[1]
-                assert quote['preview'] is not None
-                preview=run('send','preview',*base,'--amount','1','--destination',addresses[1])['preview']
-                assert preview['holding_key']=='ethereum:native' and preview['chain_id']=='ethereum', preview
-                assert set(preview['shortcuts'])=={'25','50','75','100'}, preview
-                assert 0 < float(preview['shortcuts']['100']) < 10, preview
-                assert float(preview['details']['maxSendable']) < 10, preview
-                assert preview['amount_refusal'] is None, preview
-                # More than the balance is refused in the quote, before Review.
-                over=run('send','preview',*base,'--amount','10','--destination',addresses[1])['preview']
-                assert 'Insufficient' in over['amount_refusal'], over
-                risk=run('send','probe','--wallet','Source','--asset','ETH','--to',addresses[1])
-                assert risk['activity']=='funded', risk
-                assert quote['requires_self_send_confirmation']
-                artifact=run('send','build-owned',*base,'--amount','1','--destination',addresses[1])['artifact']
-                assert artifact['review']['requires_self_send_confirmation']
-                assert artifact['review']['warnings']==quote['warnings']
-                assert artifact['review']['recipient_warnings']==quote['recipient_warnings']
-                # The fee reviewed at signing is the one the preview quoted.
-                assert artifact['review']['network_fee']==preview['network_fee'], (artifact['review'], preview)
-                assert run('send','inspect',artifact['id'])['artifact']==artifact
-
-                assert quote['request']['evm_overrides']['nonce'] == 7
-                run('send','owned-broadcast',*base,'--amount','1','--destination',addresses[1],'--yes',success=False)
-                run('send','quote',*base,'--amount','10','--destination',addresses[1],success=False)
-                with sqlite3.connect(dbpath) as db:
-                    wid=db.execute("SELECT id FROM wallets WHERE name='Source'").fetchone()[0]
-                    row=dict(id='pending',walletId=wid,walletName='Source',kind='send',status='pending',
-                        chainId='ethereum',symbol='ETH',assetDisplayName='Ethereum',deploymentId='ethereum:native',
-                        amount='0.123456789012',address=addresses[1],transactionHash='0x'+'aa'*32,createdAtUnix=1234)
-                    db.execute('INSERT INTO history_records (id,wallet_id,chain_id,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
-                        ('pending',wid,'ethereum',row['transactionHash'],1234,json.dumps(row)))
-                ends=run('txs','--endpoints','pending')['endpoints']
-                # Mine means the sending wallet's, not any wallet the user holds;
-                # the user's other wallet on the network is named as the holder.
-                assert ends=={'from':None,'to':{'address':addresses[1],'isMine':False,
-                    'holder':{'kind':'wallet','name':'Other'}}},ends
-                # An address no wallet holds is named by a contact saved for it.
-                contact='0x'+'33'*20
-                run('address','book','add','--chain','Ethereum','--name','Alice','--address',contact)
-                with sqlite3.connect(dbpath) as db:
-                    row2=dict(row,id='to-contact',address=contact,transactionHash='0x'+'bb'*32)
-                    db.execute('INSERT INTO history_records (id,wallet_id,chain_id,tx_hash,created_at,payload) VALUES (?,?,?,?,?,?)',
-                        ('to-contact',wid,'ethereum',row2['transactionHash'],1235,json.dumps(row2)))
-                ends=run('txs','--endpoints','to-contact')['endpoints']
-                assert ends['to']=={'address':contact,'isMine':False,'holder':{'kind':'contact','name':'Alice'}},ends
-                # The send review asks the same question before anything is stored.
-                holder=lambda address: run('address','holder','--wallet','Source',address)['holder']
-                assert holder(addresses[0])=={'kind':'wallet','name':'Source'}
-                assert holder(addresses[1].upper().replace('0X','0x'))=={'kind':'wallet','name':'Other'}
-                assert holder(contact)=={'kind':'contact','name':'Alice'}
-                assert holder('0x'+'44'*20) is None
-                draft=run('send','replacement','pending')['draft']; assert draft['amount']=='0.123456789012',draft
-                draft=run('send','replacement','pending','--cancel')['draft']
-                assert draft['amount']=='0' and draft['destination']==addresses[0]
-                fail=True
-                run('send','quote',*base,'--amount','1','--destination',addresses[1],success=False)
-                run('send','replacement','pending','--cancel',success=False)
-                before=len(requests)
-                update_wallets(lambda w: w.update(chainId='ethereum-sepolia'))
-                run('send','preview',*base,'--amount','1',success=False)
-                assert len(requests)==before,'mismatched network reached provider'
-                derived=run('wallet','derived')
-                sendable=derived.get('derived',derived)['send_coins_by_wallet_id'].get(wid,[])
-                assert not sendable,sendable
-                assert not any('sendRawTransaction' in method for method in requests)
-            finally:
-                server.shutdown(); server.server_close(); worker.join()
 
 
 if __name__ == '__main__':

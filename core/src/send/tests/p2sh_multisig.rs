@@ -307,3 +307,70 @@ fn spends_sign_and_travel_as_each_network_does() {
         );
     }
 }
+
+/// A Dogecoin transaction carries neither its inputs' amounts nor their
+/// places, which the wallet supplies from what it holds: an input that is
+/// not among the wallet's unspent outputs is refused, and so is one whose
+/// scriptSig carries another script than the wallet's at the place the
+/// wallet holds that output.
+#[test]
+fn a_dogecoin_spend_of_coins_the_wallet_does_not_hold_there_is_refused() {
+    let fixture = fixture();
+    let network = network(&fixture, "dogecoin");
+    let vector = &network["transaction"];
+    let policy = policy(network, Chain::Dogecoin);
+    let unsigned = spend(&policy, Chain::Dogecoin, vector, &vector["inputs"]);
+    let held: Vec<(OutPoint, u64, Place)> = unsigned
+        .transaction
+        .input
+        .iter()
+        .zip(&unsigned.inputs)
+        .map(|(txin, input)| (txin.previous_output, input.value, input.place))
+        .collect();
+    let signed_by_p1 = vector["signed_by_p1"].as_str().unwrap();
+    let no_change = |_: &ScriptBuf| None;
+    let read = |unspent: &dyn Fn(&OutPoint) -> Option<(u64, Place)>| {
+        decode(
+            &policy,
+            Chain::Dogecoin,
+            signed_by_p1,
+            &Holdings {
+                unspent,
+                change: &no_change,
+            },
+        )
+        .map(drop)
+        .map_err(|error| error.to_string())
+    };
+    let holding = |outpoint: &OutPoint| {
+        held.iter()
+            .find(|(own, _, _)| own == outpoint)
+            .map(|(_, value, place)| (*value, *place))
+    };
+    assert_eq!(read(&holding), Ok(()));
+    let first_not_held = |outpoint: &OutPoint| {
+        (*outpoint != held[0].0)
+            .then(|| holding(outpoint))
+            .flatten()
+    };
+    assert_eq!(
+        read(&first_not_held),
+        Err("Input 0 is not one of this wallet's unspent outputs.".into())
+    );
+    let first_elsewhere = |outpoint: &OutPoint| {
+        holding(outpoint).map(|(value, place)| {
+            (
+                value,
+                if *outpoint == held[0].0 {
+                    (0, 1)
+                } else {
+                    place
+                },
+            )
+        })
+    };
+    assert_eq!(
+        read(&first_elsewhere),
+        Err("Input 0's script is not the wallet's script at its place.".into())
+    );
+}

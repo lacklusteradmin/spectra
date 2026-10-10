@@ -949,3 +949,15 @@ impl WalletService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/send_evm_funds.rs"]
+mod evm_funds_tests;
+
+#[cfg(test)]
+#[path = "tests/send_stage_evm.rs"]
+mod evm_stage_tests;
+
+#[cfg(test)]
+#[path = "tests/send_stage_icp.rs"]
+mod icp_stage_tests;

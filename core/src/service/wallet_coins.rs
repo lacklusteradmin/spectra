@@ -244,3 +244,7 @@ fn path_place(path: &str) -> Option<(AddressBranch, u32)> {
     };
     Some((branch, index))
 }
+
+#[cfg(test)]
+#[path = "tests/wallet_coins.rs"]
+mod wallet_coins_tests;

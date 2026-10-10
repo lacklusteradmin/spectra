@@ -933,6 +933,42 @@ async fn other_duplicates_are_refused_naming_the_wallet() {
     assert_eq!(service.app_state().await.wallets.len(), 3);
 }
 
+/// A multisig account is watched once on a network: its descriptor again,
+/// in another spelling of the same account, is refused naming the wallet
+/// that holds it, and nothing is stored.
+#[tokio::test]
+async fn a_multisig_account_watched_again_is_refused_naming_the_wallet() {
+    use crate::registry::Chain;
+    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let (service, _) = fresh_service(secrets).await;
+    let descriptor = crate::derivation::multisig::tests::descriptor(
+        &crate::derivation::multisig::tests::fixture()["networks"][0],
+    );
+    let watch_multisig = |name: &str, policy: String| {
+        let mut input = commit(Chain::Bitcoin);
+        input.seed_phrase = None;
+        input.request.wallet_name = name.into();
+        input.request.kind = WalletImportKind::WatchMultisig { policy };
+        input
+    };
+    service
+        .import_wallets(watch_multisig("Vault", descriptor.clone()))
+        .await
+        .unwrap();
+    // `/0/*` keys and `'` markers: the same account.
+    let again = descriptor
+        .replace("/<0;1>/*", "/0/*")
+        .replace("h/", "'/")
+        .replace("h]", "']");
+    let refused = service
+        .import_wallets(watch_multisig("Again", again))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert_eq!(refused, "This is already in the wallet “Vault”.");
+    assert_eq!(service.app_state().await.wallets.len(), 1);
+}
+
 /// The seal and the change commit together: a seal that fails leaves the
 /// watched wallet watch-only with no secret, and a retry upgrades it.
 #[tokio::test]
@@ -1071,4 +1107,211 @@ async fn a_near_named_account_is_held_once_the_network_lists_the_key() {
             .unwrap(),
         "alice.near"
     );
+}
+
+/// A key import whose address a watched test-network wallet holds gives that
+/// wallet its key, on every test network that takes both: the same id and
+/// name, now signing, from the address it watched.
+#[tokio::test]
+async fn a_private_key_upgrades_the_watched_testnet_wallet_that_holds_its_address() {
+    use crate::derivation::setup::{WalletSetupMethod, tests::fixture, wallet_setup_descriptor};
+    use crate::registry::Chain;
+    let mut checked = 0;
+    for chain in Chain::all().filter(|chain| chain.is_testnet()) {
+        let descriptor = wallet_setup_descriptor(chain);
+        if descriptor
+            .option(WalletSetupMethod::ImportPrivateKey)
+            .is_none()
+            || descriptor
+                .option(WalletSetupMethod::WatchAddresses)
+                .is_none()
+        {
+            continue;
+        }
+        let secrets =
+            std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+        let (service, _) = fresh_service(secrets).await;
+        let mut key = fixture(chain, WalletSetupMethod::ImportPrivateKey);
+        let address = service
+            .preview_wallet_import(key.clone())
+            .await
+            .unwrap_or_else(|error| panic!("{chain}: {error}"))
+            .addresses
+            .remove(0);
+        let watched = service
+            .import_wallets(watch(chain, "Watched", &[&address]))
+            .await
+            .unwrap_or_else(|error| panic!("{chain}: {error}"))
+            .wallets
+            .remove(0);
+        assert_eq!(watched.primary_address(), Some(address.as_str()), "{chain}");
+        key.request.wallet_name = "Ignored".into();
+        let outcome = service
+            .import_wallets(key)
+            .await
+            .unwrap_or_else(|error| panic!("{chain}: {error}"));
+        assert!(outcome.upgraded, "{chain}");
+        let wallet = &outcome.wallets[0];
+        assert_eq!(
+            (wallet.id.as_str(), wallet.name.as_str()),
+            (watched.id.as_str(), "Watched"),
+            "{chain}"
+        );
+        assert_eq!(
+            wallet.signing,
+            crate::store::state::WalletSigning::PrivateKey {
+                password_protected: false
+            },
+            "{chain}"
+        );
+        assert_eq!(service.app_state().await.wallets.len(), 1, "{chain}");
+        assert_eq!(
+            service
+                .send_identity_address(wallet.id.clone(), chain, None)
+                .await
+                .unwrap_or_else(|error| panic!("{chain}: {error}")),
+            wallet.primary_address().unwrap(),
+            "{chain}"
+        );
+        checked += 1;
+    }
+    assert!(checked > 10, "{checked}");
+}
+
+/// A TON key holds one account per wallet version, W5 unless the import
+/// names another: a watched v4R2 account takes the key named for v4R2, W5
+/// is a wallet of its own, and each signs from its own account. Only a TON
+/// import names a version.
+#[tokio::test]
+async fn a_ton_key_is_one_account_per_wallet_version() {
+    use crate::derivation::ton::TonWalletVersion;
+    use crate::registry::Chain;
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/ton-w5.json")).unwrap();
+    let w5 = fixture["key_address"]["mainnet"].as_str().unwrap();
+    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let (service, _) = fresh_service(secrets).await;
+    let key = |chain, name: &str, version| {
+        let mut input = commit(chain);
+        input.seed_phrase = None;
+        input.private_key = Some("01".repeat(32));
+        input.request.kind = WalletImportKind::PrivateKey;
+        input.request.wallet_name = name.into();
+        input.ton_wallet_version = version;
+        input
+    };
+    let v4r2 = service
+        .preview_wallet_import(key(Chain::Ton, "", Some(TonWalletVersion::V4R2)))
+        .await
+        .unwrap()
+        .addresses
+        .remove(0);
+    // The v4R2 account the v4R2 send vectors sign from.
+    let raw = crate::derivation::ton::parse_ton_address(&v4r2).unwrap();
+    assert_eq!(
+        (raw.workchain, hex::encode(raw.account_id)),
+        (
+            0,
+            "efaff4bac220f88b2e98eb1d9cffcca3bfe3b66ece31a7d6c5890d30dfd7afa5".into()
+        )
+    );
+    service
+        .import_wallets(watch(Chain::Ton, "Old", &[&v4r2]))
+        .await
+        .unwrap();
+    let old = service
+        .import_wallets(key(Chain::Ton, "Ignored", Some(TonWalletVersion::V4R2)))
+        .await
+        .unwrap();
+    assert!(old.upgraded);
+    assert_eq!(old.wallets[0].name, "Old");
+    let new = service
+        .import_wallets(key(Chain::Ton, "New", None))
+        .await
+        .unwrap();
+    assert!(!new.upgraded);
+    assert_eq!(new.wallets[0].primary_address(), Some(w5));
+    for (wallet, address) in [(&old.wallets[0], v4r2.as_str()), (&new.wallets[0], w5)] {
+        assert_eq!(
+            service
+                .send_identity_address(wallet.id.clone(), Chain::Ton, None)
+                .await
+                .unwrap(),
+            address
+        );
+    }
+    let again = service
+        .import_wallets(key(Chain::Ton, "Again", Some(TonWalletVersion::W5)))
+        .await
+        .unwrap_err();
+    assert!(again.to_string().contains("“New”"), "{again}");
+    let elsewhere = service
+        .import_wallets(key(Chain::Solana, "Solana", Some(TonWalletVersion::W5)))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        elsewhere.to_string(),
+        "Only a TON key import takes a wallet version."
+    );
+    assert_eq!(service.app_state().await.wallets.len(), 2);
+}
+
+/// An imported Polyseed restores from its birthday: the last checkpoint at
+/// or before the date the phrase records, not the chain's start. An Electrum
+/// phrase records none and restores from the start.
+#[tokio::test]
+async fn an_imported_polyseed_restores_from_its_birthday() {
+    use crate::registry::Chain;
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/monero-phrases.json")).unwrap();
+    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let (service, _) = fresh_service(secrets).await;
+    let import = |phrase: &str| {
+        let mut input = commit(Chain::Monero);
+        input.seed_phrase = Some(phrase.into());
+        service.import_wallets(input)
+    };
+    let polyseed = &fixture["polyseed"][0];
+    let wallet = import(polyseed["phrase"].as_str().unwrap())
+        .await
+        .unwrap()
+        .wallets
+        .remove(0);
+    assert_eq!(wallet.primary_address(), polyseed["address"].as_str());
+    let birthday = polyseed["birthday"].as_u64().unwrap();
+    let height = crate::restore_heights::height_at_or_before(Chain::Monero, birthday);
+    assert!(height > crate::restore_heights::default_restore_height(Chain::Monero));
+    assert_eq!(wallet.restore_height, Some(height));
+    let electrum = &fixture["electrum"][2];
+    let wallet = import(electrum["phrase"].as_str().unwrap())
+        .await
+        .unwrap()
+        .wallets
+        .remove(0);
+    assert_eq!(wallet.primary_address(), electrum["address"].as_str());
+    assert_eq!(wallet.restore_height, Some(0));
+}
+
+/// A key the network cannot derive from is refused before anything is
+/// sealed: a refusal after sealing would leave a key stored under an id no
+/// wallet names.
+#[tokio::test]
+async fn a_refused_key_import_seals_nothing() {
+    use crate::registry::Chain;
+    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let (service, _) = fresh_service(secrets.clone()).await;
+    let mut input = commit(Chain::Cardano);
+    input.seed_phrase = None;
+    input.private_key =
+        Some("4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318".into());
+    input.request.kind = WalletImportKind::PrivateKey;
+    input.password = Some("correct horse".into());
+    let before = secrets.len();
+    let refused = service.import_wallets(input).await.unwrap_err();
+    assert_eq!(
+        refused.to_string(),
+        "This is not a private key Cardano takes."
+    );
+    assert_eq!(secrets.len(), before);
+    assert!(service.app_state().await.wallets.is_empty());
 }

@@ -1975,6 +1975,74 @@ mod tests {
         );
     }
 
+    /// A custom token's price sources are provider ids, edited in place under
+    /// the token's own identity: a URL is not an id and changes nothing, and
+    /// an edit naming none clears both.
+    #[test]
+    fn a_custom_tokens_price_ids_are_edited_in_place_and_a_url_is_refused() {
+        let chain = crate::registry::Chain::Base;
+        let edit = |coingecko_id: &str, coinpaprika_id: &str| StateCommand::UpdateCustomToken {
+            chain_id: chain,
+            contract: EVM_CONTRACT.into(),
+            symbol: "USDC".into(),
+            name: "Independent token".into(),
+            coingecko_id: coingecko_id.into(),
+            coinpaprika_id: coinpaprika_id.into(),
+            decimals: 6,
+        };
+        let ids = |state: &ResidentState| {
+            let token = &state.token_preferences[0].token;
+            (
+                token.token_id.clone(),
+                token.coingecko_id.clone(),
+                token.coinpaprika_id.clone(),
+            )
+        };
+        let mut state = ResidentState::default();
+        reduce_state_in_place(
+            &mut state,
+            StateCommand::AddCustomToken {
+                standard: None,
+                chain_id: chain,
+                symbol: "USDC".into(),
+                name: "Independent token".into(),
+                contract: EVM_CONTRACT.into(),
+                coingecko_id: String::new(),
+                coinpaprika_id: " Custom-Independent ".into(),
+                decimals: 6,
+            },
+        );
+        let token_id = format!("custom:base:erc-20:{EVM_CONTRACT}");
+        assert_eq!(
+            ids(&state),
+            (token_id.clone(), String::new(), "custom-independent".into())
+        );
+
+        let edited = reduce_state(state, edit("usd-coin", "usdc-usd-coin"));
+        assert_eq!(rejection(&edited), None);
+        assert_eq!(
+            ids(&edited.state),
+            (token_id.clone(), "usd-coin".into(), "usdc-usd-coin".into())
+        );
+
+        let url = reduce_state(
+            edited.state.clone(),
+            edit("usd-coin", "https://coinpaprika.com/coin/example"),
+        );
+        assert_eq!(
+            rejection(&url),
+            Some(TokenPreferenceRejection::InvalidPriceId)
+        );
+        assert_eq!(url.state.token_preferences, edited.state.token_preferences);
+
+        let cleared = reduce_state(edited.state, edit("", ""));
+        assert_eq!(rejection(&cleared), None);
+        assert_eq!(
+            ids(&cleared.state),
+            (token_id, String::new(), String::new())
+        );
+    }
+
     /// A reset goes back to the catalog and takes the custom rows with it.
     #[test]
     fn a_reset_drops_what_the_user_added() {

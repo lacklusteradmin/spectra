@@ -55,3 +55,39 @@ impl IcpStakingClient {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
+
+    /// The known neurons a wallet may follow are those the governance
+    /// canister lists, decoded from the DFINITY SDK's encoded reply.
+    #[tokio::test]
+    async fn follow_targets_are_the_known_neurons_governance_lists() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/icp-staking-vectors.json"
+        ))
+        .unwrap();
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                hex::decode(fixture["query_replies"]["known"].as_str().unwrap()).unwrap(),
+                "application/cbor",
+            ))
+            .mount(&server)
+            .await;
+        let validators = IcpStakingClient::new(vec![server.uri()])
+            .fetch_validators()
+            .await
+            .unwrap();
+        let summary: Vec<_> = validators
+            .iter()
+            .map(|v| (v.identifier.as_str(), v.display_name.as_str(), v.is_active))
+            .collect();
+        assert_eq!(summary, [("1", "Fixture known neuron", true)]);
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(requests[0].url.path().ends_with("/query"));
+    }
+}

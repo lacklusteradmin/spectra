@@ -458,7 +458,33 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            assert_eq!(sent.evm.unwrap().nonce, 7);
+            assert_eq!(sent.evm.as_ref().unwrap().nonce, 7);
+            // The broadcast is recorded as the wallet's pending send of the
+            // reviewed amount, exactly, to the reviewed destination.
+            let records = service.transactions().await.unwrap();
+            assert_eq!(records.len(), 1);
+            let record = &records[0];
+            assert_eq!(
+                (
+                    record.wallet_id.as_deref(),
+                    record.chain_id,
+                    record.kind,
+                    record.status,
+                ),
+                (
+                    Some("w"),
+                    crate::registry::Chain::Ethereum,
+                    crate::store::wallet_domain::TransactionKind::Send,
+                    crate::store::wallet_domain::TransactionStatus::Pending,
+                )
+            );
+            assert_eq!(record.amount, input.amount);
+            assert_eq!(record.address, input.destination);
+            assert_eq!(
+                record.transaction_hash.as_deref(),
+                Some(sent.transaction_hash.as_str())
+            );
+            assert_eq!(record.nonce, Some(7));
             assert!(
                 service
                     .execute_owned_send(review.id, input.clone(), None)
