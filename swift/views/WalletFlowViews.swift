@@ -193,6 +193,7 @@ struct WalletDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var isShowingManagePage: Bool = false
+    @State private var isShowingHiddenHoldings = false
     /// Core's answer to what this wallet offers; read again when the wallet
     /// or the endpoints behind its notes change.
     @State private var actions: WalletActions?
@@ -455,51 +456,62 @@ struct WalletDetailView: View {
         }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
             .spectraElevatedFill()
     }
-    @ViewBuilder
     private var walletHoldingsCard: some View {
         let presentation = detailPresentation
-        let holdings = presentation.visibleHoldingPresentations
-        VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            Text(AppLocalization.string("Holdings")).font(.headline).foregroundStyle(Color.primary)
-            if holdings.isEmpty {
-                SpectraEmptyStateContent(
-                    title: "No assets loaded",
-                    message: "No assets loaded for this wallet yet.",
-                    systemImage: "tray"
-                )
-            } else {
-                ForEach(holdings) { holding in
-                    holdingRow(holding)
-                        .contextMenu {
-                            Button {
-                                setHidden(holding.coin, true)
-                            } label: {
-                                Label(AppLocalization.string("Hide From Totals"), systemImage: "eye.slash")
-                            }
-                        }
-                    if holding.id != holdings.last?.id {
-                        Divider().opacity(0.25)
+        let shown = presentation.visibleHoldingPresentations
+        return SpectraRowGroup(
+            title: AppLocalization.string("Holdings"), data: shown, header: { EmptyView() },
+            footer: { holdingsFooter(shown: shown, hidden: presentation.hiddenHoldingPresentations) }
+        ) { holding in
+            holdingRow(holding).spectraRowPadding()
+                .contextMenu {
+                    Button {
+                        setHidden(holding.coin, true)
+                    } label: {
+                        Label(AppLocalization.string("Hide From Totals"), systemImage: "eye.slash")
                     }
                 }
-            }
-            let hidden = presentation.hiddenHoldingPresentations
-            if !hidden.isEmpty {
-                DisclosureGroup {
-                    ForEach(hidden) { holding in
-                        HStack {
-                            holdingRow(holding)
-                            Button(AppLocalization.string("Show")) { setHidden(holding.coin, false) }
-                                .buttonStyle(.glass).font(.caption.weight(.semibold))
-                        }
-                    }
-                } label: {
+        }
+    }
+    /// Under the rows: why there are none, or the hidden holdings, folded
+    /// away until asked for, each with the way to show it again.
+    @ViewBuilder
+    private func holdingsFooter(shown: [HoldingPresentation], hidden: [HoldingPresentation]) -> some View {
+        if shown.isEmpty && hidden.isEmpty {
+            SpectraEmptyStateContent(
+                title: "No assets loaded",
+                message: "No assets loaded for this wallet yet.",
+                systemImage: "tray"
+            )
+            .padding(.horizontal, SpectraLayout.rowHorizontal).padding(.vertical, SpectraLayout.Space.m)
+        }
+        if !hidden.isEmpty {
+            if !shown.isEmpty { Divider().opacity(0.25) }
+            Button {
+                spectraHaptic(.light)
+                isShowingHiddenHoldings.toggle()
+            } label: {
+                HStack(spacing: SpectraLayout.Space.s) {
                     Text(AppLocalization.format("Hidden Assets (%lld)", hidden.count))
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                }
-                .disclosureGroupStyle(.spectra)
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.tint)
+                    Spacer(minLength: 0)
+                    Image(systemName: isShowingHiddenHoldings ? "chevron.up" : "chevron.down")
+                        .font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                }.spectraRowPadding()
             }
-        }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
-            .spectraCardFill()
+            .buttonStyle(.plain)
+            .accessibilityValue(AppLocalization.string(isShowingHiddenHoldings ? "Expanded" : "Collapsed"))
+            if isShowingHiddenHoldings {
+                ForEach(hidden) { holding in
+                    Divider().padding(.leading, SpectraLayout.rowDividerInset).opacity(0.25)
+                    HStack(spacing: SpectraLayout.Space.m) {
+                        holdingRow(holding)
+                        Button(AppLocalization.string("Show")) { setHidden(holding.coin, false) }
+                            .buttonStyle(.glass).font(.caption.weight(.semibold))
+                    }.spectraRowPadding()
+                }
+            }
+        }
     }
     @ViewBuilder
     private func walletAddressCard(walletAddress: String) -> some View {
@@ -530,11 +542,11 @@ struct WalletDetailView: View {
         }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
             .spectraCardFill()
     }
-    @ViewBuilder
+    /// A holding's badge, name and balance; its row pads it.
     private func holdingRow(_ holding: HoldingPresentation) -> some View {
         HStack(spacing: SpectraLayout.Space.m) {
             CoinBadge(
-                artworkName: holding.coin.artworkName, fallbackText: holding.coin.symbol, color: holding.coin.color, size: 34
+                artworkName: holding.coin.artworkName, fallbackText: holding.coin.symbol, color: holding.coin.color, size: 36
             )
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
                 Text(holding.coin.name).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary)
@@ -547,7 +559,7 @@ struct WalletDetailView: View {
                 BalanceText(text: holding.valueText, isHidden: store.preferences.hideBalances)
                     .font(.caption).foregroundStyle(.secondary).spectraNumericTextLayout()
             }
-        }.padding(.vertical, SpectraLayout.Space.xs)
+        }
     }
 }
 /// The wallet's name, recovery phrase, identifiers and deletion.

@@ -95,12 +95,12 @@ extension View {
     /// and it always has the card radius; a smaller radius would mean a
     /// surface nested inside a card, which takes `spectraInsetFill`.
     func spectraCardFill() -> some View {
-        glassEffect(.regular.tint(SpectraLayout.GlassTint.content), in: .rect(cornerRadius: SpectraLayout.Radius.card))
+        modifier(CardGlass(tint: SpectraLayout.GlassTint.content))
     }
 
     /// Elevated card: hero and header cards.
     func spectraElevatedFill() -> some View {
-        glassEffect(.regular.tint(SpectraLayout.GlassTint.elevated), in: .rect(cornerRadius: SpectraLayout.Radius.card))
+        modifier(CardGlass(tint: SpectraLayout.GlassTint.elevated))
     }
 
     /// A surface inside a card: flat, not glass. See `SpectraLayout.insetFill`.
@@ -127,5 +127,47 @@ extension View {
             .padding(.vertical, SpectraLayout.rowVertical)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
+    }
+}
+
+/// A card's glass, laid only over the part of the card its scroll view shows.
+///
+/// Glass is drawn through a texture the size of its shape, and a shape past
+/// the GPU's texture limit (8192px, about 2,700pt on a 3x screen) is not drawn
+/// at all. A card holding a long list grows past it — Add Wallet's every chain
+/// is one — and lost its glass once the list had laid out far enough to
+/// measure that tall. So the glass is at most twice the scroll view's height:
+/// it reaches half a scroll view past each visible edge, slides along the card
+/// as it scrolls, and stops at the card's ends, whose corners it shows as they
+/// come into view. A shorter card, or one outside a scroll view, gets glass of
+/// its own size that never moves.
+private struct CardGlass: ViewModifier {
+    let tint: Color
+    /// The height of the vertical scroll view the card is in; nil outside one.
+    @State private var viewportHeight: CGFloat?
+
+    func body(content: Content) -> some View {
+        let viewport = viewportHeight
+        content
+            .onGeometryChange(for: CGFloat?.self) {
+                $0.bounds(of: .scrollView(axis: .vertical))?.height
+            } action: {
+                viewportHeight = $0
+            }
+            .background {
+                Color.clear
+                    .overlay(alignment: .top) {
+                        Color.clear
+                            .frame(maxHeight: viewport.map { 2 * $0 })
+                            .glassEffect(.regular.tint(tint), in: .rect(cornerRadius: SpectraLayout.Radius.card))
+                    }
+                    .visualEffect { effect, card in
+                        guard let viewport, let visible = card.bounds(of: .scrollView(axis: .vertical)) else {
+                            return effect.offset(y: 0)
+                        }
+                        let travel = max(card.size.height - 2 * viewport, 0)
+                        return effect.offset(y: min(max(visible.minY - viewport / 2, 0), travel))
+                    }
+            }
     }
 }
