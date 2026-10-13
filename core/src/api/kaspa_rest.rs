@@ -32,7 +32,6 @@ struct ApiOutpoint {
 struct ApiUtxoEntry {
     amount: String,
     script_public_key: ApiScriptPublicKey,
-    block_daa_score: Option<String>,
     is_coinbase: Option<bool>,
 }
 
@@ -82,14 +81,13 @@ pub struct KasBalance {
     pub balance_sompi: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct KasUtxo {
     pub txid: String,
     pub vout: u32,
     pub value_sompi: u64,
     pub script_version: u32,
     pub script_pubkey_hex: String,
-    pub block_daa_score: u64,
     pub is_coinbase: bool,
 }
 
@@ -165,19 +163,12 @@ impl KaspaClient {
             .filter(|u| u.address == address)
             .map(|u| {
                 let amount = u.utxo_entry.amount.parse::<u64>().unwrap_or(0);
-                let block_daa_score = u
-                    .utxo_entry
-                    .block_daa_score
-                    .as_deref()
-                    .and_then(|s| s.parse::<u64>().ok())
-                    .unwrap_or(0);
                 KasUtxo {
                     txid: u.outpoint.transaction_id,
                     vout: u.outpoint.index,
                     value_sompi: amount,
                     script_version: u.utxo_entry.script_public_key.version,
                     script_pubkey_hex: u.utxo_entry.script_public_key.script_public_key,
-                    block_daa_score,
                     is_coinbase: u.utxo_entry.is_coinbase.unwrap_or(false),
                 }
             })

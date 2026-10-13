@@ -21,7 +21,7 @@
   ],
   "independent_sdk": {
     "DFINITY_agent_identity_candid_principal": "3.4.3",
-    "generator": "scripts/generate-icp-staking-vectors.cjs",
+    "generator": "tests/generate-icp-staking-vectors.cjs",
     "fixture": "core/tests/fixtures/icp-staking-vectors.json"
   },
   "facts": {

@@ -42,7 +42,7 @@ test:
 	cargo test --workspace
 
 test-cli:
-	scripts/cli-acceptance.sh
+	tests/cli-acceptance.sh
 
 # No sysdiagnose: a failing test's own output says what failed, and the
 # collection can wait out a ten-minute timeout on a simulator another tool is

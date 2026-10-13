@@ -31,7 +31,6 @@ the front ends render its results and forward user intent.
 - [AGENTS.md](AGENTS.md): the rules for working in this repository, Rule 0
   first. Read first.
 - [Open items](docs/OPEN-ITEMS.md): remaining work and known limitations.
-- [Behaviour changes](docs/BEHAVIOUR-CHANGES.md): what changed on purpose, and why.
 - [Architecture](docs/ARCHITECTURE.md): design decisions and ownership boundaries.
 - [FFI boundary](docs/FFI-BOUNDARY.md): UniFFI 0.31 and Swift 6 integration.
 - [iOS UI](docs/IOS-UI.md): layout, typography and Liquid Glass rules.
@@ -69,11 +68,15 @@ make verify
 |---|---|
 | `make lint` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, unused-code source scans |
 | `make test` | `cargo test --workspace` |
-| `make test-cli` | `scripts/cli-acceptance.sh` — the real binary end to end, offline, throwaway data directory |
+| `make test-cli` | `tests/cli-acceptance.sh` — the real binary end to end, offline, throwaway data directory |
 | `make test-ios` | `xcodebuild test` on an iPhone simulator |
 | `make check-ui` | design-token and icon-normalization checks |
 
 CI runs everything except `test-ios`, which needs Xcode and a simulator.
+
+CLI acceptance suites and independent SDK generators live in
+[`tests/`](tests/README.md). Their checked-in reference data stays in
+`core/tests/fixtures/`; normal tests do not regenerate it.
 
 ## License
 

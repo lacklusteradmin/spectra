@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-# A loopback Litecoin node and indexer for `scripts/cli-litecoin-mweb.py`: a
+# A loopback Litecoin node and indexer for `tests/cli-litecoin-mweb.py`: a
 # synthetic chain whose MWEB outputs fund a wallet's stealth addresses,
 # served to light clients over the peer-to-peer protocol and to the wallet's
 # indexer over Esplora's HTTP API, that checks each transaction it is handed

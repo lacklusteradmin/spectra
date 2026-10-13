@@ -1,5 +1,5 @@
 //! Private-key encodings against each chain's own SDK
-//! (`private-key-formats.json`, from scripts/generate-private-key-vectors.cjs).
+//! (`private-key-formats.json`, from tests/generate-private-key-vectors.cjs).
 
 use super::*;
 

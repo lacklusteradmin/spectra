@@ -73,4 +73,4 @@ jobs:
         run: cargo build -p spectra_cli -p spectra_zcash_fixture -p spectra_litecoin_mweb_fixture
 
       - name: Acceptance suite
-        run: ./scripts/cli-acceptance.sh
+        run: ./tests/cli-acceptance.sh

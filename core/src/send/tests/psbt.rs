@@ -1,5 +1,5 @@
 //! PSBTs against bitcoinjs-lib's (`multisig-psbt.json`, from
-//! scripts/generate-multisig-psbt-vectors.cjs).
+//! tests/generate-multisig-psbt-vectors.cjs).
 
 use super::*;
 use bitcoin::Address;

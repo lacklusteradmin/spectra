@@ -155,7 +155,7 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
         TokenCommand::Decimals(args) => decimals(ctx, out, args),
         TokenCommand::Reset(args) => reset(ctx, out, args),
         TokenCommand::Discover(args) => discover(ctx, out, args),
-        TokenCommand::Format(args) => format_amount(ctx, out, args),
+        TokenCommand::Format(args) => format_amount(out, args),
     }
 }
 
@@ -501,7 +501,7 @@ fn discover(ctx: &Ctx, out: Out, args: DiscoverArgs) -> CliResult<()> {
 /// Places follow the amount, not a per-chain setting: a small balance keeps its
 /// significant digits instead of rounding to nothing, and a large one does not
 /// print six zeros it does not have.
-fn format_amount(ctx: &Ctx, out: Out, args: FormatArgs) -> CliResult<()> {
+fn format_amount(out: Out, args: FormatArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let asset_decimals = match &args.symbol {
         Some(symbol) => {
@@ -526,8 +526,6 @@ fn format_amount(ctx: &Ctx, out: Out, args: FormatArgs) -> CliResult<()> {
     } else {
         text.value.clone()
     };
-    let _ = ctx;
-
     out.text(|| {
         out::field("shows", &rendered);
         out::field("asset decimals", &asset_decimals.to_string());

@@ -97,7 +97,7 @@ fn build_blocked_client() -> Client {
 
 /// Names a journal file and confines the process to loopback hosts.
 ///
-/// Set by `scripts/cli-acceptance.sh`, which promises no external network: a
+/// Set by `tests/cli-acceptance.sh`, which promises no external network: a
 /// check that reached a live provider would pass or fail on the day's chain
 /// state rather than on core's rules. Endpoint selection leaves remote
 /// endpoints out ([`may_contact`]), so a chain is served by its loopback

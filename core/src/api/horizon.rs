@@ -19,7 +19,6 @@ fn memo_required(data: &std::collections::HashMap<String, String>) -> bool {
 pub struct StellarBalance {
     /// Stroops (1 XLM = 10_000_000 stroops).
     pub stroops: i64,
-    pub xlm_display: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -453,10 +452,7 @@ impl HorizonClient {
             .or_decode("no native balance")?;
         // Stellar balances are decimal strings (e.g. "100.0000000")
         let stroops = parse_stellar_amount(&native.balance)?;
-        Ok(StellarBalance {
-            stroops,
-            xlm_display: native.balance.clone(),
-        })
+        Ok(StellarBalance { stroops })
     }
 
     pub async fn fetch_sequence(&self, address: &str) -> Result<u64, ApiError> {

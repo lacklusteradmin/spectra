@@ -1,5 +1,5 @@
 //! Safe transactions against protocol-kit's (`safe-multisig.json`, from
-//! scripts/generate-safe-multisig-vectors.cjs).
+//! tests/generate-safe-multisig-vectors.cjs).
 
 use super::*;
 

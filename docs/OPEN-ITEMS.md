@@ -1,8 +1,7 @@
 # Open items
 
 Engineering work that remains. Rule 0 in [AGENTS.md](../AGENTS.md) applies.
-Delete an item once it is done; what changed belongs in
-[BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md).
+Delete an item once it is done.
 
 ## Tasks
 
@@ -16,7 +15,7 @@ Delete an item once it is done; what changed belongs in
   against the same core rules. Record dated, reproducible evidence per endpoint,
   remove or correct unsupported entries, and prove routing/refusal paths through
   offline CLI fixtures. Keep live probes read-only; any resulting behaviour
-  changes need `BEHAVIOUR-CHANGES.md` entries and `make verify`.
+  changes need `make verify`.
 
 ## Supported chain scope
 
@@ -29,7 +28,7 @@ The following gaps were identified in the 2026-10-04 code review. An absent
 feature is not a supported capability; add its registry capability only when
 core owns the complete operation and the CLI can prove it. Protocol and
 funds/key changes require independent vectors, CLI acceptance, the relevant
-refusal paths and `make verify`, with behaviour changes recorded separately.
+refusal paths and `make verify`.
 
 ### Asset and privacy protocols
 
@@ -59,8 +58,7 @@ refusal paths and `make verify`, with behaviour changes recorded separately.
 ### Multisig accounts
 
 Every network with a multisig scheme has its multisig account and sessions
-([CHAIN-SUPPORT.md](CHAIN-SUPPORT.md#multisig-accounts), and the 2026-10-08
-entry in [BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md)): a policy core reads and
+([CHAIN-SUPPORT.md](CHAIN-SUPPORT.md#multisig-accounts)): a policy core reads and
 checks itself, a review digest a signature is given for, signatures verified
 before they count, and sessions that survive a restart. None depends on a
 coordination service that needs an API key; signatures travel between

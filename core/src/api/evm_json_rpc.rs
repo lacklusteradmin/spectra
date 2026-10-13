@@ -98,8 +98,6 @@ pub struct EvmBalance {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvmFeeEstimate {
-    /// EIP-1559 base fee (wei).
-    pub base_fee_wei: u128,
     /// Suggested priority fee / miner tip (wei).
     pub priority_fee_wei: u128,
     /// Max total fee per gas to set on the transaction.
@@ -129,23 +127,6 @@ pub struct EvmSendResult {
     pub max_priority_fee_per_gas_wei: String,
 }
 
-/// Balance of an ERC-20 token held at a given address.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Erc20Balance {
-    /// Token contract (checksummed lowercase hex, 0x-prefixed).
-    pub contract: String,
-    /// Holder address.
-    pub holder: String,
-    /// Raw balance in the token's smallest unit (u256 encoded as decimal string).
-    pub balance_raw: String,
-    /// The balance scaled by `decimals`, exactly.
-    pub balance_display: String,
-    /// Token decimals (cached from the contract).
-    pub decimals: u8,
-    /// Token symbol.
-    pub symbol: String,
-}
-
 /// Lightweight ERC-20 metadata (symbol + decimals).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Erc20Metadata {
@@ -154,13 +135,10 @@ pub struct Erc20Metadata {
 }
 
 /// Transaction receipt returned by `eth_getTransactionReceipt`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct EvmReceipt {
-    pub tx_hash: String,
     /// Block number where the transaction was included, or `None` if still pending.
     pub block_number: Option<u64>,
-    /// `"0x1"` = success, `"0x0"` = reverted. `None` = legacy (pre-Byzantium) chains.
-    pub status: Option<String>,
     /// Actual gas consumed (decimal string).
     pub gas_used: Option<String>,
     /// Effective gas price in wei (decimal string).
@@ -322,7 +300,6 @@ fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, ApiError> {
         .or_decode("feeHistory: fee exceeds u128")?;
 
     Ok(EvmFeeEstimate {
-        base_fee_wei,
         priority_fee_wei,
         max_fee_per_gas_wei,
     })
@@ -437,23 +414,15 @@ impl EvmClient {
         parse_fee_history(&result)
     }
 
-    /// Fetch an ERC-20 `balanceOf(holder)` and normalize to display form.
+    /// An ERC-20's raw balance and validated decimal count.
     pub async fn fetch_erc20_balance(
         &self,
         contract: &str,
         holder: &str,
-    ) -> Result<Erc20Balance, ApiError> {
+    ) -> Result<(u128, u8), ApiError> {
         let raw = self.fetch_erc20_balance_of(contract, holder).await?;
         let metadata = self.fetch_erc20_metadata(contract).await?;
-        let balance_display = crate::decimal::from_units(raw, u32::from(metadata.decimals));
-        Ok(Erc20Balance {
-            contract: contract.to_lowercase(),
-            holder: holder.to_lowercase(),
-            balance_raw: raw.to_string(),
-            balance_display,
-            decimals: metadata.decimals,
-            symbol: metadata.symbol,
-        })
+        Ok((raw, metadata.decimals))
     }
 
     /// `balanceOf(holder)` and `decimals()` for each contract, in input order.
@@ -734,10 +703,7 @@ impl EvmClient {
             .filter(|s| *s != "0x" && !s.is_empty())
             .map(parse_hex_u64)
             .transpose()?;
-        let status = result
-            .get("status")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
+        let status = result.get("status").and_then(|v| v.as_str());
         let gas_used = result
             .get("gasUsed")
             .and_then(|v| v.as_str())
@@ -751,7 +717,7 @@ impl EvmClient {
             .transpose()?
             .map(|n| n.to_string());
         let is_confirmed = block_number.is_some();
-        let is_failed = status.as_deref() == Some("0x0");
+        let is_failed = status == Some("0x0");
         let l1_fee_wei = result
             .get("l1Fee")
             .and_then(Value::as_str)
@@ -770,9 +736,7 @@ impl EvmClient {
             None
         };
         Ok(Some(EvmReceipt {
-            tx_hash: tx_hash.to_string(),
             block_number,
-            status,
             gas_used,
             effective_gas_price_wei,
             l1_fee_wei,
@@ -1160,7 +1124,6 @@ mod fee_history_tests {
             "reward": [["0x1", "0x2"], ["0x5f5e100", "0xbebc200"]],
         }))
         .unwrap();
-        assert_eq!(fees.base_fee_wei, 0x7735_9400);
         assert_eq!(fees.priority_fee_wei, 0x5f5_e100);
         assert_eq!(fees.max_fee_per_gas_wei, 0x7735_9400 * 2 + 0x5f5_e100);
     }
@@ -1177,7 +1140,6 @@ mod fee_history_tests {
         }))
         .unwrap();
         assert_eq!(fees.priority_fee_wei, 0);
-        assert_eq!(fees.base_fee_wei, 0x3b9a_ca00);
         assert_eq!(fees.max_fee_per_gas_wei, 0x3b9a_ca00 * 2);
     }
 

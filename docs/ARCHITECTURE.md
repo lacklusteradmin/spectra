@@ -15,9 +15,11 @@ authoritative copy, and the CLI can drive every domain operation.
 | `cli/` | Argument parsing, terminal output and password prompting |
 | `swift/` | Native iOS UI and platform services |
 | `kotlin/` | Android shell, currently a skeleton |
+| `scripts/` | Build, source-check and runtime-data tools |
+| `tests/` | CLI acceptance suites, helpers and independent SDK test-data generators |
 | `tools/uniffi-bindgen/` | Binding generation binary |
-| `tools/zcash-fixture/` | Loopback lightwalletd over a synthetic Zcash chain, for `scripts/cli-zcash-shielded.py` |
-| `tools/litecoin-mweb-fixture/` | Loopback Litecoin node and Esplora indexer over a synthetic MWEB chain, for `scripts/cli-litecoin-mweb.py`; shares no code with core |
+| `tools/zcash-fixture/` | Loopback lightwalletd over a synthetic Zcash chain, for `tests/cli-zcash-shielded.py` |
+| `tools/litecoin-mweb-fixture/` | Loopback Litecoin node and Esplora indexer over a synthetic MWEB chain, for `tests/cli-litecoin-mweb.py`; shares no code with core |
 
 Core stays one crate. A crate per domain would add Cargo overhead without an
 external consumer that needs the isolation. There are no published library APIs
@@ -193,7 +195,10 @@ access without widening production visibility. Where a domain's tests need only
 crate-visible items, `tests/mod.rs` owns them as one module instead, as in
 `store/tests/` and `wallet_db/tests/`. Crate-root tests use `src/tests/`.
 Integration tests that need their own process sit in `core/tests/`, with shared
-test data in `core/tests/fixtures/`.
+test data in `core/tests/fixtures/`. CLI acceptance suites, their shared helpers
+and independent SDK generators for that data live in the repository's top-level
+`tests/`; their instructions are in
+[`tests/README.md`](../tests/README.md).
 
 Each layer reports failures in its own `thiserror` enum, named in its
 `error.rs`: `api::error::ApiError` (transport, status, decode, rejected, no
@@ -271,8 +276,7 @@ its selected checkboxes and navigation are view state.
 
 The CLI exposes `send build`, `sign`, `inspect`, `list`, `broadcast-signed` and
 `configured-endpoints`. Unsupported protocol stages are refused according to
-registry capabilities; see the dated send-stage entry in
-[BEHAVIOUR-CHANGES.md](BEHAVIOUR-CHANGES.md) for the deliberate restrictions.
+registry capabilities.
 
 Build-time send advisories are stored with each artifact and covered by its
 review digest. `build_owned_send` accepts user edits and owns quote/build
