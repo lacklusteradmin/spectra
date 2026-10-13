@@ -529,9 +529,8 @@ pub struct DashboardAssetHolding {
 /// A row is per **asset**, not per (chain, asset) — ETH on Ethereum and ETH on
 /// Arbitrum are one row.
 ///
-/// `holdings` is **where the user holds it**, largest value first, and it is
-/// empty for a pinned asset they hold nowhere. Naming the row is `identity`'s
-/// job, and `holdings` states only what is true.
+/// `holdings` is **where the user holds it**, largest value first, and never
+/// empty: an asset held nowhere has no row, pinned or not.
 ///
 /// Valuation is derived with the holdings in the same snapshot; it is not
 /// persisted beside them. None means at least one place is unpriced.
@@ -546,16 +545,29 @@ pub struct DashboardAssetGroup {
     pub price: Option<f64>,
     pub id: String,
     /// What the row calls itself and prices itself by: the largest place it is
-    /// held, or the catalog's entry for it when it is held nowhere. An identity,
-    /// not a place — read `holdings` for those.
+    /// held.
     pub identity: AssetHolding,
     pub holdings: Vec<DashboardAssetHolding>,
+    /// Who holds it: one entry per wallet, largest value first.
+    pub wallets: Vec<DashboardAssetWallet>,
     pub is_pinned: bool,
     /// Worth less than `DASHBOARD_SMALL_BALANCE_USD` in all: the dust and
     /// airdropped tokens a front end may fold away. Never a pinned row, and
     /// never an unpriced one, whose worth is unknown.
     #[uniffi(default = false)]
     pub is_small: bool,
+}
+
+/// One wallet's share of a dashboard row: everything it holds of the asset,
+/// on every network it holds it on.
+#[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardAssetWallet {
+    pub wallet_id: String,
+    /// An exact decimal.
+    pub amount: String,
+    /// In the display currency; `None` when any of it is unpriced.
+    pub value: Option<f64>,
 }
 
 /// Below this many US dollars in all, a dashboard row is `is_small`. One

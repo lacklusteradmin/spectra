@@ -1,10 +1,6 @@
-# Working on Spectra
-
 ## Git
 
-Do not run any Git state-modifying command (including commit, add/stage, reset
-or checkout) unless explicitly requested. Finish edits and stop; the user will
-say when to commit.
+Do not git commit or push unless I said so.
 
 ## Rule 0
 
