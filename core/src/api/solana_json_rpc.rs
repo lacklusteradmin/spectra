@@ -38,16 +38,12 @@ pub struct SolanaSendResult {
     pub signed_tx_base64: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SplBalance {
     pub mint: String,
-    pub owner: String,
     pub balance_raw: String,
     pub balance_display: String,
     pub decimals: u8,
-    /// Best-effort symbol. Solana token symbols live in Metaplex metadata PDAs
-    /// which we don't resolve yet; this is an empty string for now.
-    pub symbol: String,
 }
 
 // ── Solana client
@@ -439,11 +435,9 @@ impl SolanaClient {
                 // One mint can have several accounts; sum them.
                 let balance = |raw: u128| SplBalance {
                     mint: mint.to_string(),
-                    owner: owner.to_string(),
                     balance_raw: raw.to_string(),
                     balance_display: crate::decimal::from_units(raw, u32::from(decimals)),
                     decimals,
-                    symbol: String::new(),
                 };
                 match out.iter_mut().find(|b| b.mint == mint) {
                     Some(existing) => {
@@ -526,11 +520,9 @@ impl SolanaClient {
                     let decimals = own_decimals.or_decode("SPL mint decimals unavailable")?;
                     Ok(Some(SplBalance {
                         mint,
-                        owner,
                         balance_raw: raw.to_string(),
                         balance_display: crate::decimal::from_units(raw, u32::from(decimals)),
                         decimals,
-                        symbol: String::new(),
                     }))
                 }
             })

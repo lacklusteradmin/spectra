@@ -266,12 +266,8 @@ impl WalletService {
         // whole balance — would be decided against a number nobody read.
         let spendable_balance = match token_res {
             Some(token) => {
-                let token = token.map_err(SpectraBridgeError::from)?;
-                let raw: u128 = token
-                    .balance_raw
-                    .parse()
-                    .map_err(|_| SpectraBridgeError::failure("invalid ERC-20 balance"))?;
-                crate::decimal::from_units(raw, u32::from(token.decimals))
+                let (raw, decimals) = token.map_err(SpectraBridgeError::from)?;
+                crate::decimal::from_units(raw, u32::from(decimals))
             }
             None => {
                 crate::decimal::from_units(balance_wei_val.saturating_sub(estimated_fee_wei), 18)

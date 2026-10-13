@@ -6,7 +6,6 @@ import SwiftUI
 /// flow, so the linear flow never routes through it and most people never
 /// open it.
 struct WalletDerivationOptionsView: View {
-    let store: AppState
     @Bindable var draft: WalletImportDraft
     @Environment(\.dismiss) private var dismiss
     private let copy = ImportFlowContent.current

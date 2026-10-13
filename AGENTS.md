@@ -21,9 +21,6 @@ the code as it should be disagree, write the second and delete the first.
 
 What it does not license:
 
-- **Silence.** Record each behaviour change in
-  [docs/BEHAVIOUR-CHANGES.md](docs/BEHAVIOUR-CHANGES.md) with before/after,
-  rationale, a CLI check and the verification run.
 - **Guessing at the safe side.** For funds, keys and addresses, refuse early,
   validate before storing and derive rather than trust caller input.
 - **Dropping scope quietly.** Removing a feature is a decision stated in the
@@ -65,7 +62,7 @@ make verify
 
 That is `make lint test test-cli test-ios` — `cargo fmt --check`,
 `cargo clippy -- -D warnings` and the unused-code source scans, then `cargo test --workspace`,
-`scripts/cli-acceptance.sh`, and `xcodebuild test` on an iPhone simulator. Run
+`tests/cli-acceptance.sh`, and `xcodebuild test` on an iPhone simulator. Run
 a single one by name when iterating. Report which checks actually ran.
 CI runs everything but `test-ios`, which needs Xcode and a simulator.
 

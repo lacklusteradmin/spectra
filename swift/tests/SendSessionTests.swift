@@ -136,7 +136,7 @@ struct SendSessionTests {
         gate.resume(true)
         await work.value
         #expect(store.transactions.map(\.id) == ["old"])
-        #expect(store.transactionCount == 1)
+        #expect(store.pendingTransactionCount == 1)
         #expect(store.sendFlow.session.artifact?.id == "new")
     }
 }

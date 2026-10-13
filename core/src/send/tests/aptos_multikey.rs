@@ -1,5 +1,5 @@
 //! Aptos MultiKey accounts against the Aptos TS SDK's (`aptos-multikey.json`,
-//! from scripts/generate-aptos-multikey-vectors.cjs).
+//! from tests/generate-aptos-multikey-vectors.cjs).
 
 use super::*;
 

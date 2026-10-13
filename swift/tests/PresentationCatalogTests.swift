@@ -38,11 +38,11 @@ struct PresentationCatalogTests {
             #expect(methods.contains(.importPrivateKey))
             #expect(chain.hasSendPreview)
         }
-        let coin = try #require(CoreReferenceTables.assetWikiEntry(tokenId: "peercoin"))
+        let coin = try #require(CoreReferenceTables.assetWiki.first { $0.tokenId == "peercoin" })
         #expect(coin.symbol == "PPC")
         #expect(coin.artworkName == "peercoin")
         #expect(!coin.comment.isEmpty)
-        #expect(CoreReferenceTables.chainWikiEntry(id: "peercoin") != nil)
+        #expect(CoreReferenceTables.chainWiki.contains { $0.id == "peercoin" })
     }
 
     @Test func newEvmNetworksReachTheChainPickerWithTheirOwnIdentity() throws {

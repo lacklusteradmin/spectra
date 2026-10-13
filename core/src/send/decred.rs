@@ -23,7 +23,6 @@ use crate::registry::Chain;
 /// bits hold the serialization type used for the message.
 const VERSION_FULL: u32 = 1; // serType = 0 (full) << 16 | version 1
 const VERSION_NO_WITNESS: u32 = (1u32 << 16) | 1; // serType = 1 (no witness) << 16 | version 1
-const VERSION_ONLY_WITNESS: u32 = (2u32 << 16) | 1; // serType = 2 (only witness) << 16 | version 1
 
 const SIGHASH_ALL: u32 = 1;
 
@@ -249,7 +248,6 @@ fn serialize_full(
         buf.extend_from_slice(&varint(script.len()));
         buf.extend_from_slice(script);
     }
-    let _ = VERSION_ONLY_WITNESS;
     buf
 }
 

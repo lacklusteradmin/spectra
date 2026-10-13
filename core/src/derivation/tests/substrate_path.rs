@@ -1,5 +1,5 @@
 //! Substrate junction paths against polkadot.js (`substrate-paths.json`,
-//! from scripts/generate-substrate-path-vectors.cjs).
+//! from tests/generate-substrate-path-vectors.cjs).
 
 use super::*;
 

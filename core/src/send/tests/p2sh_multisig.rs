@@ -1,6 +1,6 @@
 //! P2SH multisig spends on Bitcoin Cash and Dogecoin against bitcoinjs-lib's,
 //! bitcore-lib-cash's and ecash-lib's (`p2sh-multisig.json`, from
-//! scripts/generate-p2sh-multisig-vectors.cjs).
+//! tests/generate-p2sh-multisig-vectors.cjs).
 
 use super::*;
 

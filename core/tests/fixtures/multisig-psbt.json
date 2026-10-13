@@ -1,5 +1,5 @@
 {
-  "provenance": "bitcoinjs-lib 7.0.2, bip32 5.0.1, bip39 3.1.0, tiny-secp256k1 2.2.4 (scripts/generate-multisig-psbt-vectors.cjs)",
+  "provenance": "bitcoinjs-lib 7.0.2, bip32 5.0.1, bip39 3.1.0, tiny-secp256k1 2.2.4 (tests/generate-multisig-psbt-vectors.cjs)",
   "phrases": [
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     "legal winner thank year wave sausage worth useful legal winner thank yellow",

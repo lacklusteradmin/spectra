@@ -78,10 +78,7 @@ fn failure(error: impl std::fmt::Display) -> SendError {
 }
 
 /// What a proposal pays and spends, read from the proposal itself.
-fn review<N>(
-    network: &Network,
-    proposal: &Proposal<StandardFeeRule, N>,
-) -> Result<PreparedZcashShielded, SendError> {
+fn review<N>(proposal: &Proposal<StandardFeeRule, N>) -> Result<PreparedZcashShielded, SendError> {
     let mut payments = Vec::new();
     let mut fee = Zatoshis::ZERO;
     let mut transparent_in = Zatoshis::ZERO;
@@ -141,7 +138,6 @@ fn review<N>(
             }
         }
     }
-    let _ = network;
     Ok(PreparedZcashShielded {
         proposal_hex: hex::encode(
             zcash_client_backend::proto::proposal::Proposal::from_standard_proposal(proposal)
@@ -236,7 +232,7 @@ pub(crate) fn propose_payment(
         None,
     )
     .map_err(propose_error)?;
-    review(network, &proposal)
+    review(&proposal)
 }
 
 /// Propose moving every spendable transparent output of the wallet into its
@@ -274,7 +270,7 @@ pub(crate) fn propose_shielding_all(
         None,
     )
     .map_err(shielding_error)?;
-    review(network, &proposal)
+    review(&proposal)
 }
 
 /// What a shielding proposal that failed means to the person shielding:
@@ -360,7 +356,7 @@ pub(crate) fn sign(
             ))
         })?;
     // The proposal says exactly what was reviewed, or nothing is signed.
-    let mut decoded = review(network, &proposal)?;
+    let mut decoded = review(&proposal)?;
     decoded.proposal_hex = prepared.proposal_hex.clone();
     if decoded != *prepared {
         return Err(SendError::invalid(

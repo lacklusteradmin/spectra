@@ -1,5 +1,5 @@
 //! `spectra`: a non-interactive, scriptable front end for `spectra_core`.
-//! `scripts/cli-acceptance.sh` drives the built binary end to end.
+//! `tests/cli-acceptance.sh` drives the built binary end to end.
 
 mod cmd;
 mod ctx;

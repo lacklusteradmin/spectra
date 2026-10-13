@@ -29,7 +29,7 @@ struct WalletSecretStep: View {
             }
         }
         .sheet(isPresented: $isShowingDerivationOptions) {
-            WalletDerivationOptionsView(store: store, draft: draft)
+            WalletDerivationOptionsView(draft: draft)
         }
         .sheet(isPresented: $isFindingUsedAccounts) {
             UsedAccountsSheet(store: store, draft: draft)

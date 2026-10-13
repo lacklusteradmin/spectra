@@ -92,7 +92,6 @@ final class AppState {
     private(set) var assetPrecision: AssetPrecisionCatalog?
 
     func adoptAssetPrecision(_ precision: AssetPrecisionCatalog) { assetPrecision = precision }
-    var transactionCount: UInt64 = 0
     /// Core's count of transactions still pending, for the History tab's badge.
     var pendingTransactionCount: UInt64 = 0
     /// The pending sends core says can still be replaced on their chain.

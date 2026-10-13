@@ -343,7 +343,7 @@ mod tests {
     /// Every profile the registry lists derives, at accounts 0 and 1, the
     /// address an independent implementation of the chain's wallets does
     /// (`derivation-profiles.json`, from
-    /// scripts/generate-derivation-profile-vectors.cjs) — and the fixture
+    /// tests/generate-derivation-profile-vectors.cjs) — and the fixture
     /// names no profile the registry lacks.
     #[test]
     fn every_profile_matches_independent_vectors() {

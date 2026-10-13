@@ -25,12 +25,9 @@ pub struct TronSendResult {
     pub signed_tx_json: String,
 }
 
-/// TRC-20 balance payload. Mirrors `Erc20Balance` so the Swift-side decoder
-/// can share a single response type if desired.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A TRC-20 balance with the contract's validated metadata.
+#[derive(Debug, Clone)]
 pub struct Trc20Balance {
-    pub contract: String,
-    pub holder: String,
     pub balance_raw: String,
     pub balance_display: String,
     pub decimals: u8,
@@ -739,8 +736,6 @@ impl TronHttpClient {
         let metadata = self.read_metadata(contract_base58).await?;
         let balance_display = crate::decimal::from_units(raw, u32::from(metadata.decimals));
         Ok(Trc20Balance {
-            contract: contract_base58.to_string(),
-            holder: holder_base58.to_string(),
             balance_raw: raw.to_string(),
             balance_display,
             decimals: metadata.decimals,

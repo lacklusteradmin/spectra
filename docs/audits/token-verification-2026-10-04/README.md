@@ -103,4 +103,4 @@ spectra --json token catalog --chain ethereum
 spectra --json token catalog --chain avalanche
 ```
 
-Actual verification results are recorded in [BEHAVIOUR-CHANGES.md](../../BEHAVIOUR-CHANGES.md). No transaction was signed or broadcast during this research.
+No transaction was signed or broadcast during this research.

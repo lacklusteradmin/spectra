@@ -1,5 +1,5 @@
 {
-  "provenance": "bitcoinjs-lib 7.0.2, ecpair 3.0.1, tiny-secp256k1 2.2.4, kaspa-wasm 0.13.0 (scripts/generate-account-utxo-vectors.cjs)",
+  "provenance": "bitcoinjs-lib 7.0.2, ecpair 3.0.1, tiny-secp256k1 2.2.4, kaspa-wasm 0.13.0 (tests/generate-account-utxo-vectors.cjs)",
   "bitcoin": [
     {
       "name": "p2pkh",
