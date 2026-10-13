@@ -130,8 +130,58 @@ async fn an_unvouched_token_is_never_merged_by_symbol() {
     }
 }
 
-/// A row names itself from its identity, which is the place most of it is held
-/// — or the catalog's entry, for a pinned asset held nowhere.
+/// A row says who holds it: one entry per wallet, summed across the networks
+/// that wallet holds it on, largest value first. A wallet left out of the
+/// portfolio is left out here too.
+#[tokio::test]
+async fn a_row_breaks_down_by_wallet() {
+    let service = service_with(vec![
+        (
+            "small",
+            crate::registry::Chain::Ethereum,
+            vec![holding("ETH", crate::registry::Chain::Ethereum, 1.0)],
+        ),
+        (
+            "large",
+            crate::registry::Chain::Ethereum,
+            vec![
+                holding("ETH", crate::registry::Chain::Ethereum, 2.0),
+                holding("ETH", crate::registry::Chain::Arbitrum, 0.5),
+            ],
+        ),
+        (
+            "excluded",
+            crate::registry::Chain::Ethereum,
+            vec![holding("ETH", crate::registry::Chain::Ethereum, 9.0)],
+        ),
+    ])
+    .await;
+    {
+        let mut state = service.wallet_state.write().await;
+        state.quotes.prices.insert("ethereum:native".into(), 1000.0);
+        state.quotes.prices.insert("arbitrum:native".into(), 1000.0);
+    }
+    service
+        .apply_state_command(StateCommand::SetWalletPortfolioInclusion {
+            wallet_id: "excluded".into(),
+            included: false,
+        })
+        .await
+        .expect("exclude");
+    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
+    let eth = groups.iter().find(|g| g.id == "ethereum").expect("a row");
+    let wallets: Vec<_> = eth
+        .wallets
+        .iter()
+        .map(|w| (w.wallet_id.as_str(), w.amount.as_str(), w.value))
+        .collect();
+    assert_eq!(
+        wallets,
+        [("large", "2.5", Some(2500.0)), ("small", "1", Some(1000.0))]
+    );
+}
+
+/// A row names itself from its identity, the place most of it is held.
 fn row_symbol(g: &crate::store::wallet_domain::DashboardAssetGroup) -> &str {
     g.identity.symbol.as_str()
 }
@@ -199,68 +249,35 @@ async fn a_testnet_row_has_no_value() {
     );
 }
 
-/// A pinned asset the user holds nowhere is a row that holds nothing: the name
-/// is `identity`'s job, and `holdings` says only where it is actually held.
+/// A pinned asset the user holds nowhere has no row, even with a wallet that
+/// has read its network; holding it again brings the row back, still pinned.
 #[tokio::test]
-async fn a_pinned_asset_held_nowhere_holds_nothing() {
+async fn a_pinned_asset_held_nowhere_has_no_row() {
     let service = service_with(vec![
         (
             "w1",
             crate::registry::Chain::Ethereum,
             vec![holding("ETH", crate::registry::Chain::Ethereum, 1.0)],
         ),
-        ("w2", crate::registry::Chain::Solana, Vec::new()),
+        (
+            "w2",
+            crate::registry::Chain::Solana,
+            vec![holding("SOL", crate::registry::Chain::Solana, 0.0)],
+        ),
     ])
     .await;
     service
         .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec!["ethereum".into(), "solana".into()],
+            token_ids: vec!["solana".into(), "ethereum".into(), "bitcoin".into()],
         })
         .await
         .expect("pin");
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
+    let ids: Vec<_> = groups.iter().map(|g| g.id.as_str()).collect();
+    assert_eq!(ids, ["ethereum"], "only the pinned asset that is held");
+    assert!(groups.iter().all(|g| !g.holdings.is_empty()));
 
-    let solana = groups.iter().find(|g| g.id == "solana").expect("a row");
-    assert!(
-        solana.holdings.is_empty(),
-        "the user holds no SOL, so the row holds nothing: {:?}",
-        solana.holdings
-    );
-    assert_eq!(solana.identity.symbol, "SOL", "and still names itself");
-    assert_eq!(solana.identity.chain_id, crate::registry::Chain::Solana);
-
-    let ethereum = groups.iter().find(|g| g.id == "ethereum").expect("a row");
-    assert_eq!(ethereum.holdings.len(), 1, "a held asset keeps its places");
-    assert_eq!(
-        ethereum.identity, ethereum.holdings[0].coin,
-        "and is named by the largest of them"
-    );
-}
-
-/// A pinned asset no included wallet's network carries has no row: a zero
-/// there would claim an account the user does not have. Nor does one whose
-/// wallet has not read its balances yet, whose zero is not yet known.
-#[tokio::test]
-async fn a_pinned_asset_needs_a_wallet_that_has_read_its_network() {
-    let service = service_with(vec![(
-        "w1",
-        crate::registry::Chain::Ethereum,
-        vec![holding("ETH", crate::registry::Chain::Ethereum, 1.0)],
-    )])
-    .await;
-    service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec!["bitcoin".into(), "solana".into()],
-        })
-        .await
-        .expect("pin");
-    let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
-    assert!(
-        !groups.iter().any(|g| g.id == "bitcoin" || g.id == "solana"),
-        "{groups:?}"
-    );
-
-    let mut reading = WalletState::single_address(
+    let mut held = WalletState::single_address(
         "w2",
         "w2",
         crate::registry::Chain::Solana,
@@ -268,29 +285,20 @@ async fn a_pinned_asset_needs_a_wallet_that_has_read_its_network() {
         None,
         false,
     );
-    reading.holdings = vec![crate::registry::Chain::Solana.native_holding_template()];
+    held.holdings = vec![holding("SOL", crate::registry::Chain::Solana, 2.0)];
+    held.balances_read_at = Some(2.0);
     service
-        .apply_state_command(StateCommand::UpsertWallet { wallet: reading })
+        .apply_state_command(StateCommand::UpsertWallet { wallet: held })
         .await
         .expect("upsert");
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
-    assert!(
-        !groups.iter().any(|g| g.id == "solana"),
-        "still reading: {groups:?}"
-    );
-    assert!(
-        service
-            .portfolio_snapshot()
-            .await
-            .unwrap()
-            .wallets
-            .iter()
-            .any(|w| w.id == "w2" && w.balances_read_at.is_none())
-    );
+    let solana = groups.iter().find(|g| g.id == "solana").expect("a row");
+    assert!(solana.is_pinned);
+    assert_eq!(solana.identity, solana.holdings[0].coin);
 }
 
-/// Pinned rows come first, in the order they were pinned, and a pinned
-/// symbol with no holdings still gets a row.
+/// Pinned rows come first, in the order they were pinned, ahead of unpinned
+/// rows worth more.
 #[tokio::test]
 async fn pinned_rows_lead_in_pin_order() {
     let service = service_with(vec![(
@@ -299,26 +307,26 @@ async fn pinned_rows_lead_in_pin_order() {
         vec![
             holding("ETH", crate::registry::Chain::Ethereum, 1.0),
             holding("BTC", crate::registry::Chain::Bitcoin, 1.0),
+            holding("DOGE", crate::registry::Chain::Dogecoin, 1.0),
         ],
     )])
     .await;
+    {
+        let mut state = service.wallet_state.write().await;
+        state.quotes.prices.insert("ethereum:native".into(), 3000.0);
+        state.quotes.prices.insert("bitcoin:native".into(), 60000.0);
+        state.quotes.prices.insert("dogecoin:native".into(), 0.1);
+    }
     service
         .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec!["ethereum".into(), "solana".into()],
+            token_ids: vec!["dogecoin".into(), "ethereum".into()],
         })
         .await
         .expect("pin");
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     let symbols: Vec<_> = groups.iter().map(row_symbol).collect();
-    // ETH before SOL because that is the pin order, and both before the
-    // unpinned BTC even though BTC is worth more.
-    assert_eq!(symbols.first(), Some(&"ETH"));
-    assert!(
-        groups
-            .iter()
-            .any(|g| row_symbol(g) == "BTC" && !g.is_pinned),
-        "BTC is still shown, unpinned"
-    );
+    assert_eq!(symbols, ["DOGE", "ETH", "BTC"]);
+    assert!(!groups[2].is_pinned);
 }
 
 #[tokio::test]
@@ -351,7 +359,7 @@ async fn portfolio_snapshot_keeps_wallets_groups_and_valuation_on_one_version() 
     assert_eq!(after.valuation.portfolio.total, 0.0);
     assert!(!after.wallets[0].include_in_portfolio_total);
     assert!(after.derived.portfolio.is_empty());
-    assert!(after.groups.iter().all(|group| group.holdings.is_empty()));
+    assert!(after.groups.is_empty());
     assert_eq!(after.valuation.wallets["w1"].total, 6000.0);
 }
 

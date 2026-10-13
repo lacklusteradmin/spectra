@@ -5,10 +5,17 @@
 
 use super::*;
 
+/// A holding the portfolio counts, and the wallet that holds it.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+pub struct PortfolioHolding {
+    pub wallet_id: String,
+    pub coin: crate::store::wallet_domain::AssetHolding,
+}
+
 /// Everything the wallet list implies, with holdings already resolved.
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct WalletDerivedState {
-    pub included_portfolio_holdings: Vec<crate::store::wallet_domain::AssetHolding>,
+    pub included_portfolio_holdings: Vec<PortfolioHolding>,
     pub unique_price_request_coins: Vec<crate::store::wallet_domain::AssetHolding>,
     /// One entry per asset, amounts summed across wallets.
     pub portfolio: Vec<crate::store::wallet_domain::AssetHolding>,

@@ -321,8 +321,7 @@ enum AppNoticeAction {
     case dismiss(@MainActor () -> Void)
 }
 extension DashboardAssetGroup: Identifiable {
-    /// Core supplies the asset's display identity from its primary holding,
-    /// or from the catalog when a pinned asset is not held.
+    /// Core supplies the asset's display identity from its largest holding.
     var name: String { identity.name }
     var symbol: String { identity.symbol }
     var artworkName: String { identity.artworkName }
@@ -333,19 +332,19 @@ extension DashboardPinOption: Identifiable {
     public var id: String { tokenId }
     var color: Color { AssetPresentationCatalog.color(deploymentId: deploymentId) }
 }
-/// One asset across every wallet: what it is worth, where it is held, how to
-/// move it, and where it lives. Read from core's current groups by id, so a
-/// refresh lands here as it lands on Home.
+/// One asset across every wallet: what it is worth, where and by whom it is
+/// held, and how to move it. Read from core's current groups by id, so a refresh lands here
+/// as it lands on Home.
 struct AssetGroupDetailView: View {
     let store: AppState
     let assetGroupId: String
     private var assetGroup: DashboardAssetGroup? {
         store.cachedDashboardAssetGroups.first { $0.id == assetGroupId }
     }
-    /// Where the coin lives, from core's asset wiki — the same join the wiki
-    /// screen renders, rather than a second dashboard-only cache of it.
-    private var places: [AssetWikiPlace] {
-        CoreReferenceTables.assetWikiEntry(tokenId: assetGroupId)?.livesOn ?? []
+    /// Where a token is deployed is Known Tokens' job; a native coin has no
+    /// entry there, and no button.
+    private var isKnownToken: Bool {
+        store.tokenPreferences.entries.contains { $0.token.tokenId == assetGroupId }
     }
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -354,7 +353,7 @@ struct AssetGroupDetailView: View {
                     AssetDetailHeroCard(assetGroup: assetGroup, store: store)
                     AssetMoveButtons(store: store, assetGroup: assetGroup)
                     AssetChainBreakdownCard(assetGroup: assetGroup, store: store)
-                    if !places.isEmpty { AssetPlacesCard(places: places, symbol: assetGroup.symbol) }
+                    AssetWalletBreakdownCard(assetGroup: assetGroup, store: store)
                 } else {
                     SpectraEmptyStateCard(
                         title: "Asset not listed", message: "This asset is no longer in your portfolio.",
@@ -364,6 +363,18 @@ struct AssetGroupDetailView: View {
         }.background(SpectraBackdrop().ignoresSafeArea())
             .navigationTitle(assetGroup?.symbol ?? "").navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                if isKnownToken {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink {
+                            TokenRegistryDetailView(tokens: store.tokenPreferences, groupKey: assetGroupId)
+                        } label: {
+                            Image(systemName: "info.circle")
+                        }
+                        .accessibilityLabel(AppLocalization.string("Token Details"))
+                    }
+                }
+            }
             .refreshable { await store.performUserInitiatedRefresh() }
     }
 }
@@ -382,7 +393,7 @@ private struct AssetMoveButtons: View {
         return nil
     }
     private var receiveWalletId: String? {
-        let chains = Set(assetGroup.holdings.map(\.coin.chainId) + [assetGroup.identity.chainId])
+        let chains = Set(assetGroup.holdings.map(\.coin.chainId))
         return store.receiveEnabledWallets.first { chains.contains($0.chainId) }?.id
     }
     var body: some View {
@@ -439,67 +450,83 @@ private struct AssetDetailHeroCard: View {
     }
 }
 /// Every place the row's asset is held, largest first.
+///
+/// The badge is the **chain's**, which is what the row is about: USDC on
+/// Ethereum and USDC on Solana must not look alike. The asset's colour stands
+/// in for a chain the registry has no artwork for.
 private struct AssetChainBreakdownCard: View {
     let assetGroup: DashboardAssetGroup
     let store: AppState
-
-    /// Held nowhere, so there is no breakdown to draw.
-    ///
-    /// A pinned asset the user holds none of has no holdings at all — core
-    /// names the row from its `identity` instead of synthesizing a place. The
-    /// amount is checked too, because a real holding that has been emptied says
-    /// the same thing to the reader and deserves the same sentence.
-    private var holdsNothing: Bool { assetGroup.holdings.isEmpty || assetGroup.totalAmount == "0" }
-
+    var body: some View {
+        AssetBreakdownCard(title: "Chain Breakdown", count: assetGroup.holdings.count) { index in
+            let holding = assetGroup.holdings[index]
+            let badge = AssetHolding.nativeChainBadge(for: holding.coin.chain) ?? (nil, holding.coin.color)
+            AssetBreakdownRow(
+                badgeArtworkName: badge.artworkName, badgeColor: badge.color, badgeMark: holding.coin.chainName,
+                title: holding.coin.chainName, subtitle: holding.coin.tokenStandard,
+                amountText: store.amounts.formattedAssetAmount(
+                    holding.coin.amount, symbol: holding.coin.symbol, deploymentId: holding.coin.holdingKey),
+                valueText: store.amounts.formattedFiat(holding.value),
+                hidesBalance: store.preferences.hideBalances)
+        }
+    }
+}
+/// Every wallet that holds the row's asset, largest first, each summed over
+/// the networks it holds it on. The badge is the wallet's, as in the wallet
+/// list.
+private struct AssetWalletBreakdownCard: View {
+    let assetGroup: DashboardAssetGroup
+    let store: AppState
+    private var shares: [(share: DashboardAssetWallet, wallet: WalletView)] {
+        assetGroup.wallets.compactMap { share in store.wallet(for: share.walletId).map { (share, $0) } }
+    }
+    var body: some View {
+        let shares = shares
+        AssetBreakdownCard(title: "Wallet Breakdown", count: shares.count) { index in
+            let (share, wallet) = shares[index]
+            let badge = AssetHolding.nativeChainBadge(for: wallet.family) ?? (nil, .mint)
+            AssetBreakdownRow(
+                badgeArtworkName: badge.artworkName, badgeColor: badge.color, badgeMark: wallet.familyName,
+                title: wallet.name, subtitle: wallet.networkTitle,
+                amountText: store.amounts.formattedAssetAmount(
+                    share.amount, symbol: assetGroup.symbol, deploymentId: assetGroup.identity.holdingKey),
+                valueText: store.amounts.formattedFiat(share.value),
+                hidesBalance: store.preferences.hideBalances)
+        }
+    }
+}
+/// A titled card of breakdown rows with dividers between them.
+private struct AssetBreakdownCard<Row: View>: View {
+    let title: String
+    let count: Int
+    @ViewBuilder let row: (Int) -> Row
     var body: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
-            Text(AppLocalization.string("Chain Breakdown")).font(.headline).foregroundStyle(Color.primary)
-            if holdsNothing {
-                Text(AppLocalization.string("No balance on any chain."))
-                    .font(.subheadline).foregroundStyle(.secondary)
-            } else {
-                ForEach(Array(assetGroup.holdings.enumerated()), id: \.offset) { index, holding in
-                    AssetChainBreakdownRow(
-                        chain: holding.coin.chain,
-                        chainTitle: holding.coin.chainName,
-                        tokenStandard: holding.coin.tokenStandard,
-                        amountText: store.amounts.formattedAssetAmount(
-                            holding.coin.amount, symbol: holding.coin.symbol,
-                            deploymentId: holding.coin.holdingKey),
-                        valueText: store.amounts.formattedFiat(holding.value),
-                        hidesBalance: store.preferences.hideBalances,
-                        fallbackColor: holding.coin.color
-                    )
-                    if index < assetGroup.holdings.count - 1 { Divider().opacity(0.4) }
-                }
+            Text(AppLocalization.string(title)).font(.headline).foregroundStyle(Color.primary)
+            ForEach(0..<count, id: \.self) { index in
+                row(index)
+                if index < count - 1 { Divider().opacity(0.4) }
             }
         }.padding(SpectraLayout.Space.l).frame(maxWidth: .infinity, alignment: .leading)
             .spectraCardFill()
     }
 }
-
-/// One chain the asset is held on.
-///
-/// The badge is the **chain's**, which is what the row is about: USDC on
-/// Ethereum and USDC on Solana must not look alike. `fallbackColor` is the
-/// asset's, for a chain the registry has no artwork for.
-private struct AssetChainBreakdownRow: View {
-    let chain: Chain?
-    let chainTitle: String
-    let tokenStandard: String
+/// One share of the asset: where or who, then how much and what it is worth.
+private struct AssetBreakdownRow: View {
+    let badgeArtworkName: String?
+    let badgeColor: Color
+    let badgeMark: String
+    let title: String
+    let subtitle: String
     let amountText: String
     let valueText: String
     let hidesBalance: Bool
-    let fallbackColor: Color
     var body: some View {
-        let badge = AssetHolding.nativeChainBadge(for: chain) ?? (nil, fallbackColor)
-        return HStack(alignment: .center, spacing: SpectraLayout.Space.m) {
-            CoinBadge(
-                artworkName: badge.artworkName,
-                fallbackText: chainTitle, color: badge.color, size: 30)
+        HStack(alignment: .center, spacing: SpectraLayout.Space.m) {
+            CoinBadge(artworkName: badgeArtworkName, fallbackText: badgeMark, color: badgeColor, size: 30)
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
-                Text(chainTitle).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary).lineLimit(1)
-                Text(tokenStandard).font(.caption2).foregroundStyle(.secondary)
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary).lineLimit(1)
+                Text(subtitle).font(.caption2).foregroundStyle(.secondary)
             }
             Spacer(minLength: SpectraLayout.Space.m)
             VStack(alignment: .trailing, spacing: SpectraLayout.Space.xxs) {

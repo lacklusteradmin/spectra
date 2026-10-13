@@ -1,4 +1,4 @@
-//! Asset pages group deployments by registered token ID. Symbols are display text.
+//! One asset page per registered token ID. Symbols are display text.
 
 use crate::chains::{self, ChainEntry};
 use crate::tokens;
@@ -39,21 +39,7 @@ fn prose_for(token_id: &str) -> (&'static str, &'static str) {
         .unwrap_or_default()
 }
 
-/// One place a coin exists: a chain, and either a contract or nothing.
-///
-/// A native coin has an empty `contract` on purpose. It is the honest answer —
-/// there is no contract to show — and it is what tells the two apart without a
-/// second flag that could disagree.
-#[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
-pub struct AssetWikiPlace {
-    pub chain_id: crate::registry::Chain,
-    pub token_standard: String,
-    pub contract: String,
-    pub decimals: u32,
-    pub is_native: bool,
-}
-
-/// What a coin is, and everywhere it lives.
+/// What a coin is. Where it is deployed is Known Tokens' to show.
 #[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 pub struct AssetWikiEntry {
     pub token_id: String,
@@ -67,16 +53,13 @@ pub struct AssetWikiEntry {
     /// one, and nobody has written one for an ERC-20.
     pub total_circulation_model: String,
     pub tags: Vec<crate::tokens::TokenTag>,
-    /// Native places first, then contracts by chain name. The first is where
-    /// the coin is from, which is what a page should lead with.
-    pub lives_on: Vec<AssetWikiPlace>,
 }
 
 static ASSETS: LazyLock<Vec<AssetWikiEntry>> = LazyLock::new(build);
 
 fn build() -> Vec<AssetWikiEntry> {
     let mut out: Vec<AssetWikiEntry> = Vec::new();
-    let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     // Native coins, in catalog order, so the coin's home chain is the one that
     // names and colours it — the ten chains ETH runs on all say "Ethereum",
@@ -85,60 +68,28 @@ fn build() -> Vec<AssetWikiEntry> {
         if chain.native_coingecko_id.is_empty() || chain.gas_token_symbol.is_empty() {
             continue;
         }
-        let slot = *index
-            .entry(
-                tokens::deployment(&chain.native_deployment_id)
-                    .unwrap()
-                    .token_id
-                    .clone(),
-            )
-            .or_insert_with(|| {
-                out.push(entry_from_chain(chain));
-                out.len() - 1
-            });
-        out[slot].lives_on.push(AssetWikiPlace {
-            chain_id: crate::registry::Chain::parse(&chain.id).expect("a catalog chain"),
-            token_standard: "Native".to_string(),
-            contract: String::new(),
-            decimals: chain.native_decimals,
-            is_native: true,
-        });
+        let token_id = tokens::deployment(&chain.native_deployment_id)
+            .unwrap()
+            .token_id
+            .clone();
+        if seen.insert(token_id) {
+            out.push(entry_from_chain(chain));
+        }
     }
 
-    // Then the deployments. A coin already listed gains places rather than a
-    // second row: a registered token can have native and contract deployments. Testnet
+    // Then the deployments. A coin already listed is not listed again: a
+    // registered token can have native and contract deployments. Testnet
     // tokens are skipped for the reason testnet coins are: nothing prices them.
     for token in tokens::catalog()
         .iter()
         .filter(|t| !t.is_native() && !t.chain_id.is_testnet())
     {
-        let slot = *index.entry(token.token_id.clone()).or_insert_with(|| {
+        if seen.insert(token.token_id.clone()) {
             out.push(entry_from_token(token));
-            out.len() - 1
-        });
-        out[slot].lives_on.push(AssetWikiPlace {
-            chain_id: token.chain_id,
-            token_standard: token.token_standard.clone(),
-            contract: token.contract.clone(),
-            decimals: token.decimals,
-            is_native: false,
-        });
+        }
     }
 
     for entry in out.iter_mut() {
-        // Native places first and in catalog order, so ETH leads with
-        // Ethereum rather than with Arbitrum; contracts after them by name.
-        // The sort is stable, which is what keeps the catalog order.
-        entry.lives_on.sort_by(|a, b| {
-            b.is_native.cmp(&a.is_native).then_with(|| {
-                if a.is_native {
-                    std::cmp::Ordering::Equal
-                } else {
-                    let name = |place: &AssetWikiPlace| place.chain_id.entry().name.clone();
-                    name(a).cmp(&name(b))
-                }
-            })
-        });
         let (comment, circulation) = prose_for(&entry.token_id);
         entry.comment = comment.to_string();
         entry.total_circulation_model = circulation.to_string();
@@ -159,7 +110,6 @@ fn entry_from_chain(chain: &ChainEntry) -> AssetWikiEntry {
         comment: String::new(),
         total_circulation_model: String::new(),
         tags: Vec::new(),
-        lives_on: Vec::new(),
     }
 }
 
@@ -174,7 +124,6 @@ fn entry_from_token(token: &tokens::TokenDeploymentEntry) -> AssetWikiEntry {
         comment: String::new(),
         total_circulation_model: String::new(),
         tags: token.tags.clone(),
-        lives_on: Vec::new(),
     }
 }
 
@@ -203,7 +152,6 @@ mod the_wiki_is_one_asset_table {
         assert_eq!(symbols.len(), ASSETS.len(), "a coin has two rows");
         for a in ASSETS.iter() {
             assert!(!a.comment.is_empty(), "{} has no description", a.symbol);
-            assert!(!a.lives_on.is_empty(), "{} lives nowhere", a.symbol);
             // Pricing belongs to the registered identity. A verified legacy
             // asset may have no quote; the wiki must neither invent one nor
             // borrow the market identity of its redenominated replacement.
@@ -222,13 +170,6 @@ mod the_wiki_is_one_asset_table {
         assert!(old.coingecko_id.is_empty());
         assert!(!replacement.coingecko_id.is_empty());
         assert_ne!(old.token_id, replacement.token_id);
-        assert_eq!(old.lives_on.len(), 1);
-        let place = &old.lives_on[0];
-        assert_eq!(place.chain_id, crate::registry::Chain::Tron);
-        assert_eq!(place.token_standard, "TRC-10");
-        assert_eq!(place.contract, "1002000");
-        assert_eq!(place.decimals, 6);
-        assert!(!place.is_native);
     }
 
     /// ETH is one row across Ethereum and its rollups.
@@ -237,55 +178,15 @@ mod the_wiki_is_one_asset_table {
     /// about the networks, and no page about the coin.
     #[test]
     fn a_coin_native_to_many_chains_is_one_row() {
-        let eth = asset("ethereum");
-        assert_eq!(eth.lives_on.len(), 11);
-        assert!(
-            eth.lives_on
-                .iter()
-                .any(|p| p.chain_id == crate::registry::Chain::WorldChain)
+        assert_eq!(
+            ASSETS.iter().filter(|a| a.token_id == "ethereum").count(),
+            1
         );
-        assert!(eth.lives_on.iter().all(|p| p.is_native));
-        assert!(eth.lives_on.iter().all(|p| p.contract.is_empty()));
-        // Presented as its home chain, because native places sort first and
-        // the catalog lists Ethereum before its rollups.
-        assert_eq!(eth.lives_on[0].chain_id, crate::registry::Chain::Ethereum);
+        // Named by its home chain, because the catalog lists Ethereum before
+        // its rollups.
+        let eth = asset("ethereum");
         assert_eq!(eth.name, "Ethereum");
         assert!(!eth.total_circulation_model.is_empty());
-    }
-
-    /// A token's places are its deployments, with the per-chain facts intact.
-    #[test]
-    fn every_asset_lists_its_catalog_deployments() {
-        for asset in ASSETS.iter() {
-            let expected: std::collections::BTreeSet<_> = tokens::catalog()
-                .iter()
-                .filter(|token| token.token_id == asset.token_id && !token.chain_id.is_testnet())
-                .map(|token| {
-                    (
-                        token.chain_id.str_id(),
-                        token.contract.as_str(),
-                        token.token_standard.as_str(),
-                        token.decimals,
-                        token.is_native(),
-                    )
-                })
-                .collect();
-            let actual: std::collections::BTreeSet<_> = asset
-                .lives_on
-                .iter()
-                .map(|place| {
-                    (
-                        place.chain_id.str_id(),
-                        place.contract.as_str(),
-                        place.token_standard.as_str(),
-                        place.decimals,
-                        place.is_native,
-                    )
-                })
-                .collect();
-            assert_eq!(actual.len(), asset.lives_on.len(), "{}", asset.token_id);
-            assert_eq!(actual, expected, "{}", asset.token_id);
-        }
     }
 
     /// `crypto-wiki.toml` has no row nothing claims.

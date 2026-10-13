@@ -14,7 +14,7 @@ use crate::out::{self, Out};
 pub struct PriceArgs {
     /// Chain display name or registry id.
     chain: Option<String>,
-    /// Refresh prices for stored holdings and dashboard pins.
+    /// Refresh prices for stored holdings and price alerts.
     #[arg(long)]
     refresh: bool,
     /// Read core-owned cached quotes without network.

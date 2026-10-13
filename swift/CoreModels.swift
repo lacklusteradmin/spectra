@@ -30,9 +30,6 @@ extension AssetHolding: Identifiable {
     /// so zero is always `"0"`.
     var hasBalance: Bool { amount != "0" }
 }
-extension AssetWikiPlace {
-    var chainName: String { chainId.displayName }
-}
 extension FundsFinderCandidate {
     var chainName: String { chainId.displayName }
 }

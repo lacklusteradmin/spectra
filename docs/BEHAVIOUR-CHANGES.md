@@ -17,6 +17,89 @@ how to check it without the app:
   that none applies and what covers it instead.
 - **Verification** — the three suites at the time of the change.
 
+## 2026-10-12 — The asset page breaks an asset down by wallet
+
+- **Before:** an asset's page broke it down by chain only, summed across
+  wallets; which wallet held how much showed nowhere except by opening each
+  wallet. `WalletDerivedState.included_portfolio_holdings` was a bare list of
+  holdings, without the wallet each came from.
+- **After:** `DashboardAssetGroup.wallets` lists each wallet that holds the
+  asset, with its amount summed across the networks it holds it on and its
+  value (`None` when any of it is unpriced), largest value first, ties in
+  wallet-list order. It is drawn as a "Wallet Breakdown" card under "Chain
+  Breakdown"; both cards share one row view. `included_portfolio_holdings` is
+  now `Vec<PortfolioHolding>`, each holding with its `wallet_id`, and is the
+  only source of both breakdowns, so a wallet excluded from the portfolio or a
+  hidden holding is left out of the wallet list as it is of the total.
+- **Why:** chain and wallet are the two ways a holding is split, and only one
+  was shown. Core already decided what counts per wallet; it lost the wallet
+  at the point the dashboard needed it.
+- **CLI check:** `spectra --json portfolio --stored` prints each group with
+  `wallets` (`walletId`, `amount`, `value`) on a store whose balances have
+  been read; core's `dashboard_groups::a_row_breaks_down_by_wallet` covers the
+  sums, the order and the excluded wallet.
+- **Verification:** `make lint` clean; `cargo test --workspace` passed (1,494
+  core tests and 2 CLI tests); `make test-cli` passed 61 checks; `make
+  test-ios` passed 154 tests on an iPhone 17e simulator. On the 17e, tPYUSD's
+  page shows "Wallet Breakdown" under "Chain Breakdown" with its one wallet.
+
+## 2026-10-12 — The asset page drops "Lives On" for a link to Known Tokens
+
+- **Before:** a held asset's page ended with a "Lives On" card listing every
+  catalog deployment, read from `AssetWikiEntry.lives_on`. ETH listed eleven
+  native networks; a token listed each chain, standard and contract, and each
+  row led to that chain's wiki page.
+- **After:** the card, `AssetPlacesCard.swift`, `AssetWikiEntry.lives_on`,
+  the `AssetWikiPlace` record and their five strings are deleted. A token's
+  page has an info button at the top right that opens its own Known Tokens
+  page, whose Networks card lists the same deployments with their contracts.
+  A native coin has no Known Tokens entry and shows no button. Chain wiki
+  pages are still reached from Crypto Wiki.
+- **Why:** the card listed the catalog, not what the user holds, so it was a
+  long list that Known Tokens already shows for tokens; for a native coin it
+  told the user nothing new. Nothing else read `lives_on`, so the field went
+  with the card.
+- **CLI check:** none; the CLI never printed `lives_on`. Core's
+  `the_wiki_is_one_asset_table` tests still cover one row per coin and the
+  table matching the catalogs.
+- **Verification:** `make lint` clean; `cargo test --workspace` passed (1,493
+  core tests and 2 CLI tests); `make test-cli` passed 61 checks; `make
+  test-ios` passed 154 tests on an iPhone 17e simulator with fresh derived
+  data, after an incremental run failed to load a test bundle that still
+  referenced the deleted `AssetWikiPlace`. On the 17e, tUSDC's page shows the
+  button and opens its Known Tokens page; tETH's shows none.
+
+## 2026-10-12 — A pinned asset held nowhere has no dashboard row
+
+- **Before:** a pinned asset the user held none of still got a Home row at a
+  zero balance, named from the catalog with empty `holdings`, whenever an
+  included wallet on a network the token lives on had read its balances. So
+  the default pins (BTC, ETH, USDT, USDC) listed USDT and USDC at zero for
+  anyone with an Ethereum wallet. Its asset page said "No balance on any
+  chain.", and price refreshes fetched quotes for every pin, held or not.
+- **After:** a row exists only for an asset held somewhere, pinned or not.
+  Pinning orders what is held — pinned rows still lead in pin order and are
+  never folded as small — and lists nothing that is not. `holdings` is never
+  empty and `identity` is always its largest place. Price refresh asks for
+  held assets and enabled price alerts only. The zero-row branch,
+  `pinned_prototype`, the asset page's "No balance on any chain." state and
+  its string are deleted.
+- **Why:** a zero row is an asset the user does not have, presented as a
+  holding; it filled Home with placeholders the user had to scroll past. It
+  was also a second model of a row — one named by the catalog with no places
+  — that the dashboard, the asset page and the price refresh each handled
+  separately.
+- **CLI check:** `spectra --json portfolio --stored --pin-token solana
+  --pin-token ethereum` on a store whose Solana wallet has read a zero balance
+  lists no `solana` group; reading a balance needs a node, so core's
+  `dashboard_groups::a_pinned_asset_held_nowhere_has_no_row` covers it, and
+  `pinned_rows_lead_in_pin_order` the ordering.
+- **Verification:** `make lint` clean; `cargo test --workspace` passed (1,494
+  core tests and 2 CLI tests); `make test-cli` passed 61 checks; `make
+  test-ios` passed 154 tests on an iPhone 17e simulator after a first run
+  failed to launch the simulator ("Invalid connectionUUID") before any test
+  ran.
+
 ## 2026-10-10 — CLI acceptance keeps only what the binary shows
 
 - **Before:** 43 Python suites, about 12,100 lines with the shell harness,

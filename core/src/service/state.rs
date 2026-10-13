@@ -819,7 +819,10 @@ fn derive_wallet_state(
             // A hidden holding stays sendable but counts in no total.
             if wallet.include_in_portfolio_total && !wallet.hidden_holdings.contains(&identity_key)
             {
-                included_portfolio_holdings.push(holding.clone());
+                included_portfolio_holdings.push(PortfolioHolding {
+                    wallet_id: wallet.id.clone(),
+                    coin: holding.clone(),
+                });
                 if !grouped_totals.contains_key(&identity_key) {
                     grouped_order.push(identity_key.clone());
                     grouped_representative.insert(identity_key.clone(), holding.clone());
@@ -934,7 +937,9 @@ fn dashboard_groups_from(
     state: &ResidentState,
     derived: &WalletDerivedState,
 ) -> Result<Vec<crate::store::wallet_domain::DashboardAssetGroup>, SpectraBridgeError> {
-    use crate::store::wallet_domain::{DashboardAssetGroup, DashboardAssetHolding};
+    use crate::store::wallet_domain::{
+        DashboardAssetGroup, DashboardAssetHolding, DashboardAssetWallet,
+    };
 
     let settings = &state.settings;
     let pinned = settings.pinned_dashboard_assets();
@@ -948,25 +953,25 @@ fn dashboard_groups_from(
     // chains, or on one chain across two wallets, is one row.
     //
     // Two passes: group holdings by asset, then split each group by
-    // (network, standard, contract) so the row can show where it lives.
+    // (network, standard, contract) so the row can show where it lives, and
+    // by wallet so it can show who holds it.
     let mut order: Vec<String> = Vec::new();
-    let mut grouped: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>> =
-        HashMap::new();
-    for coin in derived
+    let mut grouped: HashMap<String, Vec<&PortfolioHolding>> = HashMap::new();
+    for held in derived
         .included_portfolio_holdings
         .iter()
-        .filter(|c| !crate::decimal::is_zero(&c.amount))
+        .filter(|h| !crate::decimal::is_zero(&h.coin.amount))
     {
-        let key = coin.token_identity();
+        let key = held.coin.token_identity();
         if !grouped.contains_key(&key) {
             order.push(key.clone());
         }
-        grouped.entry(key).or_default().push(coin.clone());
+        grouped.entry(key).or_default().push(held);
     }
 
     let mut groups: Vec<DashboardAssetGroup> = Vec::new();
     for key in order {
-        let Some(coins) = grouped.get(&key) else {
+        let Some(held) = grouped.get(&key) else {
             continue;
         };
         // Within a row, one entry per place: the same asset held on one
@@ -974,7 +979,7 @@ fn dashboard_groups_from(
         let mut place_order: Vec<String> = Vec::new();
         let mut by_place: HashMap<String, crate::store::wallet_domain::AssetHolding> =
             HashMap::new();
-        for coin in coins {
+        for coin in held.iter().map(|h| &h.coin) {
             let contract = crate::tokens::normalize_token_identifier(
                 coin.contract_address.clone(),
                 coin.chain_id,
@@ -1031,6 +1036,36 @@ fn dashboard_groups_from(
                 crate::decimal::add(&sum, &h.coin.amount)
             })
             .ok_or_else(|| SpectraBridgeError::failure("asset total out of range"))?;
+        // And one entry per wallet: everything it holds of the asset, on
+        // every network it holds it on. Largest value first; ties keep the
+        // wallet list's order.
+        let mut wallets: Vec<(DashboardAssetWallet, Option<f64>)> = Vec::new();
+        for h in held.iter() {
+            let usd = usd_of(&h.coin);
+            match wallets.iter_mut().find(|(w, _)| w.wallet_id == h.wallet_id) {
+                Some((wallet, total)) => {
+                    wallet.amount = crate::decimal::add(&wallet.amount, &h.coin.amount)
+                        .ok_or_else(|| SpectraBridgeError::failure("asset total out of range"))?;
+                    *total = total.zip(usd).map(|(sum, value)| sum + value);
+                }
+                None => wallets.push((
+                    DashboardAssetWallet {
+                        wallet_id: h.wallet_id.clone(),
+                        amount: h.coin.amount.clone(),
+                        value: None,
+                    },
+                    usd,
+                )),
+            }
+        }
+        wallets.sort_by(|(_, l), (_, r)| r.unwrap_or(-1.0).total_cmp(&l.unwrap_or(-1.0)));
+        let wallets = wallets
+            .into_iter()
+            .map(|(wallet, usd)| DashboardAssetWallet {
+                value: display_of(usd),
+                ..wallet
+            })
+            .collect();
         let is_pinned = pinned.contains(&key);
         groups.push(DashboardAssetGroup {
             total_amount,
@@ -1043,62 +1078,19 @@ fn dashboard_groups_from(
                 }),
             identity: largest.coin.clone(),
             holdings,
+            wallets,
             id: key,
         });
     }
 
-    // A pinned token the user holds none of still gets a row, named by the
-    // catalog and holding nothing — where an included wallet is on a network
-    // the token lives on and has read its balances. With no such wallet the
-    // row would show a zero balance of an asset there is no account for, and
-    // while one is still reading, zero is not yet known.
-    let wallet_chains = |read: bool| -> std::collections::HashSet<crate::registry::Chain> {
-        state
-            .wallets
-            .iter()
-            .filter(|w| w.include_in_portfolio_total && w.balances_read_at.is_some() == read)
-            .map(|w| w.chain_id)
-            .collect()
-    };
-    let (read_chains, reading_chains) = (wallet_chains(true), wallet_chains(false));
-    let catalog = crate::tokens::list_token_deployments(None);
-    let token_chains = |token_id: &str| -> Vec<crate::registry::Chain> {
-        catalog
-            .iter()
-            .chain(state.token_preferences.iter().map(|e| &e.token))
-            .filter(|token| token.token_id == token_id)
-            .map(|token| token.chain_id)
-            .collect()
-    };
     let row_symbol = |g: &DashboardAssetGroup| -> String { g.identity.symbol.to_uppercase() };
     let row_value = |g: &DashboardAssetGroup| {
         g.holdings.iter().try_fold(0.0, |sum, holding| {
             usd_of(&holding.coin).map(|value| sum + value)
         })
     };
-    let present: std::collections::HashSet<String> = groups.iter().map(|g| g.id.clone()).collect();
-    for symbol in pinned.iter().filter(|s| !present.contains(*s)) {
-        let chains = token_chains(symbol);
-        if !chains.iter().any(|chain| read_chains.contains(chain))
-            || chains.iter().any(|chain| reading_chains.contains(chain))
-        {
-            continue;
-        }
-        let Some(prototype) = pinned_prototype(state, symbol, derived) else {
-            continue;
-        };
-        groups.push(DashboardAssetGroup {
-            total_amount: "0".to_string(),
-            total_value: display_of(Some(0.0)),
-            price: valuation::display_price(state, &prototype),
-            id: symbol.clone(),
-            identity: prototype,
-            holdings: Vec::new(),
-            is_pinned: true,
-            is_small: false,
-        });
-    }
-
+    // Pinned rows lead, in pin order. Pinning orders what is held; it does
+    // not list what is not, so a pinned asset held nowhere has no row.
     let pin_order: HashMap<&str, usize> = pinned
         .iter()
         .enumerate()
@@ -1131,27 +1123,6 @@ fn dashboard_groups_from(
         row_symbol(lhs).cmp(&row_symbol(rhs))
     });
     Ok(groups)
-}
-fn pinned_prototype(
-    state: &ResidentState,
-    token_id: &str,
-    derived: &WalletDerivedState,
-) -> Option<crate::store::wallet_domain::AssetHolding> {
-    if let Some(coin) = derived
-        .included_portfolio_holdings
-        .iter()
-        .find(|c| c.token_identity() == token_id)
-    {
-        let mut coin = coin.clone();
-        coin.amount = "0".to_string();
-        return Some(coin);
-    }
-    let tokens = crate::tokens::list_token_deployments(None);
-    tokens
-        .iter()
-        .chain(state.token_preferences.iter().map(|e| &e.token))
-        .find(|token| token.token_id == token_id)
-        .map(|token| token.holding_template())
 }
 
 impl WalletService {
@@ -1216,16 +1187,6 @@ impl WalletService {
             })
         })
         .await
-    }
-}
-
-impl WalletService {
-    pub(super) async fn pinned_prototype(
-        &self,
-        token_id: &str,
-        derived: &WalletDerivedState,
-    ) -> Option<AssetHolding> {
-        pinned_prototype(&self.app_state().await, token_id, derived)
     }
 }
 

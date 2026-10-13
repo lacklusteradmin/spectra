@@ -155,7 +155,7 @@ impl WalletService {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Core chooses assets from stored holdings and dashboard pins, then persists valid quotes.
+    /// Core chooses assets from stored holdings and price alerts, then persists valid quotes.
     pub async fn refresh_owned_prices(
         &self,
         force: bool,
@@ -176,14 +176,8 @@ impl WalletService {
                 return Ok(state);
             }
             let derived = this.wallet_derived_state().await?;
-            let mut coins = derived.unique_price_request_coins.clone();
-            for token_id in state.settings.pinned_dashboard_assets() {
-                if let Some(coin) = this.pinned_prototype(&token_id, &derived).await {
-                    coins.push(coin);
-                }
-            }
             let mut requests = HashMap::new();
-            for coin in coins {
+            for coin in derived.unique_price_request_coins {
                 let network = coin.chain_id;
                 if network.is_testnet() {
                     continue;

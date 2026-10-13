@@ -42,8 +42,6 @@ struct PresentationCatalogTests {
         #expect(coin.symbol == "PPC")
         #expect(coin.artworkName == "peercoin")
         #expect(!coin.comment.isEmpty)
-        #expect(coin.livesOn.contains { $0.chainId == .peercoin && $0.isNative && $0.decimals == 6 })
-        #expect(!coin.livesOn.contains { $0.chainId == .peercoinTestnet })
         #expect(CoreReferenceTables.chainWikiEntry(id: "peercoin") != nil)
     }
 

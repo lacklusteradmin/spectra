@@ -11,10 +11,6 @@ extension AssetWikiEntry: Identifiable {
     }
 }
 
-extension AssetWikiPlace: Identifiable {
-    public var id: String { "\(chainId)|\(contract)" }
-}
-
 extension ChainWikiEntry: Identifiable {}
 
 /// One filter over the whole library: what kind of coin, or what kind of chain.
