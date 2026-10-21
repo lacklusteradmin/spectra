@@ -5,7 +5,7 @@ use clap::{Args, Subcommand, ValueEnum};
 use colored::Colorize as _;
 
 use super::resolve_chain;
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, PasswordArgs};
 use crate::error::CliResult;
 use crate::out::{self, Out};
 
@@ -35,10 +35,8 @@ pub struct WalletArgs {
     from: String,
     #[arg(long)]
     chain: Option<String>,
-    #[arg(long, conflicts_with = "password_env")]
-    password_file: Option<String>,
-    #[arg(long, conflicts_with = "password_file")]
-    password_env: Option<String>,
+    #[command(flatten)]
+    password: PasswordArgs,
 }
 #[derive(Args)]
 pub struct PositionsArgs {
@@ -89,10 +87,8 @@ impl From<ActionArg> for spectra_core::staking::StakingAction {
 pub struct RecheckArgs {
     #[arg(long)]
     id: String,
-    #[arg(long, conflicts_with = "password_env")]
-    password_file: Option<String>,
-    #[arg(long, conflicts_with = "password_file")]
-    password_env: Option<String>,
+    #[command(flatten)]
+    password: PasswordArgs,
 }
 
 #[derive(Args)]
@@ -154,12 +150,7 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
                 .transpose()?
                 .unwrap_or(wallet.chain_id);
             let password = if chain == spectra_core::registry::Chain::Icp {
-                super::tx::signing_password(
-                    ctx,
-                    &wallet.id,
-                    args.wallet.password_file,
-                    args.wallet.password_env,
-                )?
+                args.wallet.password.for_wallet(&wallet)?
             } else {
                 None
             };
@@ -204,12 +195,7 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
                 .map(resolve_chain)
                 .transpose()?
                 .unwrap_or(wallet.chain_id);
-            let password = super::tx::signing_password(
-                ctx,
-                &wallet.id,
-                args.wallet.password_file,
-                args.wallet.password_env,
-            )?;
+            let password = args.wallet.password.for_wallet(&wallet)?;
             let action = args.action.into();
             let request = spectra_core::staking::StakingRequest {
                 wallet_id: wallet.id,
@@ -239,12 +225,8 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
             let service = ctx.service()?;
             let artifact = ctx.rt.block_on(service.inspect_send(args.id.clone()))?;
             let password = if artifact.chain_id == spectra_core::registry::Chain::Icp {
-                super::tx::signing_password(
-                    ctx,
-                    &artifact.wallet_id,
-                    args.password_file,
-                    args.password_env,
-                )?
+                args.password
+                    .for_wallet(&ctx.find_wallet(&artifact.wallet_id)?)?
             } else {
                 None
             };

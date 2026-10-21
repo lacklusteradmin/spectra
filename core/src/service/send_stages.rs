@@ -34,9 +34,11 @@ impl WalletService {
             // This operation completes the review itself; no unused confirmation remains.
             this.send_reviews.lock().await.remove(&review.id);
             let chain = review.request.chain_id;
-            let network_fee = review.preview.as_ref().and_then(|preview| {
-                crate::decimal::truncate(preview.network_fee(), u32::from(chain.native_decimals()))
-            });
+            // The quote already cut its fee to the gas asset's precision.
+            let network_fee = review
+                .preview
+                .as_ref()
+                .map(|preview| preview.estimated_network_fee.clone());
             let network_fee_value = match &network_fee {
                 Some(fee) => super::valuation::display_value_of(
                     &this.app_state().await,
@@ -520,7 +522,8 @@ impl WalletService {
             .transpose()
             .map_err(|_| SpectraBridgeError::failure("Nonce exceeds history range"))?;
         history.signed_transaction_payload = Some(serde_json::to_string(&submission)?);
-        history.signed_transaction_payload_format = Some("core.submission_json".into());
+        history.signed_transaction_payload_format =
+            Some(crate::send::payload::SUBMISSION_FORMAT.into());
         self.save_send_record(history.clone()).await?;
         // Every selected endpoint gets the payload at once. Each attempt is
         // saved as uncertain before anything is sent, so a crash mid-way

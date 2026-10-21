@@ -664,7 +664,7 @@ impl WalletService {
                     hash: String,
                     height: u64,
                     time: u64| {
-            crate::fetch::history_decode::NormalizedHistoryItem {
+            crate::fetch::history::NormalizedHistoryItem {
                 deployment_id: crate::tokens::deployment_id_for(chain, None),
                 kind: kind.into(),
                 status: "confirmed".into(),

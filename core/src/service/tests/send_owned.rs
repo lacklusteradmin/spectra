@@ -66,7 +66,7 @@ async fn wallets(endpoints: Vec<String>, elsewhere: &str) -> Arc<WalletService> 
     service.open_state(database).await.unwrap();
     let mut source =
         WalletState::single_address("source", "Source", Chain::Ethereum, SOURCE, None, true);
-    let mut ether = native_coin_template(Chain::Ethereum).unwrap();
+    let mut ether = Chain::Ethereum.native_holding_template();
     ether.amount = "10".into();
     source.holdings.push(ether);
     for wallet in [
@@ -141,7 +141,12 @@ async fn an_owned_build_keeps_its_reviews_advisories_and_fee() {
     let service = wallets(vec![server.uri()], &format!("0x{}", "44".repeat(20))).await;
     let quote = service.review_owned_send(input(OTHER, "1")).await.unwrap();
     assert!(quote.requires_self_send_confirmation);
-    let quoted_fee = quote.preview.as_ref().unwrap().network_fee().to_string();
+    let quoted_fee = quote
+        .preview
+        .as_ref()
+        .unwrap()
+        .estimated_network_fee
+        .clone();
     let built = service.build_owned_send(input(OTHER, "1")).await.unwrap();
     assert!(built.review.requires_self_send_confirmation);
     assert_eq!(

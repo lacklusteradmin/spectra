@@ -1,5 +1,6 @@
 //! Send previews and fee estimates. Signing and rebroadcast live in sibling modules.
 use super::*;
+use crate::send::preview_types::{SendFeeTerms, SendPreview};
 impl WalletService {
     /// Preview a stored asset on the wallet's actual network without exposing its secret.
     pub async fn preview_owned_evm_send(
@@ -10,7 +11,7 @@ impl WalletService {
         destination: String,
         explicit_nonce: Option<i64>,
         custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
-    ) -> Result<Option<crate::send::preview_types::EvmSendPreview>, SpectraBridgeError> {
+    ) -> Result<SendPreview, SpectraBridgeError> {
         let state = self.app_state().await;
         let wallet = state
             .wallets
@@ -109,9 +110,8 @@ impl WalletService {
         chain: Chain,
     ) -> Result<NativeFeeEstimate, SpectraBridgeError> {
         let endpoints = self.endpoints_for(chain, &[EndpointCapability::Fee]).await;
-        let native = |raw: u128, source: &'static str| NativeFeeEstimate {
-            raw: raw.to_string(),
-            display: crate::decimal::from_units(raw, u32::from(chain.native_decimals())),
+        let native = |units: u128, source: &'static str| NativeFeeEstimate {
+            units,
             source,
             gas_unit_price_octas: None,
         };
@@ -170,15 +170,25 @@ impl WalletService {
     /// descriptor: an ERC-20 transfer *is* `transfer(address,uint256)`
     /// addressed to the token contract, so the selector names the case and
     /// the contract's own `decimals()` scales the answer.
-    pub(crate) async fn fetch_evm_send_preview_json(
+    ///
+    /// `explicit_nonce` and `custom_fees` replace what the network would
+    /// answer for them.
+    pub async fn fetch_evm_send_preview(
         &self,
         chain_id: crate::registry::Chain,
         from: String,
         to: String,
         value_wei: String,
         data_hex: String,
-        overrides: crate::send::evm::EvmSendOverrides,
-    ) -> Result<String, SpectraBridgeError> {
+        explicit_nonce: Option<i64>,
+        custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
+    ) -> Result<SendPreview, SpectraBridgeError> {
+        let overrides = crate::send::ethereum::EvmSendOverridesInput {
+            nonce: explicit_nonce,
+            custom_fees: custom_fees.clone(),
+            ..Default::default()
+        }
+        .resolve(chain_id)?;
         let chain = evm_network(chain_id)?;
         let eps = self.endpoints_for(chain, &[EndpointCapability::Fee]).await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
@@ -252,51 +262,36 @@ impl WalletService {
             &overrides,
         )
         .await?;
-        let gas_limit = prepared.gas_limit;
-        let balance_wei_val: u128 = bal_res?
+        let native_balance_wei: u128 = bal_res?
             .balance_wei
             .parse()
             .map_err(|_| SpectraBridgeError::failure("invalid EVM balance"))?;
-
-        let estimated_fee_wei = prepared.maximum_fee_wei()?;
-        let gwei = |wei: u128| crate::decimal::from_units(wei, 9);
-
         // A token read that failed is not a zero holding: everything the send
         // sheet decides from this — whether the amount fits, whether it is the
         // whole balance — would be decided against a number nobody read.
-        let spendable_balance = match token_res {
-            Some(token) => {
-                let (raw, decimals) = token.map_err(SpectraBridgeError::from)?;
-                crate::decimal::from_units(raw, u32::from(decimals))
-            }
-            None => {
-                crate::decimal::from_units(balance_wei_val.saturating_sub(estimated_fee_wei), 18)
-            }
-        };
-
-        Ok(json!({
-            "nonce": nonce,
-            "gas_limit": gas_limit,
-            "max_fee_per_gas_wei": prepared.max_fee_per_gas.to_string(),
-            "max_priority_fee_per_gas_wei": prepared.max_priority_fee_per_gas.to_string(),
-            "estimated_fee_wei": estimated_fee_wei.to_string(),
-            "additional_fee_wei": prepared.additional_fee_wei.to_string(),
-            "spendable_balance": spendable_balance,
-            "is_token": crate::api::evm_json_rpc::is_erc20_transfer(&data_hex),
-            "native_balance_wei": balance_wei_val.to_string(),
-            "fee_rate_description": format!("Max {} gwei / Priority {} gwei",
-                gwei(prepared.max_fee_per_gas), gwei(prepared.max_priority_fee_per_gas)),
-        })
-        .to_string())
+        let token_balance = token_res
+            .map(|token| {
+                token
+                    .map(|(raw, decimals)| crate::decimal::from_units(raw, u32::from(decimals)))
+                    .map_err(SpectraBridgeError::from)
+            })
+            .transpose()?;
+        Ok(crate::send::ethereum::evm_send_preview(
+            &prepared,
+            native_balance_wei,
+            token_balance,
+            custom_fees.is_some(),
+        )?)
     }
 
-    pub(crate) async fn fetch_tron_send_preview_json_on_chain(
+    pub(crate) async fn fetch_tron_send_preview(
         &self,
         chain: Chain,
         address: String,
         symbol: String,
         contract_address: String,
-    ) -> Result<String, SpectraBridgeError> {
+    ) -> Result<SendPreview, SpectraBridgeError> {
+        let trx = |sun: u128| crate::decimal::from_units(sun, u32::from(chain.native_decimals()));
         if !contract_address.is_empty() {
             let standard = chain.token_standard_for_identifier(&contract_address);
             crate::tokens::validate_protocol_identifier(chain, standard, &contract_address)?;
@@ -331,13 +326,15 @@ impl WalletService {
                     "Insufficient TRX for the TRC-10 bandwidth and account activation budget",
                 ));
             }
-            return Ok(json!({
-                "estimated_fee_trx": crate::decimal::from_units(u128::from(state.fee_budget_sun), u32::from(chain.native_decimals())),
-                "fee_limit_sun": 0_i64,
-                "spendable_balance": state.token.balance_display,
-                "max_sendable": state.token.balance_display,
-                "fee_rate_description": "TRC-10 paid bandwidth and account activation upper bound",
-            }).to_string());
+            return Ok(SendPreview {
+                estimated_network_fee: trx(u128::from(state.fee_budget_sun)),
+                max_sendable: state.token.balance_display.clone(),
+                spendable_balance: state.token.balance_display,
+                fee_rate_description: Some(
+                    "TRC-10 paid bandwidth and account activation upper bound".into(),
+                ),
+                ..Default::default()
+            });
         }
 
         // The native asset, by the catalog's gas token rather than the string
@@ -354,19 +351,14 @@ impl WalletService {
                 .map(|b| b.sun)
                 .map_err(SpectraBridgeError::from)?;
             let fee_sun = fee_or_static(Chain::Tron, None)?;
-            let decimals = u32::from(Chain::Tron.native_decimals());
-            let spendable = crate::decimal::from_units(
-                u128::from(balance_sun.saturating_sub(fee_sun)),
-                decimals,
-            );
-            return Ok(json!({
-                "estimated_fee_trx": crate::decimal::from_units(u128::from(fee_sun), decimals),
-                "fee_limit_sun": 0_i64,
-                "spendable_balance": spendable,
-                "max_sendable": spendable,
-                "fee_rate_description": "Static bandwidth estimate",
-            })
-            .to_string());
+            let spendable = trx(u128::from(balance_sun.saturating_sub(fee_sun)));
+            return Ok(SendPreview {
+                estimated_network_fee: trx(u128::from(fee_sun)),
+                max_sendable: spendable.clone(),
+                spendable_balance: spendable,
+                fee_rate_description: Some("Static bandwidth estimate".into()),
+                ..Default::default()
+            });
         }
 
         // A TRC-20's decimals are the contract's. `fetch_trc20_balance` reads
@@ -384,125 +376,116 @@ impl WalletService {
             .map_err(|_| SpectraBridgeError::failure("invalid TRC-20 balance"))?;
         let token_balance = crate::decimal::from_units(raw, u32::from(token.decimals));
 
-        // The estimate is what a transfer usually burns; the limit is the
-        // most the signed transaction lets it burn.
-        Ok(json!({
-            "estimated_fee_trx": crate::decimal::from_units(
-                u128::from(crate::send::tron::TRC20_TYPICAL_FEE_SUN),
-                u32::from(Chain::Tron.native_decimals()),
-            ),
-            "fee_limit_sun": crate::send::tron::TRC20_FEE_LIMIT_SUN,
-            "spendable_balance": token_balance,
-            "max_sendable": token_balance,
-            "fee_rate_description": "Static energy estimate",
+        // The estimate is what a transfer usually burns; the signed
+        // transaction's fee limit is the most it lets it burn.
+        Ok(SendPreview {
+            estimated_network_fee: trx(u128::from(crate::send::tron::TRC20_TYPICAL_FEE_SUN)),
+            max_sendable: token_balance.clone(),
+            spendable_balance: token_balance,
+            fee_rate_description: Some("Static energy estimate".into()),
+            ..Default::default()
         })
-        .to_string())
     }
 
-    pub(crate) async fn fetch_simple_chain_send_preview_json(
+    /// The send preview of a chain on the shared path
+    /// ([`Chain::has_shared_send_preview`]): its fee, its coin's balance, and
+    /// the balance less the fee as the maximum.
+    ///
+    /// A fee or a balance that cannot be read is an error, never a zero: a
+    /// zero standing in for either is a wrong maximum offered to the user.
+    pub(crate) async fn fetch_shared_send_preview(
         &self,
-        chain: crate::registry::Chain,
+        chain: Chain,
         address: String,
-    ) -> Result<String, SpectraBridgeError> {
-        if chain.mainnet_counterpart() == Chain::Near {
-            let preview = self.preview_near_send(chain, &address, "", 0, None).await?;
-            return Ok(json!({
-                "fee_display": preview.estimatedNetworkFee,
-                "fee_raw": preview.feeBudgetYoctoNear,
-                "fee_rate_description": preview.feeRateDescription,
-                "balance_display": preview.spendableBalance,
-                "max_sendable": preview.maxSendable,
-            })
-            .to_string());
+    ) -> Result<SendPreview, SpectraBridgeError> {
+        if !chain.has_shared_send_preview() {
+            return Err(SpectraBridgeError::InvalidInput {
+                message: format!("{chain} has no shared-path send preview").into(),
+            });
         }
-        if matches!(
-            chain.mainnet_counterpart(),
-            Chain::Polkadot | Chain::Bittensor
-        ) {
-            let endpoints = self
-                .endpoints_for(
-                    chain,
-                    &[
-                        EndpointCapability::Fee,
-                        EndpointCapability::Balance,
-                        EndpointCapability::Verification,
-                    ],
-                )
-                .await;
-            let (fee, balance, bytes) = crate::api::http::race(&endpoints, |endpoint| {
-                let address = &address;
-                async move {
-                    crate::send::polkadot::preview_transfer(
-                        &SubstrateClient::new(Arc::new(vec![endpoint])),
+        let decimals = u32::from(chain.native_decimals());
+        let units = |amount: u128| crate::decimal::from_units(amount, decimals);
+        match chain.mainnet_counterpart() {
+            Chain::Near => return self.preview_near_send(chain, &address, "", 0, None).await,
+            Chain::Polkadot | Chain::Bittensor => {
+                let endpoints = self
+                    .endpoints_for(
                         chain,
-                        address,
+                        &[
+                            EndpointCapability::Fee,
+                            EndpointCapability::Balance,
+                            EndpointCapability::Verification,
+                        ],
                     )
-                    .await
-                }
-            })
-            .await?;
-            let decimals = u32::from(chain.native_decimals());
-            return Ok(json!({
-                "fee_display": crate::decimal::from_units(fee, decimals),
-                "fee_raw": fee.to_string(),
-                "fee_rate_description": "Substrate RPC quote; existential deposit retained",
-                "balance_display": crate::decimal::from_units(balance, decimals),
-                "max_sendable": crate::decimal::from_units(balance.saturating_sub(fee), decimals),
-                "estimated_transaction_bytes": bytes,
-            })
-            .to_string());
-        }
-        if chain.mainnet_counterpart() == Chain::Cardano {
-            let utxos = self.cardano_inputs(chain, &address).await?;
-            let params =
-                KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Fee]).await)
-                    .fetch_protocol_params()
-                    .await?;
-            let (fee, max) = crate::send::cardano::ada_preview(&utxos, &params, &address)?;
-            let total: u128 = utxos.iter().map(|utxo| u128::from(utxo.lovelace)).sum();
-            let ada = |lovelace: u128| crate::decimal::from_units(lovelace, 6);
-            return Ok(json!({
-                "fee_display": ada(u128::from(fee)),
-                "fee_raw": fee.to_string(),
-                "fee_rate_description": "Protocol fee for this transaction's size; ADA held with tokens stays with them as change",
-                "balance_display": ada(total),
-                "max_sendable": ada(u128::from(max)),
-            })
-            .to_string());
+                    .await;
+                let (fee, balance, bytes) = crate::api::http::race(&endpoints, |endpoint| {
+                    let address = &address;
+                    async move {
+                        crate::send::polkadot::preview_transfer(
+                            &SubstrateClient::new(Arc::new(vec![endpoint])),
+                            chain,
+                            address,
+                        )
+                        .await
+                    }
+                })
+                .await?;
+                return Ok(SendPreview {
+                    estimated_network_fee: units(fee),
+                    spendable_balance: units(balance),
+                    max_sendable: units(balance.saturating_sub(fee)),
+                    fee_rate_description: Some(
+                        "Substrate RPC quote; existential deposit retained".into(),
+                    ),
+                    estimated_transaction_bytes: i64::try_from(bytes).ok(),
+                    terms: SendFeeTerms::Flat,
+                });
+            }
+            Chain::Cardano => {
+                let utxos = self.cardano_inputs(chain, &address).await?;
+                let params =
+                    KoiosClient::new(self.endpoints_for(chain, &[EndpointCapability::Fee]).await)
+                        .fetch_protocol_params()
+                        .await?;
+                let (fee, max) = crate::send::cardano::ada_preview(&utxos, &params, &address)?;
+                let total: u128 = utxos.iter().map(|utxo| u128::from(utxo.lovelace)).sum();
+                return Ok(SendPreview {
+                    estimated_network_fee: units(u128::from(fee)),
+                    spendable_balance: units(total),
+                    max_sendable: units(u128::from(max)),
+                    fee_rate_description: Some(
+                        "Protocol fee for this transaction's size; ADA held with tokens stays with them as change".into(),
+                    ),
+                    ..Default::default()
+                });
+            }
+            _ => {}
         }
         let (fee, balance) = tokio::try_join!(
             self.native_fee_estimate(chain),
             self.fetch_native_balance_summary(chain, address),
         )?;
-
-        // `max_sendable` is balance minus fee, so a zero standing in for either
-        // one is a wrong maximum offered to the user: an unread fee makes the
-        // whole balance look sendable, an unread balance makes none of it.
-        let unreadable = |what: &str, value: &str| {
-            SpectraBridgeError::failure(format!("{chain} {what}: not a number: {value:?}"))
-        };
-        let fee_display = crate::decimal::canonical(&fee.display)
-            .ok_or_else(|| unreadable("fee", &fee.display))?;
-        let fee_raw = fee.raw;
-        let fee_rate_description = fee.source.to_string();
-
-        let balance_display = crate::decimal::canonical(&balance.amount_display)
-            .ok_or_else(|| unreadable("balance", &balance.amount_display))?;
+        let fee_display = units(fee.units);
+        let balance_display =
+            crate::decimal::canonical(&balance.amount_display).ok_or_else(|| {
+                SpectraBridgeError::failure(format!(
+                    "{chain} balance: not a number: {:?}",
+                    balance.amount_display
+                ))
+            })?;
         let max_sendable = crate::decimal::sub_or_zero(&balance_display, &fee_display)
-            .ok_or_else(|| unreadable("balance", &balance_display))?;
-
-        let mut value = json!({
-            "fee_display":          fee_display,
-            "fee_raw":              fee_raw,
-            "fee_rate_description": fee_rate_description,
-            "balance_display":      balance_display,
-            "max_sendable":         max_sendable,
-        });
-        if let Some(price) = fee.gas_unit_price_octas {
-            value["gas_unit_price_octas"] = json!(price);
-            value["max_gas_amount"] = json!(chain.aptos_max_gas_amount().expect("Aptos gas limit"));
-        }
-        Ok(value.to_string())
+            .ok_or_else(|| SpectraBridgeError::failure(format!("{chain} balance unreadable")))?;
+        let fee_rate_description = match fee.gas_unit_price_octas {
+            Some(price) => format!("{price} octas/unit"),
+            None => fee.source.to_string(),
+        };
+        Ok(SendPreview {
+            estimated_network_fee: fee_display,
+            spendable_balance: balance_display,
+            max_sendable,
+            fee_rate_description: Some(fee_rate_description),
+            ..Default::default()
+        })
     }
 }
 
@@ -511,67 +494,13 @@ impl WalletService {
 mod tests;
 
 impl WalletService {
-    /// Typed EVM send preview: fetches the raw preview JSON then decodes it
-    /// into `EvmSendPreview` with the caller-supplied nonce / fee
-    /// overrides applied. Returns `None` when the decoder rejects the payload.
-    pub async fn fetch_evm_send_preview(
-        &self,
-        chain_id: crate::registry::Chain,
-        from: String,
-        to: String,
-        value_wei: String,
-        data_hex: String,
-        explicit_nonce: Option<i64>,
-        custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
-    ) -> Result<Option<crate::send::preview_types::EvmSendPreview>, SpectraBridgeError> {
-        let overrides = crate::send::ethereum::EvmSendOverridesInput {
-            nonce: explicit_nonce,
-            custom_fees: custom_fees.clone(),
-            ..Default::default()
-        }
-        .resolve(chain_id)?;
-        let raw = self
-            .fetch_evm_send_preview_json(chain_id, from, to, value_wei, data_hex, overrides)
-            .await?;
-        Ok(crate::send::preview_decode::build_evm_send_preview_record(
-            crate::send::ethereum::EvmPreviewDecodeInput {
-                raw_json: raw,
-                explicit_nonce,
-                custom_fees,
-            },
-        ))
-    }
-}
-
-impl WalletService {
-    pub async fn fetch_simple_chain_send_preview(
-        &self,
-        chain_id: crate::registry::Chain,
-        address: String,
-    ) -> Result<Option<crate::send::preview_decode::SimpleChainPreview>, SpectraBridgeError> {
-        let chain =
-            chain_id
-                .simple_preview_chain()
-                .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                    message: format!("{chain_id} has no shared-path send preview").into(),
-                })?;
-        let raw = self
-            .fetch_simple_chain_send_preview_json(chain_id, address)
-            .await?;
-        Ok(crate::send::preview_decode::build_simple_chain_preview(
-            raw, chain,
-        ))
-    }
-}
-
-impl WalletService {
     pub(super) async fn preview_litecoin_owned_send(
         &self,
         chain: Chain,
         wallet_id: &str,
         amount: &str,
         destination: &str,
-    ) -> Result<Option<crate::send::preview_types::BitcoinSendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<SendPreview>, SpectraBridgeError> {
         self.litecoin_preview_at_rate(chain, wallet_id, amount, destination, 0)
             .await
     }
@@ -583,7 +512,7 @@ impl WalletService {
         amount: &str,
         destination: &str,
         fee_rate: u64,
-    ) -> Result<Option<crate::send::preview_types::BitcoinSendPreview>, SpectraBridgeError> {
+    ) -> Result<Option<SendPreview>, SpectraBridgeError> {
         let amount = u64::try_from(crate::send::amount_input::parse_raw_amount(amount, 8)?)
             .map_err(|_| SpectraBridgeError::invalid("Amount exceeds protocol range"))?;
         if amount > chain.litecoin_max_money()? {

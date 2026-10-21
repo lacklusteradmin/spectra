@@ -23,6 +23,9 @@ use crate::error::{CliError, CliResult};
 pub struct SecretSource {
     /// Read from this file. `-` means standard input.
     pub file: Option<String>,
+    /// Read from this environment variable when it is set. The name is
+    /// usually a default, so an unset variable falls through to the prompt
+    /// rather than failing an interactive run.
     pub env: Option<String>,
 }
 
@@ -35,17 +38,58 @@ impl SecretSource {
             return read_secret_file(path);
         }
         if let Some(name) = &self.env {
-            return std::env::var(name)
-                .map_err(|_| CliError::usage(format!("environment variable {name} is not set")));
+            match std::env::var(name) {
+                Ok(value) => return Ok(value),
+                Err(std::env::VarError::NotUnicode(_)) => {
+                    return Err(CliError::usage(format!(
+                        "environment variable {name} is not valid UTF-8"
+                    )));
+                }
+                Err(std::env::VarError::NotPresent) => {}
+            }
         }
         if std::io::stdin().is_terminal() {
             return rpassword::prompt_password(format!("  {prompt}: "))
                 .map_err(|e| CliError::failure(format!("could not read {prompt}: {e}")));
         }
+        let variable = self.env.as_deref().unwrap_or("its environment variable");
         Err(CliError::usage(format!(
             "no {prompt} available — pass --{file_flag} <path> (or `-` for stdin), \
-             or set the matching environment variable"
+             or set {variable}"
         )))
+    }
+}
+
+/// Where a wallet's password comes from: one definition, flattened into every
+/// command that opens a sealed wallet, so each reads it the same way.
+#[derive(clap::Args, Debug, Clone)]
+pub struct PasswordArgs {
+    /// Read the wallet password from this file; `-` means stdin.
+    #[arg(long, value_name = "PATH")]
+    password_file: Option<String>,
+    /// Read the wallet password from this environment variable.
+    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
+    password_env: String,
+}
+
+impl PasswordArgs {
+    /// The file, else the variable when it is set, else the prompt.
+    pub fn resolve(&self) -> CliResult<String> {
+        SecretSource {
+            file: self.password_file.clone(),
+            env: Some(self.password_env.clone()),
+        }
+        .resolve("password", "password-file")
+    }
+
+    /// The password `wallet` signs with, or `None` when it is not sealed
+    /// with one: a wallet without a password is never asked for one.
+    pub fn for_wallet(&self, wallet: &WalletState) -> CliResult<Option<String>> {
+        if wallet.signing.requires_password() {
+            self.resolve().map(Some)
+        } else {
+            Ok(None)
+        }
     }
 }
 

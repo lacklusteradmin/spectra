@@ -11,9 +11,9 @@ impl WalletService {
         result_field: String,
     ) -> Result<String, SpectraBridgeError> {
         let json = self.broadcast_raw(chain_id, payload).await?;
-        Ok(crate::send::preview_decode::extract_json_string_field(
-            json,
-            result_field,
+        Ok(crate::send::flow::extract_json_string_field(
+            &json,
+            &result_field,
         ))
     }
 }

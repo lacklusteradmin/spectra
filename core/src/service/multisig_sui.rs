@@ -13,7 +13,7 @@ use super::*;
 use crate::derivation::sui_multisig::{SuiMultisig, SuiScheme};
 use crate::send::sui_multisig::{self as sui, MemberSignature};
 use crate::store::state::WalletState;
-use base64::Engine;
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 /// The gas budget a session's transfer carries, in MIST: what an ordinary
 /// SUI send carries.
@@ -36,10 +36,6 @@ fn policy(wallet: &WalletState) -> Result<SuiMultisig, SpectraBridgeError> {
     )?)
 }
 
-fn engine() -> base64::engine::GeneralPurpose {
-    base64::engine::general_purpose::STANDARD
-}
-
 fn members(policy: &SuiMultisig, signed: &[usize]) -> Vec<MultisigSigner> {
     policy
         .members
@@ -60,7 +56,7 @@ fn read(
     session: &SuiSession,
 ) -> Result<(SuiMultisig, Vec<u8>, sui::SuiTransfer, Vec<MemberSignature>), SpectraBridgeError> {
     let policy = policy(wallet)?;
-    let bytes = engine()
+    let bytes = STANDARD
         .decode(session.transaction.trim())
         .map_err(|_| SpectraBridgeError::invalid("Not a Sui transaction."))?;
     let transfer = sui::decode(&bytes)?;
@@ -129,7 +125,7 @@ pub(super) fn account(wallet: &WalletState) -> Result<MultisigAccount, SpectraBr
 /// The address a member's key holds alone, for naming the wallet that
 /// holds it.
 pub(super) fn member_address(signer: &str) -> Option<String> {
-    let bytes = engine().decode(signer).ok()?;
+    let bytes = STANDARD.decode(signer).ok()?;
     let (&flag, key) = bytes.split_first()?;
     let scheme = SuiScheme::of_flag(flag)?;
     (key.len() == scheme.key_length()).then(|| {
@@ -209,7 +205,7 @@ impl WalletService {
         )
         .await?;
         Ok(SessionBody::Sui(SuiSession {
-            transaction: engine().encode(&prepared.bytes),
+            transaction: STANDARD.encode(&prepared.bytes),
             signatures: Vec::new(),
         }))
     }
@@ -230,7 +226,7 @@ impl WalletService {
             let SessionBody::Sui(held) = &stored.body else {
                 continue;
             };
-            if engine().decode(held.transaction.trim()).ok().as_deref() != Some(bytes.as_slice()) {
+            if STANDARD.decode(held.transaction.trim()).ok().as_deref() != Some(bytes.as_slice()) {
                 continue;
             }
             let (_, _, _, mut known) = read(wallet, held)?;
@@ -313,7 +309,7 @@ impl WalletService {
     ) -> Result<(String, String), SpectraBridgeError> {
         let (policy, bytes, _, signatures) = read(wallet, session)?;
         let combined = sui::combine(&policy, &signatures)?;
-        Ok((engine().encode(bytes), engine().encode(combined)))
+        Ok((STANDARD.encode(bytes), STANDARD.encode(combined)))
     }
 
     /// Execute the session with its combined signature, its gas unchanged.

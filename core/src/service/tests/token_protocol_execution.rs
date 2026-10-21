@@ -116,21 +116,12 @@ async fn trc10_preview_and_metadata_use_real_token_precision_and_native_fee_budg
             .unwrap(),
         Some(2)
     );
-    let preview: serde_json::Value = serde_json::from_str(
-        &service
-            .fetch_tron_send_preview_json_on_chain(
-                Chain::Tron,
-                owner.into(),
-                "T10".into(),
-                "1002000".into(),
-            )
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(preview["max_sendable"], "23.45");
-    assert_eq!(preview["estimated_fee_trx"], "1.1");
-    assert_eq!(preview["fee_limit_sun"], 0);
+    let preview = service
+        .fetch_tron_send_preview(Chain::Tron, owner.into(), "T10".into(), "1002000".into())
+        .await
+        .unwrap();
+    assert_eq!(preview.max_sendable, "23.45");
+    assert_eq!(preview.estimated_network_fee, "1.1");
     assert!(
         server
             .received_requests()

@@ -114,8 +114,7 @@ impl WalletService {
         let mut holdings = vec![
             AssetHolding {
                 amount: native_amount,
-                ..native_coin_template(entry.chain_id)
-                    .ok_or_else(|| SpectraBridgeError::failure("missing native asset"))?
+                ..entry.chain_id.native_holding_template()
             }
             .identified(),
         ];
@@ -321,7 +320,7 @@ mod tests {
             .iter()
             .find(|token| token.chain_id == chain && token.symbol == "USDC")
             .unwrap();
-        let mut native = native_coin_template(chain).unwrap();
+        let mut native = chain.native_holding_template();
         native.amount = "1".into();
         let mut held = token.holding_template();
         held.amount = "2".into();
@@ -477,7 +476,7 @@ mod tests {
             None,
             true,
         );
-        let coin = native_coin_template(crate::registry::Chain::Ethereum).unwrap();
+        let coin = crate::registry::Chain::Ethereum.native_holding_template();
         w.holdings = vec![coin.clone()];
         service
             .apply_state_command(StateCommand::UpsertWallet { wallet: w })
@@ -528,7 +527,7 @@ mod tests {
             None,
             false,
         );
-        let mut coin = native_coin_template(crate::registry::Chain::Ethereum).unwrap();
+        let mut coin = crate::registry::Chain::Ethereum.native_holding_template();
         coin.amount = "4".into();
         w.holdings = vec![coin.clone()];
         service

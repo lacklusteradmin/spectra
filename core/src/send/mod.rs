@@ -10,7 +10,6 @@ pub mod message;
 pub mod payload;
 pub mod payment_memo;
 pub mod prepared_fields;
-pub mod preview_decode;
 pub mod preview_types;
 pub mod scanned_payment;
 pub mod stages;
@@ -168,22 +167,11 @@ impl SendExecutionRequest {
 /// Result from `WalletService::execute_send`.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SendExecutionResult {
-    /// Serialized protocol result, including protocol metadata and signed payload.
-    /// Swift must not parse this for business state; add typed fields here
-    /// when new send-result values are needed.
-    pub protocol_result_json: String,
-    /// Extracted transaction hash/ID.
     pub transaction_hash: String,
-    /// Payload format key (e.g. "bitcoin.rust_json").
-    pub payload_format: String,
     /// EVM-specific details (nonce, raw_tx_hex, gas_limit), converted directly
     /// from the protocol result. `None` for non-EVM chains.
     pub evm: Option<crate::send::ethereum::EvmSendDetails>,
     /// The signed transaction, hex-encoded, when `sign_only` was asked for.
-    ///
-    /// A typed field rather than something to dig out of `protocol_result_json`:
-    /// that is an opaque per-chain blob, and a caller reading it for business
-    /// state is what this record's own comment warns against.
     pub signed_payload: Option<String>,
 }
 
@@ -553,7 +541,7 @@ mod the_generic_submit_chains_can_name_a_fee {
                 chain.send_execution_shape().fee_fallback.is_some(),
                 "{name} needs a fee fallback"
             );
-            assert!(chain.simple_preview_chain().is_none(), "{name}");
+            assert!(!chain.has_shared_send_preview(), "{name}");
         }
     }
 }

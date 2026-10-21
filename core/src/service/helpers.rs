@@ -91,10 +91,8 @@ pub(super) fn fee_or_static(
 /// A chain's fee, quoted in that chain's own native unit.
 #[derive(Debug, Clone)]
 pub(crate) struct NativeFeeEstimate {
-    /// Smallest units, as a decimal string — some chains' fees do not fit u64.
-    pub raw: String,
-    /// The same amount at display scale.
-    pub display: String,
+    /// Smallest units; some chains' fees do not fit u64.
+    pub units: u128,
     /// `"rpc"` when a node quoted it, `"static"` when the catalog did.
     pub source: &'static str,
     /// Aptos's quoted unit price, distinct from the total reserved fee.
@@ -102,12 +100,6 @@ pub(crate) struct NativeFeeEstimate {
 }
 
 // ── State helpers ─────────────────────────────────────────────────────────
-
-/// Return a zero-amount AssetHolding template for the native coin of each
-/// chain. Used as the default when the holding doesn't exist yet.
-pub(crate) fn native_coin_template(chain_id: crate::registry::Chain) -> Option<AssetHolding> {
-    Some(Chain::native_holding_template(chain_id))
-}
 
 pub(super) fn decode_secret_array<const N: usize>(
     value: &str,

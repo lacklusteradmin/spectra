@@ -145,9 +145,7 @@ def main():
         worker.start()
         try:
             def run(*args, success=True):
-                if args[:2] in (('staking', 'build'), ('staking', 'recheck'), ('staking', 'repair'), ('send', 'sign')):
-                    args = (*args, '--password-env', 'SPECTRA_PASSWORD')
-                env = {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1', 'SPECTRA_PRIVATE_KEY': '01' * 32, 'SPECTRA_PASSWORD': 'fixture-password'}
+                env = {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1', 'SPECTRA_PRIVATE_KEY': '01' * 32}
                 result = subprocess.run([BINARY, '--data-dir', directory, '--json', *args], text=True, capture_output=True, timeout=60, env=env)
                 assert (result.returncode == 0) == success, (args, result.stdout, result.stderr, state['errors'])
                 assert not state['errors'], state['errors']

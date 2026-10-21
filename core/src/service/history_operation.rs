@@ -6,7 +6,7 @@ use crate::{SpectraBridgeError, registry::Chain};
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum HistoryRefreshScope {
     All,
-    Chains { chain_ids: Vec<String> },
+    Chains { chains: Vec<Chain> },
     Wallets { wallet_ids: Vec<String> },
 }
 #[derive(Debug, Clone, uniffi::Record)]
@@ -38,16 +38,7 @@ impl WalletService {
             }
             let state = this.app_state().await;
             let chains = match &scope {
-                HistoryRefreshScope::Chains { chain_ids } => Some(
-                    chain_ids
-                        .iter()
-                        .map(|id| {
-                            Chain::from_str_id(id).ok_or_else(|| SpectraBridgeError::InvalidInput {
-                                message: format!("unknown chain {id}").into(),
-                            })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?,
-                ),
+                HistoryRefreshScope::Chains { chains } => Some(chains.clone()),
                 _ => None,
             };
             let mut groups = std::collections::BTreeMap::<Chain, Vec<HistoryRefreshKey>>::new();

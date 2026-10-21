@@ -19,7 +19,7 @@ use crate::send::ton_multisig::{
     self as ton, MultisigData, OrderState, TonAccount, TonTransferOrder,
 };
 use crate::store::state::WalletState;
-use base64::Engine;
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 /// What a proposal attaches, as the multisig's own interface does: the
 /// order's deployment, storage and execution, the rest staying with the
@@ -60,10 +60,6 @@ struct Shared {
     seqno: Option<u64>,
 }
 
-fn engine() -> base64::engine::GeneralPurpose {
-    base64::engine::general_purpose::STANDARD
-}
-
 fn raw(account: &TonAccount) -> String {
     format!("{}:{}", account.0, hex::encode(account.1))
 }
@@ -82,7 +78,7 @@ fn multisig_account(wallet: &WalletState) -> Result<TonAccount, SpectraBridgeErr
 }
 
 fn order_cell(text: &str) -> Result<Cell, SpectraBridgeError> {
-    Ok(cell_from_boc(&engine().decode(text.trim()).map_err(
+    Ok(cell_from_boc(&STANDARD.decode(text.trim()).map_err(
         |_| SpectraBridgeError::invalid("Not a TON order."),
     )?)?)
 }
@@ -314,7 +310,7 @@ impl WalletService {
         }
         .order()?;
         Ok(SessionBody::Ton(TonSession {
-            order: engine().encode(order.to_boc()?),
+            order: STANDARD.encode(order.to_boc()?),
             expiration: crate::store::now_unix() as u64 + lifetime,
             seqno: None,
             signers: data.signers.iter().map(raw).collect(),
@@ -373,7 +369,7 @@ impl WalletService {
         let order = order_cell(&shared.order)?;
         TonTransferOrder::decode(&order)?;
         let incoming = TonSession {
-            order: engine().encode(order.to_boc()?),
+            order: STANDARD.encode(order.to_boc()?),
             expiration: shared.expiration,
             seqno: shared.seqno,
             signers: Vec::new(),
@@ -551,7 +547,7 @@ impl WalletService {
                 self.endpoints_for(chain, &[EndpointCapability::Broadcast])
                     .await,
             )
-            .send_boc(&engine().encode(raw))
+            .send_boc(&STANDARD.encode(raw))
             .await?;
         let executes = refreshed.approvals.len() + 1 >= usize::from(refreshed.threshold);
         refreshed.seqno = Some(seqno);

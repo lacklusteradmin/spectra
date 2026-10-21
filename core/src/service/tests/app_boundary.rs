@@ -75,16 +75,12 @@ async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
         )
         .mount(&server)
         .await;
-    let result = svc
-        .fetch_simple_chain_send_preview(crate::registry::Chain::Solana, "sender".into())
+    let preview = svc
+        .fetch_shared_send_preview(crate::registry::Chain::Solana, "sender".into())
         .await
-        .unwrap()
         .unwrap();
-    let crate::send::preview_decode::SimpleChainPreview::Solana { preview } = result else {
-        panic!("wrong chain")
-    };
-    assert_eq!(preview.estimatedNetworkFee, "0.000005");
-    assert_eq!(preview.maxSendable, "1.999995");
+    assert_eq!(preview.estimated_network_fee, "0.000005");
+    assert_eq!(preview.max_sendable, "1.999995");
     server.reset().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(200).set_body_json(
@@ -93,12 +89,12 @@ async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
         .mount(&server)
         .await;
     assert!(
-        svc.fetch_simple_chain_send_preview(crate::registry::Chain::Solana, "sender".into())
+        svc.fetch_shared_send_preview(crate::registry::Chain::Solana, "sender".into())
             .await
             .is_err()
     );
     assert!(
-        svc.fetch_simple_chain_send_preview(crate::registry::Chain::Ethereum, "sender".into())
+        svc.fetch_shared_send_preview(crate::registry::Chain::Ethereum, "sender".into())
             .await
             .is_err()
     );
@@ -180,14 +176,10 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
         )
         .await
         .unwrap();
-    let Some(crate::send::flow::SendPreview::Solana { preview }) = result.map(|quote| {
-        assert!(quote.shortcuts.contains_key(&100));
-        assert_eq!(quote.chain_id, crate::registry::Chain::Solana);
-        quote.preview
-    }) else {
-        panic!("wrong preview")
-    };
-    assert_eq!(preview.maxSendable, "1.999995");
+    let quote = result.expect("quote");
+    assert!(quote.shortcuts.contains_key(&100));
+    assert_eq!(quote.chain_id, crate::registry::Chain::Solana);
+    assert_eq!(quote.preview.max_sendable, "1.999995");
     svc.wallet_state.write().await.wallets[0].addresses.clear();
     let count = server.received_requests().await.unwrap().len();
     assert!(

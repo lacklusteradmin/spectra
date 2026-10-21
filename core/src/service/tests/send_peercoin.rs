@@ -215,22 +215,29 @@ async fn protected_peercoin_account_quotes_and_signs_all_sources_after_restart()
                 .preview_peercoin_owned_send(chain, "w", "0.5", &to)
                 .await
                 .unwrap();
-            assert_eq!(small_preview.selectedInputCount, Some(1));
+            let selected = |preview: &crate::send::preview_types::SendPreview| match preview.terms {
+                crate::send::preview_types::SendFeeTerms::Utxo {
+                    selected_input_count,
+                    ..
+                } => selected_input_count,
+                _ => panic!("UTXO terms"),
+            };
+            assert_eq!(selected(&small_preview), 1);
             let amount = if purpose == 44 { "2.9" } else { "1.9" };
             let preview = wallet
                 .preview_peercoin_owned_send(chain, "w", amount, &to)
                 .await
                 .unwrap();
             let expected_inputs = if purpose == 44 { 3 } else { 2 };
-            assert_eq!(preview.selectedInputCount, Some(expected_inputs));
+            assert_eq!(selected(&preview), expected_inputs);
             assert_eq!(
-                preview.spendableBalance,
-                Some(if purpose == 44 { "3" } else { "2" }.into())
+                preview.spendable_balance,
+                if purpose == 44 { "3" } else { "2" }
             );
             let mut req = request(chain, to);
             req.amount_str = amount.into();
             req.fee_sat =
-                Some(crate::send::payload::fee_units(&preview.estimatedNetworkFee, 6).unwrap());
+                Some(crate::send::payload::fee_units(&preview.estimated_network_fee, 6).unwrap());
             let built = wallet.build_send(req).await.unwrap();
             let persisted = wallet.load_send_artifact(built.id.clone()).await.unwrap();
             let PreparedPayload::Peercoin(prepared) = &persisted.prepared else {
@@ -238,7 +245,7 @@ async fn protected_peercoin_account_quotes_and_signs_all_sources_after_restart()
             };
             assert_eq!(prepared.inputs.len() as i64, expected_inputs);
             assert_eq!(
-                preview.estimatedNetworkFee,
+                preview.estimated_network_fee,
                 crate::decimal::from_units(prepared.fee.into(), 6)
             );
             assert!(
@@ -435,7 +442,7 @@ async fn an_owned_peercoin_build_pays_the_fee_its_preview_quoted() {
         .await
         .unwrap();
     let mut state = wallet.app_state().await.wallets[0].clone();
-    let mut coin = native_coin_template(chain).unwrap();
+    let mut coin = chain.native_holding_template();
     coin.amount = "2".into();
     state.holdings.push(coin);
     wallet
@@ -451,7 +458,7 @@ async fn an_owned_peercoin_build_pays_the_fee_its_preview_quoted() {
         memo: None,
     };
     let review = wallet.review_owned_send(input.clone()).await.unwrap();
-    let quoted = review.preview.unwrap().network_fee().to_string();
+    let quoted = review.preview.unwrap().estimated_network_fee;
     let built = wallet.build_owned_send(input).await.unwrap();
     let stored = wallet.load_send_artifact(built.id).await.unwrap();
     let PreparedPayload::Peercoin(prepared) = &stored.prepared else {

@@ -17,7 +17,7 @@ pub struct SendReviewInput {
 pub struct OwnedSendReview {
     pub id: String,
     pub request: crate::send::SendExecutionRequest,
-    pub preview: Option<crate::send::flow::SendPreview>,
+    pub preview: Option<crate::send::preview_types::SendPreview>,
     pub warnings: Vec<crate::send::flow::HighRiskSendWarning>,
     pub recipient_warnings: Vec<crate::store::EvmRecipientPreflightWarning>,
     pub requires_self_send_confirmation: bool,
@@ -77,18 +77,23 @@ impl WalletService {
                 .as_ref()
                 .map(|memo| memo.validated(quote.request.chain_id))
                 .transpose()?;
-            if let Some(crate::send::flow::SendPreview::Ethereum { preview }) = &mut quote.preview {
+            if let Some(crate::send::preview_types::SendPreview {
+                estimated_network_fee,
+                terms: crate::send::preview_types::SendFeeTerms::Evm { terms },
+                ..
+            }) = &quote.preview
+            {
                 let fees = quote
                     .request
                     .evm_overrides
                     .get_or_insert_with(Default::default);
-                fees.nonce = Some(preview.nonce);
-                fees.gas_limit = Some(preview.gasLimit);
+                fees.nonce = Some(terms.nonce);
+                fees.gas_limit = Some(terms.gas_limit);
                 fees.custom_fees = Some(crate::send::ethereum::EvmCustomFeeConfiguration {
-                    max_fee_per_gas_gwei: preview.maxFeePerGasGwei.clone(),
-                    max_priority_fee_per_gas_gwei: preview.maxPriorityFeePerGasGwei.clone(),
+                    max_fee_per_gas_gwei: terms.max_fee_per_gas_gwei.clone(),
+                    max_priority_fee_per_gas_gwei: terms.max_priority_fee_per_gas_gwei.clone(),
                 });
-                quote.request.fee_amount = Some(preview.estimatedNetworkFee.clone());
+                quote.request.fee_amount = Some(estimated_network_fee.clone());
             }
             let chain = quote.request.chain_id;
             let resolved = this
@@ -413,7 +418,7 @@ mod tests {
                 Some("m/44'/60'/0'/0/0".into()),
                 false,
             );
-            let mut holding = native_coin_template(crate::registry::Chain::Ethereum).unwrap();
+            let mut holding = crate::registry::Chain::Ethereum.native_holding_template();
             holding.amount = "10".into();
             wallet.holdings.push(holding);
             wallet.signing = crate::store::state::WalletSigning::SeedPhrase {

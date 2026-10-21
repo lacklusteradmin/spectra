@@ -14,10 +14,6 @@ pub const EXIT_REJECTED: i32 = 3;
 pub struct CliError {
     pub message: String,
     pub code: i32,
-    /// Suppresses `main`'s error object. `--json` must produce exactly one
-    /// document, and a command that reports results *and* fails would
-    /// otherwise print two.
-    pub already_emitted: bool,
 }
 
 impl CliError {
@@ -25,16 +21,6 @@ impl CliError {
         Self {
             message: message.into(),
             code: EXIT_FAILURE,
-            already_emitted: false,
-        }
-    }
-
-    /// A failure whose JSON the command has already printed.
-    pub fn reported(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            code: EXIT_FAILURE,
-            already_emitted: true,
         }
     }
 
@@ -42,7 +28,6 @@ impl CliError {
         Self {
             message: message.into(),
             code: EXIT_USAGE,
-            already_emitted: false,
         }
     }
 
@@ -51,7 +36,6 @@ impl CliError {
         Self {
             message: message.into(),
             code: EXIT_REJECTED,
-            already_emitted: false,
         }
     }
 }

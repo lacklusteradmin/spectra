@@ -185,7 +185,7 @@ fn decimal(zatoshis: zcash_protocol::value::Zatoshis) -> String {
 fn shielded_history(
     path: &std::path::Path,
     chain: Chain,
-) -> Result<Vec<crate::fetch::history_decode::NormalizedHistoryItem>, SpectraBridgeError> {
+) -> Result<Vec<crate::fetch::history::NormalizedHistoryItem>, SpectraBridgeError> {
     let conn = rusqlite::Connection::open(path).map_err(internal)?;
     let mut statement = conn
         .prepare(
@@ -241,7 +241,7 @@ fn shielded_history(
             "pending"
         };
         let item = |kind: &str, zatoshis: i64, counterparty: String| {
-            crate::fetch::history_decode::NormalizedHistoryItem {
+            crate::fetch::history::NormalizedHistoryItem {
                 deployment_id: crate::tokens::deployment_id_for(chain, None),
                 kind: kind.into(),
                 status: status.into(),

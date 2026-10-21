@@ -228,13 +228,7 @@ impl WalletService {
             _ => None,
         };
         Ok(crate::send::SendExecutionResult {
-            protocol_result_json: serde_json::to_string(&completed)?,
             transaction_hash: hash,
-            payload_format: if chain.is_evm() {
-                "evm.raw_hex".into()
-            } else {
-                "core.submission_json".into()
-            },
             signed_payload: sign_only.then(|| {
                 if chain.is_evm() {
                     submission.payload.clone()

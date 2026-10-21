@@ -101,18 +101,18 @@ impl WalletService {
         destination: &str,
         amount: u128,
         contract: Option<&str>,
-    ) -> Result<crate::send::preview_types::NearSendPreview, SpectraBridgeError> {
+    ) -> Result<crate::send::preview_types::SendPreview, SpectraBridgeError> {
         let quote = self
             .near_send_quote(chain, owner, destination, amount, contract)
             .await?;
         let decimal =
             |amount| crate::decimal::from_units(amount, u32::from(chain.native_decimals()));
-        Ok(crate::send::preview_types::NearSendPreview {
-            estimatedNetworkFee: decimal(quote.budget),
-            feeBudgetYoctoNear: quote.budget.to_string(),
-            spendableBalance: decimal(quote.spendable),
-            maxSendable: decimal(quote.spendable.saturating_sub(quote.required(0, false)?)),
-            feeRateDescription: Some("Protocol prepayment budget; storage stake retained".into()),
+        Ok(crate::send::preview_types::SendPreview {
+            estimated_network_fee: decimal(quote.budget),
+            spendable_balance: decimal(quote.spendable),
+            max_sendable: decimal(quote.spendable.saturating_sub(quote.required(0, false)?)),
+            fee_rate_description: Some("Protocol prepayment budget; storage stake retained".into()),
+            ..Default::default()
         })
     }
 

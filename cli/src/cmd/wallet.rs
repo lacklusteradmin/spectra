@@ -12,7 +12,7 @@ use spectra_core::registry::Chain;
 use spectra_core::store::state::{StateCommand, WalletState};
 
 use super::resolve_chain;
-use crate::ctx::{Ctx, SecretSource, wallet_address};
+use crate::ctx::{Ctx, PasswordArgs, SecretSource, wallet_address};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 
@@ -228,14 +228,10 @@ pub struct CreationArgs {
     /// JSON file containing raw derivation fields (including exact passphrase text).
     #[arg(long)]
     derivation_input_file: Option<String>,
-    /// Read the wallet password from this file; `-` means stdin.
-    #[arg(long, value_name = "PATH")]
-    password_file: Option<String>,
-    /// Read the wallet password from this environment variable.
-    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
-    password_env: Option<String>,
+    #[command(flatten)]
+    password: PasswordArgs,
     /// Encrypt the seed with a local key stored in this data directory, without a wallet password.
-    #[arg(long, conflicts_with_all = ["password_file"])]
+    #[arg(long, conflicts_with = "password_file")]
     no_password: bool,
     /// Monero, and a Zcash wallet's shielded pools: the block height the
     /// wallet's scan starts from. A new wallet starts near now; an import
@@ -254,21 +250,7 @@ impl CreationArgs {
         if self.no_password {
             return Ok(None);
         }
-        self.password().map(Some)
-    }
-
-    fn password(&self) -> CliResult<String> {
-        // The env default only counts when set, so an interactive run still
-        // reaches the prompt.
-        let env = self
-            .password_env
-            .clone()
-            .filter(|name| std::env::var_os(name).is_some());
-        SecretSource {
-            file: self.password_file.clone(),
-            env,
-        }
-        .resolve("password", "password-file")
+        self.password.resolve().map(Some)
     }
 }
 
@@ -388,12 +370,8 @@ pub struct ScanSyncArgs {
     /// Scan one batch and stop.
     #[arg(long)]
     once: bool,
-    /// Read the wallet password from this file; `-` means stdin.
-    #[arg(long, value_name = "PATH")]
-    password_file: Option<String>,
-    /// Read the wallet password from this environment variable.
-    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
-    password_env: Option<String>,
+    #[command(flatten)]
+    password: PasswordArgs,
 }
 
 #[derive(Args)]
@@ -534,12 +512,8 @@ pub struct SignMessageArgs {
     /// The message, as text.
     #[arg(long)]
     message: String,
-    /// Read the wallet password from this file; `-` means stdin.
-    #[arg(long, value_name = "PATH")]
-    password_file: Option<String>,
-    /// Read the wallet password from this environment variable.
-    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
-    password_env: Option<String>,
+    #[command(flatten)]
+    password: PasswordArgs,
 }
 
 #[derive(Args)]
@@ -572,12 +546,9 @@ pub struct CopyArgs {
     /// Print the address the copy would store, and store nothing.
     #[arg(long)]
     preview: bool,
-    /// Read the source wallet's password from this file; `-` means stdin.
-    #[arg(long, value_name = "PATH")]
-    password_file: Option<String>,
-    /// Read the source wallet's password from this environment variable.
-    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
-    password_env: Option<String>,
+    // The source wallet's password, which opens its seal and seals the copy.
+    #[command(flatten)]
+    password: PasswordArgs,
 }
 
 #[derive(Args)]
@@ -601,12 +572,8 @@ pub struct ExportArgs {
     /// Confirm printing the wallet's secret in plain text.
     #[arg(long)]
     yes: bool,
-    /// Read the wallet password from this file; `-` means stdin.
-    #[arg(long, value_name = "PATH")]
-    password_file: Option<String>,
-    /// Read the wallet password from this environment variable.
-    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
-    password_env: Option<String>,
+    #[command(flatten)]
+    password: PasswordArgs,
 }
 
 fn print_zcash_status(status: &spectra_core::service::ZcashShieldedStatus) {
@@ -882,12 +849,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
         }
         WalletCommand::ZcashSync(args) => {
             let wallet = ctx.find_wallet(&args.wallet)?;
-            let password = super::tx::signing_password(
-                ctx,
-                &wallet.id,
-                args.password_file,
-                args.password_env,
-            )?;
+            let password = args.password.for_wallet(&wallet)?;
             let service = ctx.service()?;
             // Each batch moves the scan on or finishes it.
             loop {
@@ -945,12 +907,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
         }
         WalletCommand::MwebSync(args) => {
             let wallet = ctx.find_wallet(&args.wallet)?;
-            let password = super::tx::signing_password(
-                ctx,
-                &wallet.id,
-                args.password_file,
-                args.password_env,
-            )?;
+            let password = args.password.for_wallet(&wallet)?;
             let service = ctx.service()?;
             // Each batch moves the scan on or finishes it.
             loop {
@@ -1339,13 +1296,9 @@ fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
     if args.private_key_file.is_some() || args.private_key_env.is_some() {
         return import_private_key(ctx, out, args, chain);
     }
-    let env = args
-        .seed_env
-        .clone()
-        .filter(|name| std::env::var_os(name).is_some());
     let seed_phrase = SecretSource {
         file: args.seed_file.clone(),
-        env,
+        env: args.seed_env.clone(),
     }
     .resolve("seed phrase", "seed-file")?;
 
@@ -1403,13 +1356,9 @@ fn import_private_key(ctx: &Ctx, out: Out, args: ImportArgs, chain: Chain) -> Cl
             "Derivation overrides require a mnemonic wallet",
         ));
     }
-    let env = args
-        .private_key_env
-        .clone()
-        .filter(|name| std::env::var_os(name).is_some());
     let private_key = SecretSource {
         file: args.private_key_file.clone(),
-        env,
+        env: args.private_key_env.clone(),
     }
     .resolve("private key", "private-key-file")?;
     // Core reads the key in any of the chain's own encodings.
@@ -1985,21 +1934,7 @@ fn rename(ctx: &Ctx, out: Out, args: RenameArgs) -> CliResult<()> {
 
 fn sign_message(ctx: &Ctx, out: Out, args: SignMessageArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let password = if wallet.signing.requires_password() {
-        let env = args
-            .password_env
-            .clone()
-            .filter(|name| std::env::var_os(name).is_some());
-        Some(
-            SecretSource {
-                file: args.password_file.clone(),
-                env,
-            }
-            .resolve("password", "password-file")?,
-        )
-    } else {
-        None
-    };
+    let password = args.password.for_wallet(&wallet)?;
     let service = ctx.service()?;
     service.set_secret_store(ctx.secrets.clone());
     let signed = ctx
@@ -2058,21 +1993,7 @@ fn copy(ctx: &Ctx, out: Out, args: CopyArgs) -> CliResult<()> {
     )?;
     // The source's password opens its seal and seals the copy; a watched
     // wallet has neither.
-    let password = if wallet.signing.requires_password() {
-        let env = args
-            .password_env
-            .clone()
-            .filter(|name| std::env::var_os(name).is_some());
-        Some(
-            SecretSource {
-                file: args.password_file.clone(),
-                env,
-            }
-            .resolve("password", "password-file")?,
-        )
-    } else {
-        None
-    };
+    let password = args.password.for_wallet(&wallet)?;
     let commit = spectra_core::service::WalletCopyCommit {
         source_wallet_id: wallet.id.clone(),
         chain,
@@ -2240,22 +2161,7 @@ fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         )));
     }
 
-    let env = args
-        .password_env
-        .clone()
-        .filter(|name| std::env::var_os(name).is_some());
-    // Ask for a password only when the wallet has password protection.
-    let password = if wallet.signing.requires_password() {
-        Some(
-            SecretSource {
-                file: args.password_file.clone(),
-                env,
-            }
-            .resolve("password", "password-file")?,
-        )
-    } else {
-        None
-    };
+    let password = args.password.for_wallet(&wallet)?;
     let service = ctx.service()?;
     service.set_secret_store(ctx.secrets.clone());
 

@@ -457,33 +457,28 @@ impl Chain {
         }
     }
 
-    /// The decode shape this chain's send preview comes back in, for the
-    /// chains core estimates through one entry point.
+    /// The chain's send preview comes from the shared path: its coin's fee
+    /// and balance, through one entry point.
     ///
-    /// `None` means the chain has a preview path of its own — the UTXO family,
-    /// Dogecoin, Tron and the EVM family each take different inputs and return
-    /// a different record, which is why they are not one call.
-    ///
-    /// Through `mainnet_counterpart` because the shape is what decoding needs
-    /// and a testnet decodes like its mainnet; which network is reached is the
-    /// chain id's business.
-    pub fn simple_preview_chain(self) -> Option<crate::send::preview_decode::SimpleChain> {
-        use crate::send::preview_decode::SimpleChain;
-        Some(match self.mainnet_counterpart() {
-            Chain::Solana => SimpleChain::Solana,
-            Chain::Xrp => SimpleChain::Xrp,
-            Chain::Stellar => SimpleChain::Stellar,
-            Chain::Monero => SimpleChain::Monero,
-            Chain::Cardano => SimpleChain::Cardano,
-            Chain::Sui => SimpleChain::Sui,
-            Chain::Aptos => SimpleChain::Aptos,
-            Chain::Ton => SimpleChain::Ton,
-            Chain::Icp => SimpleChain::Icp,
-            Chain::Near => SimpleChain::Near,
-            Chain::Polkadot => SimpleChain::Polkadot,
-            Chain::Bittensor => SimpleChain::Bittensor,
-            _ => return None,
-        })
+    /// The UTXO family, Tron and the EVM family each have a preview path of
+    /// their own, which take different inputs. A testnet quotes like its
+    /// mainnet; which network is reached is the chain id's business.
+    pub fn has_shared_send_preview(self) -> bool {
+        matches!(
+            self.mainnet_counterpart(),
+            Chain::Solana
+                | Chain::Xrp
+                | Chain::Stellar
+                | Chain::Monero
+                | Chain::Cardano
+                | Chain::Sui
+                | Chain::Aptos
+                | Chain::Ton
+                | Chain::Icp
+                | Chain::Near
+                | Chain::Polkadot
+                | Chain::Bittensor
+        )
     }
 
     /// The APIs the chain's own clients speak: what its balance, fee and
@@ -577,7 +572,7 @@ impl Chain {
         self.is_evm()
             || self.uses_account_utxo()
             || !self.uses_generic_send_submit()
-            || self.simple_preview_chain().is_some()
+            || self.has_shared_send_preview()
             || self.send_execution_shape().fee_fallback.is_some()
     }
 

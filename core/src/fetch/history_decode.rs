@@ -2,27 +2,6 @@
 // records instead of re-parsing JSON.
 
 // ────────────────────────────────────────────────────────────────────
-// Normalized chain history — typed item produced by
-// `WalletService::fetch_normalized_history` (see `history::ChainHistoryEntry`).
-// ────────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct NormalizedHistoryItem {
-    pub deployment_id: Option<String>,
-    pub kind: String,
-    pub status: String,
-    pub asset_display_name: String,
-    pub symbol: String,
-    pub chain_id: crate::registry::Chain,
-    /// The magnitude, as an exact decimal; `kind` says which way it went.
-    pub amount: String,
-    pub counterparty: String,
-    pub tx_hash: String,
-    pub block_height: Option<i64>,
-    pub timestamp: f64,
-}
-
-// ────────────────────────────────────────────────────────────────────
 // EVM history page decode — shape produced by
 // `WalletService::fetch_evm_history_page` (tokens, NFTs and native).
 // ────────────────────────────────────────────────────────────────────

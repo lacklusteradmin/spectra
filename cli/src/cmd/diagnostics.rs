@@ -103,7 +103,7 @@ pub fn run(ctx: &Ctx, out: Out, command: DiagnosticsCommand) -> CliResult<()> {
             if passed {
                 Ok(())
             } else {
-                Err(CliError::reported("Configured network self-tests failed"))
+                Err(CliError::failure("Configured network self-tests failed"))
             }
         }
     }
@@ -180,7 +180,7 @@ fn self_test(out: Out, args: SelfTestArgs) -> CliResult<()> {
     }));
 
     if failed > 0 {
-        return Err(CliError::reported(format!(
+        return Err(CliError::failure(format!(
             "{failed} of {total} checks failed"
         )));
     }

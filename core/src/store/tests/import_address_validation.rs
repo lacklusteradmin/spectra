@@ -102,7 +102,7 @@ mod watch_only {
     /// this fails if they ever drift apart.
     #[test]
     fn the_send_normaliser_and_the_import_normaliser_agree() {
-        use crate::send::flow::normalized_send_address;
+        use crate::send::flow::normalize_address;
         // Internet Computer is absent on purpose: its account identifier
         // carries a CRC32 prefix, so there is no fixture to write here
         // without computing a real one, and a fixture the validator
@@ -134,7 +134,7 @@ mod watch_only {
             let (kept, rejected) = validated(slot, &[typed]);
             assert!(rejected.is_empty(), "{chain_id}: rejected {typed}");
             let imported = kept.first().unwrap();
-            let sent = normalized_send_address(chain_id, typed.to_string());
+            let sent = normalize_address(chain_id, typed);
             assert_eq!(
                 imported, &sent,
                 "{chain_id}: import normalised to {imported}, send to {sent}"

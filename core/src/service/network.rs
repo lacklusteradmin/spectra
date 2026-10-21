@@ -7,26 +7,9 @@ mod network_receipt;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    // `fetch_history` lives in the plain-impl block below (JSON shuttle —
-    // kept internal, not exported to Swift).
-
-    // `broadcast_at` lives in the plain `impl WalletService` block
-    // in `service/send_broadcast.rs`. UniFFI exports every method of a `#[uniffi::export]`
-    // impl block regardless of `pub(crate)` visibility, so chain-dispatch
-    // internal protocol helpers must be outside this block.
-
-    // `execute_send` lives in `service/send_execution.rs`.
-
-    // `fetch_evm_history_page` lives in the plain-impl block below: it is
-    // called by `history_refresh`, not across the FFI.
-
-    // `broadcast_raw` lives in the plain-impl block below (a JSON shuttle —
-    // kept internal, not exported to Swift).
-
-    // `fetch_evm_send_preview_json` / `fetch_tron_send_preview_json_on_chain` /
-    // `fetch_simple_chain_send_preview_json` live in the plain-impl block below
-    // (JSON shuttles — kept internal, not exported to Swift). Their typed
-    // wrappers below call into those internal helpers.
+    // UniFFI exports every method of a `#[uniffi::export]` impl block,
+    // whatever its visibility, so internal helpers live in plain
+    // `impl WalletService` blocks of their own modules.
 
     /// Run read-only protocol checks for every API on `chain`. A pass never
     /// promises broadcast support.

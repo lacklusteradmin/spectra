@@ -7,7 +7,7 @@
 use clap::{Args, Subcommand};
 use spectra_core::service::{MultisigSession, MultisigSigner, MultisigSpend};
 
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, PasswordArgs};
 use crate::error::{CliError, CliResult};
 use crate::out::Out;
 
@@ -82,10 +82,8 @@ pub struct SignArgs {
     /// account signs as the cosigner whose phrase was added to it.
     #[arg(long)]
     signer: Option<String>,
-    #[arg(long)]
-    password_file: Option<String>,
-    #[arg(long, default_value = "SPECTRA_PASSWORD")]
-    password_env: Option<String>,
+    #[command(flatten)]
+    password: PasswordArgs,
 }
 
 #[derive(Args)]
@@ -95,10 +93,8 @@ pub struct SubmitArgs {
     /// network submits through one.
     #[arg(long)]
     executor: Option<String>,
-    #[arg(long)]
-    password_file: Option<String>,
-    #[arg(long, default_value = "SPECTRA_PASSWORD")]
-    password_env: Option<String>,
+    #[command(flatten)]
+    password: PasswordArgs,
     #[arg(long)]
     yes: bool,
 }
@@ -174,15 +170,16 @@ pub fn run(ctx: &Ctx, out: Out, command: MultisigCommand) -> CliResult<()> {
         MultisigCommand::Sign(args) => {
             let stored = ctx.rt.block_on(service.multisig_session(args.id.clone()))?;
             let signer = match &args.signer {
-                Some(signer) => Some(ctx.find_wallet(signer)?.id),
+                Some(signer) => Some(ctx.find_wallet(signer)?),
                 None => None,
             };
-            let password = super::tx::signing_password(
-                ctx,
-                signer.as_deref().unwrap_or(&stored.wallet_id),
-                args.password_file,
-                args.password_env,
-            )?;
+            let password = match &signer {
+                Some(signer) => args.password.for_wallet(signer)?,
+                None => args
+                    .password
+                    .for_wallet(&ctx.find_wallet(&stored.wallet_id)?)?,
+            };
+            let signer = signer.map(|signer| signer.id);
             ctx.rt
                 .block_on(service.sign_multisig(args.id, args.review_digest, signer, password))?
         }
@@ -218,15 +215,13 @@ pub fn run(ctx: &Ctx, out: Out, command: MultisigCommand) -> CliResult<()> {
             if !args.yes {
                 return Err(CliError::usage("submit requires --yes"));
             }
-            let executor = match &args.executor {
-                Some(executor) => Some(ctx.find_wallet(executor)?.id),
-                None => None,
-            };
-            let password = match &executor {
-                Some(id) => {
-                    super::tx::signing_password(ctx, id, args.password_file, args.password_env)?
+            let (executor, password) = match &args.executor {
+                Some(executor) => {
+                    let executor = ctx.find_wallet(executor)?;
+                    let password = args.password.for_wallet(&executor)?;
+                    (Some(executor.id), password)
                 }
-                None => None,
+                None => (None, None),
             };
             ctx.rt
                 .block_on(service.submit_multisig(args.id, executor, password))?
