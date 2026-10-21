@@ -894,10 +894,12 @@ mod owned_world_chain_nonce_rollover {
                 None,
             )
             .await
-            .unwrap()
             .unwrap();
-        assert_eq!(preview.nonce, 128);
-        assert_eq!(preview.gasLimit, 21_000);
+        let crate::send::preview_types::SendFeeTerms::Evm { terms } = &preview.terms else {
+            panic!("EVM terms");
+        };
+        assert_eq!(terms.nonce, 128);
+        assert_eq!(terms.gas_limit, 21_000);
         let preview_requests = server.received_requests().await.unwrap();
         let oracle_sizes = preview_requests
             .iter()
@@ -913,7 +915,7 @@ mod owned_world_chain_nonce_rollover {
             .collect::<Vec<_>>();
         assert_eq!(oracle_sizes.last().copied(), Some(size_at_127 + 1));
         assert_eq!(
-            preview.estimatedNetworkFee,
+            preview.estimated_network_fee,
             crate::decimal::from_units(
                 21_000 * 4_000_000_000_u128 + (size_at_127 as u128 + 1) * 1_000 + 1_000,
                 18,

@@ -157,7 +157,7 @@ impl WalletService {
         wallet_id: &str,
         amount: &str,
         destination: &str,
-    ) -> Result<crate::send::preview_types::BitcoinSendPreview, SpectraBridgeError> {
+    ) -> Result<crate::send::preview_types::SendPreview, SpectraBridgeError> {
         let amount = u64::try_from(crate::send::amount_input::parse_raw_amount(
             amount,
             u32::from(chain.native_decimals()),
@@ -201,15 +201,18 @@ impl WalletService {
         let units = |raw: u64| {
             crate::decimal::from_units(u128::from(raw), u32::from(chain.native_decimals()))
         };
-        let mut preview = crate::send::preview_types::BitcoinSendPreview {
-            estimatedFeeRateSatVb: chain.peercoin_fee_per_kb_units()? / 1_000,
-            estimatedNetworkFee: "0".into(),
-            feeRateDescription: Some("0.01 PPC/kB".into()),
-            spendableBalance: Some(units(total)),
-            estimatedTransactionBytes: Some(0),
-            selectedInputCount: Some(inputs.len() as i64),
-            usesChangeOutput: Some(false),
-            maxSendable: Some("0".into()),
+        let fee_rate_sat_vb = chain.peercoin_fee_per_kb_units()? / 1_000;
+        let mut preview = crate::send::preview_types::SendPreview {
+            estimated_network_fee: "0".into(),
+            spendable_balance: units(total),
+            max_sendable: "0".into(),
+            fee_rate_description: Some("0.01 PPC/kB".into()),
+            estimated_transaction_bytes: Some(0),
+            terms: crate::send::preview_types::SendFeeTerms::Utxo {
+                fee_rate_sat_vb,
+                selected_input_count: inputs.len() as i64,
+                uses_change_output: false,
+            },
         };
         if inputs.is_empty() && amount == 0 {
             return Ok(preview);
@@ -231,12 +234,15 @@ impl WalletService {
             Err(error) => return Err(error.into()),
         };
         let quote = selection.quote;
-        preview.spendableBalance = Some(units(selection.spendable_balance));
-        preview.selectedInputCount = Some(selection.indices.len() as i64);
-        preview.estimatedNetworkFee = units(quote.fee);
-        preview.estimatedTransactionBytes = Some(quote.estimated_bytes as i64);
-        preview.usesChangeOutput = Some(quote.change > 0);
-        preview.maxSendable = Some(units(quote.max_sendable));
+        preview.spendable_balance = units(selection.spendable_balance);
+        preview.estimated_network_fee = units(quote.fee);
+        preview.estimated_transaction_bytes = Some(quote.estimated_bytes as i64);
+        preview.max_sendable = units(quote.max_sendable);
+        preview.terms = crate::send::preview_types::SendFeeTerms::Utxo {
+            fee_rate_sat_vb,
+            selected_input_count: selection.indices.len() as i64,
+            uses_change_output: quote.change > 0,
+        };
         Ok(preview)
     }
 }

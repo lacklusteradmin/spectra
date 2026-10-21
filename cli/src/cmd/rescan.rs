@@ -31,13 +31,9 @@ pub struct RescanArgs {
 }
 
 pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
-    let env = args
-        .seed_env
-        .clone()
-        .filter(|name| std::env::var_os(name).is_some());
     let seed_phrase = SecretSource {
         file: args.seed_file.clone(),
-        env,
+        env: args.seed_env.clone(),
     }
     .resolve("seed phrase", "seed-file")?;
 

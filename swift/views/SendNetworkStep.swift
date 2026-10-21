@@ -17,10 +17,10 @@ struct SendNetworkStep: View {
     }
 
     /// The quoted fee, with its display-currency value when core had one.
-    private func networkFeeText(_ quote: OwnedSendPreview, chain: Chain) -> String? {
-        guard let fee = quote.networkFee else { return nil }
-        return AppLocalization.format(
-            "Estimated Network Fee: %@", store.amounts.compactNetworkFee(fee, value: quote.networkFeeValue, chain: chain))
+    private func networkFeeText(_ quote: OwnedSendPreview, chain: Chain) -> String {
+        AppLocalization.format(
+            "Estimated Network Fee: %@",
+            store.amounts.compactNetworkFee(quote.preview.estimatedNetworkFee, value: quote.networkFeeValue, chain: chain))
     }
 
     var body: some View {
@@ -138,12 +138,12 @@ struct SendNetworkStep: View {
             }
             if store.sendFlow.isPreparingPreview {
                 SpectraLoadingRow(title: "Loading nonce and fee estimate...")
-            } else if let quote, case .ethereum(let evmSendPreview) = quote.preview {
+            } else if let quote, case .evm(let quoted) = quote.preview.terms {
                 Divider().opacity(0.3)
-                valueRow("Nonce", "\(evmSendPreview.nonce)")
-                valueRow("Gas Limit", evmSendPreview.gasLimit.formatted(.number.locale(AppLocalization.locale)))
-                valueRow("Max Fee", store.amounts.compactGasPrice(gwei: evmSendPreview.maxFeePerGasGwei))
-                valueRow("Priority Fee", store.amounts.compactGasPrice(gwei: evmSendPreview.maxPriorityFeePerGasGwei))
+                valueRow("Nonce", "\(quoted.nonce)")
+                valueRow("Gas Limit", quoted.gasLimit.formatted(.number.locale(AppLocalization.locale)))
+                valueRow("Max Fee", store.amounts.compactGasPrice(gwei: quoted.maxFeePerGasGwei))
+                valueRow("Priority Fee", store.amounts.compactGasPrice(gwei: quoted.maxPriorityFeePerGasGwei))
             } else if let error = store.sendFlow.previewError {
                 Label(error, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red)
             } else {
@@ -165,10 +165,7 @@ struct SendNetworkStep: View {
             if store.sendFlow.isPreparingPreview {
                 SpectraLoadingRow(title: AppLocalization.format("Loading %@ fee estimate...", chainName))
             } else if let quote {
-                if let fee = networkFeeText(quote, chain: chain) {
-                    Text(fee).font(.subheadline.weight(.semibold))
-                }
-                ForEach(previewDetailLines(quote.preview), id: \.self) { Text($0) }
+                Text(networkFeeText(quote, chain: chain)).font(.subheadline.weight(.semibold))
                 if !selectedCoin.isNativeCoin {
                     Text(AppLocalization.format("Token transfers on %@ pay network fees in %@. Keep a %@ balance for fees.", chainName, chain.gasTokenSymbol, chain.gasTokenSymbol))
                         .font(.caption).foregroundStyle(.secondary)
@@ -183,30 +180,6 @@ struct SendNetworkStep: View {
         }
     }
 
-    /// The chain-specific fields a preview carries beside its fee.
-    ///
-    /// Exhaustive over core's enum on purpose: a new preview variant is a
-    /// compile error here rather than a card that quietly shows only the fee.
-    private func previewDetailLines(_ preview: SendPreview) -> [String] {
-        switch preview {
-        case .monero(let p):
-            return [AppLocalization.format("Priority: %@", p.priorityLabel)]
-        case .sui(let p):
-            return [
-                AppLocalization.format("Gas Budget: %llu MIST", p.gasBudgetMist),
-                AppLocalization.format("Reference Gas Price: %llu", p.referenceGasPrice),
-            ]
-        case .aptos(let p):
-            return [
-                AppLocalization.format("Max Gas Amount: %llu", p.maxGasAmount),
-                AppLocalization.format("Gas Unit Price: %llu octas", p.gasUnitPriceOctas),
-            ]
-        case .utxo, .ethereum, .tron, .solana, .xrp, .stellar, .cardano, .ton, .icp, .near,
-             .polkadot, .bittensor:
-            return []
-        }
-    }
-
     /// What the fee section above has not already said. The EVM rows state
     /// the fee rate, and the amount page states the balance and the maximum,
     /// so those are not repeated here — the repeat of the rate rounded the
@@ -214,17 +187,17 @@ struct SendNetworkStep: View {
     @ViewBuilder
     private func sendPreviewDetailsContent(for selectedCoin: AssetHolding) -> some View {
         let isEVM = selectedCoin.chain.isEVM
-        if let details = store.sendPreviewDetails(for: selectedCoin), details.hasDetailRows(isEVM: isEVM) {
+        if let preview = store.sendPreview(for: selectedCoin), preview.hasDetailRows(isEVM: isEVM) {
             VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
                 Divider().opacity(0.3).padding(.vertical, SpectraLayout.Space.xs)
-                if let feeRateDescription = details.feeRateDescription, !isEVM {
+                if let feeRateDescription = preview.feeRateDescription, !isEVM {
                     valueRow("Fee Rate", feeRateDescription)
                 }
-                if let estimatedTransactionBytes = details.estimatedTransactionBytes {
+                if let estimatedTransactionBytes = preview.estimatedTransactionBytes {
                     valueRow("Estimated Size", AppLocalization.format("%lld bytes", count: Int(estimatedTransactionBytes), estimatedTransactionBytes))
                 }
-                if let selectedInputCount = details.selectedInputCount { valueRow("Selected Inputs", "\(selectedInputCount)") }
-                if let usesChangeOutput = details.usesChangeOutput {
+                if case .utxo(_, let selectedInputCount, let usesChangeOutput) = preview.terms {
+                    valueRow("Selected Inputs", "\(selectedInputCount)")
                     valueRow("Change Output", AppLocalization.string(usesChangeOutput ? "Yes" : "No"))
                 }
             }

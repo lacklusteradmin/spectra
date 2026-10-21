@@ -225,7 +225,7 @@ where
     let typed = input.trim().to_string();
     if crate::send::flow::is_valid_send_address(id, typed.clone()) {
         return Ok(SendDestinationResolution {
-            address: crate::send::flow::normalized_send_address(id, typed),
+            address: crate::send::flow::normalize_address(id, &typed),
             used_ens: false,
         });
     }
@@ -245,7 +245,7 @@ where
             message: format!("unable to resolve ENS name '{typed}'").into(),
         })?;
     Ok(SendDestinationResolution {
-        address: crate::send::flow::normalized_send_address(id, address),
+        address: crate::send::flow::normalize_address(id, &address),
         used_ens: true,
     })
 }
@@ -256,7 +256,7 @@ pub(super) fn verify_reviewed_destination(
     expected: &str,
 ) -> Result<SendDestinationResolution, SpectraBridgeError> {
     if !crate::send::flow::is_valid_send_address(chain, expected.into())
-        || crate::send::flow::normalized_send_address(chain, expected.into()) != resolved.address
+        || crate::send::flow::normalize_address(chain, expected) != resolved.address
     {
         return Err(SpectraBridgeError::InvalidInput {
             message: format!(

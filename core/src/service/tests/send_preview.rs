@@ -10,16 +10,14 @@ mod fee_estimates_are_typed {
     #[tokio::test]
     async fn a_static_fee_chain_quotes_the_catalog_scaled_by_its_decimals() {
         let service = WalletService::new(Vec::new()).expect("service");
-        // (chain, raw units, display)
-        for (chain, raw, display) in [
-            (Chain::Solana, "5000", "0.000005"), // 9 decimals
-            (Chain::Cardano, "170000", "0.17"),  // 6 decimals
-            (Chain::Sui, "1000", "0.000001"),    // 9 decimals
-            (Chain::Icp, "10000", "0.0001"),     // 8 decimals
+        for (chain, units) in [
+            (Chain::Solana, 5000),
+            (Chain::Cardano, 170000),
+            (Chain::Sui, 1000),
+            (Chain::Icp, 10000),
         ] {
             let fee = service.native_fee_estimate(chain).await.expect("fee");
-            assert_eq!(fee.raw, raw, "{}", chain.str_id());
-            assert_eq!(fee.display, display, "{}", chain.str_id());
+            assert_eq!(fee.units, units, "{}", chain.str_id());
             assert_eq!(fee.source, "static");
         }
     }
@@ -59,8 +57,7 @@ mod fee_estimates_are_typed {
             }])
             .unwrap();
             let fee = service.native_fee_estimate(chain).await.unwrap();
-            assert_eq!(fee.raw, "7607442456250000000000");
-            assert_eq!(fee.display, "0.00760744245625");
+            assert_eq!(fee.units, 7607442456250000000000);
             assert_eq!(fee.source, "rpc");
         }
     }
@@ -75,30 +72,27 @@ mod fee_estimates_are_typed {
             matchers::{method, path},
         };
 
-        for (chain, verb, route, response, raw, display) in [
+        for (chain, verb, route, response, units) in [
             (
                 Chain::XrpTestnet,
                 "POST",
                 "/",
                 json!({"result":{"drops":{"open_ledger_fee":"13"}}}),
-                "13",
-                "0.000013",
+                13,
             ),
             (
                 Chain::StellarTestnet,
                 "GET",
                 "/fee_stats",
                 json!({"fee_charged":{"mode":"137"}}),
-                "137",
-                "0.0000137",
+                137,
             ),
             (
                 Chain::AptosTestnet,
                 "GET",
                 "/estimate_gas_price",
                 json!({"gas_estimate":173}),
-                "1730000",
-                "0.0173",
+                1730000,
             ),
         ] {
             let server = MockServer::start().await;
@@ -118,8 +112,7 @@ mod fee_estimates_are_typed {
                 .native_fee_estimate(chain)
                 .await
                 .expect("live testnet fee");
-            assert_eq!(fee.raw, raw);
-            assert_eq!(fee.display, display);
+            assert_eq!(fee.units, units);
             assert_eq!(fee.source, "rpc");
         }
     }
@@ -157,18 +150,18 @@ mod fee_estimates_are_typed {
             endpoints: vec![server.uri()],
         }])
         .expect("service");
-        let Some(crate::send::preview_decode::SimpleChainPreview::Aptos { preview }) = service
-            .fetch_simple_chain_send_preview(Chain::AptosTestnet, "0x1".into())
+        let preview = service
+            .fetch_shared_send_preview(Chain::AptosTestnet, "0x1".into())
             .await
-            .expect("preview")
-        else {
-            panic!("Aptos preview");
-        };
-        assert_eq!(preview.gasUnitPriceOctas, 100);
-        assert_eq!(preview.maxGasAmount, 10_000);
-        assert_eq!(preview.estimatedNetworkFee, "0.01");
-        assert_eq!(preview.spendableBalance, "2");
-        assert_eq!(preview.maxSendable, "1.99");
+            .expect("preview");
+        // 100 octas for each of the 10,000 gas units the transaction reserves.
+        assert_eq!(
+            preview.fee_rate_description.as_deref(),
+            Some("100 octas/unit")
+        );
+        assert_eq!(preview.estimated_network_fee, "0.01");
+        assert_eq!(preview.spendable_balance, "2");
+        assert_eq!(preview.max_sendable, "1.99");
     }
 
     #[tokio::test]
@@ -203,7 +196,7 @@ mod fee_estimates_are_typed {
     /// A chain with no fee to quote is an error naming it, where the JSON
     /// version returned `{"note": "fee estimation not supported…"}` that the
     /// caller then read zeros out of. Nothing routes such a chain here —
-    /// `simple_preview_chain` covers eleven, all of which answer — so this is
+    /// `has_shared_send_preview` covers twelve, all of which answer — so this is
     /// the guard, not a live path.
     #[tokio::test]
     async fn a_chain_with_no_fee_is_a_named_error() {
@@ -515,19 +508,24 @@ mod failed_reads {
             }])
             .unwrap();
             let preview = service
-                .fetch_evm_send_preview_json(
+                .fetch_evm_send_preview(
                     crate::registry::Chain::Ethereum,
                     format!("0x{}", "11".repeat(20)),
                     format!("0x{}", "22".repeat(20)),
                     "1".into(),
                     "0x".into(),
-                    Default::default(),
+                    None,
+                    None,
                 )
                 .await;
             if failed.is_empty() {
-                let value: serde_json::Value = serde_json::from_str(&preview.unwrap()).unwrap();
-                assert_eq!(value["nonce"], 7);
-                assert_eq!(value["gas_limit"], 36000);
+                let crate::send::preview_types::SendFeeTerms::Evm { terms } =
+                    preview.unwrap().terms
+                else {
+                    panic!("EVM terms");
+                };
+                assert_eq!(terms.nonce, 7);
+                assert_eq!(terms.gas_limit, 36000);
             } else {
                 assert!(preview.is_err(), "{failed}");
             }
@@ -535,13 +533,14 @@ mod failed_reads {
             for value in ["bad", "-1", "+1", "340282366920938463463374607431768211456"] {
                 assert!(
                     service
-                        .fetch_evm_send_preview_json(
+                        .fetch_evm_send_preview(
                             crate::registry::Chain::Ethereum,
                             format!("0x{}", "11".repeat(20)),
                             format!("0x{}", "22".repeat(20)),
                             value.into(),
                             "0x".into(),
-                            Default::default(),
+                            None,
+                            None,
                         )
                         .await
                         .is_err()
@@ -716,7 +715,10 @@ mod a_preview_quotes_the_asset_it_moves {
             )
             .await
             .unwrap();
-        assert!(preview.is_some());
+        assert!(matches!(
+            preview.terms,
+            crate::send::preview_types::SendFeeTerms::Evm { .. }
+        ));
         let requests = server.received_requests().await.unwrap();
         let estimate = requests
             .iter()
@@ -734,25 +736,25 @@ mod a_preview_quotes_the_asset_it_moves {
         to: String,
         value_wei: &str,
         data_hex: String,
-    ) -> serde_json::Value {
+    ) -> crate::send::preview_types::SendPreview {
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
-        let raw = service
-            .fetch_evm_send_preview_json(
+        service
+            .fetch_evm_send_preview(
                 crate::registry::Chain::Ethereum,
                 format!("0x{}", "11".repeat(20)),
                 to,
                 value_wei.into(),
                 data_hex,
-                Default::default(),
+                None,
+                None,
             )
             .await
-            .expect("preview");
-        serde_json::from_str(&raw).unwrap()
+            .expect("preview")
     }
 
     /// An ERC-20 send moves the token, so the token's balance — scaled by the
@@ -768,18 +770,13 @@ mod a_preview_quotes_the_asset_it_moves {
         let data = format!("0xa9059cbb{:0>64}{:0>64}", "33".repeat(20), "1");
         let value = preview(&server, contract, "0", data).await;
 
-        assert_eq!(value["spendable_balance"], json!(TOKEN_DISPLAY));
+        assert_eq!(value.spendable_balance, TOKEN_DISPLAY);
         assert_ne!(
-            value["spendable_balance"],
-            json!("1"),
+            value.spendable_balance, "1",
             "the gas coin's balance is not the token's"
         );
         // The fee is still quoted in the gas coin: it is a separate claim.
-        let fee_wei: u128 = value["estimated_fee_wei"]
-            .as_str()
-            .unwrap()
-            .parse()
-            .unwrap();
+        let fee_wei = crate::decimal::to_units(&value.estimated_network_fee, 18).unwrap();
         assert!(fee_wei > 0);
     }
 
@@ -797,19 +794,12 @@ mod a_preview_quotes_the_asset_it_moves {
         )
         .await;
 
-        let fee_wei: u128 = value["estimated_fee_wei"]
-            .as_str()
-            .unwrap()
-            .parse()
-            .unwrap();
+        let fee_wei = crate::decimal::to_units(&value.estimated_network_fee, 18).unwrap();
         assert!(fee_wei > 0);
         // One ether less the fee, to the wei.
         assert_eq!(
-            value["spendable_balance"],
-            json!(crate::decimal::from_units(
-                1_000_000_000_000_000_000 - fee_wei,
-                18
-            ))
+            value.spendable_balance,
+            crate::decimal::from_units(1_000_000_000_000_000_000 - fee_wei, 18)
         );
     }
 
@@ -841,8 +831,8 @@ mod a_preview_quotes_the_asset_it_moves {
             endpoints: vec![server.uri()],
         }])
         .unwrap();
-        let raw = service
-            .fetch_tron_send_preview_json_on_chain(
+        let value = service
+            .fetch_tron_send_preview(
                 Chain::Tron,
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
@@ -850,11 +840,9 @@ mod a_preview_quotes_the_asset_it_moves {
             )
             .await
             .expect("preview");
-        let value = crate::send::preview_decode::build_tron_send_preview_record(raw)
-            .expect("valid typed preview");
 
-        assert_eq!(value.spendableBalance, "4.2");
-        assert_eq!(value.maxSendable, "4.2");
+        assert_eq!(value.spendable_balance, "4.2");
+        assert_eq!(value.max_sendable, "4.2");
     }
 
     /// A token balance nobody could read is not a zero holding — the send
@@ -873,7 +861,7 @@ mod a_preview_quotes_the_asset_it_moves {
         }])
         .unwrap();
         let result = service
-            .fetch_tron_send_preview_json_on_chain(
+            .fetch_tron_send_preview(
                 Chain::Tron,
                 "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                 "TEST".into(),
@@ -1135,26 +1123,27 @@ mod evm_network_fee_budgets {
     async fn monad_plain_transfers_and_contract_calls_reserve_their_actual_gas_policy() {
         for (estimated_gas, expected_limit) in [(21_000, 21_000), (30_000, 32_250)] {
             let server = node(estimated_gas, None).await;
-            let preview: Value = serde_json::from_str(
-                &service(&server, Chain::Monad)
-                    .fetch_evm_send_preview_json(
-                        Chain::Monad,
-                        format!("0x{}", "11".repeat(20)),
-                        format!("0x{}", "22".repeat(20)),
-                        "1000000000000000".into(),
-                        "0x".into(),
-                        Default::default(),
-                    )
-                    .await
-                    .unwrap(),
-            )
-            .unwrap();
-            assert_eq!(preview["gas_limit"], expected_limit);
+            let preview = service(&server, Chain::Monad)
+                .fetch_evm_send_preview(
+                    Chain::Monad,
+                    format!("0x{}", "11".repeat(20)),
+                    format!("0x{}", "22".repeat(20)),
+                    "1000000000000000".into(),
+                    "0x".into(),
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+            let crate::send::preview_types::SendFeeTerms::Evm { terms } = &preview.terms else {
+                panic!("EVM terms");
+            };
+            assert_eq!(terms.gas_limit, expected_limit);
+            // The gas budget alone: no operator fee on Monad.
             assert_eq!(
-                preview["estimated_fee_wei"],
-                (expected_limit * 4_000_000_000_u64).to_string()
+                preview.estimated_network_fee,
+                crate::decimal::from_units(u128::from(expected_limit as u64 * 4_000_000_000), 18)
             );
-            assert_eq!(preview["additional_fee_wei"], "0");
             assert!(
                 calls(&server)
                     .await
@@ -1181,19 +1170,21 @@ mod evm_network_fee_budgets {
                 }),
             )
             .await
-            .unwrap()
             .unwrap();
         let total = 36_000 * 5_000_000_000_u128 + L1_FEE + OPERATOR_FEE;
-        assert_eq!(preview.gasLimit, 36_000);
-        assert_eq!(preview.maxFeePerGasGwei, "5");
-        assert_eq!(preview.maxPriorityFeePerGasGwei, "1");
+        let crate::send::preview_types::SendFeeTerms::Evm { terms } = &preview.terms else {
+            panic!("EVM terms");
+        };
+        assert_eq!(terms.gas_limit, 36_000);
+        assert_eq!(terms.max_fee_per_gas_gwei, "5");
+        assert_eq!(terms.max_priority_fee_per_gas_gwei, "1");
         assert_eq!(
-            preview.estimatedNetworkFee,
+            preview.estimated_network_fee,
             crate::decimal::from_units(total, 18)
         );
         assert_eq!(
-            preview.maxSendable,
-            Some(crate::decimal::from_units(BALANCE - total, 18))
+            preview.max_sendable,
+            crate::decimal::from_units(BALANCE - total, 18)
         );
 
         let calls = calls(&server).await;

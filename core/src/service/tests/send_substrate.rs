@@ -75,17 +75,14 @@ async fn wallet() -> (Wallet, wiremock::MockServer, Arc<Mutex<Runtime>>) {
 #[tokio::test]
 async fn a_substrate_preview_keeps_the_existential_deposit_and_the_fee_back() {
     let (wallet, _server, _) = wallet().await;
-    let preview: Value = serde_json::from_str(
-        &wallet
-            .service
-            .fetch_simple_chain_send_preview_json(Chain::Polkadot, wallet.address.clone())
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(preview["fee_display"], "0.001");
-    assert_eq!(preview["balance_display"], "9.99");
-    assert_eq!(preview["max_sendable"], "9.989");
+    let preview = wallet
+        .service
+        .fetch_shared_send_preview(Chain::Polkadot, wallet.address.clone())
+        .await
+        .unwrap();
+    assert_eq!(preview.estimated_network_fee, "0.001");
+    assert_eq!(preview.spendable_balance, "9.99");
+    assert_eq!(preview.max_sendable, "9.989");
 }
 
 /// A runtime upgrade or a nonce used since the review makes the reviewed

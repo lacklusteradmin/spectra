@@ -4,9 +4,16 @@
 //! The colour table here maps a *semantic* name to a terminal colour. Which
 //! colour a chain has is a chain fact and comes from `chains.toml`.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use colored::Colorize;
 use spectra_core::chains::CatalogColor;
 use spectra_core::registry::Chain;
+
+/// Set once a JSON document is written. `--json` prints exactly one document,
+/// so `main` prints its error object only when the command printed nothing:
+/// a command that reports a verdict and then fails has already said why.
+static EMITTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone, Copy)]
 pub struct Out {
@@ -32,7 +39,13 @@ impl Out {
     pub fn emit(self, value: serde_json::Value) {
         if self.json {
             println!("{}", value);
+            EMITTED.store(true, Ordering::Relaxed);
         }
+    }
+
+    /// Whether this process has written its JSON document.
+    pub fn emitted(self) -> bool {
+        EMITTED.load(Ordering::Relaxed)
     }
 }
 

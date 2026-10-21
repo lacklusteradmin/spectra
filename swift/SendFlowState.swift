@@ -61,8 +61,8 @@ final class SendFlowState {
     }
     var evmManualNonce: String = ""
     /// The last quote's EVM terms, when it was an EVM quote.
-    var quotedEvmTerms: EvmSendPreview? {
-        guard case .ethereum(let terms)? = previewStore.quote?.preview else { return nil }
+    var quotedEvmTerms: EvmFeeTerms? {
+        guard case .evm(let terms)? = previewStore.quote?.preview.terms else { return nil }
         return terms
     }
     @ObservationIgnored var previewRequestId = UUID() // Reject every completion of a superseded preview.

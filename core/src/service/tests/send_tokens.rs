@@ -316,14 +316,8 @@ async fn a_jetton_send_moves_from_the_senders_own_jetton_wallet() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(preview.network_fee.as_deref(), Some("0.107"));
-    assert_eq!(
-        preview
-            .details
-            .as_ref()
-            .and_then(|details| details.max_sendable.as_deref()),
-        Some("223.456789")
-    );
+    assert_eq!(preview.preview.estimated_network_fee, "0.107");
+    assert_eq!(preview.preview.max_sendable, "223.456789");
     let mismatch = "Jetton source wallet owner or master mismatch";
     refused_at_build(
         &wallet,

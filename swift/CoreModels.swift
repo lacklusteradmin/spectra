@@ -3,15 +3,13 @@ import SwiftUI
 #if canImport(UIKit)
     import UIKit
 #endif
-extension SendPreviewDetails {
+extension SendPreview {
     /// Whether the preview says anything the fee rows and the amount page
     /// have not: an EVM fee rate is already rows of its own, and the balance
     /// and maximum are the amount page's.
     func hasDetailRows(isEVM: Bool) -> Bool {
-        (!isEVM && feeRateDescription != nil)
-            || estimatedTransactionBytes != nil
-            || selectedInputCount != nil
-            || usesChangeOutput != nil
+        if case .utxo = terms { return true }
+        return (!isEVM && feeRateDescription != nil) || estimatedTransactionBytes != nil
     }
 }
 /// A holding's `id` is the deployment id core derives; every projection

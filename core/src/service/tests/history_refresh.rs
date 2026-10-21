@@ -84,7 +84,7 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
     let record = record_for(
         target,
         &Default::default(),
-        crate::fetch::history_decode::NormalizedHistoryItem {
+        crate::fetch::history::NormalizedHistoryItem {
             deployment_id: Some("bitcoin-testnet-4:native".to_string()),
             kind: "receive".to_string(),
             status: "confirmed".to_string(),
@@ -122,7 +122,7 @@ fn an_undated_entry_is_stored_as_unknown() {
         ..Default::default()
     };
     let target = &targets(&state, Chain::Litecoin, &[])[0];
-    let entry = |timestamp| crate::fetch::history_decode::NormalizedHistoryItem {
+    let entry = |timestamp| crate::fetch::history::NormalizedHistoryItem {
         deployment_id: Some("litecoin:native".to_string()),
         kind: "receive".to_string(),
         status: "pending".to_string(),
@@ -178,7 +178,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
     let record = record_for(
         &target,
         &Default::default(),
-        crate::fetch::history_decode::NormalizedHistoryItem {
+        crate::fetch::history::NormalizedHistoryItem {
             deployment_id: None,
             kind: "receive".to_string(),
             status: "confirmed".to_string(),
@@ -208,7 +208,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
     assert_eq!(&record.id[14..15], "4", "version nibble: {}", record.id);
 
     // An empty hash is no hash, not an empty one.
-    let mut entry = crate::fetch::history_decode::NormalizedHistoryItem {
+    let mut entry = crate::fetch::history::NormalizedHistoryItem {
         deployment_id: None,
         kind: "send".to_string(),
         status: "confirmed".to_string(),
@@ -245,7 +245,7 @@ fn a_listed_token_is_named_as_the_list_names_it() {
         network: Chain::Xrp,
     };
     let id = "xrp:trust line token:USD.rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq";
-    let entry = crate::fetch::history_decode::NormalizedHistoryItem {
+    let entry = crate::fetch::history::NormalizedHistoryItem {
         deployment_id: Some(id.into()),
         kind: "receive".to_string(),
         status: "confirmed".to_string(),
@@ -576,15 +576,14 @@ async fn owned_history_scope_and_failed_clock_are_core_decisions() {
     assert!(
         service
             .refresh_history(
-                HistoryRefreshScope::Chains {
-                    chain_ids: vec!["invalid".into()]
-                },
+                HistoryRefreshScope::Chains { chains: vec![] },
                 false,
                 None,
                 0.0
             )
             .await
-            .is_err()
+            .unwrap()
+            .is_empty()
     );
     for _ in 0..2 {
         let result = service

@@ -120,7 +120,7 @@ fn token_names(state: &ResidentState) -> HashMap<String, (String, String)> {
 pub(super) fn record_for(
     target: &Target,
     names: &HashMap<String, (String, String)>,
-    entry: crate::fetch::history_decode::NormalizedHistoryItem,
+    entry: crate::fetch::history::NormalizedHistoryItem,
 ) -> crate::fetch::transactions::FetchedTransactionRecord {
     // A token the user lists is called what the list calls it; the feed's
     // own name for an unknown contract is the contract itself.
@@ -597,7 +597,7 @@ impl WalletService {
                         record_for(
                             &target,
                             &HashMap::new(),
-                            crate::fetch::history_decode::NormalizedHistoryItem {
+                            crate::fetch::history::NormalizedHistoryItem {
                                 deployment_id: crate::tokens::deployment_id_for(
                                     target.network,
                                     None,

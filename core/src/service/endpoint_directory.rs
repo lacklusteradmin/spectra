@@ -849,13 +849,14 @@ mod tests {
                 .await;
         }
         service
-            .fetch_evm_send_preview_json(
+            .fetch_evm_send_preview(
                 crate::registry::Chain::Ethereum,
                 format!("0x{}", "11".repeat(20)),
                 format!("0x{}", "22".repeat(20)),
                 "1".into(),
                 "0x".into(),
-                Default::default(),
+                None,
+                None,
             )
             .await
             .unwrap();

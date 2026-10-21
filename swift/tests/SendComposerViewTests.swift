@@ -148,16 +148,15 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
     }
 
     private func applyPreviewFixture(to state: AppState) {
-        let preview = EvmSendPreview(
-            nonce: 12, gasLimit: 21_000, maxFeePerGasGwei: "20", maxPriorityFeePerGasGwei: "1",
-            estimatedNetworkFee: "0.00042", spendableBalance: "1.5", feeRateDescription: nil,
-            maxSendable: "1.49958")
+        let preview = SendPreview(
+            estimatedNetworkFee: "0.00042", spendableBalance: "1.5", maxSendable: "1.49958",
+            feeRateDescription: nil, estimatedTransactionBytes: nil,
+            terms: .evm(terms: EvmFeeTerms(
+                nonce: 12, gasLimit: 21_000, maxFeePerGasGwei: "20", maxPriorityFeePerGasGwei: "1")))
         state.sendFlow.previewStore.apply(OwnedSendPreview(
             walletId: state.sendFlow.walletId, holdingKey: state.sendFlow.holdingKey, chainId: .ethereum,
-            amount: state.sendFlow.amountInput, preview: .ethereum(preview: preview), networkFee: "0.00042",
-            networkFeeValue: 1.26, amountValue: 750, details: SendPreviewDetails(
-                spendableBalance: "1.5", feeRateDescription: nil, estimatedTransactionBytes: nil,
-                selectedInputCount: nil, usesChangeOutput: nil, maxSendable: "1.49958"),
+            amount: state.sendFlow.amountInput, preview: preview,
+            networkFeeValue: 1.26, amountValue: 750,
             shortcuts: [25: "0.374895", 50: "0.74979", 75: "1.124685", 100: "1.49958"],
             recipient: RecipientCheck(activity: nil, isOwnAddress: false)))
     }

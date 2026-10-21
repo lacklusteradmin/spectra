@@ -218,7 +218,10 @@ async fn a_near_token_send_reviews_the_prepayment_its_calls_cost() {
         .await
         .unwrap();
     let budget = token_budget(false);
-    assert_eq!(preview.feeBudgetYoctoNear, budget.to_string());
+    assert_eq!(
+        preview.estimated_network_fee,
+        crate::decimal::from_units(budget, 24)
+    );
     let built = wallet.build(token(&wallet)).await.unwrap();
     let near = prepared(&built);
     assert_eq!(near["fee_budget"], budget.to_string());
@@ -232,7 +235,7 @@ async fn a_near_token_send_reviews_the_prepayment_its_calls_cost() {
             .request
             .fee_amount
             .as_deref(),
-        Some(preview.estimatedNetworkFee.as_str())
+        Some(preview.estimated_network_fee.as_str())
     );
     assert_eq!(built.review.transfer_terms, None);
 }

@@ -327,9 +327,6 @@ impl HttpClient {
         url: &str,
         profile: RetryProfile,
     ) -> Result<(T, reqwest::header::HeaderMap), ApiError> {
-        if refuse_non_loopback(url) {
-            return Err(ApiError::Transport("non-loopback endpoint refused".into()));
-        }
         let response = self
             .send_with_retry(|client| client.get(url), profile)
             .await?;

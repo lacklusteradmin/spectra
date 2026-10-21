@@ -7,7 +7,7 @@ extension AppState {
         }
     }
     func refreshHistory(chain: Chain) async {
-        await adoptHistoryRefresh(scope: .chains(chainIds: [chain.id]))
+        await adoptHistoryRefresh(scope: .chains(chains: [chain]))
     }
     /// Run a history refresh and adopt what it changed.
     ///

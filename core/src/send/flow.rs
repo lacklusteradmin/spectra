@@ -1,10 +1,9 @@
 // Pure-logic helpers backing the send flow: address validation and
-// normalization, EVM chain context, send-preview flattening, risk evaluation.
+// normalization, EVM chain context, risk evaluation.
 //
 // Every function here is a pure transform with no platform dependencies.
 
 use crate::registry::Chain;
-use crate::send::preview_types::*;
 use crate::validation::address::{AddressValidationRequest, validate_address};
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -34,6 +33,8 @@ pub fn is_valid_send_address(chain: Chain, address: String) -> bool {
     .is_valid
 }
 
+/// The spelling core stores and sends an address in; it normalizes wherever
+/// it resolves or binds a destination.
 pub(crate) fn normalize_address(chain: Chain, address: &str) -> String {
     use crate::registry::AddressNormalization;
     let t = address.trim();
@@ -72,11 +73,6 @@ pub(crate) fn normalize_address(chain: Chain, address: &str) -> String {
     }
 }
 
-/// Internal: core normalizes wherever it resolves or binds a destination.
-pub fn normalized_send_address(chain: Chain, address: String) -> String {
-    normalize_address(chain, &address)
-}
-
 /// Heuristic: does the trimmed input look like an ENS name (`foo.eth`, no
 /// spaces, not an 0x-prefixed hex address)?
 ///
@@ -89,286 +85,9 @@ pub(crate) fn is_ens_name_candidate(value: &str) -> bool {
     normalized.ends_with(".eth") && !normalized.contains(' ') && !normalized.starts_with("0x")
 }
 
-/// The send-preview for the chain currently being composed.
-///
-/// One variant per preview record shape. The caller picks the variant, so no
-/// chain-name matching happens on this path and only the relevant preview
-/// crosses the FFI.
-#[derive(Debug, Clone, serde::Serialize, uniffi::Enum)]
-pub enum SendPreview {
-    /// Every account UTXO network shares one preview shape.
-    Utxo {
-        preview: BitcoinSendPreview,
-    },
-    Ethereum {
-        preview: EvmSendPreview,
-    },
-    Tron {
-        preview: TronSendPreview,
-    },
-    Solana {
-        preview: SolanaSendPreview,
-    },
-    Xrp {
-        preview: XrpSendPreview,
-    },
-    Stellar {
-        preview: StellarSendPreview,
-    },
-    Monero {
-        preview: MoneroSendPreview,
-    },
-    Cardano {
-        preview: CardanoSendPreview,
-    },
-    Sui {
-        preview: SuiSendPreview,
-    },
-    Aptos {
-        preview: AptosSendPreview,
-    },
-    Ton {
-        preview: TonSendPreview,
-    },
-    Icp {
-        preview: IcpSendPreview,
-    },
-    Near {
-        preview: NearSendPreview,
-    },
-    Polkadot {
-        preview: PolkadotSendPreview,
-    },
-    /// Substrate like Polkadot, and the same record — but its own tag, because
-    /// the front end keys its preview slots on this and a Bittensor preview
-    /// filed under Polkadot would be shown for the wrong chain.
-    Bittensor {
-        preview: PolkadotSendPreview,
-    },
-}
-
-#[allow(non_snake_case)]
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct SendPreviewDetailsCore {
-    pub spendableBalance: Option<String>,
-    pub feeRateDescription: Option<String>,
-    pub estimatedTransactionBytes: Option<i64>,
-    pub selectedInputCount: Option<i64>,
-    pub usesChangeOutput: Option<bool>,
-    pub maxSendable: Option<String>,
-}
-
-/// `coin_amount` is the holding's exact balance, or `None` where a missing
-/// maximum must stay missing rather than fall back to it.
-pub(crate) fn compute_send_preview_details(
-    preview: Option<SendPreview>,
-    coin_amount: Option<&str>,
-) -> Option<SendPreviewDetailsCore> {
-    let preview = preview?;
-
-    // Which fields each preview shape contributes. The seventh value is an
-    // estimated network fee, present only for UTXO chains; it backs the
-    // `coin_amount - fee` fallback applied below when a preview reports no
-    // spendable balance or max-sendable of its own. Byte, input and change
-    // counts exist only where a builder measures them.
-    let (spendable, fee_rate, tx_bytes, input_count, uses_change, max_sendable, est_fee) =
-        match preview {
-            SendPreview::Utxo { preview: p } => (
-                p.spendableBalance,
-                p.feeRateDescription,
-                p.estimatedTransactionBytes,
-                p.selectedInputCount,
-                p.usesChangeOutput,
-                p.maxSendable,
-                Some(p.estimatedNetworkFee),
-            ),
-            SendPreview::Ethereum { preview: p } => (
-                p.spendableBalance,
-                p.feeRateDescription,
-                None,
-                None,
-                None,
-                p.maxSendable,
-                None,
-            ),
-            SendPreview::Polkadot { preview: p } => (
-                Some(p.spendableBalance),
-                p.feeRateDescription,
-                p.estimatedTransactionBytes,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            ),
-            SendPreview::Bittensor { preview: p } => (
-                Some(p.spendableBalance),
-                p.feeRateDescription,
-                p.estimatedTransactionBytes,
-                None,
-                None,
-                Some(p.maxSendable),
-                None,
-            ),
-            // Account-model chains: balance, fee description and max sendable.
-            SendPreview::Tron { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Solana { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Xrp { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Stellar { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Monero { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Cardano { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Sui { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Aptos { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Ton { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Icp { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-            SendPreview::Near { preview: p } => {
-                simple(p.spendableBalance, p.feeRateDescription, p.maxSendable)
-            }
-        };
-
-    let fallback = est_fee
-        .zip(coin_amount)
-        .and_then(|(fee, amount)| crate::decimal::sub_or_zero(amount, &fee));
-    Some(SendPreviewDetailsCore {
-        spendableBalance: spendable.or_else(|| fallback.clone()),
-        feeRateDescription: fee_rate,
-        estimatedTransactionBytes: tx_bytes,
-        selectedInputCount: input_count,
-        usesChangeOutput: uses_change,
-        maxSendable: max_sendable.or(fallback),
-    })
-}
-
-/// Field selection shared by the account-model chains.
-#[allow(clippy::type_complexity)]
-fn simple(
-    spendable: String,
-    fee_rate: Option<String>,
-    max_sendable: String,
-) -> (
-    Option<String>,
-    Option<String>,
-    Option<i64>,
-    Option<i64>,
-    Option<bool>,
-    Option<String>,
-    Option<String>,
-) {
-    (
-        Some(spendable),
-        fee_rate,
-        None,
-        None,
-        None,
-        Some(max_sendable),
-        None,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn utxo_preview() -> BitcoinSendPreview {
-        BitcoinSendPreview {
-            estimatedNetworkFee: "0.5".into(),
-            feeRateDescription: Some("12 sat/vB".to_string()),
-            spendableBalance: None,
-            estimatedTransactionBytes: Some(226),
-            selectedInputCount: Some(2),
-            usesChangeOutput: Some(true),
-            maxSendable: None,
-            ..Default::default()
-        }
-    }
-
-    /// UTXO chains report a network fee, and a preview that gives no spendable
-    /// balance or max-sendable falls back to `amount - fee`.
-    #[test]
-    fn utxo_preview_falls_back_to_amount_minus_fee() {
-        let d = compute_send_preview_details(
-            Some(SendPreview::Utxo {
-                preview: utxo_preview(),
-            }),
-            Some("2"),
-        )
-        .expect("details");
-        assert_eq!(d.spendableBalance, Some("1.5".into()));
-        assert_eq!(d.maxSendable, Some("1.5".into()));
-        assert_eq!(d.estimatedTransactionBytes, Some(226));
-        assert_eq!(d.selectedInputCount, Some(2));
-        assert_eq!(d.usesChangeOutput, Some(true));
-        assert_eq!(d.feeRateDescription.as_deref(), Some("12 sat/vB"));
-    }
-
-    /// The fallback never goes negative.
-    #[test]
-    fn utxo_fallback_clamps_at_zero() {
-        let d = compute_send_preview_details(
-            Some(SendPreview::Utxo {
-                preview: utxo_preview(),
-            }),
-            Some("0.1"),
-        )
-        .expect("details");
-        assert_eq!(d.spendableBalance, Some("0".into()));
-    }
-
-    /// A preview's own values win over the fallback.
-    #[test]
-    fn utxo_preview_values_take_precedence_over_the_fallback() {
-        let mut preview = utxo_preview();
-        preview.spendableBalance = Some("9".into());
-        preview.maxSendable = Some("8".into());
-        let d = compute_send_preview_details(Some(SendPreview::Utxo { preview }), Some("2"))
-            .expect("details");
-        assert_eq!(d.spendableBalance, Some("9".into()));
-        assert_eq!(d.maxSendable, Some("8".into()));
-    }
-
-    /// Polkadot is the one account-model chain that does surface byte size.
-    #[test]
-    fn polkadot_preview_keeps_transaction_bytes() {
-        let d = compute_send_preview_details(
-            Some(SendPreview::Polkadot {
-                preview: PolkadotSendPreview {
-                    spendableBalance: "10".into(),
-                    feeRateDescription: None,
-                    estimatedTransactionBytes: Some(144),
-                    maxSendable: "9".into(),
-                    ..Default::default()
-                },
-            }),
-            Some("10"),
-        )
-        .expect("details");
-        assert_eq!(d.estimatedTransactionBytes, Some(144));
-        assert_eq!(d.selectedInputCount, None);
-    }
-
-    #[test]
-    fn absent_preview_yields_no_details() {
-        assert!(compute_send_preview_details(None, Some("1")).is_none());
-    }
 
     #[test]
     fn ens_candidate_positive() {
@@ -592,269 +311,19 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
 
 // ── Chain predicates ──────────────────────────────────────────────
 
-use crate::SpectraBridgeError;
-
-// Per-chain static config for the Litecoin/Dogecoin/Solana/XRP/Monero/Sui/Aptos
-// branch of Swift's destination-risk probe: display chain name and balance
-// label for messages.
-
-// Maps Swift's BroadcastEntry payload format → (chain_id, result_field, wrap_key,
-// extract_field). Returns an error for unknown formats.
-
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct RebroadcastDispatch {
-    pub chain_id: crate::registry::Chain,
-    pub result_field: String,
-    pub wrap_key: Option<String>,
-    pub extract_field: Option<String>,
-}
-
-pub fn rebroadcast_dispatch_for_format(
-    format: String,
-) -> Result<RebroadcastDispatch, SpectraBridgeError> {
-    // Keep chain IDs aligned with SpectraChainID in Swift.
-    // 0 bitcoin, 1 bitcoin_cash, 2 bitcoin_sv, 3 litecoin, 4 dogecoin,
-    // 5 ethereum, 6 tron, 7 solana, 8 xrp, 9 stellar, 10 monero,
-    // 11 cardano, 12 sui, 13 aptos, 14 ton, 15 icp, 16 near, 17 polkadot
-    let entry: Option<RebroadcastDispatch> = match format.as_str() {
-        "bitcoin.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: Chain::Bitcoin,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "bitcoin_cash.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: Chain::BitcoinCash,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "bitcoin_sv.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: Chain::BitcoinSV,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "litecoin.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: Chain::Litecoin,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "dogecoin.raw_hex" => Some(RebroadcastDispatch {
-            chain_id: Chain::Dogecoin,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "tron.signed_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Tron,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "solana.base64" => Some(RebroadcastDispatch {
-            chain_id: Chain::Solana,
-            result_field: "signature".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "xrp.blob_hex" => Some(RebroadcastDispatch {
-            chain_id: Chain::Xrp,
-            result_field: "txid".into(),
-            wrap_key: Some("tx_blob_hex".into()),
-            extract_field: None,
-        }),
-        "stellar.xdr" => Some(RebroadcastDispatch {
-            chain_id: Chain::Stellar,
-            result_field: "txid".into(),
-            wrap_key: Some("signed_xdr_b64".into()),
-            extract_field: None,
-        }),
-        "cardano.cbor_hex" => Some(RebroadcastDispatch {
-            chain_id: Chain::Cardano,
-            result_field: "txid".into(),
-            wrap_key: Some("cbor_hex".into()),
-            extract_field: None,
-        }),
-        "near.base64" => Some(RebroadcastDispatch {
-            chain_id: Chain::Near,
-            result_field: "txid".into(),
-            wrap_key: Some("signed_tx_b64".into()),
-            extract_field: None,
-        }),
-        "polkadot.extrinsic_hex" => Some(RebroadcastDispatch {
-            chain_id: Chain::Polkadot,
-            result_field: "txid".into(),
-            wrap_key: Some("extrinsic_hex".into()),
-            extract_field: None,
-        }),
-        "aptos.signed_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Aptos,
-            result_field: "txid".into(),
-            wrap_key: Some("signed_body_json".into()),
-            extract_field: None,
-        }),
-        "ton.boc" => Some(RebroadcastDispatch {
-            chain_id: Chain::Ton,
-            result_field: "message_hash".into(),
-            wrap_key: Some("boc_b64".into()),
-            extract_field: None,
-        }),
-        "bitcoin.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Bitcoin,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: Some("raw_tx_hex".into()),
-        }),
-        "bitcoin_cash.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::BitcoinCash,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: Some("raw_tx_hex".into()),
-        }),
-        "bitcoin_sv.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::BitcoinSV,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: Some("raw_tx_hex".into()),
-        }),
-        "litecoin.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Litecoin,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: Some("raw_tx_hex".into()),
-        }),
-        "dogecoin.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Dogecoin,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: Some("raw_tx_hex".into()),
-        }),
-        "solana.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Solana,
-            result_field: "signature".into(),
-            wrap_key: None,
-            extract_field: Some("signed_tx_base64".into()),
-        }),
-        "tron.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Tron,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: Some("signed_tx_json".into()),
-        }),
-        "xrp.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Xrp,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "stellar.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Stellar,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "cardano.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Cardano,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "polkadot.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Polkadot,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "sui.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Sui,
-            result_field: "digest".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "aptos.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Aptos,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "ton.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Ton,
-            result_field: "message_hash".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        "near.rust_json" => Some(RebroadcastDispatch {
-            chain_id: Chain::Near,
-            result_field: "txid".into(),
-            wrap_key: None,
-            extract_field: None,
-        }),
-        _ => None,
+/// A top-level field of a send result's JSON as a string; numbers and
+/// booleans are stringified. A missing key, a null or invalid JSON is `""`.
+/// For the loose reads of a submission's answer — a hash, a signature, a
+/// digest — whose shape the node decides.
+pub(crate) fn extract_json_string_field(json: &str, key: &str) -> String {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
+        return String::new();
     };
-    entry.ok_or_else(|| {
-        SpectraBridgeError::failure("Rebroadcast is not supported for this transaction format yet.")
-    })
-}
-
-// ─── Rebroadcast prepared payload ────────────────────────────────────────────
-// Fuses the dispatch-table lookup with the payload shape transformation so Swift
-// never has to build JSON objects or scrape fields for rebroadcast. Handles:
-//   • sui.signed_json — remap {txBytesBase64, signatureBase64} → {tx_bytes_b64, sig_b64}
-//   • extract_field branch — pull named field value out of a wallet-produced JSON
-//   • wrap_key branch — wrap raw payload string under a single JSON key
-//   • otherwise — pass payload through unchanged
-
-#[derive(Debug, Clone, uniffi::Record)]
-pub struct PreparedBroadcastPayload {
-    pub chain_id: crate::registry::Chain,
-    pub broadcast_payload: String,
-    pub result_field: String,
-}
-
-pub fn rebroadcast_prepare_payload(
-    format: String,
-    raw_payload: String,
-) -> Result<PreparedBroadcastPayload, SpectraBridgeError> {
-    if format == "sui.signed_json" {
-        let remapped = sui_signed_json_remap(&raw_payload).unwrap_or_else(|| raw_payload.clone());
-        return Ok(PreparedBroadcastPayload {
-            chain_id: Chain::Sui,
-            broadcast_payload: remapped,
-            result_field: "digest".to_string(),
-        });
+    match v.as_object().and_then(|obj| obj.get(key)) {
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(serde_json::Value::Null) | None => String::new(),
+        Some(other) => other.to_string(),
     }
-    let dispatch = rebroadcast_dispatch_for_format(format)?;
-    let broadcast_payload = if let Some(extract_field) = dispatch.extract_field.as_ref() {
-        crate::send::preview_decode::extract_json_string_field(
-            raw_payload.clone(),
-            extract_field.clone(),
-        )
-    } else if let Some(wrap_key) = dispatch.wrap_key.as_ref() {
-        let mut map = serde_json::Map::new();
-        map.insert(
-            wrap_key.clone(),
-            serde_json::Value::String(raw_payload.clone()),
-        );
-        serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or(raw_payload)
-    } else {
-        raw_payload
-    };
-    Ok(PreparedBroadcastPayload {
-        chain_id: dispatch.chain_id,
-        broadcast_payload,
-        result_field: dispatch.result_field,
-    })
-}
-
-fn sui_signed_json_remap(raw: &str) -> Option<String> {
-    let v: serde_json::Value = serde_json::from_str(raw).ok()?;
-    let obj = v.as_object()?;
-    let tx = obj.get("txBytesBase64")?.as_str()?;
-    let sig = obj.get("signatureBase64")?.as_str()?;
-    let remapped = serde_json::json!({ "tx_bytes_b64": tx, "sig_b64": sig });
-    serde_json::to_string(&remapped).ok()
 }
 
 /// The chain whose derivation recipe `chain` uses, or `None` for a chain with
@@ -955,18 +424,6 @@ mod flow_helpers_tests {
     }
 
     #[test]
-    fn rebroadcast_dispatch_btc() {
-        let d = rebroadcast_dispatch_for_format("bitcoin.raw_hex".to_string()).unwrap();
-        assert_eq!(d.chain_id, crate::registry::Chain::Bitcoin);
-        assert_eq!(d.result_field, "txid");
-    }
-
-    #[test]
-    fn rebroadcast_dispatch_unknown_errors() {
-        assert!(rebroadcast_dispatch_for_format("nope".to_string()).is_err());
-    }
-
-    #[test]
     fn evm_has_contract_code_variants() {
         assert!(!evm_has_contract_code("0x".to_string()));
         assert!(!evm_has_contract_code("0X0".to_string()));
@@ -992,49 +449,14 @@ mod flow_helpers_tests {
     }
 
     #[test]
-    fn prepare_payload_sui_signed_json_remap() {
-        let raw = r#"{"txBytesBase64":"AAAA","signatureBase64":"BBBB"}"#;
-        let p = rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
-        assert_eq!(p.chain_id, crate::registry::Chain::Sui);
-        assert_eq!(p.result_field, "digest");
-        let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
-        assert_eq!(parsed["tx_bytes_b64"], "AAAA");
-        assert_eq!(parsed["sig_b64"], "BBBB");
-    }
-
-    #[test]
-    fn prepare_payload_sui_malformed_passthrough() {
-        let raw = "not json";
-        let p = rebroadcast_prepare_payload("sui.signed_json".into(), raw.into()).unwrap();
-        assert_eq!(p.broadcast_payload, raw);
-    }
-
-    #[test]
-    fn prepare_payload_wrap_key() {
-        let p = rebroadcast_prepare_payload("xrp.blob_hex".into(), "deadbeef".into()).unwrap();
-        assert_eq!(p.chain_id, crate::registry::Chain::Xrp);
-        assert_eq!(p.result_field, "txid");
-        let parsed: serde_json::Value = serde_json::from_str(&p.broadcast_payload).unwrap();
-        assert_eq!(parsed["tx_blob_hex"], "deadbeef");
-    }
-
-    #[test]
-    fn prepare_payload_extract_field() {
-        let raw = r#"{"raw_tx_hex":"ff00","other":"x"}"#;
-        let p = rebroadcast_prepare_payload("bitcoin.rust_json".into(), raw.into()).unwrap();
-        assert_eq!(p.chain_id, crate::registry::Chain::Bitcoin);
-        assert_eq!(p.broadcast_payload, "ff00");
-    }
-
-    #[test]
-    fn prepare_payload_passthrough() {
-        let p = rebroadcast_prepare_payload("bitcoin.raw_hex".into(), "abcd".into()).unwrap();
-        assert_eq!(p.broadcast_payload, "abcd");
-    }
-
-    #[test]
-    fn prepare_payload_unknown_errors() {
-        assert!(rebroadcast_prepare_payload("nope".into(), "x".into()).is_err());
+    fn extract_field_handles_strings_numbers_and_missing() {
+        let j = r#"{"txid":"0xabc","nonce":7,"flag":true,"none":null}"#;
+        assert_eq!(extract_json_string_field(j, "txid"), "0xabc");
+        assert_eq!(extract_json_string_field(j, "nonce"), "7");
+        assert_eq!(extract_json_string_field(j, "flag"), "true");
+        assert_eq!(extract_json_string_field(j, "none"), "");
+        assert_eq!(extract_json_string_field(j, "missing"), "");
+        assert_eq!(extract_json_string_field("{not json", "x"), "");
     }
 
     #[test]
@@ -1226,84 +648,6 @@ mod validating_and_normalising_cannot_disagree {
                 );
             }
         }
-    }
-}
-
-/// Owned previews quote the selected asset; token routes read its precision
-/// and balance before they reach this amount transformation.
-pub(crate) fn quoted_send_amount(
-    preview: Option<SendPreview>,
-    chain: crate::registry::Chain,
-    is_native: bool,
-    token_decimals: Option<u32>,
-    percentage: u32,
-) -> Option<String> {
-    let preview = preview?;
-    let decimals = if is_native {
-        u32::from(chain.native_decimals())
-    } else {
-        match &preview {
-            SendPreview::Ethereum { .. } if chain.is_evm() => {}
-            SendPreview::Tron { .. } if chain.mainnet_counterpart() == Chain::Tron => {}
-            SendPreview::Solana { .. } if chain.mainnet_counterpart() == Chain::Solana => {}
-            SendPreview::Sui { .. } if chain.mainnet_counterpart() == Chain::Sui => {}
-            SendPreview::Aptos { .. } if chain.mainnet_counterpart() == Chain::Aptos => {}
-            SendPreview::Ton { .. } if chain.mainnet_counterpart() == Chain::Ton => {}
-            SendPreview::Near { .. } if chain.mainnet_counterpart() == Chain::Near => {}
-            SendPreview::Xrp { .. } if chain.mainnet_counterpart() == Chain::Xrp => {}
-            SendPreview::Stellar { .. } if chain.mainnet_counterpart() == Chain::Stellar => {}
-            _ => return None,
-        }
-        token_decimals?
-    };
-    // No fallback to a caller's portfolio balance: a missing maximum is a
-    // missing quote, not permission to offer the whole holding.
-    let maximum = compute_send_preview_details(Some(preview), None)?.maxSendable?;
-    crate::send::amount_input::send_amount_shortcut(maximum, decimals, percentage)
-}
-
-#[cfg(test)]
-mod shortcut_preview_tests {
-    use super::*;
-    #[test]
-    fn a_quote_is_required_and_selected_token_quotes_use_token_precision() {
-        assert!(
-            quoted_send_amount(None, crate::registry::Chain::Bitcoin, true, None, 100).is_none()
-        );
-        let preview = SendPreview::Solana {
-            preview: SolanaSendPreview {
-                maxSendable: "12".into(),
-                ..Default::default()
-            },
-        };
-        assert_eq!(
-            quoted_send_amount(
-                Some(preview),
-                crate::registry::Chain::Solana,
-                false,
-                Some(6),
-                100
-            )
-            .as_deref(),
-            Some("12")
-        );
-        let preview = SendPreview::Ethereum {
-            preview: EvmSendPreview {
-                maxSendable: Some("4.2".into()),
-                ..Default::default()
-            },
-        };
-        assert_eq!(
-            quoted_send_amount(
-                Some(preview),
-                crate::registry::Chain::Ethereum,
-                false,
-                Some(6),
-                100
-            )
-            .as_deref(),
-            Some("4.2")
-        );
     }
 }
 

@@ -65,9 +65,6 @@ impl IcpReplicaClient {
     pub(crate) async fn health(&self) -> Result<(), ApiError> {
         race(&self.endpoints, |base| async move {
             let url = format!("{}/api/v2/status", base.trim_end_matches('/'));
-            if super::http::refuse_non_loopback(&url) {
-                return Err(ApiError::Transport("non-loopback endpoint refused".into()));
-            }
             let mut response = self
                 .client
                 .reqwest_client()

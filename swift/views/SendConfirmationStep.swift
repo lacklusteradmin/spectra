@@ -91,10 +91,11 @@ struct SendConfirmationStep: View {
         }
         if store.sendFlow.previewError != nil { return AppLocalization.string("Unavailable") }
         if store.sendFlow.isPreparingPreview || !quoteIsCurrent { return AppLocalization.string("Estimating…") }
-        guard let quote = confirmedQuote, let fee = quote.networkFee else {
+        guard let quote = confirmedQuote else {
             return AppLocalization.string("Set when the transaction is built")
         }
-        return "≈ " + store.amounts.compactNetworkFee(fee, value: quote.networkFeeValue, chain: quote.chainId)
+        return "≈ " + store.amounts.compactNetworkFee(
+            quote.preview.estimatedNetworkFee, value: quote.networkFeeValue, chain: quote.chainId)
     }
 
     /// The amount and the quoted fee together, when the coin pays its own

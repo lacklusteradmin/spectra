@@ -2,7 +2,7 @@
 //! Both front ends share this policy; storage backends are platform-owned
 //! (Keychain on iOS, files for the CLI).
 
-use base64::Engine as _;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use rand::RngCore;
 use zeroize::Zeroizing;
 
@@ -128,10 +128,6 @@ impl Blob {
     const ALL: [Blob; 4] = [Blob::Seed, Blob::PrivateKey, Blob::Salt, Blob::Verifier];
 }
 
-fn engine() -> base64::engine::general_purpose::GeneralPurpose {
-    base64::engine::general_purpose::STANDARD
-}
-
 impl Blob {
     /// Seeds and private keys are sealed under the device key on the way to
     /// the store, password or not; the salt and verifier are not secret alone.
@@ -146,7 +142,7 @@ fn write_blob(
     blob: Blob,
     value: &[u8],
 ) -> Result<(), WalletSecretError> {
-    let encoded = Zeroizing::new(engine().encode(value));
+    let encoded = Zeroizing::new(STANDARD.encode(value));
     let stored = if blob.is_signing_material() {
         super::device_key::seal(store, encoded.as_bytes())?
     } else {
@@ -166,7 +162,7 @@ fn read_blob(
     if blob.is_signing_material() {
         raw = super::device_key::open(store, &raw)?;
     }
-    engine()
+    STANDARD
         .decode(raw.trim())
         .map_err(|e| WalletSecretError::Corrupt {
             message: format!("{} is not base64: {e}", blob.suffix()),
@@ -601,8 +597,8 @@ mod tests {
         let private = store
             .load_secret(SecretClass::PrivateKey, Blob::PrivateKey.key("k"))
             .unwrap();
-        assert!(!seed.contains("abandon") && !seed.contains(&engine().encode(PHRASE)));
-        assert!(!private.contains(&key[..16]) && !private.contains(&engine().encode(key)));
+        assert!(!seed.contains("abandon") && !seed.contains(&STANDARD.encode(PHRASE)));
+        assert!(!private.contains(&key[..16]) && !private.contains(&STANDARD.encode(key)));
         assert_eq!(&*load_seed_phrase(&store, "w", None).unwrap(), PHRASE);
         assert_eq!(&*load_private_key(&store, "k", None).unwrap(), key);
     }

@@ -72,8 +72,8 @@ extension AppState {
         guard !sendFlow.isPreparingPreview else { return nil }
         return sendQuote?.shortcuts[percentage]
     }
-    func sendPreviewDetails(for coin: AssetHolding) -> SendPreviewDetails? {
-        sendFlow.previewStore.quote(walletId: sendFlow.walletId, coin: coin)?.details
+    func sendPreview(for coin: AssetHolding) -> SendPreview? {
+        sendFlow.previewStore.quote(walletId: sendFlow.walletId, coin: coin)?.preview
     }
     var sendPreviewTarget: SendPreviewTarget {
         SendPreviewTarget(coin: selectedSendCoin, amount: sendPreviewAmountInput)

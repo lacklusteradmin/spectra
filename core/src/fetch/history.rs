@@ -3,15 +3,17 @@ use serde_json::Value;
 
 use crate::registry::Chain;
 
-// ── Normalized chain history — standard output from fetch_normalized_history_json
+// ── Normalized chain history
 
-/// A chain history entry normalized to a standard format that Swift can map
-/// directly to `FetchedTransactionRecord` without any chain-specific parsing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChainHistoryEntry {
+/// One transaction of a chain's history in the shape every chain shares, with
+/// nothing chain-specific left to parse.
+#[derive(Debug, Clone, Serialize, uniffi::Record)]
+pub struct NormalizedHistoryItem {
     pub deployment_id: Option<String>,
-    pub kind: String,   // "receive" | "send"
-    pub status: String, // "confirmed" | "pending"
+    /// `"receive"` or `"send"`.
+    pub kind: String,
+    /// `"confirmed"` or `"pending"`.
+    pub status: String,
     pub asset_display_name: String,
     pub symbol: String,
     pub chain_id: crate::registry::Chain,
@@ -20,7 +22,8 @@ pub struct ChainHistoryEntry {
     pub counterparty: String,
     pub tx_hash: String,
     pub block_height: Option<i64>,
-    pub timestamp: f64, // Unix seconds
+    /// Unix seconds.
+    pub timestamp: f64,
 }
 /// Where the transaction id lives. ICP has no hash — it identifies a transfer
 /// by ledger block index, which arrives as a number.
@@ -250,12 +253,11 @@ fn exact_units(value: &Value) -> Option<u128> {
 }
 
 /// Convert a raw history JSON string (as returned by `fetch_history`) into
-/// normalized `ChainHistoryEntry` records that Swift can consume without
-/// any chain-specific parsing logic.
+/// normalized records.
 pub fn normalize_chain_history(
     chain: crate::registry::Chain,
     raw_json: &str,
-) -> Vec<ChainHistoryEntry> {
+) -> Vec<NormalizedHistoryItem> {
     let Ok(Value::Array(entries)) = serde_json::from_str::<Value>(raw_json) else {
         return vec![];
     };
@@ -340,7 +342,7 @@ pub fn normalize_chain_history(
                     .map(|units| units / shape.time_divisor)?,
             };
 
-            Some(ChainHistoryEntry {
+            Some(NormalizedHistoryItem {
                 deployment_id: Some(deployment_id),
                 kind: if is_incoming { "receive" } else { "send" }.to_string(),
                 status: if chain.is_evm() {

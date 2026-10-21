@@ -21,7 +21,7 @@ use super::*;
 use crate::api::horizon::StellarAccountSigners;
 use crate::send::stellar_multisig::{self as stellar, OwnedMemo, StellarPayment, StellarSigners};
 use crate::store::state::WalletState;
-use base64::Engine;
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 /// How long a session gathers signatures unless asked otherwise.
 const DEFAULT_LIFETIME_SECS: u64 = 60 * 60;
@@ -63,14 +63,10 @@ fn signer_views(signers: &StellarSigners, signed: &[String]) -> Vec<MultisigSign
         .collect()
 }
 
-fn engine() -> base64::engine::GeneralPurpose {
-    base64::engine::general_purpose::STANDARD
-}
-
 fn decoded(
     session: &StellarSession,
 ) -> Result<(StellarPayment, Vec<stellar::StellarSignature>), SpectraBridgeError> {
-    let bytes = engine()
+    let bytes = STANDARD
         .decode(session.envelope.trim())
         .map_err(|_| SpectraBridgeError::invalid("Not a Stellar transaction envelope."))?;
     Ok(stellar::decode(&bytes)?)
@@ -110,7 +106,7 @@ pub(super) fn review(
         expires_at: Some(payment.max_time),
         expires_at_height: None,
         complete: weight >= session.signers.payment_threshold(),
-        data: engine().encode(payment.envelope(&signatures)?),
+        data: STANDARD.encode(payment.envelope(&signatures)?),
     })
 }
 
@@ -273,7 +269,7 @@ impl WalletService {
         };
         Ok(SessionBody::Stellar(StellarSession {
             signers: account.signers,
-            envelope: engine().encode(payment.envelope(&[])?),
+            envelope: STANDARD.encode(payment.envelope(&[])?),
         }))
     }
 
@@ -322,7 +318,7 @@ impl WalletService {
             }
             let merged = StellarSession {
                 signers: held.signers.clone(),
-                envelope: engine().encode(payment.envelope(&signatures)?),
+                envelope: STANDARD.encode(payment.envelope(&signatures)?),
             };
             review(wallet, &merged)?;
             stored.body = SessionBody::Stellar(merged);
@@ -417,7 +413,7 @@ impl WalletService {
         }
         stored.body = SessionBody::Stellar(StellarSession {
             signers: session.signers.clone(),
-            envelope: engine().encode(payment.envelope(&signatures)?),
+            envelope: STANDARD.encode(payment.envelope(&signatures)?),
         });
         Ok(())
     }

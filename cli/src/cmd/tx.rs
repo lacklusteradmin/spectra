@@ -15,7 +15,7 @@ use spectra_core::service::WalletService;
 
 use super::chain::{EndpointCapability, service_for_chain};
 use super::resolve_chain;
-use crate::ctx::{Ctx, SecretSource};
+use crate::ctx::{Ctx, PasswordArgs};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 
@@ -169,10 +169,8 @@ pub enum SendCommand {
         review_digest: String,
         #[arg(long)]
         endpoint: Option<String>,
-        #[arg(long)]
-        password_file: Option<String>,
-        #[arg(long, default_value = "SPECTRA_PASSWORD")]
-        password_env: Option<String>,
+        #[command(flatten)]
+        password: PasswordArgs,
     },
     /// Broadcast the same saved signed payload to explicitly selected endpoints.
     BroadcastSigned {
@@ -246,10 +244,8 @@ pub enum SendCommand {
         destination: String,
         #[arg(long)]
         yes: bool,
-        #[arg(long, value_name = "PATH")]
-        password_file: Option<String>,
-        #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
-        password_env: Option<String>,
+        #[command(flatten)]
+        password: PasswordArgs,
         #[command(flatten)]
         memo: MemoArgs,
     },
@@ -371,13 +367,12 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             transaction_id,
             review_digest,
             endpoint,
-            password_file,
-            password_env,
+            password,
         } => {
             let artifact = ctx
                 .rt
                 .block_on(ctx.service()?.inspect_send(transaction_id.clone()))?;
-            let password = signing_password(ctx, &artifact.wallet_id, password_file, password_env)?;
+            let password = password.for_wallet(&ctx.find_wallet(&artifact.wallet_id)?)?;
             let service = staged_service(ctx, artifact.chain_id, endpoint.into_iter().collect())?;
             let artifact =
                 ctx.rt
@@ -466,13 +461,13 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             destination,
             memo,
             yes,
-            password_file,
-            password_env,
+            password,
         } => {
             if !yes {
                 return Err(CliError::rejected("Broadcast requires --yes"));
             }
             let wallet = ctx.find_wallet(&wallet)?;
+            let password = password.for_wallet(&wallet)?;
             let input = spectra_core::service::send_review::SendReviewInput {
                 wallet_id: wallet.id,
                 holding_key: holding,
@@ -482,7 +477,6 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                 memo: memo.memo(),
             };
             let service = ctx.service()?;
-            let password = signing_password(ctx, &input.wallet_id, password_file, password_env)?;
             let review = ctx.rt.block_on(service.review_owned_send(input.clone()))?;
             let result = ctx
                 .rt
@@ -592,8 +586,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                     "Monero sync must use the wallet's selected network",
                 ));
             }
-            let password =
-                signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
+            let password = args.password.for_wallet(&wallet)?;
             let service = ctx.service()?;
             service.set_secret_store(ctx.secrets.clone());
             loop {
@@ -634,31 +627,8 @@ pub struct IdentityArgs {
     /// Defaults to the wallet's chain; EVM wallets may select another shared-address chain.
     #[arg(long)]
     chain: Option<String>,
-    #[arg(long, value_name = "PATH")]
-    password_file: Option<String>,
-    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
-    password_env: Option<String>,
-}
-
-pub(super) fn signing_password(
-    ctx: &Ctx,
-    wallet_id: &str,
-    file: Option<String>,
-    env: Option<String>,
-) -> CliResult<Option<String>> {
-    let requires_password = ctx
-        .state()?
-        .wallets
-        .iter()
-        .find(|wallet| wallet.id == wallet_id)
-        .is_some_and(|wallet| wallet.signing.requires_password());
-    if !requires_password {
-        return Ok(None);
-    }
-    let env = env.filter(|name| std::env::var_os(name).is_some());
-    Ok(Some(
-        SecretSource { file, env }.resolve("password", "password-file")?,
-    ))
+    #[command(flatten)]
+    password: PasswordArgs,
 }
 
 fn identity(ctx: &Ctx, out: Out, args: IdentityArgs) -> CliResult<()> {
@@ -667,7 +637,7 @@ fn identity(ctx: &Ctx, out: Out, args: IdentityArgs) -> CliResult<()> {
         Some(name) => resolve_chain(name)?,
         None => wallet.chain_id,
     };
-    let password = signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
+    let password = args.password.for_wallet(&wallet)?;
     let service = ctx.service()?;
     service.set_secret_store(ctx.secrets.clone());
     let address =
@@ -1209,12 +1179,8 @@ pub struct SendArgs {
     nonce: Option<i64>,
     #[command(flatten)]
     memo: MemoArgs,
-    /// Read the wallet password from this file; `-` means stdin.
-    #[arg(long, value_name = "PATH")]
-    password_file: Option<String>,
-    /// Read the wallet password from this environment variable.
-    #[arg(long, value_name = "VAR", default_value = "SPECTRA_PASSWORD")]
-    password_env: Option<String>,
+    #[command(flatten)]
+    password: PasswordArgs,
 }
 
 /// Transactions core has recorded locally. Distinct from `history`, which asks
@@ -1554,7 +1520,7 @@ pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
         )));
     }
 
-    let password = signing_password(ctx, &wallet.id, args.password_file, args.password_env)?;
+    let password = args.password.for_wallet(&wallet)?;
     let service = service_for_chain(
         ctx,
         chain,

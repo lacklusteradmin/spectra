@@ -17,7 +17,7 @@ impl WalletService {
         &self,
         chain_id: crate::registry::Chain,
         address: String,
-    ) -> Result<Vec<crate::fetch::history_decode::NormalizedHistoryItem>, SpectraBridgeError> {
+    ) -> Result<Vec<crate::fetch::history::NormalizedHistoryItem>, SpectraBridgeError> {
         let this = self.clone();
         crate::worker::run(async move {
             let this = &this;
@@ -43,26 +43,11 @@ impl WalletService {
         address: &str,
         cursor: Option<&str>,
     ) -> Result<
-        crate::api::HistoryPage<crate::fetch::history_decode::NormalizedHistoryItem>,
+        crate::api::HistoryPage<crate::fetch::history::NormalizedHistoryItem>,
         SpectraBridgeError,
     > {
         let page = self.fetch_history_page(chain, address, cursor).await?;
-        let items = crate::fetch::history::normalize_chain_history(chain, &page.items)
-            .into_iter()
-            .map(|e| crate::fetch::history_decode::NormalizedHistoryItem {
-                deployment_id: e.deployment_id,
-                kind: e.kind,
-                status: e.status,
-                asset_display_name: e.asset_display_name,
-                symbol: e.symbol,
-                chain_id: e.chain_id,
-                amount: e.amount,
-                counterparty: e.counterparty,
-                tx_hash: e.tx_hash,
-                block_height: e.block_height,
-                timestamp: e.timestamp,
-            })
-            .collect();
+        let items = crate::fetch::history::normalize_chain_history(chain, &page.items);
         Ok(crate::api::HistoryPage {
             items,
             next_cursor: page.next_cursor,

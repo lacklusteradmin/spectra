@@ -613,7 +613,7 @@ async fn an_owned_litecoin_build_pays_the_fee_its_preview_quoted() {
             .await
             .unwrap();
         let mut state = wallet.app_state().await.wallets[0].clone();
-        let mut coin = native_coin_template(chain).unwrap();
+        let mut coin = chain.native_holding_template();
         coin.amount = "0.003".into();
         state.holdings.push(coin);
         wallet
@@ -629,7 +629,7 @@ async fn an_owned_litecoin_build_pays_the_fee_its_preview_quoted() {
             memo: None,
         };
         let review = wallet.review_owned_send(input.clone()).await.unwrap();
-        let quoted = review.preview.unwrap().network_fee().to_string();
+        let quoted = review.preview.unwrap().estimated_network_fee;
         let built = wallet.build_owned_send(input).await.unwrap();
         let stored = wallet.load_send_artifact(built.id).await.unwrap();
         let PreparedPayload::Litecoin(prepared) = &stored.prepared else {

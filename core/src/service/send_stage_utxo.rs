@@ -530,7 +530,7 @@ impl WalletService {
         wallet_id: &str,
         amount: &str,
         destination: &str,
-    ) -> Result<crate::send::preview_types::BitcoinSendPreview, SpectraBridgeError> {
+    ) -> Result<crate::send::preview_types::SendPreview, SpectraBridgeError> {
         let decimals = u32::from(chain.native_decimals());
         let amount = u64::try_from(crate::send::amount_input::parse_raw_amount(
             amount, decimals,
@@ -616,15 +616,17 @@ impl WalletService {
             ),
             _ => (0, None),
         };
-        Ok(crate::send::preview_types::BitcoinSendPreview {
-            estimatedFeeRateSatVb: rate,
-            estimatedNetworkFee: units(fee),
-            feeRateDescription: rate_description,
-            spendableBalance: Some(units(total)),
-            estimatedTransactionBytes: Some(i64::try_from(size).unwrap_or(i64::MAX)),
-            selectedInputCount: Some(i64::try_from(count).unwrap_or(i64::MAX)),
-            usesChangeOutput: Some(change),
-            maxSendable: Some(units(max_sendable)),
+        Ok(crate::send::preview_types::SendPreview {
+            estimated_network_fee: units(fee),
+            spendable_balance: units(total),
+            max_sendable: units(max_sendable),
+            fee_rate_description: rate_description,
+            estimated_transaction_bytes: Some(i64::try_from(size).unwrap_or(i64::MAX)),
+            terms: crate::send::preview_types::SendFeeTerms::Utxo {
+                fee_rate_sat_vb: rate,
+                selected_input_count: i64::try_from(count).unwrap_or(i64::MAX),
+                uses_change_output: change,
+            },
         })
     }
 }

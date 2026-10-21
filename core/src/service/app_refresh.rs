@@ -280,9 +280,7 @@ impl WalletService {
                 (_, Some(wallet_ids)) => HistoryRefreshScope::Wallets {
                     wallet_ids: wallet_ids.clone(),
                 },
-                (Some(c), None) => HistoryRefreshScope::Chains {
-                    chain_ids: vec![c.str_id().into()],
-                },
+                (Some(c), None) => HistoryRefreshScope::Chains { chains: vec![c] },
                 (None, None) => HistoryRefreshScope::All,
             };
             let interval = if scheduled { 300.0 } else { 0.0 };

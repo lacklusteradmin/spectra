@@ -105,7 +105,7 @@ fn main() {
 
     if let Err(error) = result {
         out.text(|| eprintln!("  {} {}", out::fail_mark(), error));
-        if !error.already_emitted {
+        if !out.emitted() {
             out.emit(serde_json::json!({ "ok": false, "error": error.message }));
         }
         std::process::exit(error.code);
@@ -145,5 +145,16 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Pool(command) => cmd::address_pool::run(ctx, out, command),
         Command::Multisig(command) => cmd::multisig::run(ctx, out, command),
         Command::Alert(command) => cmd::alert::run(ctx, out, command),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Clap checks a subcommand's definition only when that subcommand is
+    /// parsed; this checks them all, flattened argument groups included.
+    #[test]
+    fn command_definitions_are_consistent() {
+        use clap::CommandFactory;
+        super::Cli::command().debug_assert();
     }
 }

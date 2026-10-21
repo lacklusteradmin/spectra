@@ -197,37 +197,18 @@ pub(super) fn rebroadcast_input(
         .signed_transaction_payload_format
         .as_deref()
         .ok_or_else(|| SpectraBridgeError::failure("signed payload format missing"))?;
-    let (payload, field) = if format == "core.submission_json" {
-        let prepared: crate::send::payload::PreparedSubmission = serde_json::from_str(payload)?;
-        (prepared.payload, prepared.result_field)
-    } else if chain.is_evm() {
-        if !["evm.raw_hex", "evm.rust_json", "ethereum.rust_json"].contains(&format) {
-            return Err(SpectraBridgeError::failure(
-                "payload does not match transaction chain",
-            ));
-        }
-        let raw = if format != "evm.raw_hex" {
-            crate::send::preview_decode::extract_json_string_field(
-                payload.clone(),
-                "raw_tx_hex".into(),
-            )
-        } else {
-            payload.clone()
-        };
-        if raw.is_empty() {
-            return Err(SpectraBridgeError::failure("empty signed payload"));
-        }
-        (raw, "txid".to_string())
-    } else {
-        let prepared =
-            crate::send::flow::rebroadcast_prepare_payload(format.into(), payload.clone())?;
-        if prepared.chain_id != chain.mainnet_counterpart() {
-            return Err(SpectraBridgeError::failure(
-                "payload does not match transaction chain",
-            ));
-        }
-        (prepared.broadcast_payload, prepared.result_field)
-    };
+    // Core writes the submission it broadcast onto the record it saves, so
+    // the payload is the record's own network's.
+    if format != crate::send::payload::SUBMISSION_FORMAT {
+        return Err(SpectraBridgeError::failure(
+            "Rebroadcast is not supported for this transaction format",
+        ));
+    }
+    let crate::send::payload::PreparedSubmission {
+        payload,
+        result_field: field,
+        ..
+    } = serde_json::from_str(payload)?;
     if payload.trim().is_empty() || field.trim().is_empty() {
         return Err(SpectraBridgeError::failure(
             "empty signed payload or result field",
@@ -374,7 +355,8 @@ mod tests {
             .unwrap();
         let mut record: TransactionRecord = serde_json::from_value(json!({
             "id": crate::store::new_transaction_id().to_uppercase(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainId": "ethereum-sepolia", "amount": "1", "address": "0x2222222222222222222222222222222222222222", "createdAtUnix": 1000.0,
-            "signedTransactionPayload": "0xdeadbeef", "signedTransactionPayloadFormat": "evm.raw_hex"
+            "signedTransactionPayload": submission("0xdeadbeef"),
+            "signedTransactionPayloadFormat": crate::send::payload::SUBMISSION_FORMAT
         })).unwrap();
         service.save_send_record(record.clone()).await.unwrap();
         Mock::given(method("POST"))
@@ -452,34 +434,46 @@ mod tests {
         assert!(server.received_requests().await.unwrap().is_empty());
     }
 
-    /// Only a send not yet confirmed, carrying a payload in a format of its
-    /// own chain, is rebroadcast: an Ethereum send holding a Solana payload
-    /// is refused, and so is a confirmed one.
+    /// What a send record keeps of the transaction it broadcast.
+    fn submission(payload: &str) -> String {
+        serde_json::to_string(&crate::send::payload::PreparedSubmission {
+            payload: payload.into(),
+            result_field: "txid".into(),
+            transaction_hash: None,
+            nonce: None,
+        })
+        .unwrap()
+    }
+
+    /// Only a send not yet confirmed, carrying the submission core saved, is
+    /// rebroadcast.
     #[test]
-    fn only_an_unconfirmed_send_with_its_own_chains_payload_is_rebroadcast() {
+    fn only_an_unconfirmed_send_with_its_saved_submission_is_rebroadcast() {
         let record = |status: &str, format: &str| -> TransactionRecord {
             serde_json::from_value(json!({
                 "id": "send", "walletId": "w", "kind": "send", "status": status,
                 "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH",
                 "chainId": "ethereum", "amount": "1", "address": "recipient",
                 "transactionHash": format!("0x{}", "ab".repeat(32)), "createdAtUnix": 1000.0,
-                "signedTransactionPayload": "0x1234", "signedTransactionPayloadFormat": format
+                "signedTransactionPayload": submission("0x1234"),
+                "signedTransactionPayloadFormat": format
             }))
             .unwrap()
         };
-        let (chain, payload, field) = rebroadcast_input(&record("pending", "evm.raw_hex")).unwrap();
+        let saved = crate::send::payload::SUBMISSION_FORMAT;
+        let (chain, payload, field) = rebroadcast_input(&record("pending", saved)).unwrap();
         assert_eq!(
             (chain, payload.as_str(), field.as_str()),
             (crate::registry::Chain::Ethereum, "0x1234", "txid")
         );
-        assert!(rebroadcast_input(&record("failed", "evm.raw_hex")).is_ok());
+        assert!(rebroadcast_input(&record("failed", saved)).is_ok());
         for (status, format, refusal) in [
             (
                 "pending",
-                "solana.rust_json",
-                "payload does not match transaction chain",
+                "evm.raw_hex",
+                "Rebroadcast is not supported for this transaction format",
             ),
-            ("confirmed", "evm.raw_hex", "transaction already confirmed"),
+            ("confirmed", saved, "transaction already confirmed"),
         ] {
             assert_eq!(
                 rebroadcast_input(&record(status, format))

@@ -35,7 +35,7 @@ async fn evm_imports_keep_each_networks_address_and_derivation_path() {
         .unwrap()
         .address
         .unwrap();
-        let expected = crate::send::flow::normalized_send_address(chain, expected);
+        let expected = crate::send::flow::normalize_address(chain, &expected);
         assert_eq!(wallet.active_address(), Some(expected.as_str()), "{chain}");
         assert_eq!(wallet.derivation_path.as_deref(), Some(path));
         let address = wallet

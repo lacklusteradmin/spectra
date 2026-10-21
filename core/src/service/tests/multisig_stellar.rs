@@ -327,7 +327,7 @@ async fn a_session_is_refused_once_its_signers_sequence_or_deadline_moved_on() {
     };
     let (mut payment, _) = decoded(session).unwrap();
     payment.max_time = crate::store::now_unix() as u64 - 1;
-    session.envelope = engine().encode(payment.envelope(&[]).unwrap());
+    session.envelope = STANDARD.encode(payment.envelope(&[]).unwrap());
     service.multisig_save(&stored).await.unwrap();
     let expired = service.multisig_session(created.id.clone()).await.unwrap();
     let refusal = sign(&service, &expired, "p1")

@@ -2,7 +2,7 @@
 use crate::registry::Chain;
 use crate::send::error::SendError;
 use crate::send::litecoin_mweb::prepared::CanonicalRecipient;
-use crate::send::preview_types::BitcoinSendPreview;
+use crate::send::preview_types::{SendFeeTerms, SendPreview};
 use crate::send::stages::UtxoPreparedInput;
 
 pub(crate) fn quote_inputs(
@@ -12,7 +12,7 @@ pub(crate) fn quote_inputs(
     destination: &str,
     amount: u64,
     rate: u64,
-) -> Result<Option<BitcoinSendPreview>, SendError> {
+) -> Result<Option<SendPreview>, SendError> {
     if amount > chain.litecoin_max_money()? {
         return Err(SendError::invalid("Litecoin amount exceeds MAX_MONEY"));
     }
@@ -66,15 +66,17 @@ pub(crate) fn quote_inputs(
         maximum
     };
     let coins = |value| crate::decimal::from_units(u128::from(value), 8);
-    Ok(Some(BitcoinSendPreview {
-        estimatedFeeRateSatVb: rate,
-        estimatedNetworkFee: coins(actual_fee),
-        feeRateDescription: Some(format!("{rate} sat/vB")),
-        spendableBalance: Some(coins(total)),
-        estimatedTransactionBytes: Some(i64::try_from(size).map_err(SendError::invalid)?),
-        selectedInputCount: Some(i64::try_from(inputs.len()).map_err(SendError::invalid)?),
-        usesChangeOutput: Some(uses_change),
-        maxSendable: Some(coins(maximum)),
+    Ok(Some(SendPreview {
+        estimated_network_fee: coins(actual_fee),
+        spendable_balance: coins(total),
+        max_sendable: coins(maximum),
+        fee_rate_description: Some(format!("{rate} sat/vB")),
+        estimated_transaction_bytes: Some(i64::try_from(size).map_err(SendError::invalid)?),
+        terms: SendFeeTerms::Utxo {
+            fee_rate_sat_vb: rate,
+            selected_input_count: i64::try_from(inputs.len()).map_err(SendError::invalid)?,
+            uses_change_output: uses_change,
+        },
     }))
 }
 
@@ -148,14 +150,13 @@ mod tests {
                     )
                     .unwrap()
                     .unwrap();
-                    let fee = units(&preview.estimatedNetworkFee);
+                    let fee = units(&preview.estimated_network_fee);
                     let uses_change = change >= dust && change > 0;
-                    assert_eq!(preview.usesChangeOutput, Some(uses_change));
-                    assert_eq!(fee, base_fee + if uses_change { 0 } else { change });
-                    assert_eq!(
-                        units(preview.maxSendable.as_deref().unwrap()),
-                        input.utxo.2 - base_fee
+                    assert!(
+                        matches!(preview.terms, SendFeeTerms::Utxo { uses_change_output, .. } if uses_change_output == uses_change)
                     );
+                    assert_eq!(fee, base_fee + if uses_change { 0 } else { change });
+                    assert_eq!(units(&preview.max_sendable), input.utxo.2 - base_fee);
                     let raw = crate::send::litecoin::sign_ltc_with_output_script(
                         chain,
                         std::slice::from_ref(&input.utxo),
@@ -192,10 +193,16 @@ mod tests {
         let preview = quote_inputs(chain, &[input], &change_script, "", 10, 1)
             .unwrap()
             .unwrap();
-        assert_eq!(preview.spendableBalance.as_deref(), Some("0.0000001"));
-        assert_eq!(preview.maxSendable.as_deref(), Some("0"));
-        assert_eq!(preview.usesChangeOutput, Some(false));
-        assert!(units(&preview.estimatedNetworkFee) > 10);
+        assert_eq!(preview.spendable_balance, "0.0000001");
+        assert_eq!(preview.max_sendable, "0");
+        assert!(matches!(
+            preview.terms,
+            SendFeeTerms::Utxo {
+                uses_change_output: false,
+                ..
+            }
+        ));
+        assert!(units(&preview.estimated_network_fee) > 10);
     }
 
     #[test]
@@ -257,7 +264,7 @@ mod tests {
             )
             .unwrap()
             .unwrap();
-            assert_eq!(units(preview.maxSendable.as_deref().unwrap()), maximum);
+            assert_eq!(units(&preview.max_sendable), maximum);
         }
         assert!(
             quote_inputs(
@@ -287,12 +294,9 @@ mod tests {
         )
         .unwrap()
         .unwrap();
-        assert_eq!(preview.spendableBalance.as_deref(), Some("84000000"));
-        let fee = units(&preview.estimatedNetworkFee);
-        assert_eq!(
-            units(preview.maxSendable.as_deref().unwrap()),
-            maximum - fee
-        );
+        assert_eq!(preview.spendable_balance, "84000000");
+        let fee = units(&preview.estimated_network_fee);
+        assert_eq!(units(&preview.max_sendable), maximum - fee);
         assert!(
             quote_inputs(
                 chain,

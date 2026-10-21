@@ -8,12 +8,12 @@ struct SendPreviewAdoptionTests: IsolatedAppStateSuite {
 
     @Test func quoteCannotBeReusedForAnotherWalletHoldingOrNetwork() {
         let store = SendPreviewStore()
-        let preview = SendPreview.solana(preview: SolanaSendPreview(
-            estimatedNetworkFee: "0.000005", spendableBalance: "1", feeRateDescription: nil,
-            maxSendable: "0.999995"))
+        let preview = SendPreview(
+            estimatedNetworkFee: "0.000005", spendableBalance: "1", maxSendable: "0.999995",
+            feeRateDescription: nil, estimatedTransactionBytes: nil, terms: .flat)
         let quote = OwnedSendPreview(walletId: "w", holdingKey: "solana:native", chainId: Chain.solana, amount: "1",
-            preview: preview, networkFee: "0.000005", networkFeeValue: nil, amountValue: nil,
-            details: nil, shortcuts: [100: "0.999994999"], recipient: nil)
+            preview: preview, networkFeeValue: nil, amountValue: nil,
+            shortcuts: [100: "0.999994999"], recipient: nil)
         store.apply(quote)
         let sol = AssetHolding.fixture(name: "Solana", symbol: "SOL", chainId: Chain.solana, amount: "1")
         #expect(store.quote(walletId: "w", coin: sol)?.shortcuts[100] == "0.999994999")
@@ -37,10 +37,12 @@ struct SendPreviewAdoptionTests: IsolatedAppStateSuite {
         flow.useCustomEvmFees = false
         flow.previewStore.apply(OwnedSendPreview(
             walletId: "w", holdingKey: "ethereum:native", chainId: .ethereum, amount: "1",
-            preview: .ethereum(preview: EvmSendPreview(
-                nonce: 7, gasLimit: 21_000, maxFeePerGasGwei: "20", maxPriorityFeePerGasGwei: "1.5",
-                estimatedNetworkFee: "0.00042", spendableBalance: nil, feeRateDescription: nil, maxSendable: nil)),
-            networkFee: "0.00042", networkFeeValue: nil, amountValue: nil, details: nil, shortcuts: [:],
+            preview: SendPreview(
+                estimatedNetworkFee: "0.00042", spendableBalance: "1", maxSendable: "0.99958",
+                feeRateDescription: nil, estimatedTransactionBytes: nil,
+                terms: .evm(terms: EvmFeeTerms(
+                    nonce: 7, gasLimit: 21_000, maxFeePerGasGwei: "20", maxPriorityFeePerGasGwei: "1.5"))),
+            networkFeeValue: nil, amountValue: nil, shortcuts: [:],
             recipient: nil))
         flow.useCustomEvmFees = true
         flow.evmManualNonceEnabled = true
