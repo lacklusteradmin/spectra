@@ -519,7 +519,7 @@ impl WalletService {
             };
             let (_, _, key) = this.load_monero(&wallet_id).await?;
             let tx_key = prepared.transaction_key(&key)?;
-            let raw = hex::decode(raw)?;
+            let raw = hex::decode(raw.raw_hex()?)?;
             let transaction = ::monero_wallet::transaction::Transaction::read(&mut raw.as_slice())
                 .map_err(SpectraBridgeError::failure)?;
             if hex::encode(transaction.hash()) != txid {

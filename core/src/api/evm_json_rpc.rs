@@ -104,29 +104,6 @@ pub struct EvmFeeEstimate {
     pub max_fee_per_gas_wei: u128,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EvmSendResult {
-    pub txid: String,
-    /// Nonce actually used for this transaction. Set by the signing path
-    /// (either the caller's override or the fetched pending nonce).
-    #[serde(default)]
-    pub nonce: u64,
-    /// Signed transaction bytes as a 0x-prefixed hex string — callers that
-    /// need to re-broadcast or log the raw envelope can use this directly.
-    /// Empty on `broadcast_raw` paths where the raw hex was already supplied.
-    #[serde(default)]
-    pub raw_tx_hex: String,
-    /// Gas limit used for the transaction.
-    #[serde(default)]
-    pub gas_limit: u64,
-    /// EIP-1559 max fee per gas (wei, decimal string).
-    #[serde(default)]
-    pub max_fee_per_gas_wei: String,
-    /// EIP-1559 max priority fee per gas (wei, decimal string).
-    #[serde(default)]
-    pub max_priority_fee_per_gas_wei: String,
-}
-
 /// Lightweight ERC-20 metadata (symbol + decimals).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Erc20Metadata {
@@ -1093,20 +1070,13 @@ fn percent_encode(s: &str) -> String {
 
 impl EvmClient {
     /// Broadcast a pre-signed raw transaction hex (0x-prefixed).
-    pub async fn broadcast_raw(&self, hex_tx: &str) -> Result<EvmSendResult, ApiError> {
+    pub async fn broadcast_raw(&self, hex_tx: &str) -> Result<String, ApiError> {
         let result = self.call("eth_sendRawTransaction", json!([hex_tx])).await?;
         let txid = result
             .as_str()
             .or_decode("eth_sendRawTransaction: expected string")?
             .to_string();
-        Ok(EvmSendResult {
-            txid,
-            nonce: 0,
-            raw_tx_hex: hex_tx.to_string(),
-            gas_limit: 0,
-            max_fee_per_gas_wei: String::new(),
-            max_priority_fee_per_gas_wei: String::new(),
-        })
+        Ok(txid)
     }
 }
 

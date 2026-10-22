@@ -60,13 +60,6 @@ pub(crate) struct CardanoProtocolParams {
     pub max_value_size: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CardanoSendResult {
-    pub txid: String,
-    /// CBOR hex of the signed transaction — stored for rebroadcast.
-    pub cbor_hex: String,
-}
-
 // ── Koios response types (shared within the chain module)
 
 #[derive(Debug, Deserialize)]
@@ -610,13 +603,11 @@ fn cardano_transaction_status(
 
 impl KoiosClient {
     /// Submit a CBOR-encoded signed transaction.
-    pub async fn submit_tx(&self, cbor_hex: &str) -> Result<CardanoSendResult, ApiError> {
-        let cbor_hex_owned = cbor_hex.to_string();
+    pub async fn submit_tx(&self, cbor_hex: &str) -> Result<String, ApiError> {
         let cbor_bytes = hex::decode(cbor_hex)
             .map_err(|e| ApiError::InvalidInput(format!("hex decode: {e}")))?;
         race(&self.endpoints, |base| {
             let cbor_bytes = cbor_bytes.clone();
-            let cbor_hex = cbor_hex_owned.clone();
             let url = format!("{}/submittx", base.trim_end_matches('/'));
             async move {
                 // Koios submit-api accepts raw CBOR and returns a JSON transaction hash.
@@ -640,7 +631,7 @@ impl KoiosClient {
                         "Koios submission returned an invalid transaction id".into(),
                     ));
                 }
-                Ok(CardanoSendResult { txid, cbor_hex })
+                Ok(txid)
             }
         })
         .await
@@ -785,7 +776,7 @@ mod keyless_submission_tests {
             .expect(1)
             .mount(&server)
             .await;
-        assert_eq!(client.submit_tx("8100").await.unwrap().txid, txid);
+        assert_eq!(client.submit_tx("8100").await.unwrap(), txid);
         let requests = server.received_requests().await.unwrap();
         assert!(!requests[0].headers.contains_key("authorization"));
         assert!(!requests[0].headers.contains_key("project_id"));

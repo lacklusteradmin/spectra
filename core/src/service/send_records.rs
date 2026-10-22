@@ -155,7 +155,7 @@ impl WalletService {
             .find(|r| r.id.eq_ignore_ascii_case(&transaction_id))
             .ok_or_else(|| SpectraBridgeError::failure("transaction not found"))?
             .payload;
-        let (chain, payload, field) = rebroadcast_input(&record)?;
+        let (chain, payload) = rebroadcast_input(&record)?;
         if chain.evm_rollup_fee_model().is_some() {
             return Err(SpectraBridgeError::failure(
                 "Rollup rebroadcast requires the prepared transaction and its reviewed fee budget",
@@ -165,12 +165,7 @@ impl WalletService {
         record.failure_reason =
             Some(crate::store::persistence_models::TransactionFailure::RebroadcastOutcomeUnknown);
         self.save_send_record(record.clone()).await?;
-        let hash = self.broadcast_raw_extract(chain, payload, field).await?;
-        if hash.trim().is_empty() {
-            return Err(SpectraBridgeError::failure(
-                "node returned no transaction identifier",
-            ));
-        }
+        let hash = self.broadcast_raw(chain, payload).await?;
         record.transaction_hash = Some(hash.clone());
         record.status = TransactionStatus::Pending;
         record.failure_reason = None;
@@ -181,7 +176,7 @@ impl WalletService {
 
 pub(super) fn rebroadcast_input(
     record: &TransactionRecord,
-) -> Result<(Chain, String, String), SpectraBridgeError> {
+) -> Result<(Chain, crate::send::payload::SignedPayload), SpectraBridgeError> {
     if !record.kind.is_submitted() {
         return Err(SpectraBridgeError::failure("only sends can be rebroadcast"));
     }
@@ -204,17 +199,8 @@ pub(super) fn rebroadcast_input(
             "Rebroadcast is not supported for this transaction format",
         ));
     }
-    let crate::send::payload::PreparedSubmission {
-        payload,
-        result_field: field,
-        ..
-    } = serde_json::from_str(payload)?;
-    if payload.trim().is_empty() || field.trim().is_empty() {
-        return Err(SpectraBridgeError::failure(
-            "empty signed payload or result field",
-        ));
-    }
-    Ok((chain, payload, field))
+    let crate::send::payload::PreparedSubmission { payload, .. } = serde_json::from_str(payload)?;
+    Ok((chain, payload))
 }
 
 // Share a lock even across service instances using the same database. Weak entries
@@ -437,8 +423,7 @@ mod tests {
     /// What a send record keeps of the transaction it broadcast.
     fn submission(payload: &str) -> String {
         serde_json::to_string(&crate::send::payload::PreparedSubmission {
-            payload: payload.into(),
-            result_field: "txid".into(),
+            payload: crate::send::payload::SignedPayload::Hex(payload.into()),
             transaction_hash: None,
             nonce: None,
         })
@@ -461,10 +446,10 @@ mod tests {
             .unwrap()
         };
         let saved = crate::send::payload::SUBMISSION_FORMAT;
-        let (chain, payload, field) = rebroadcast_input(&record("pending", saved)).unwrap();
+        let (chain, payload) = rebroadcast_input(&record("pending", saved)).unwrap();
         assert_eq!(
-            (chain, payload.as_str(), field.as_str()),
-            (crate::registry::Chain::Ethereum, "0x1234", "txid")
+            (chain, payload.to_string()),
+            (crate::registry::Chain::Ethereum, "0x1234".into())
         );
         assert!(rebroadcast_input(&record("failed", saved)).is_ok());
         for (status, format, refusal) in [

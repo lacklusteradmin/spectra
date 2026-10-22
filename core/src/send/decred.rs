@@ -13,7 +13,8 @@
 
 use crate::send::error::SendError;
 
-use super::bitcoin_wire::{decode_txid_le, varint};
+use super::bitcoin_wire::varint;
+use crate::api::utxo::{Txid, UtxoInput};
 use crate::derivation::decred::{blake256, parse_decred_address};
 use crate::derivation::utxo_address::ParsedUtxoAddress;
 use crate::registry::Chain;
@@ -48,7 +49,7 @@ pub(crate) fn recipient_script(chain: Chain, to_address: &str) -> Result<Vec<u8>
 
 /// One regular-tree input and the key of the address it pays.
 pub(crate) struct DecredSigningInput<'a> {
-    pub utxo: &'a (String, u32, u64, Vec<u8>),
+    pub utxo: &'a UtxoInput,
     pub private_key: &'a [u8],
 }
 
@@ -58,27 +59,24 @@ pub(crate) fn sign(
     inputs: &[DecredSigningInput<'_>],
     outputs: &[(Vec<u8>, u64)],
 ) -> Result<Vec<u8>, SendError> {
-    let builds = inputs
+    let builds: Vec<DcrInputBuild> = inputs
         .iter()
-        .map(|input| {
-            Ok(DcrInputBuild {
-                outpoint_txid: decode_txid_le(&input.utxo.0)?,
-                vout: input.utxo.1,
-                tree: TX_TREE_REGULAR,
-                sequence: 0xFFFF_FFFF,
-                amount: input.utxo.2,
-                script_pubkey: input.utxo.3.clone(),
-            })
+        .map(|input| DcrInputBuild {
+            txid: input.utxo.txid,
+            vout: input.utxo.vout,
+            tree: TX_TREE_REGULAR,
+            sequence: 0xFFFF_FFFF,
+            amount: input.utxo.value,
+            script_pubkey: input.utxo.script_pubkey.clone(),
         })
-        .collect::<Result<Vec<_>, SendError>>()?;
+        .collect();
     let keys: Vec<&[u8]> = inputs.iter().map(|input| input.private_key).collect();
     sign_dcr_tx(&builds, outputs, &keys)
 }
 
 #[derive(Debug, Clone)]
 struct DcrInputBuild {
-    /// The outpoint txid in wire (little-endian) order.
-    outpoint_txid: Vec<u8>,
+    txid: Txid,
     vout: u32,
     tree: u8,
     sequence: u32,
@@ -113,7 +111,7 @@ fn sign_dcr_tx(
                 "dcr input does not belong to its signing key".into(),
             ));
         }
-        if !outpoints.insert((input.outpoint_txid.clone(), input.vout)) {
+        if !outpoints.insert((input.txid, input.vout)) {
             return Err(SendError::Invalid("dcr: duplicate input".into()));
         }
         keys.push((secret_key, pubkey_bytes));
@@ -179,7 +177,7 @@ fn serialize_prefix(
     buf.extend_from_slice(&VERSION_NO_WITNESS.to_le_bytes());
     buf.extend_from_slice(&varint(inputs.len()));
     for input in inputs {
-        buf.extend_from_slice(&input.outpoint_txid);
+        buf.extend_from_slice(&input.txid.wire_bytes());
         buf.extend_from_slice(&input.vout.to_le_bytes());
         buf.push(input.tree);
         buf.extend_from_slice(&input.sequence.to_le_bytes());
@@ -227,7 +225,7 @@ fn serialize_full(
     buf.extend_from_slice(&VERSION_FULL.to_le_bytes());
     buf.extend_from_slice(&varint(inputs.len()));
     for input in inputs {
-        buf.extend_from_slice(&input.outpoint_txid);
+        buf.extend_from_slice(&input.txid.wire_bytes());
         buf.extend_from_slice(&input.vout.to_le_bytes());
         buf.push(input.tree);
         buf.extend_from_slice(&input.sequence.to_le_bytes());

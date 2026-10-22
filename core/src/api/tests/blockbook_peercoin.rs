@@ -105,11 +105,11 @@ async fn generated_outputs_mature_at_each_networks_boundary() {
                 let inputs = client.fetch_peercoin_inputs("holder").await.unwrap();
                 assert_eq!(inputs.len(), count, "{chain} {kind} at {confirmations}");
                 if count == 1 {
-                    assert_eq!(inputs[0].0, tx.compute_txid().to_string());
-                    assert_eq!(inputs[0].1, index);
-                    assert_eq!(inputs[0].2, 50_000);
+                    assert_eq!(inputs[0].txid.to_string(), tx.compute_txid().to_string());
+                    assert_eq!(inputs[0].vout, index);
+                    assert_eq!(inputs[0].value, 50_000);
                     assert_eq!(
-                        inputs[0].3,
+                        inputs[0].script_pubkey,
                         tx.output[index as usize].script_pubkey.to_bytes()
                     );
                 }
@@ -141,9 +141,12 @@ async fn verified_zero_valued_outputs_do_not_block_spendable_inputs() {
         .await;
         let inputs = client.fetch_peercoin_inputs("holder").await.unwrap();
         assert_eq!(inputs.len(), 1);
-        assert_eq!(inputs[0].1, 1);
-        assert_eq!(inputs[0].2, 50_000);
-        assert_eq!(inputs[0].3, tx.output[1].script_pubkey.to_bytes());
+        assert_eq!(inputs[0].vout, 1);
+        assert_eq!(inputs[0].value, 50_000);
+        assert_eq!(
+            inputs[0].script_pubkey,
+            tx.output[1].script_pubkey.to_bytes()
+        );
 
         let (_server, client) = client_for(chain, &tx, 0, 1000, |_, outputs, _| {
             outputs[0]["value"] = json!("0");

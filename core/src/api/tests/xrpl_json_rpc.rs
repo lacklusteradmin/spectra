@@ -80,9 +80,7 @@ async fn submit_distinguishes_accepted_payments_from_refusal_and_malformed_respo
             .await;
         match expected {
             "accepted" => {
-                let submission = submission.unwrap();
-                assert_eq!(submission.txid, "ABC");
-                assert_eq!(submission.tx_blob_hex, "signed");
+                assert_eq!(submission.unwrap(), "ABC");
             }
             "rejected" => assert!(
                 matches!(submission, Err(ApiError::Rejected(_))),

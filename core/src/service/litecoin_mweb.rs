@@ -37,6 +37,7 @@ use crate::send::stages::{
 };
 use crate::store::secret_store::{SecretClass, SecretStoreError};
 use crate::store::state::{WalletSigning, WalletState};
+use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use zeroize::Zeroizing;
@@ -378,8 +379,8 @@ impl WalletService {
                     .attempts
                     .iter()
                     .any(|attempt| attempt.outcome != SubmissionOutcome::Rejected);
-                if let Some(raw) = stored.view.signed_payload.as_deref().filter(|_| submitted) {
-                    let raw = hex::decode(raw)?;
+                if let Some(submission) = stored.submission.as_ref().filter(|_| submitted) {
+                    let raw = hex::decode(submission.payload.raw_hex()?)?;
                     for paid in crate::send::litecoin_mweb::transaction::mweb_outputs(&raw)? {
                         if found.contains_key(&paid.id()) {
                             continue;
@@ -658,7 +659,7 @@ impl WalletService {
             .tip
             .as_ref()
             .ok_or_else(|| internal("An MWEB scan with no tip"))?;
-        let item = |kind: &str,
+        let item = |kind: TransactionKind,
                     litoshis: u64,
                     counterparty: String,
                     hash: String,
@@ -666,8 +667,8 @@ impl WalletService {
                     time: u64| {
             crate::fetch::history::NormalizedHistoryItem {
                 deployment_id: crate::tokens::deployment_id_for(chain, None),
-                kind: kind.into(),
-                status: "confirmed".into(),
+                kind,
+                status: TransactionStatus::Confirmed,
                 asset_display_name: chain.coin_name().into(),
                 symbol: chain.coin_symbol().into(),
                 chain_id: chain,
@@ -684,7 +685,7 @@ impl WalletService {
             .filter(|found| found.coin.address_index >= keys::RECEIVE_INDEX)
             .map(|found| {
                 item(
-                    "receive",
+                    TransactionKind::Receive,
                     found.coin.value,
                     String::new(),
                     hex::encode(found.coin.output_id),
@@ -711,7 +712,7 @@ impl WalletService {
                     .any(|coin| spent.contains(&coin.output_id))
             {
                 items.push(item(
-                    "send",
+                    TransactionKind::Send,
                     prepared.amount,
                     prepared.recipient.clone(),
                     hash.clone(),
@@ -788,7 +789,7 @@ impl WalletService {
             icp_staking_receipts: vec![],
         };
         stored.view.review_digest = stored.digest()?;
-        self.save_send_artifact(&stored, Vec::new()).await?;
+        self.save_send_artifact(&stored, &[]).await?;
         Ok(stored.view)
     }
 
@@ -799,7 +800,7 @@ impl WalletService {
         stored: &StoredSend,
         prepared: &PreparedMwebSpend,
         password: Option<&str>,
-    ) -> Result<(crate::send::payload::PreparedSubmission, Vec<String>), SpectraBridgeError> {
+    ) -> Result<crate::send::payload::PreparedSubmission, SpectraBridgeError> {
         let wallet = self.mweb_wallet(&stored.view.wallet_id).await?;
         let chain = wallet.chain_id;
         let (_, cache, view) = self.load_mweb(&wallet).await?.ok_or_else(|| {
@@ -819,19 +820,11 @@ impl WalletService {
             .map(|found| (found.coin.output_id, found.coin.clone()))
             .collect();
         let signed = prepared::sign_spend(chain, prepared, &coins, &view, &spend_secret)?;
-        Ok((
-            crate::send::payload::PreparedSubmission {
-                payload: hex::encode(&signed.raw),
-                result_field: "txid".into(),
-                transaction_hash: Some(signed.txid),
-                nonce: None,
-            },
-            prepared
-                .inputs
-                .iter()
-                .map(|coin| format!("{}:mweb:{}", chain.str_id(), hex::encode(coin.output_id)))
-                .collect(),
-        ))
+        Ok(crate::send::payload::PreparedSubmission {
+            payload: crate::send::payload::SignedPayload::Hex(hex::encode(&signed.raw)),
+            transaction_hash: Some(signed.txid),
+            nonce: None,
+        })
     }
 }
 

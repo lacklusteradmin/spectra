@@ -4,7 +4,7 @@
 use super::send_stage_support::{Secret, Wallet, node, refusal};
 use super::*;
 use crate::send::stages::SendStage;
-use serde_json::{Value, json};
+use serde_json::json;
 use std::sync::Mutex;
 
 const PHRASE: &str =
@@ -113,10 +113,10 @@ async fn a_runtime_or_nonce_changed_since_review_refuses_signing() {
     assert_eq!(signed.stage, SendStage::Signed);
     // Its hash is BLAKE2b-256 of the extrinsic it signed, as the network
     // names it.
-    let payload: Value = serde_json::from_str(signed.signed_payload.as_deref().unwrap()).unwrap();
     let extrinsic = hex::decode(
-        payload["extrinsic_hex"]
-            .as_str()
+        signed
+            .signed_payload
+            .as_deref()
             .unwrap()
             .trim_start_matches("0x"),
     )

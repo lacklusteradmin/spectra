@@ -95,13 +95,6 @@ fn decode_account_info(bytes: &[u8], balance_bytes: usize) -> Result<SubstrateBa
     })
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SubstrateSendResult {
-    pub txid: String,
-    /// Hex-encoded signed extrinsic (0x-prefixed) — stored for rebroadcast.
-    pub extrinsic_hex: String,
-}
-
 pub struct SubstrateClient {
     pub(crate) rpc_endpoints: std::sync::Arc<Vec<String>>,
     pub(crate) client: std::sync::Arc<HttpClient>,
@@ -137,7 +130,7 @@ impl SubstrateClient {
     }
 
     /// Submit a signed extrinsic, fresh or saved for rebroadcast.
-    pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<SubstrateSendResult, ApiError> {
+    pub async fn submit_extrinsic_hex(&self, hex: &str) -> Result<String, ApiError> {
         let result = self
             .rpc_call("author_submitExtrinsic", json!([hex]))
             .await?;
@@ -148,10 +141,7 @@ impl SubstrateClient {
                 "Node returned a different extrinsic hash".into(),
             ));
         }
-        Ok(SubstrateSendResult {
-            txid,
-            extrinsic_hex: hex.to_string(),
-        })
+        Ok(txid)
     }
 
     pub async fn verify_substrate_genesis(&self, chain: Chain) -> Result<String, ApiError> {

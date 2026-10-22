@@ -120,7 +120,7 @@ try:
             '--capabilities', 'balance,fee,verification,broadcast', '--add', endpoint)
 
         signed = signed_send()
-        raw = json.loads(signed['signed_payload'])['extrinsic_hex']
+        raw = signed['signed_payload']
         assert not live['submitted'], 'signing submits nothing'
         # The signature caps no fee: a higher one at broadcast submits nothing.
         live['fee'] += 1; broadcast(signed['id'], success=False); live['fee'] -= 1
@@ -144,7 +144,7 @@ try:
         assert len(recovered) == 1 and recovered[0]['newStatus'] == 'confirmed', recovered
 
         failed = signed_send(); broadcast(failed['id'])
-        failed_raw = json.loads(failed['signed_payload'])['extrinsic_hex']
+        failed_raw = failed['signed_payload']
         live['finalized'] = 170; live['blocks'][169] = [failed_raw]; live['succeeded'][169] = False
         assert poll() == []
         assert verified_through(failed['id']) == 166

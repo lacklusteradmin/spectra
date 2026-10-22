@@ -19,11 +19,11 @@ impl WalletService {
         let mut seen = BTreeSet::new();
         for source in sources {
             for utxo in client.fetch_peercoin_inputs(&source.address).await? {
-                if !seen.insert((utxo.0.clone(), utxo.1)) {
+                if !seen.insert((utxo.txid, utxo.vout)) {
                     return Err(SpectraBridgeError::invalid("Duplicate Peercoin outpoint"));
                 }
                 if !crate::send::peercoin::peercoin_input_matches_sender(
-                    &utxo.3,
+                    &utxo.script_pubkey,
                     &source.script_pubkey,
                 ) {
                     return Err(SpectraBridgeError::invalid(
@@ -81,7 +81,7 @@ impl WalletService {
         chain: Chain,
         stored: &StoredSend,
         signer: &super::send_identity::ResolvedSendIdentity,
-    ) -> Result<(PreparedSubmission, Vec<String>), SpectraBridgeError> {
+    ) -> Result<PreparedSubmission, SpectraBridgeError> {
         let PreparedPayload::Peercoin(prepared) = &stored.prepared else {
             return Err(SpectraBridgeError::invalid("Expected Peercoin transaction"));
         };
@@ -94,7 +94,6 @@ impl WalletService {
             .map(|key| (key.source.address.as_str(), key))
             .collect();
         let mut keys = Vec::new();
-        let mut resources = Vec::new();
         let mut seen = BTreeSet::new();
         for input in &prepared.inputs {
             let key = by_address
@@ -103,7 +102,7 @@ impl WalletService {
                 .ok_or_else(|| {
                     SpectraBridgeError::invalid("Peercoin source changed; build and review again")
                 })?;
-            if !seen.insert((&input.utxo.0, input.utxo.1))
+            if !seen.insert((input.utxo.txid, input.utxo.vout))
                 || !current.iter().any(|candidate| {
                     candidate.source == input.source && candidate.utxo == input.utxo
                 })
@@ -113,12 +112,6 @@ impl WalletService {
                 ));
             }
             keys.push(Zeroizing::new(hex::decode(key.private_key_hex.as_str())?));
-            resources.push(format!(
-                "{}:utxo:{}:{}",
-                chain.str_id(),
-                input.utxo.0,
-                input.utxo.1
-            ));
         }
         let signing_inputs: Vec<_> = prepared
             .inputs
@@ -139,16 +132,12 @@ impl WalletService {
             &stored.view.sender,
             &change_key,
         )?;
-        let payload = hex::encode(raw);
-        Ok((
-            PreparedSubmission {
-                transaction_hash: crate::send::payload::bitcoin_transaction_id(&payload),
-                payload,
-                result_field: "txid".into(),
-                nonce: None,
-            },
-            resources,
-        ))
+        let raw = hex::encode(raw);
+        Ok(PreparedSubmission {
+            transaction_hash: crate::send::payload::bitcoin_transaction_id(&raw),
+            payload: crate::send::payload::SignedPayload::Hex(raw),
+            nonce: None,
+        })
     }
 
     pub(super) async fn preview_peercoin_owned_send(
@@ -196,7 +185,7 @@ impl WalletService {
         let inputs = self.collect_peercoin_inputs(chain, wallet_id).await?;
         let total = inputs
             .iter()
-            .try_fold(0u64, |total, input| total.checked_add(input.utxo.2))
+            .try_fold(0u64, |total, input| total.checked_add(input.utxo.value))
             .ok_or_else(|| SpectraBridgeError::invalid("Peercoin input total overflow"))?;
         let units = |raw: u64| {
             crate::decimal::from_units(u128::from(raw), u32::from(chain.native_decimals()))

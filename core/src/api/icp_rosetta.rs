@@ -26,11 +26,6 @@ pub struct IcpHistoryEntry {
     pub is_incoming: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IcpSendResult {
-    pub txid: String,
-}
-
 // ── Client (Rosetta-based for read, direct for write)
 
 pub struct IcpClient {
@@ -290,7 +285,7 @@ impl IcpClient {
     pub(crate) async fn submit_signed_transaction(
         &self,
         payload: &str,
-    ) -> Result<IcpSendResult, ApiError> {
+    ) -> Result<String, ApiError> {
         let body: Value = serde_json::from_str(payload).map_err(ApiError::invalid)?;
         let submit: Value = self.rosetta_post("/construction/submit", &body).await?;
         let txid = submit
@@ -300,9 +295,7 @@ impl IcpClient {
         if txid.len() != 64 || !txid.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(ApiError::Decode("submit: invalid transaction hash".into()));
         }
-        Ok(IcpSendResult {
-            txid: txid.to_lowercase(),
-        })
+        Ok(txid.to_lowercase())
     }
 }
 

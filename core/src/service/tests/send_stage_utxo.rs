@@ -9,8 +9,8 @@ fn input(index: u8, value: u64, script: &[u8]) -> UtxoPreparedInput {
             derivation_path: None,
             script_pubkey: script.to_vec(),
         },
-        utxo: (
-            hex::encode([index; 32]),
+        utxo: crate::api::utxo::UtxoInput::fixture(
+            &hex::encode([index; 32]),
             u32::from(index),
             value,
             script.to_vec(),
@@ -53,7 +53,7 @@ fn selection_spends_the_largest_outputs_it_needs() {
         selection
             .inputs
             .iter()
-            .map(|input| input.utxo.2)
+            .map(|input| input.utxo.value)
             .collect::<Vec<_>>(),
         [50_000, 20_000]
     );

@@ -261,7 +261,6 @@ impl WalletService {
         resolutions: Vec<crate::store::ResolvedPendingStatus>,
         expected: Option<Vec<crate::store::persistence_models::TransactionRecord>>,
     ) -> Result<Vec<crate::store::TransactionStatusChange>, SpectraBridgeError> {
-        use super::history_derived::status_string;
         let by_id: HashMap<String, crate::store::ResolvedPendingStatus> =
             resolutions.into_iter().map(|r| (r.id.clone(), r)).collect();
         if by_id.is_empty() {
@@ -298,8 +297,8 @@ impl WalletService {
                     .iter()
                     .map(|t| crate::store::ResolvedPendingTransactionInput {
                         id: t.id.clone(),
-                        old_status: status_string(t.status),
-                        new_status: by_id[&t.id].status.clone(),
+                        old_status: t.status,
+                        new_status: by_id[&t.id].status,
                     })
                     .collect();
 
@@ -323,11 +322,7 @@ impl WalletService {
                     let Some(old) = stored_by_id.get(decision.id.as_str()).copied() else {
                         continue;
                     };
-                    let Some(new_status) = crate::store::wallet_domain::TransactionStatus::from_raw(
-                        &decision.new_status,
-                    ) else {
-                        continue;
-                    };
+                    let new_status = decision.new_status;
                     let resolution = by_id.get(&decision.id);
                     let mut updated = old.clone();
                     updated.status = new_status;
@@ -433,7 +428,7 @@ pub enum StatusPollOutcome {
 
 /// Cheap content signature, to tell an unchanged merge result from a real one.
 /// Serialization is enough: these records are flat and compare by value.
-fn fingerprint(record: &crate::fetch::transactions::FetchedTransactionRecord) -> String {
+fn fingerprint(record: &crate::store::persistence_models::TransactionRecord) -> String {
     serde_json::to_string(record).unwrap_or_default()
 }
 
@@ -462,7 +457,7 @@ mod audit_fix5_tests {
                     "id":crate::store::new_transaction_id(), "walletId":format!("wallet-{}",i%2), "walletName":"W", "kind":"send", "status":"confirmed", "chainId":"ethereum", "transactionHash":"0xshared", "amount":"1", "symbol":"ETH", "assetDisplayName":"Ether", "address":"0xrecipient", "createdAtUnix":1000.0
                 })).unwrap();
                 barrier.wait().await;
-                service.apply_transaction_command(TransactionCommand::Merge { incoming:vec![record.into()], chain_id:crate::registry::Chain::Ethereum, preserve_created_at_sentinel_unix:None }).await.unwrap()
+                service.apply_transaction_command(TransactionCommand::Merge { incoming:vec![record], chain_id:crate::registry::Chain::Ethereum, preserve_created_at_sentinel_unix:None }).await.unwrap()
             }));
         }
         let mut added = 0;
@@ -480,6 +475,7 @@ mod audit_fix5_tests {
 mod status_commit_regressions {
     use super::*;
     use crate::store::persistence_models::TransactionRecord;
+    use crate::store::wallet_domain::TransactionStatus;
 
     fn record(id: &str, time: f64) -> TransactionRecord {
         serde_json::from_value(json!({
@@ -489,10 +485,10 @@ mod status_commit_regressions {
         }))
         .unwrap()
     }
-    fn resolution(id: &str, status: &str) -> crate::store::ResolvedPendingStatus {
+    fn resolution(id: &str, status: TransactionStatus) -> crate::store::ResolvedPendingStatus {
         crate::store::ResolvedPendingStatus {
             id: id.into(),
-            status: status.into(),
+            status,
             confirmations: Some(12),
             receipt_block_number: Some(900000),
             evm_receipt_cost: None,
@@ -539,7 +535,10 @@ mod status_commit_regressions {
                     .await
                     .unwrap();
                 service
-                    .apply_resolved_pending_statuses(chain, vec![resolution(&id, "failed")])
+                    .apply_resolved_pending_statuses(
+                        chain,
+                        vec![resolution(&id, TransactionStatus::Failed)],
+                    )
                     .await
                     .unwrap();
 
@@ -621,7 +620,7 @@ mod status_commit_regressions {
         service
             .apply_resolved_pending_statuses(
                 crate::registry::Chain::Bitcoin,
-                vec![resolution("NEW", "confirmed")],
+                vec![resolution("NEW", TransactionStatus::Confirmed)],
             )
             .await
             .unwrap();
@@ -642,7 +641,7 @@ mod status_commit_regressions {
         let changes = service
             .apply_polled_pending_statuses(
                 crate::registry::Chain::Bitcoin,
-                vec![resolution("NEW", "pending")],
+                vec![resolution("NEW", TransactionStatus::Pending)],
                 Some(vec![record("NEW", 800000000.0)]),
             )
             .await
@@ -666,7 +665,7 @@ mod status_commit_regressions {
             })
             .await
             .unwrap();
-        let mut pending = resolution("tx", "pending");
+        let mut pending = resolution("tx", TransactionStatus::Pending);
         pending.confirmations = None;
         pending.receipt_block_number = None;
         let changes = service
@@ -688,7 +687,7 @@ mod status_commit_regressions {
         service
             .apply_resolved_pending_statuses(
                 crate::registry::Chain::Bitcoin,
-                vec![resolution("tx", "confirmed")],
+                vec![resolution("tx", TransactionStatus::Confirmed)],
             )
             .await
             .unwrap();
@@ -696,7 +695,7 @@ mod status_commit_regressions {
         let changes = service
             .apply_polled_pending_statuses(
                 crate::registry::Chain::Bitcoin,
-                vec![resolution("tx", "failed")],
+                vec![resolution("tx", TransactionStatus::Failed)],
                 Some(current),
             )
             .await
@@ -722,7 +721,7 @@ mod status_commit_regressions {
             service
                 .apply_resolved_pending_statuses(
                     crate::registry::Chain::Bitcoin,
-                    vec![resolution("tx", "confirmed")]
+                    vec![resolution("tx", TransactionStatus::Confirmed)]
                 )
                 .await
                 .is_err()
@@ -736,7 +735,7 @@ mod status_commit_regressions {
         service
             .apply_resolved_pending_statuses(
                 crate::registry::Chain::Bitcoin,
-                vec![resolution("tx", "confirmed")],
+                vec![resolution("tx", TransactionStatus::Confirmed)],
             )
             .await
             .unwrap();
@@ -763,7 +762,7 @@ mod status_commit_regressions {
                 sender
                     .apply_resolved_pending_statuses(
                         crate::registry::Chain::Bitcoin,
-                        vec![resolution(&key, "confirmed")],
+                        vec![resolution(&key, TransactionStatus::Confirmed)],
                     )
                     .await
                     .unwrap();
@@ -819,12 +818,11 @@ mod status_commit_regressions {
 
 fn merge_history_rows(
     existing: Vec<crate::wallet_db::HistoryRecord>,
-    incoming: Vec<crate::fetch::transactions::FetchedTransactionRecord>,
+    incoming: Vec<crate::store::persistence_models::TransactionRecord>,
     chain: Chain,
     preserve_created_at_sentinel_unix: Option<f64>,
 ) -> Result<(Vec<crate::wallet_db::HistoryRecord>, TransactionChange), SpectraBridgeError> {
-    let existing: Vec<crate::fetch::transactions::FetchedTransactionRecord> =
-        existing.into_iter().map(|row| row.payload.into()).collect();
+    let existing: Vec<_> = existing.into_iter().map(|row| row.payload).collect();
     let before: std::collections::HashMap<String, String> = existing
         .iter()
         .map(|record| (record.id.to_lowercase(), fingerprint(record)))
@@ -852,7 +850,7 @@ fn merge_history_rows(
             Some(_) => updated.push(id),
             None => added.push(id),
         }
-        rows.push(crate::wallet_db::history_record_from_payload(record.into()));
+        rows.push(crate::wallet_db::history_record_from_payload(record));
     }
     Ok((
         rows,
@@ -869,7 +867,7 @@ impl WalletService {
     /// on that exact network. The ownership check shares the merge transaction.
     pub(super) async fn merge_fetched_history(
         &self,
-        incoming: Vec<crate::fetch::transactions::FetchedTransactionRecord>,
+        incoming: Vec<crate::store::persistence_models::TransactionRecord>,
     ) -> Result<TransactionChange, SpectraBridgeError> {
         let database = self.bound_database().await?;
         tokio::task::spawn_blocking(move || -> Result<TransactionChange, SpectraBridgeError> {

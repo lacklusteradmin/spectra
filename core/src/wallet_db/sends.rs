@@ -1,4 +1,5 @@
 use super::*;
+use crate::send::reservation::Reservation;
 use crate::send::stages::StoredSend;
 use crate::wallet_db::error::DbError;
 use rusqlite::OptionalExtension;
@@ -21,11 +22,12 @@ pub(crate) fn send_load(database: &WalletDatabase, id: &str) -> Result<StoredSen
 }
 
 /// Compare-and-swap protects against another process signing the same artifact.
-/// Resource reservations and the signed bytes commit together, before broadcast.
+/// Reservations and the signed bytes commit together, before broadcast; each
+/// is keyed on the artifact's own chain.
 pub(crate) fn send_save(
     database: &WalletDatabase,
     stored: &StoredSend,
-    resources: &[String],
+    reservations: &[Reservation],
 ) -> Result<(), DbError> {
     stored
         .validate()
@@ -78,10 +80,13 @@ pub(crate) fn send_save(
                 "Transaction changed concurrently; reload it before continuing".into(),
             ));
         }
-        for resource in resources {
+        for resource in reservations
+            .iter()
+            .map(|reservation| reservation.key(stored.view.chain_id))
+        {
             let prior: Option<String> = tx.query_row(
                 "SELECT a.payload FROM send_reservations r JOIN send_artifacts a ON a.id=r.artifact_id WHERE r.resource=?1",
-                [resource], |row| row.get(0)).optional().map_err(DbError::from)?;
+                [&resource], |row| row.get(0)).optional().map_err(DbError::from)?;
             if let Some(prior) = prior {
                 let previous: StoredSend = serde_json::from_str(&prior).map_err(DbError::from)?;
                 previous
@@ -294,10 +299,6 @@ mod query_tests {
         use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, SendStage};
         let db = WalletDatabase::new(":memory:");
         let (key, prepared) = crate::send::icp_staking::tests::new_neuron_fixture();
-        let resource = format!(
-            "icp:neuron:{}:{}",
-            prepared.controller_hex, prepared.subaccount_hex
-        );
         let recipient = prepared.funding.as_ref().unwrap().recipient.clone();
         let mut stored = StoredSend {
             view: SendArtifact {
@@ -357,26 +358,30 @@ mod query_tests {
                 panic!("ICP")
             };
             let calls = prepared.sign(key).unwrap();
-            let payload = serde_json::to_string(&calls).unwrap();
             let hash = calls.last().map(|call| call.request_id.clone());
+            let payload = crate::send::payload::SignedPayload::IcpStaking(calls);
+            stored.view.signed_payload = Some(payload.to_string());
             stored.submission = Some(crate::send::payload::PreparedSubmission {
-                payload: payload.clone(),
-                result_field: "hash".into(),
+                payload,
                 transaction_hash: hash.clone(),
                 nonce: None,
             });
             stored.view.stage = SendStage::Signed;
-            stored.view.signed_payload = Some(payload);
             stored.view.transaction_hash = hash;
             refresh(stored);
         }
         refresh(&mut stored);
+        let reservations = stored.reservations().unwrap();
+        assert!(matches!(reservations[..], [Reservation::IcpNeuron { .. }]));
         send_save(&db, &stored, &[]).unwrap();
         stored.view.revision = 1;
         sign(&mut stored, &key);
-        send_save(&db, &stored, std::slice::from_ref(&resource)).unwrap();
-        let first: Vec<crate::send::icp_staking::SignedIcpStakingCall> =
-            serde_json::from_str(&stored.submission.as_ref().unwrap().payload).unwrap();
+        send_save(&db, &stored, &reservations).unwrap();
+        let Some(crate::send::payload::SignedPayload::IcpStaking(first)) =
+            stored.submission.as_ref().map(|s| s.payload.clone())
+        else {
+            panic!("ICP staking signs ingress calls")
+        };
         let PreparedPayload::IcpStaking(prepared) = &mut stored.prepared else {
             panic!("ICP")
         };
@@ -396,13 +401,13 @@ mod query_tests {
         stored = send_load(&db, "repair").unwrap();
         stored.view.revision = 3;
         sign(&mut stored, &key);
-        send_save(&db, &stored, std::slice::from_ref(&resource)).unwrap();
+        send_save(&db, &stored, &reservations).unwrap();
         assert_eq!(send_load(&db, "repair").unwrap().view.revision, 3);
         let mut conflicting = stored.clone();
         conflicting.view.id = "another-artifact".into();
         conflicting.view.revision = 0;
         refresh(&mut conflicting);
-        assert!(send_save(&db, &conflicting, &[resource]).is_err());
+        assert!(send_save(&db, &conflicting, &conflicting.reservations().unwrap()).is_err());
         assert!(!send_exists(&db, "another-artifact").unwrap());
 
         // A row that is not a send, and a send altered after its review, are

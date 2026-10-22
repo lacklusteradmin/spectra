@@ -17,6 +17,7 @@ use crate::send::stages::{
 };
 use crate::send::zcash_shielded::PreparedZcashShielded;
 use crate::store::state::{WalletSigning, WalletState};
+use crate::store::wallet_domain::TransactionKind;
 use crate::wallet_db::zcash::{ZcashDb, open_zcash_db, zcash_db_path};
 use zcash_client_backend::data_api::chain::{
     BlockSource, ChainState, CommitmentTreeRoot, error::Error as ChainError, scan_cached_blocks,
@@ -233,18 +234,20 @@ fn shielded_history(
             .try_into()
             .map_err(|_| internal("zcash database: invalid txid"))?;
         let txid = zcash_primitives::transaction::TxId::from_bytes(txid).to_string();
+        // Core's status, not the wallet database's `TransactionStatus`.
+        use crate::store::wallet_domain::TransactionStatus as Status;
         let status = if mined.is_some() {
-            "confirmed"
+            Status::Confirmed
         } else if expired {
-            "failed"
+            Status::Failed
         } else {
-            "pending"
+            Status::Pending
         };
-        let item = |kind: &str, zatoshis: i64, counterparty: String| {
+        let item = |kind, zatoshis: i64, counterparty: String| {
             crate::fetch::history::NormalizedHistoryItem {
                 deployment_id: crate::tokens::deployment_id_for(chain, None),
-                kind: kind.into(),
-                status: status.into(),
+                kind,
+                status,
                 asset_display_name: chain.coin_name().into(),
                 symbol: chain.coin_symbol().into(),
                 chain_id: chain,
@@ -257,15 +260,19 @@ fn shielded_history(
         };
         if shielding {
             if received_all > 0 {
-                items.push(item("shield", received_all, String::new()));
+                items.push(item(TransactionKind::Shield, received_all, String::new()));
             }
             continue;
         }
         if received > 0 {
-            items.push(item("receive", received, String::new()));
+            items.push(item(TransactionKind::Receive, received, String::new()));
         }
         if sent > 0 {
-            items.push(item("send", sent, recipient.unwrap_or_default()));
+            items.push(item(
+                TransactionKind::Send,
+                sent,
+                recipient.unwrap_or_default(),
+            ));
         }
     }
     Ok(items)
@@ -975,7 +982,7 @@ impl WalletService {
             icp_staking_receipts: vec![],
         };
         stored.view.review_digest = stored.digest()?;
-        self.save_send_artifact(&stored, Vec::new()).await?;
+        self.save_send_artifact(&stored, &[]).await?;
         Ok(stored.view)
     }
 }
@@ -1010,7 +1017,7 @@ impl WalletService {
         stored: &StoredSend,
         prepared: &PreparedZcashShielded,
         password: Option<&str>,
-    ) -> Result<(crate::send::payload::PreparedSubmission, Vec<String>), SpectraBridgeError> {
+    ) -> Result<crate::send::payload::PreparedSubmission, SpectraBridgeError> {
         let (wallet, network, path) = self.zcash_shielded_wallet(&stored.view.wallet_id).await?;
         let chain = wallet.chain_id;
         let account = shielded_account(&wallet)?;
@@ -1057,17 +1064,13 @@ impl WalletService {
         let [(txid, raw)] = transactions.as_slice() else {
             return Err(internal("A shielded send is one transaction"));
         };
-        Ok((
-            crate::send::payload::PreparedSubmission {
-                payload: hex::encode(raw),
-                result_field: "txid".into(),
-                transaction_hash: Some(
-                    zcash_primitives::transaction::TxId::from_bytes(*txid).to_string(),
-                ),
-                nonce: None,
-            },
-            Vec::new(),
-        ))
+        Ok(crate::send::payload::PreparedSubmission {
+            payload: crate::send::payload::SignedPayload::Hex(hex::encode(raw)),
+            transaction_hash: Some(
+                zcash_primitives::transaction::TxId::from_bytes(*txid).to_string(),
+            ),
+            nonce: None,
+        })
     }
 
     /// The Sapling parameters, from the data directory, or downloaded once

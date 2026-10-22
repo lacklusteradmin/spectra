@@ -9,7 +9,6 @@
 //! https://github.com/peercoin/peercoin/blob/master/src/wallet/spend.cpp
 
 use std::collections::HashSet;
-use std::str::FromStr;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::hashes::{Hash, hash160};
@@ -20,14 +19,14 @@ use bitcoin::sighash::{EcdsaSighashType, Prevouts, SighashCache, TapSighashType}
 use bitcoin::transaction::Version;
 use bitcoin::{
     Amount, CompressedPublicKey, OutPoint, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut,
-    Txid, Witness,
+    Witness,
 };
 
 use crate::derivation::utxo_address::parse_utxo_address;
 use crate::registry::Chain;
 use crate::send::error::SendError;
 
-type Input = (String, u32, u64, Vec<u8>);
+type Input = crate::api::utxo::UtxoInput;
 
 #[cfg(test)]
 #[path = "tests/peercoin.rs"]
@@ -107,28 +106,26 @@ fn validate_inventory(chain: Chain, inputs: &[Input]) -> Result<u64, SendError> 
         return Err(SendError::invalid("Peercoin transaction must have inputs"));
     }
     let mut seen = HashSet::new();
-    inputs
-        .iter()
-        .try_fold(0u64, |total, (txid, vout, value, script)| {
-            let outpoint = OutPoint {
-                txid: Txid::from_str(txid).map_err(SendError::invalid)?,
-                vout: *vout,
-            };
-            if outpoint.is_null() || !seen.insert(outpoint) {
-                return Err(SendError::invalid(
-                    "invalid or duplicate Peercoin input outpoint",
-                ));
-            }
-            InputKind::from_script(Script::from_bytes(script))?;
-            if *value == 0 || *value > maximum {
-                return Err(SendError::invalid(
-                    "Peercoin input value is outside MoneyRange",
-                ));
-            }
-            total
-                .checked_add(*value)
-                .ok_or_else(|| SendError::invalid("Peercoin wallet input total overflow"))
-        })
+    inputs.iter().try_fold(0u64, |total, input| {
+        let outpoint = OutPoint {
+            txid: input.txid.into(),
+            vout: input.vout,
+        };
+        if outpoint.is_null() || !seen.insert(outpoint) {
+            return Err(SendError::invalid(
+                "invalid or duplicate Peercoin input outpoint",
+            ));
+        }
+        InputKind::from_script(Script::from_bytes(&input.script_pubkey))?;
+        if input.value == 0 || input.value > maximum {
+            return Err(SendError::invalid(
+                "Peercoin input value is outside MoneyRange",
+            ));
+        }
+        total
+            .checked_add(input.value)
+            .ok_or_else(|| SendError::invalid("Peercoin wallet input total overflow"))
+    })
 }
 
 fn validate_inputs(chain: Chain, inputs: &[Input]) -> Result<u64, SendError> {
@@ -161,8 +158,8 @@ fn estimate_bytes(
     let mut base = 8u64 + compact_size(inputs.len() as u64) + 1;
     let mut witness = 0u64;
     let mut has_witness = false;
-    for (_, _, _, script) in inputs {
-        let kind = InputKind::from_script(Script::from_bytes(script))?;
+    for input in inputs {
+        let kind = InputKind::from_script(Script::from_bytes(&input.script_pubkey))?;
         let (input_bytes, witness_bytes) = match kind {
             InputKind::P2pk => (114, 1),
             InputKind::P2pkh => (148, 1),
@@ -239,10 +236,9 @@ pub(crate) fn select_peercoin_inputs(
     let spendable_balance = validate_inventory(chain, inputs)?;
     let mut ordered: Vec<_> = (0..inputs.len()).collect();
     ordered.sort_by(|a, b| {
-        inputs[*b]
-            .2
-            .cmp(&inputs[*a].2)
-            .then_with(|| (&inputs[*a].0, inputs[*a].1).cmp(&(&inputs[*b].0, inputs[*b].1)))
+        inputs[*b].value.cmp(&inputs[*a].value).then_with(|| {
+            (inputs[*a].txid, inputs[*a].vout).cmp(&(inputs[*b].txid, inputs[*b].vout))
+        })
     });
     let mut capacity_inputs = Vec::new();
     let mut capacity_indices = Vec::new();
@@ -250,7 +246,7 @@ pub(crate) fn select_peercoin_inputs(
     let mut max_sendable = 0u64;
     for index in ordered {
         let Some(total) = capacity_total
-            .checked_add(inputs[index].2)
+            .checked_add(inputs[index].value)
             .filter(|n| *n <= maximum)
         else {
             continue;
@@ -437,7 +433,7 @@ pub(crate) fn sign_peercoin_inputs_with_output_script(
     let mut identities = Vec::with_capacity(inputs.len());
     let mut tx_inputs = Vec::with_capacity(inputs.len());
     for input in inputs {
-        let (txid, vout, _, script) = input.utxo;
+        let script = &input.utxo.script_pubkey;
         let secret = SecretKey::from_slice(input.private_key).map_err(SendError::invalid)?;
         let public = CompressedPublicKey(bitcoin::secp256k1::PublicKey::from_secret_key(
             &secp, &secret,
@@ -447,8 +443,8 @@ pub(crate) fn sign_peercoin_inputs_with_output_script(
         identities.push((kind, secret, public));
         tx_inputs.push(TxIn {
             previous_output: OutPoint {
-                txid: Txid::from_str(txid).map_err(SendError::invalid)?,
-                vout: *vout,
+                txid: input.utxo.txid.into(),
+                vout: input.utxo.vout,
             },
             script_sig: ScriptBuf::new(),
             sequence: Sequence::MAX,
@@ -473,8 +469,8 @@ pub(crate) fn sign_peercoin_inputs_with_output_script(
     let prevouts: Vec<_> = inputs
         .iter()
         .map(|input| TxOut {
-            value: Amount::from_sat(input.utxo.2),
-            script_pubkey: ScriptBuf::from_bytes(input.utxo.3.clone()),
+            value: Amount::from_sat(input.utxo.value),
+            script_pubkey: ScriptBuf::from_bytes(input.utxo.script_pubkey.clone()),
         })
         .collect();
     let mut cache = SighashCache::new(&tx);
@@ -506,7 +502,7 @@ pub(crate) fn sign_peercoin_inputs_with_output_script(
                 .p2wpkh_signature_hash(
                     i,
                     &program,
-                    Amount::from_sat(input.utxo.2),
+                    Amount::from_sat(input.utxo.value),
                     EcdsaSighashType::All,
                 )
                 .map_err(SendError::invalid)?
@@ -515,7 +511,7 @@ pub(crate) fn sign_peercoin_inputs_with_output_script(
             cache
                 .legacy_signature_hash(
                     i,
-                    Script::from_bytes(&input.utxo.3),
+                    Script::from_bytes(&input.utxo.script_pubkey),
                     EcdsaSighashType::All as u32,
                 )
                 .map_err(SendError::invalid)?

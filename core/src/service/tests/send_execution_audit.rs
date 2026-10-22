@@ -406,9 +406,7 @@ async fn aptos_build_and_sign_bind_the_reviewed_total_gas_budget() {
             .sign_send(prepared.id, prepared.review_digest, None)
             .await
             .unwrap();
-        let outer: Value = serde_json::from_str(signed.signed_payload.as_deref().unwrap()).unwrap();
-        let body: Value =
-            serde_json::from_str(outer["signed_body_json"].as_str().unwrap()).unwrap();
+        let body: Value = serde_json::from_str(signed.signed_payload.as_deref().unwrap()).unwrap();
         assert_eq!(body["max_gas_amount"], "10000");
         assert_eq!(body["gas_unit_price"], "100");
         assert_eq!(body["payload"]["arguments"][1], "99000000");
@@ -482,7 +480,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
                         row.payload.signed_transaction_payload.as_ref().unwrap(),
                     )
                     .unwrap();
-                    assert_eq!(saved.payload, raw);
+                    assert_eq!(saved.payload.raw_hex().unwrap(), raw);
                     assert!(saved.nonce.is_some());
                     if fault.swap(false, Ordering::SeqCst) {
                         // The node received the bytes, but its response cannot be read.

@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use crate::api::error::{ApiError, OrDecode};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::api::http::{HttpClient, RetryProfile, race};
 use crate::api::utxo::{
-    FeeRate, Utxo, UtxoBalance, UtxoHistoryEntry, UtxoStatus, UtxoTxStatus, VerifiedUtxoInput,
+    FeeRate, Txid, Utxo, UtxoBalance, UtxoHistoryEntry, UtxoInput, UtxoStatus, UtxoTxStatus,
 };
 
 // ── Wire shapes ───────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ struct BlockbookUtxo {
 
 /// A Peercoin unspent output, verified against its transaction.
 pub(crate) struct PeercoinOutput {
-    pub(crate) input: VerifiedUtxoInput,
+    pub(crate) input: UtxoInput,
     pub(crate) confirmations: u64,
     /// Whether a minting or coinstake reward is old enough to spend; any
     /// other output always is.
@@ -111,13 +111,6 @@ struct BlockbookConsensus {
 }
 
 // ── Result types ──────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BlockbookSendResult {
-    pub txid: String,
-    #[serde(default)]
-    pub raw_tx_hex: String,
-}
 
 // ── Client ────────────────────────────────────────────────────────────────
 
@@ -261,7 +254,7 @@ impl BlockbookClient {
     pub(crate) async fn fetch_peercoin_inputs(
         &self,
         address: &str,
-    ) -> Result<Vec<VerifiedUtxoInput>, ApiError> {
+    ) -> Result<Vec<UtxoInput>, ApiError> {
         Ok(self
             .fetch_peercoin_outputs(address)
             .await?
@@ -285,15 +278,19 @@ impl BlockbookClient {
             .peercoin_generated_output_maturity()
             .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
         let address = self.normalize_address(address);
-        let mut outputs: Vec<BlockbookUtxo> = self.get(&format!("/api/v2/utxo/{address}")).await?;
-        for output in &mut outputs {
-            output.txid = output
-                .txid
-                .parse::<bitcoin::Txid>()
-                .map_err(|e| ApiError::Decode(format!("Invalid Peercoin outpoint: {e}")))?
-                .to_string();
-        }
-        let ids: std::collections::BTreeSet<_> = outputs.iter().map(|u| u.txid.clone()).collect();
+        let outputs: Vec<BlockbookUtxo> = self.get(&format!("/api/v2/utxo/{address}")).await?;
+        let outputs = outputs
+            .into_iter()
+            .map(|output| {
+                let txid: Txid = output
+                    .txid
+                    .parse()
+                    .map_err(|e| ApiError::Decode(format!("Invalid Peercoin outpoint: {e}")))?;
+                Ok((txid, output))
+            })
+            .collect::<Result<Vec<_>, ApiError>>()?;
+        let ids: std::collections::BTreeSet<_> =
+            outputs.iter().map(|(txid, _)| txid.to_string()).collect();
         let transactions: std::collections::BTreeMap<_, _> = futures::stream::iter(ids)
             .map(|id| async move {
                 let response: BlockbookTx = self.get(&format!("/api/v2/tx/{id}")).await?;
@@ -317,11 +314,11 @@ impl BlockbookClient {
             .await?;
         let mut inputs = Vec::new();
         let mut seen = std::collections::BTreeSet::new();
-        for output in outputs {
-            if !seen.insert((output.txid.clone(), output.vout)) {
+        for (txid, output) in outputs {
+            if !seen.insert((txid, output.vout)) {
                 return Err(ApiError::Decode("Duplicate Peercoin unspent output".into()));
             }
-            let (tx, confirmations) = &transactions[&output.txid];
+            let (tx, confirmations) = &transactions[&txid.to_string()];
             let txout = tx
                 .output
                 .get(output.vout as usize)
@@ -341,12 +338,12 @@ impl BlockbookClient {
                 && tx.output[0].value.to_sat() == 0
                 && tx.output[0].script_pubkey.is_empty();
             inputs.push(PeercoinOutput {
-                input: (
-                    output.txid,
-                    output.vout,
-                    txout.value.to_sat(),
-                    txout.script_pubkey.to_bytes(),
-                ),
+                input: UtxoInput {
+                    txid,
+                    vout: output.vout,
+                    value: txout.value.to_sat(),
+                    script_pubkey: txout.script_pubkey.to_bytes(),
+                },
                 confirmations: *confirmations,
                 mature: !(tx.is_coinbase() || coinstake) || *confirmations >= u64::from(maturity),
             });
@@ -456,7 +453,7 @@ impl BlockbookClient {
     }
 
     /// Submit a signed transaction. Blockbook answers with the txid.
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<BlockbookSendResult, ApiError> {
+    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<String, ApiError> {
         let hex = hex_tx.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -467,7 +464,6 @@ impl BlockbookClient {
                 if chain.mainnet_counterpart() == crate::registry::Chain::Peercoin {
                     verify_peercoin_endpoint(&client, &base, chain).await?;
                 }
-                let raw_tx_hex = hex.clone();
                 let response = client
                     .post_text(&url, hex, RetryProfile::ChainWrite)
                     .await?;
@@ -482,10 +478,7 @@ impl BlockbookClient {
                         "Invalid Blockbook transaction hash".into(),
                     ));
                 }
-                Ok(BlockbookSendResult {
-                    txid: txid.to_lowercase(),
-                    raw_tx_hex,
-                })
+                Ok(txid.to_lowercase())
             }
         })
         .await

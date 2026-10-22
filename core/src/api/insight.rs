@@ -107,13 +107,6 @@ pub struct DcrHistoryEntry {
     pub is_incoming: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DcrSendResult {
-    pub txid: String,
-    #[serde(default)]
-    pub raw_tx_hex: String,
-}
-
 #[derive(Debug, Deserialize)]
 struct InsightBroadcastResponse {
     txid: String,
@@ -275,7 +268,7 @@ impl InsightClient {
         .await
     }
 
-    pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<DcrSendResult, ApiError> {
+    pub async fn broadcast_raw_tx(&self, raw_tx_hex: &str) -> Result<String, ApiError> {
         let raw_hex = raw_tx_hex.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -286,10 +279,7 @@ impl InsightClient {
                 let resp: InsightBroadcastResponse = client
                     .post_json(&url, &body, RetryProfile::ChainWrite)
                     .await?;
-                Ok(DcrSendResult {
-                    txid: resp.txid,
-                    raw_tx_hex: raw_hex,
-                })
+                Ok(resp.txid)
             }
         })
         .await

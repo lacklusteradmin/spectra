@@ -1,64 +1,54 @@
-//! Rebroadcast already-signed transactions.
+//! Broadcast signed transactions and answer the id each node gives back.
 use super::*;
-impl WalletService {
-    /// Typed wrapper around `broadcast_raw`: runs the broadcast then extracts
-    /// the named field (typically `"txid"` or `"digest"`) from the result JSON.
-    /// Returns the field value as a string, or an empty string when missing.
-    pub(crate) async fn broadcast_raw_extract(
-        &self,
-        chain_id: crate::registry::Chain,
-        payload: String,
-        result_field: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let json = self.broadcast_raw(chain_id, payload).await?;
-        Ok(crate::send::flow::extract_json_string_field(
-            &json,
-            &result_field,
-        ))
-    }
-}
+use crate::send::payload::SignedPayload;
 
 impl WalletService {
+    /// Submit `payload` to every broadcast endpoint of `chain` and answer the
+    /// transaction id of the first, in endpoint order, that accepted it.
     pub(crate) async fn broadcast_raw(
         &self,
         chain: crate::registry::Chain,
-        payload: String,
+        payload: SignedPayload,
     ) -> Result<String, SpectraBridgeError> {
         // Every endpoint gets the payload, and every submission runs to its
         // end: one acceptance does not cut another short.
         let endpoints = self
             .chain_endpoints(chain, &[EndpointCapability::Broadcast])
             .await;
-        let results = futures::future::join_all(endpoints.into_iter().map(|endpoint| {
-            let payload = payload.clone();
-            async move {
-                self.validate_broadcast_endpoint(chain, &endpoint.url)
-                    .await?;
-                self.broadcast_at(chain, endpoint.api, Arc::new(vec![endpoint.url]), payload)
-                    .await
-            }
+        let payload = &payload;
+        let results = futures::future::join_all(endpoints.into_iter().map(|endpoint| async move {
+            self.validate_broadcast_endpoint(chain, &endpoint.url)
+                .await?;
+            self.broadcast_at(chain, endpoint.api, Arc::new(vec![endpoint.url]), payload)
+                .await
         }))
         .await;
         let mut last_err = SpectraBridgeError::failure("no endpoints configured");
         for result in results {
             match result {
-                Ok(response) => return Ok(response),
+                Ok(txid) => return Ok(txid),
                 Err(e) => last_err = e,
             }
         }
         Err(last_err)
     }
 
+    /// Submit `payload` through `api` and answer the transaction id the node
+    /// accepted it under: a hash, a Solana signature, a Sui digest or a TON
+    /// message hash. A payload in another form than `api` takes is refused
+    /// before anything is sent, and a node that names no id has not shown it
+    /// accepted.
     pub(super) async fn broadcast_at(
         &self,
         chain: Chain,
         api: crate::EndpointApi,
         eps: Arc<Vec<String>>,
-        payload: String,
+        payload: &SignedPayload,
     ) -> Result<String, SpectraBridgeError> {
         use crate::EndpointApi as Api;
-        match api {
-            api if api.is_utxo_indexer() => {
+        use SignedPayload::{Base64, Hex, Json};
+        let txid = match (api, payload) {
+            (api, Hex(raw)) if api.is_utxo_indexer() => {
                 let endpoints = eps
                     .iter()
                     .map(|url| crate::Endpoint {
@@ -66,13 +56,12 @@ impl WalletService {
                         url: url.clone(),
                     })
                     .collect();
-                let txid = crate::api::utxo::UtxoClient::new(chain, endpoints)
-                    .broadcast(&payload)
-                    .await?;
-                Ok(json!({ "txid": txid }).to_string())
+                crate::api::utxo::UtxoClient::new(chain, endpoints)
+                    .broadcast(raw)
+                    .await?
             }
-            Api::Lightwalletd => {
-                let raw = hex::decode(&payload)?;
+            (Api::Lightwalletd, Hex(raw)) => {
+                let raw = hex::decode(raw)?;
                 let network = chain.zcash_network()?;
                 let txid = super::zcash_shielded::zcash_txid(&network, &raw)?;
                 crate::api::lightwalletd::LightwalletdClient::new(eps)
@@ -80,138 +69,51 @@ impl WalletService {
                     .await?
                     .submit(raw)
                     .await?;
-                Ok(json!({ "txid": txid }).to_string())
+                txid
             }
-            Api::SolanaJsonRpc => {
-                let client = SolanaClient::new(eps);
-                let res = client.broadcast_raw(&payload).await?;
-                Ok(serde_json::to_string(&res)?)
+            (Api::SolanaJsonRpc, Base64(tx)) => SolanaClient::new(eps).broadcast_raw(tx).await?,
+            (Api::TronHttp, Json(tx)) => TronHttpClient::new(eps).broadcast_raw(tx).await?,
+            (Api::EvmJsonRpc, Hex(raw)) => {
+                EvmClient::new(eps, chain.evm_chain_id()?)
+                    .broadcast_raw(raw)
+                    .await?
             }
-            Api::TronHttp => {
-                let client = TronHttpClient::new(eps);
-                let res = client.broadcast_raw(&payload).await?;
-                Ok(serde_json::to_string(&res)?)
+            (Api::XrplJsonRpc, Hex(blob)) => XrplClient::new(eps).submit_signed_blob(blob).await?,
+            (Api::Horizon, Base64(xdr)) => HorizonClient::new(eps).submit_envelope_b64(xdr).await?,
+            (Api::Koios, Hex(cbor)) => KoiosClient::new(eps).submit_tx(cbor).await?,
+            (Api::SubstrateJsonRpc, Hex(extrinsic)) => {
+                SubstrateClient::new(eps)
+                    .submit_extrinsic_hex(extrinsic)
+                    .await?
             }
-            Api::EvmJsonRpc => {
-                let client = EvmClient::new(eps, chain.evm_chain_id()?);
-                let res = client.broadcast_raw(&payload).await?;
-                Ok(serde_json::to_string(&res)?)
+            (
+                Api::SuiJsonRpc,
+                SignedPayload::Sui {
+                    transaction,
+                    signature,
+                },
+            ) => {
+                SuiClient::new(eps)
+                    .execute_signed_tx(transaction, signature)
+                    .await?
             }
-            Api::XrplJsonRpc => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let blob = val["tx_blob_hex"]
-                    .as_str()
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("broadcast_raw xrp: missing tx_blob_hex")
-                    })?
-                    .to_string();
-                let client = XrplClient::new(eps);
-                let res = client.submit_signed_blob(&blob).await?;
-                Ok(serde_json::to_string(&res)?)
+            (Api::AptosRest, Json(body)) => AptosClient::new(eps).submit_signed_body(body).await?,
+            // A multi-key transaction travels as BCS.
+            (Api::AptosRest, Hex(bcs)) => {
+                AptosClient::new(eps)
+                    .submit_signed_bcs(&hex::decode(bcs)?)
+                    .await?
             }
-            Api::Horizon => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let xdr = val["signed_xdr_b64"]
-                    .as_str()
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("broadcast_raw stellar: missing signed_xdr_b64")
-                    })?
-                    .to_string();
-                let client = HorizonClient::new(eps);
-                let res = client.submit_envelope_b64(&xdr).await?;
-                Ok(serde_json::to_string(&res)?)
+            (Api::ToncenterV2, Base64(boc)) => ToncenterV2Client::new(eps).send_boc(boc).await?,
+            (Api::NearJsonRpc, Base64(tx)) => {
+                NearClient::new(eps).broadcast_signed_tx_b64(tx).await?
             }
-            Api::Koios => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let cbor = val["cbor_hex"]
-                    .as_str()
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("broadcast_raw cardano: missing cbor_hex")
-                    })?
-                    .to_string();
-                let client = KoiosClient::new(eps);
-                let res = client.submit_tx(&cbor).await?;
-                Ok(serde_json::to_string(&res)?)
+            (Api::IcpRosetta, Json(body)) => {
+                IcpClient::new(eps).submit_signed_transaction(body).await?
             }
-            Api::SubstrateJsonRpc => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let hex = val["extrinsic_hex"].as_str().ok_or_else(|| {
-                    SpectraBridgeError::failure("broadcast_raw substrate: missing extrinsic_hex")
-                })?;
-                let client = SubstrateClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client.submit_extrinsic_hex(hex).await?,
-                )?)
-            }
-            Api::SuiJsonRpc => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let tx_bytes = val["tx_bytes_b64"]
-                    .as_str()
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("broadcast_raw sui: missing tx_bytes_b64")
-                    })?
-                    .to_string();
-                let sig = val["sig_b64"]
-                    .as_str()
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("broadcast_raw sui: missing sig_b64")
-                    })?
-                    .to_string();
-                let client = SuiClient::new(eps);
-                let res = client.execute_signed_tx(&tx_bytes, &sig).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Api::AptosRest => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                // A multi-key transaction travels as BCS.
-                if let Some(signed) = val["signed_bcs_hex"].as_str() {
-                    let client = AptosClient::new(eps);
-                    let res = client.submit_signed_bcs(&hex::decode(signed)?).await?;
-                    return Ok(serde_json::to_string(&res)?);
-                }
-                let body_json = val["signed_body_json"]
-                    .as_str()
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("broadcast_raw aptos: missing signed_body_json")
-                    })?
-                    .to_string();
-                let client = AptosClient::new(eps);
-                let res = client.submit_signed_body(&body_json).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Api::ToncenterV2 => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let boc = val["boc_b64"]
-                    .as_str()
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("broadcast_raw ton: missing boc_b64")
-                    })?
-                    .to_string();
-                let client = ToncenterV2Client::new(eps);
-                let res = client.send_boc(&boc).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Api::NearJsonRpc => {
-                let val: serde_json::Value = serde_json::from_str(&payload)?;
-                let tx_b64 = val["signed_tx_b64"]
-                    .as_str()
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("broadcast_raw near: missing signed_tx_b64")
-                    })?
-                    .to_string();
-                let client = NearClient::new(eps);
-                let res = client.broadcast_signed_tx_b64(&tx_b64).await?;
-                Ok(serde_json::to_string(&res)?)
-            }
-            Api::IcpRosetta => {
-                let client = IcpClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client.submit_signed_transaction(&payload).await?,
-                )?)
-            }
-            Api::MoneroDaemonRpc => {
+            (Api::MoneroDaemonRpc, Hex(raw)) => {
                 use ::monero_wallet::interface::PublishTransaction;
-                let bytes = hex::decode(&payload)?;
+                let bytes = hex::decode(raw)?;
                 let mut reader = bytes.as_slice();
                 let tx = ::monero_wallet::transaction::Transaction::read(&mut reader)
                     .map_err(SpectraBridgeError::failure)?;
@@ -228,27 +130,88 @@ impl WalletService {
                     .publish_transaction(&tx)
                     .await
                     .map_err(SpectraBridgeError::failure)?;
-                Ok(json!({"txid":hex::encode(tx.hash())}).to_string())
+                hex::encode(tx.hash())
             }
-
-            Api::KaspaRest => {
-                let client = KaspaClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client
-                        .broadcast_tx_body(serde_json::from_str(&payload)?)
-                        .await?,
-                )?)
+            (Api::KaspaRest, Json(body)) => {
+                KaspaClient::new(eps)
+                    .broadcast_tx_body(serde_json::from_str(body)?)
+                    .await?
             }
-            Api::Insight => {
-                let client = InsightClient::new(eps);
-                Ok(serde_json::to_string(
-                    &client.broadcast_raw_tx(&payload).await?,
-                )?)
+            (Api::Insight, Hex(raw)) => InsightClient::new(eps).broadcast_raw_tx(raw).await?,
+            (api, _) => {
+                return Err(SpectraBridgeError::failure(format!(
+                    "A {} endpoint does not take this signed transaction",
+                    api.as_str()
+                )));
             }
-
-            c => Err(SpectraBridgeError::failure(format!(
-                "broadcast_raw: chain {c:?} not supported"
-            ))),
+        };
+        if txid.trim().is_empty() {
+            return Err(SpectraBridgeError::failure(
+                "Node returned no transaction identifier",
+            ));
         }
+        Ok(txid)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
+
+    /// A node that answers a submission without naming the transaction has
+    /// not shown it accepted one.
+    #[tokio::test]
+    async fn an_answer_naming_no_transaction_is_refused() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/transactions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let error = WalletService::new_catalog()
+            .unwrap()
+            .broadcast_at(
+                Chain::Stellar,
+                crate::EndpointApi::Horizon,
+                Arc::new(vec![server.uri()]),
+                &SignedPayload::Base64("AAAA".into()),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Node returned no transaction identifier"),
+            "{error}"
+        );
+    }
+
+    /// A payload in another form than the endpoint's API takes never
+    /// reaches the node.
+    #[tokio::test]
+    async fn a_payload_in_another_form_is_refused_unsent() {
+        let server = MockServer::start().await;
+        let error = WalletService::new_catalog()
+            .unwrap()
+            .broadcast_at(
+                Chain::Ethereum,
+                crate::EndpointApi::EvmJsonRpc,
+                Arc::new(vec![server.uri()]),
+                &SignedPayload::Base64("AAAA".into()),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("A evm-json-rpc endpoint does not take this signed transaction"),
+            "{error}"
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
     }
 }

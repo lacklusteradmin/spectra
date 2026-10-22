@@ -434,29 +434,25 @@ pub fn transaction_status_after_failed_poll(
     tracker
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedPendingTransactionInput {
     pub id: String,
-    pub old_status: String,
-    pub new_status: String,
+    pub old_status: wallet_domain::TransactionStatus,
+    pub new_status: wallet_domain::TransactionStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedPendingTransactionDecision {
     pub id: String,
-    pub new_status: String,
+    pub new_status: wallet_domain::TransactionStatus,
     pub status_changed: bool,
 }
 
 /// One chain's resolved statuses, as the network reported them.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedPendingStatus {
     pub id: String,
-    /// `"pending"` / `"confirmed"` / `"failed"`.
-    pub status: String,
+    pub status: wallet_domain::TransactionStatus,
     pub confirmations: Option<u32>,
     pub receipt_block_number: Option<i64>,
     /// What the EVM receipt says the transaction cost.
@@ -589,7 +585,7 @@ pub(crate) fn apply_resolved_pending_transaction_statuses(
         .map(|input| {
             let new_status = input.new_status;
             let status_changed = input.old_status != new_status;
-            if new_status != "pending" {
+            if new_status != wallet_domain::TransactionStatus::Pending {
                 let tracker = trackers
                     .entry(input.id.clone())
                     .or_insert_with(|| TransactionStatusTrackerState::initial(now_unix));

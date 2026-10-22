@@ -100,13 +100,6 @@ pub struct KasHistoryEntry {
     pub is_incoming: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KasSendResult {
-    pub txid: String,
-    #[serde(default)]
-    pub raw_tx_hex: String,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ApiBroadcastResponse {
@@ -278,10 +271,7 @@ impl KaspaClient {
 
     /// POST a constructed transaction body to `/transactions`. Body must be
     /// the JSON shape api.kaspa.org expects: `{"transaction": {...}}`.
-    pub async fn broadcast_tx_body(
-        &self,
-        body: serde_json::Value,
-    ) -> Result<KasSendResult, ApiError> {
+    pub async fn broadcast_tx_body(&self, body: serde_json::Value) -> Result<String, ApiError> {
         race(&self.endpoints, |base| {
             let client = self.client.clone();
             let body = body.clone();
@@ -295,10 +285,7 @@ impl KaspaClient {
                         "kaspa broadcast rejected: {err}"
                     )));
                 }
-                Ok(KasSendResult {
-                    txid: resp.transaction_id,
-                    raw_tx_hex: String::new(),
-                })
+                Ok(resp.transaction_id)
             }
         })
         .await

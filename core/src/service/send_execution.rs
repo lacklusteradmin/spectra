@@ -216,7 +216,7 @@ impl WalletService {
             crate::send::stages::PreparedPayload::Evm(p) => {
                 Some(crate::send::ethereum::EvmSendDetails {
                     txid: hash.clone(),
-                    raw_tx_hex: submission.payload.clone(),
+                    raw_tx_hex: submission.payload.to_string(),
                     nonce: i64::try_from(p.nonce).map_err(|_| {
                         SpectraBridgeError::failure("Nonce exceeds supported range")
                     })?,
@@ -229,13 +229,7 @@ impl WalletService {
         };
         Ok(crate::send::SendExecutionResult {
             transaction_hash: hash,
-            signed_payload: sign_only.then(|| {
-                if chain.is_evm() {
-                    submission.payload.clone()
-                } else {
-                    serde_json::to_string(&submission).expect("submission is serializable")
-                }
-            }),
+            signed_payload: sign_only.then(|| submission.payload.to_string()),
             evm,
         })
     }

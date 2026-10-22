@@ -423,13 +423,12 @@ impl WalletService {
             ));
         }
         let txid = self
-            .broadcast_raw_extract(
+            .broadcast_raw(
                 wallet.chain_id,
-                json!({ "cbor_hex": reviewed.data }).to_string(),
-                "txid".into(),
+                crate::send::payload::SignedPayload::Hex(reviewed.data),
             )
             .await?;
-        if !txid.is_empty() && !txid.eq_ignore_ascii_case(&reviewed.transaction_id) {
+        if !txid.eq_ignore_ascii_case(&reviewed.transaction_id) {
             return Err(SpectraBridgeError::failure(
                 "The network accepted another transaction id than the session's",
             ));

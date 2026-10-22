@@ -1,5 +1,6 @@
-use crate::fetch::transactions::FetchedTransactionRecord;
 use crate::service::{TransactionCommand, WalletService};
+use crate::store::persistence_models::TransactionRecord;
+use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
 fn tmp_db(tag: &str) -> String {
     let mut path = std::env::temp_dir();
@@ -19,13 +20,14 @@ async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
     (service, db)
 }
 
-fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> FetchedTransactionRecord {
-    FetchedTransactionRecord {
+fn record(id: &str, hash: &str, confirmations: Option<i64>) -> TransactionRecord {
+    TransactionRecord {
+        actions: Default::default(),
         deployment_id: None,
         id: id.to_string(),
         wallet_id: Some("w1".to_string()),
-        kind: "receive".to_string(),
-        status: "confirmed".to_string(),
+        kind: TransactionKind::Receive,
+        status: TransactionStatus::Confirmed,
         wallet_name: "W".to_string(),
         asset_display_name: "Bitcoin".to_string(),
         symbol: "BTC".to_string(),
@@ -54,7 +56,7 @@ fn wire(id: &str, hash: &str, confirmations: Option<i64>) -> FetchedTransactionR
     }
 }
 
-fn merge(incoming: Vec<FetchedTransactionRecord>) -> TransactionCommand {
+fn merge(incoming: Vec<TransactionRecord>) -> TransactionCommand {
     // Strategy comes from the registry now — "Bitcoin" implies StandardUtxo.
     TransactionCommand::Merge {
         incoming,
@@ -67,7 +69,7 @@ fn merge(incoming: Vec<FetchedTransactionRecord>) -> TransactionCommand {
 async fn a_first_merge_adds_everything() {
     let (service, db) = opened("first").await;
     let change = service
-        .apply_transaction_command(merge(vec![wire("tx1", "hash1", Some(1))]))
+        .apply_transaction_command(merge(vec![record("tx1", "hash1", Some(1))]))
         .await
         .expect("merge");
     assert_eq!(change.added, vec!["tx1"]);
@@ -81,12 +83,12 @@ async fn a_first_merge_adds_everything() {
 async fn re_merging_identical_records_is_a_no_op() {
     let (service, db) = opened("noop").await;
     service
-        .apply_transaction_command(merge(vec![wire("tx1", "hash1", Some(1))]))
+        .apply_transaction_command(merge(vec![record("tx1", "hash1", Some(1))]))
         .await
         .expect("merge");
 
     let again = service
-        .apply_transaction_command(merge(vec![wire("tx1", "hash1", Some(1))]))
+        .apply_transaction_command(merge(vec![record("tx1", "hash1", Some(1))]))
         .await
         .expect("merge");
     assert!(
@@ -102,17 +104,17 @@ async fn only_genuinely_changed_records_are_written() {
     let (service, db) = opened("changed").await;
     service
         .apply_transaction_command(merge(vec![
-            wire("tx1", "hash1", Some(1)),
-            wire("tx2", "hash2", Some(1)),
+            record("tx1", "hash1", Some(1)),
+            record("tx2", "hash2", Some(1)),
         ]))
         .await
         .expect("merge");
 
     let change = service
         .apply_transaction_command(merge(vec![
-            wire("tx1", "hash1", Some(1)), // unchanged
-            wire("tx2", "hash2", Some(6)), // confirmations advanced
-            wire("tx3", "hash3", Some(1)), // new
+            record("tx1", "hash1", Some(1)), // unchanged
+            record("tx2", "hash2", Some(6)), // confirmations advanced
+            record("tx3", "hash3", Some(1)), // new
         ]))
         .await
         .expect("merge");
@@ -129,13 +131,13 @@ async fn merge_sees_records_written_by_other_commands() {
     let (service, db) = opened("crosstalk").await;
     service
         .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![wire("tx1", "hash1", Some(1)).into()],
+            records: vec![record("tx1", "hash1", Some(1))],
         })
         .await
         .expect("upsert");
 
     let change = service
-        .apply_transaction_command(merge(vec![wire("tx1", "hash1", Some(9))]))
+        .apply_transaction_command(merge(vec![record("tx1", "hash1", Some(9))]))
         .await
         .expect("merge");
     assert_eq!(change.updated, vec!["tx1"], "must not be treated as new");

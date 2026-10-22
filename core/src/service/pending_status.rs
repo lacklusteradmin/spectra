@@ -9,6 +9,7 @@
 use crate::SpectraBridgeError;
 use crate::registry::{Chain, PendingStatusPoll};
 use crate::service::WalletService;
+use crate::store::wallet_domain::TransactionStatus;
 use crate::store::{ResolvedPendingStatus, TransactionStatusChange};
 
 /// The stored records this chain's poll shape tracks.
@@ -212,11 +213,10 @@ impl WalletService {
                                 resolutions.push(ResolvedPendingStatus {
                                     id: record.id.clone(),
                                     status: if status.confirmed {
-                                        "confirmed"
+                                        TransactionStatus::Confirmed
                                     } else {
-                                        "pending"
-                                    }
-                                    .to_string(),
+                                        TransactionStatus::Pending
+                                    },
                                     confirmations,
                                     receipt_block_number: block,
                                     evm_receipt_cost: None,
@@ -258,11 +258,7 @@ impl WalletService {
                                 // A reverted receipt is a failure, not a
                                 // confirmation: the history summary the other arm
                                 // reads cannot tell the two apart.
-                                let status = if classification.is_failed {
-                                    "failed"
-                                } else {
-                                    "confirmed"
-                                };
+                                let status = TransactionStatus::executed(!classification.is_failed);
                                 this.record_status_poll(
                                     record.id.clone(),
                                     crate::service::StatusPollOutcome::Confirmed,
@@ -270,7 +266,7 @@ impl WalletService {
                                 .await;
                                 resolutions.push(ResolvedPendingStatus {
                                     id: record.id.clone(),
-                                    status: status.to_string(),
+                                    status,
                                     confirmations: None,
                                     receipt_block_number: classification.block_number,
                                     evm_receipt_cost: classification.cost,
@@ -308,12 +304,7 @@ impl WalletService {
                                 .await;
                                 resolutions.push(ResolvedPendingStatus {
                                     id: record.id.clone(),
-                                    status: if outcome.succeeded {
-                                        "confirmed"
-                                    } else {
-                                        "failed"
-                                    }
-                                    .into(),
+                                    status: TransactionStatus::executed(outcome.succeeded),
                                     confirmations: None,
                                     receipt_block_number: Some(block),
                                     evm_receipt_cost: None,
@@ -368,7 +359,7 @@ impl WalletService {
                                 .await;
                                 resolutions.push(ResolvedPendingStatus {
                                     id: record.id.clone(),
-                                    status: if succeeded { "confirmed" } else { "failed" }.into(),
+                                    status: TransactionStatus::executed(succeeded),
                                     confirmations: None,
                                     receipt_block_number: block,
                                     evm_receipt_cost: None,

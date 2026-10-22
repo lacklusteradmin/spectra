@@ -3,7 +3,7 @@
 
 use super::*;
 
-pub(crate) type Utxo = (String, u32, u64, Vec<u8>);
+pub(crate) type Utxo = crate::api::utxo::UtxoInput;
 
 pub(crate) fn fixtures() -> serde_json::Value {
     serde_json::from_str(include_str!(
@@ -20,8 +20,8 @@ pub(crate) fn spend(vector: &serde_json::Value) -> (Vec<Utxo>, Vec<Vec<u8>>, Vec
         inputs
             .iter()
             .map(|input| {
-                (
-                    text(input, "txid"),
+                Utxo::fixture(
+                    &text(input, "txid"),
                     input["vout"].as_u64().unwrap() as u32,
                     input["value"].as_u64().unwrap(),
                     hex::decode(text(input, "script")).unwrap(),
@@ -84,7 +84,7 @@ fn ecdsa_account_spends_match_bitcoinjs_byte_for_byte() {
             vector["txid"].as_str().unwrap()
         );
         let estimate = estimate_vsize(
-            utxos.iter().map(|utxo| utxo.3.as_slice()),
+            utxos.iter().map(|utxo| utxo.script_pubkey.as_slice()),
             outputs.iter().map(|output| output.0.len()),
         )
         .unwrap();
@@ -116,7 +116,8 @@ fn taproot_account_spends_sign_bitcoinjs_sighashes() {
         let witness = &tx.input[index].witness;
         assert_eq!(witness.len(), 1);
         let signature = bitcoin::secp256k1::schnorr::Signature::from_slice(&witness[0]).unwrap();
-        let key = bitcoin::secp256k1::XOnlyPublicKey::from_slice(&utxos[index].3[2..]).unwrap();
+        let key = bitcoin::secp256k1::XOnlyPublicKey::from_slice(&utxos[index].script_pubkey[2..])
+            .unwrap();
         let digest: [u8; 32] = hex::decode(sighash.as_str().unwrap())
             .unwrap()
             .try_into()
@@ -132,7 +133,7 @@ fn taproot_account_spends_sign_bitcoinjs_sighashes() {
         vector["unsigned"].as_str().unwrap()
     );
     let estimate = estimate_vsize(
-        utxos.iter().map(|utxo| utxo.3.as_slice()),
+        utxos.iter().map(|utxo| utxo.script_pubkey.as_slice()),
         outputs.iter().map(|output| output.0.len()),
     )
     .unwrap();
@@ -151,11 +152,11 @@ fn foreign_keys_duplicate_and_unspendable_inputs_are_refused() {
         assert!(sign(&utxos, &keys, &outputs).is_err(), "{}", vector["name"]);
     }
     let (mut utxos, keys, outputs) = spend(&fixtures["bitcoin"][1]);
-    utxos[2].0 = utxos[0].0.clone();
-    utxos[2].1 = utxos[0].1;
+    utxos[2].txid = utxos[0].txid;
+    utxos[2].vout = utxos[0].vout;
     assert!(sign(&utxos, &keys, &outputs).is_err());
     let (mut utxos, keys, outputs) = spend(&fixtures["bitcoin"][1]);
-    utxos[0].3 = ScriptBuf::new_op_return([1u8; 4]).into_bytes();
+    utxos[0].script_pubkey = ScriptBuf::new_op_return([1u8; 4]).into_bytes();
     assert!(sign(&utxos, &keys, &outputs).is_err());
     assert!(sign(&[], &[], &outputs).is_err());
 }

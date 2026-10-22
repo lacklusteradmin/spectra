@@ -470,9 +470,12 @@ impl WalletService {
         let raw = prepared.sign(&key)?;
         let hash = format!("0x{}", hex::encode(crate::derivation::evm::keccak256(&raw)));
         let accepted = self
-            .broadcast_raw_extract(chain, format!("0x{}", hex::encode(&raw)), "txid".into())
+            .broadcast_raw(
+                chain,
+                crate::send::payload::SignedPayload::Hex(format!("0x{}", hex::encode(&raw))),
+            )
             .await?;
-        if !accepted.is_empty() && !accepted.eq_ignore_ascii_case(&hash) {
+        if !accepted.eq_ignore_ascii_case(&hash) {
             return Err(SpectraBridgeError::failure(
                 "The network accepted another transaction hash than the one signed",
             ));

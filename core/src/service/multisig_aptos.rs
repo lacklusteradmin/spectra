@@ -388,13 +388,12 @@ impl WalletService {
         let signed = Self::finalize_aptos(wallet, session)?;
         let hash = aptos::transaction_hash(&signed);
         let accepted = self
-            .broadcast_raw_extract(
+            .broadcast_raw(
                 wallet.chain_id,
-                json!({ "signed_bcs_hex": hex::encode(&signed) }).to_string(),
-                "txid".into(),
+                crate::send::payload::SignedPayload::Hex(hex::encode(&signed)),
             )
             .await?;
-        if !accepted.is_empty() && !accepted.eq_ignore_ascii_case(&hash) {
+        if !accepted.eq_ignore_ascii_case(&hash) {
             return Err(SpectraBridgeError::failure(
                 "The network accepted another transaction hash than the session's",
             ));

@@ -16,14 +16,6 @@ pub struct AptosBalance {
     pub octas: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AptosSendResult {
-    pub txid: String,
-    pub version: Option<u64>,
-    /// JSON-encoded signed transaction body — stored for rebroadcast.
-    pub signed_body_json: String,
-}
-
 /// What an Aptos token identifier names.
 ///
 /// A fungible asset (AIP-21), which every catalog token is, is named by the
@@ -291,10 +283,7 @@ impl AptosClient {
 impl AptosClient {
     /// Submit a signed transaction in BCS, as the REST API takes one whose
     /// authenticator its JSON form does not name; the hash it answers.
-    pub(crate) async fn submit_signed_bcs(
-        &self,
-        signed: &[u8],
-    ) -> Result<AptosSendResult, ApiError> {
+    pub(crate) async fn submit_signed_bcs(&self, signed: &[u8]) -> Result<String, ApiError> {
         let body = signed.to_vec();
         let response: Value = race(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -325,14 +314,10 @@ impl AptosClient {
             .filter(|s| !s.is_empty())
             .or_decode("Aptos submit: missing hash")?
             .to_string();
-        Ok(AptosSendResult {
-            txid,
-            version: None,
-            signed_body_json: hex::encode(signed),
-        })
+        Ok(txid)
     }
 
-    pub async fn submit_signed_body(&self, signed_json: &str) -> Result<AptosSendResult, ApiError> {
+    pub async fn submit_signed_body(&self, signed_json: &str) -> Result<String, ApiError> {
         let body: Value = serde_json::from_str(signed_json)
             .map_err(|e| ApiError::InvalidInput(format!("invalid Aptos transaction: {e}")))?;
         let response = self.post_val("/transactions", &body).await?;
@@ -341,12 +326,7 @@ impl AptosClient {
             .filter(|s| !s.is_empty())
             .or_decode("Aptos submit: missing hash")?
             .to_string();
-        let version = response["version"].as_str().and_then(|s| s.parse().ok());
-        Ok(AptosSendResult {
-            txid,
-            version,
-            signed_body_json: signed_json.into(),
-        })
+        Ok(txid)
     }
 }
 

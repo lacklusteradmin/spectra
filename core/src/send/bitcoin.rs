@@ -4,7 +4,6 @@
 //! caller decides which of these scripts its network spends.
 
 use std::collections::HashSet;
-use std::str::FromStr;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::key::TapTweak;
@@ -14,7 +13,7 @@ use bitcoin::sighash::{EcdsaSighashType, Prevouts, SighashCache, TapSighashType}
 use bitcoin::transaction::Version;
 use bitcoin::{
     Amount, CompressedPublicKey, OutPoint, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut,
-    Txid, Witness,
+    Witness,
 };
 
 use crate::send::error::SendError;
@@ -75,7 +74,7 @@ impl InputKind {
 
 /// One input and the key of the address it pays.
 pub(crate) struct SigningInput<'a> {
-    pub utxo: &'a (String, u32, u64, Vec<u8>),
+    pub utxo: &'a crate::api::utxo::UtxoInput,
     pub private_key: &'a [u8],
 }
 
@@ -112,21 +111,21 @@ pub(crate) fn sign_inputs(
     let mut tx_inputs = Vec::with_capacity(inputs.len());
     let mut prevouts = Vec::with_capacity(inputs.len());
     for input in inputs {
-        let (txid, vout, value, script) = input.utxo;
-        let script = Script::from_bytes(script);
+        let utxo = input.utxo;
+        let script = Script::from_bytes(&utxo.script_pubkey);
         let kind = InputKind::from_script(script)?;
         let (secret, key) = public_key(input.private_key)?;
         kind.validate_key(script, &key)?;
         let outpoint = OutPoint {
-            txid: Txid::from_str(txid).map_err(SendError::invalid)?,
-            vout: *vout,
+            txid: utxo.txid.into(),
+            vout: utxo.vout,
         };
         if outpoint.is_null() || !seen.insert(outpoint) {
             return Err(SendError::Invalid("invalid or duplicate input".into()));
         }
         identities.push((kind, secret, key));
         prevouts.push(TxOut {
-            value: Amount::from_sat(*value),
+            value: Amount::from_sat(utxo.value),
             script_pubkey: script.to_owned(),
         });
         tx_inputs.push(TxIn {

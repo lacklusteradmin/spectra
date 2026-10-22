@@ -459,7 +459,8 @@ fn a_peg_in_pays_its_kernel_script() {
     let script = crate::derivation::utxo_address::parse_utxo_address(chain, &sender)
         .unwrap()
         .script_pubkey();
-    let utxo = ("11".repeat(32), 0, 10_000_000, script.clone());
+    let utxo =
+        crate::api::utxo::UtxoInput::fixture(&"11".repeat(32), 0, 10_000_000, script.clone());
     let prepared = PreparedPegIn {
         inputs: vec![crate::send::stages::UtxoPreparedInput {
             source: crate::send::stages::UtxoSendSource {

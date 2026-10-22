@@ -1,8 +1,9 @@
 //! Litecoin spends every known source in the wallet's selected account,
 //! to a transparent address or, by a peg-in, to an MWEB one.
 use super::*;
+use crate::api::utxo::{Txid, UtxoInput};
 use crate::send::litecoin_mweb::prepared::{CanonicalRecipient, PreparedPegIn};
-use crate::send::payload::PreparedSubmission;
+use crate::send::payload::{PreparedSubmission, SignedPayload};
 use crate::send::stages::{
     PreparedAccountUtxoTransaction, PreparedPayload, StoredSend, UtxoPreparedInput,
 };
@@ -21,11 +22,12 @@ impl WalletService {
         let mut outpoints = BTreeSet::new();
         for source in sources {
             for utxo in client.fetch_utxos(&source.address).await? {
+                let txid: Txid = utxo
+                    .txid
+                    .parse()
+                    .map_err(crate::send::error::SendError::invalid)?;
                 let outpoint = bitcoin::OutPoint {
-                    txid: utxo
-                        .txid
-                        .parse()
-                        .map_err(crate::send::error::SendError::invalid)?,
+                    txid: txid.into(),
                     vout: utxo.vout,
                 };
                 if outpoint.is_null() {
@@ -39,14 +41,21 @@ impl WalletService {
                 if !utxo.status.confirmed {
                     continue;
                 }
-                let script = source.script_pubkey.clone();
                 inputs.push(UtxoPreparedInput {
                     source: source.clone(),
-                    utxo: (outpoint.txid.to_string(), outpoint.vout, utxo.value, script),
+                    utxo: UtxoInput {
+                        txid,
+                        vout: utxo.vout,
+                        value: utxo.value,
+                        script_pubkey: source.script_pubkey.clone(),
+                    },
                 });
             }
         }
-        crate::send::litecoin::validate_ltc_values(chain, inputs.iter().map(|input| input.utxo.2))?;
+        crate::send::litecoin::validate_ltc_values(
+            chain,
+            inputs.iter().map(|input| input.utxo.value),
+        )?;
         Ok(inputs)
     }
 
@@ -77,7 +86,7 @@ impl WalletService {
         let change_script =
             crate::derivation::utxo_address::parse_utxo_address(chain, sender)?.script_pubkey();
         let vsize = crate::send::litecoin::estimate_ltc_vsize(
-            inputs.iter().map(|i| i.utxo.3.as_slice()),
+            inputs.iter().map(|i| i.utxo.script_pubkey.as_slice()),
             recipient.script_len(),
             Some(&change_script),
         )?;
@@ -107,8 +116,11 @@ impl WalletService {
         let paid = amount
             .checked_add(mweb_fee)
             .ok_or_else(|| SpectraBridgeError::invalid("Amount overflow"))?;
-        let change =
-            crate::send::accounting::checked_change(inputs.iter().map(|i| i.utxo.2), paid, fee)?;
+        let change = crate::send::accounting::checked_change(
+            inputs.iter().map(|i| i.utxo.value),
+            paid,
+            fee,
+        )?;
         if change < crate::send::litecoin::litecoin_dust_threshold(chain, &change_script)? {
             fee = fee
                 .checked_add(change)
@@ -138,11 +150,11 @@ impl WalletService {
         chain: Chain,
         stored: &StoredSend,
         signer: &super::send_identity::ResolvedSendIdentity,
-    ) -> Result<(PreparedSubmission, Vec<String>), SpectraBridgeError> {
+    ) -> Result<PreparedSubmission, SpectraBridgeError> {
         let PreparedPayload::Litecoin(prepared) = &stored.prepared else {
             return Err(SpectraBridgeError::invalid("Expected Litecoin transaction"));
         };
-        let (keys, resources) = self
+        let keys = self
             .litecoin_input_keys(chain, &prepared.inputs, signer)
             .await?;
         let raw = sign_inputs(
@@ -155,16 +167,12 @@ impl WalletService {
             &stored.view.sender,
             signer,
         )?;
-        let hash = crate::send::payload::bitcoin_transaction_id(&hex::encode(&raw));
-        Ok((
-            PreparedSubmission {
-                payload: hex::encode(raw),
-                result_field: "txid".into(),
-                transaction_hash: hash,
-                nonce: None,
-            },
-            resources,
-        ))
+        let raw = hex::encode(raw);
+        Ok(PreparedSubmission {
+            transaction_hash: crate::send::payload::bitcoin_transaction_id(&raw),
+            payload: SignedPayload::Hex(raw),
+            nonce: None,
+        })
     }
 
     /// Sign a reviewed peg-in: its MWEB half, then the canonical transaction
@@ -174,11 +182,11 @@ impl WalletService {
         chain: Chain,
         stored: &StoredSend,
         signer: &super::send_identity::ResolvedSendIdentity,
-    ) -> Result<(PreparedSubmission, Vec<String>), SpectraBridgeError> {
+    ) -> Result<PreparedSubmission, SpectraBridgeError> {
         let PreparedPayload::LitecoinPegIn(prepared) = &stored.prepared else {
             return Err(SpectraBridgeError::invalid("Expected a Litecoin peg-in"));
         };
-        let (keys, resources) = self
+        let keys = self
             .litecoin_input_keys(chain, &prepared.inputs, signer)
             .await?;
         let signed =
@@ -194,25 +202,21 @@ impl WalletService {
                     signer,
                 )
             })?;
-        Ok((
-            PreparedSubmission {
-                payload: hex::encode(signed.raw),
-                result_field: "txid".into(),
-                transaction_hash: Some(signed.txid),
-                nonce: None,
-            },
-            resources,
-        ))
+        Ok(PreparedSubmission {
+            payload: SignedPayload::Hex(hex::encode(signed.raw)),
+            transaction_hash: Some(signed.txid),
+            nonce: None,
+        })
     }
 
     /// The key of each prepared input, after checking it is still the
-    /// wallet's and unspent, and the outpoints signing it reserves.
+    /// wallet's and unspent.
     async fn litecoin_input_keys(
         &self,
         chain: Chain,
         inputs: &[UtxoPreparedInput],
         signer: &super::send_identity::ResolvedSendIdentity,
-    ) -> Result<(Vec<Zeroizing<Vec<u8>>>, Vec<String>), SpectraBridgeError> {
+    ) -> Result<Vec<Zeroizing<Vec<u8>>>, SpectraBridgeError> {
         let mut by_address = BTreeMap::new();
         for key in &signer.account_utxo_sources {
             by_address.insert(key.source.address.as_str(), key);
@@ -220,7 +224,6 @@ impl WalletService {
         let client = self.utxo_client(chain, &[EndpointCapability::Utxo]).await;
         let mut current = BTreeMap::new();
         let mut keys = Vec::new();
-        let mut resources = Vec::new();
         let mut outpoints = BTreeSet::new();
         for input in inputs {
             let key = by_address
@@ -229,8 +232,8 @@ impl WalletService {
                 .ok_or_else(|| {
                     SpectraBridgeError::invalid("Litecoin source changed; build and review again")
                 })?;
-            if input.utxo.3 != input.source.script_pubkey
-                || !outpoints.insert((&input.utxo.0, input.utxo.1))
+            if input.utxo.script_pubkey != input.source.script_pubkey
+                || !outpoints.insert((input.utxo.txid, input.utxo.vout))
             {
                 return Err(SpectraBridgeError::invalid(
                     "Invalid prepared Litecoin input",
@@ -239,19 +242,24 @@ impl WalletService {
             if let std::collections::btree_map::Entry::Vacant(entry) =
                 current.entry(input.source.address.clone())
             {
-                let utxos = client.fetch_utxos(&input.source.address).await?;
                 let mut seen = BTreeSet::new();
-                for utxo in &utxos {
-                    if !seen.insert((utxo.txid.to_ascii_lowercase(), utxo.vout)) {
+                let mut utxos = Vec::new();
+                for utxo in client.fetch_utxos(&input.source.address).await? {
+                    let txid: Txid = utxo
+                        .txid
+                        .parse()
+                        .map_err(crate::send::error::SendError::invalid)?;
+                    if !seen.insert((txid, utxo.vout)) {
                         return Err(SpectraBridgeError::invalid("Duplicate Litecoin outpoint"));
                     }
+                    utxos.push((txid, utxo));
                 }
                 entry.insert(utxos);
             }
-            if !current[&input.source.address].iter().any(|utxo| {
-                utxo.txid.eq_ignore_ascii_case(&input.utxo.0)
-                    && utxo.vout == input.utxo.1
-                    && utxo.value == input.utxo.2
+            if !current[&input.source.address].iter().any(|(txid, utxo)| {
+                *txid == input.utxo.txid
+                    && utxo.vout == input.utxo.vout
+                    && utxo.value == input.utxo.value
                     && utxo.status.confirmed
             }) {
                 return Err(SpectraBridgeError::failure(
@@ -259,14 +267,8 @@ impl WalletService {
                 ));
             }
             keys.push(Zeroizing::new(hex::decode(key.private_key_hex.as_str())?));
-            resources.push(format!(
-                "{}:utxo:{}:{}",
-                chain.str_id(),
-                input.utxo.0,
-                input.utxo.1
-            ));
         }
-        Ok((keys, resources))
+        Ok(keys)
     }
 }
 

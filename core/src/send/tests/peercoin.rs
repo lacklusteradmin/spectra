@@ -1,5 +1,5 @@
 use super::*;
-use crate::send::bitcoin_wire::{build_input, decode_txid_le, dsha256, varint};
+use crate::send::bitcoin_wire::{build_input, dsha256, varint};
 use bitcoin::secp256k1::ecdsa::Signature;
 
 fn public(key: &[u8; 32]) -> CompressedPublicKey {
@@ -54,7 +54,7 @@ fn source(chain: Chain, key: &[u8; 32], kind: InputKind) -> (String, Vec<u8>) {
 }
 
 fn input(index: u32, value: u64, script: &[u8]) -> Input {
-    (format!("{index:064x}"), index, value, script.to_vec())
+    Input::fixture(&format!("{index:064x}"), index, value, script.to_vec())
 }
 
 fn encode_outputs(tx: &Transaction) -> Vec<u8> {
@@ -86,12 +86,12 @@ fn protocol_sighash(
         let mut amounts = Vec::new();
         let mut scripts = Vec::new();
         let mut sequences = Vec::new();
-        for (txid, vout, amount, script) in inputs {
-            outpoints.extend(decode_txid_le(txid).unwrap());
-            outpoints.extend(vout.to_le_bytes());
-            amounts.extend(amount.to_le_bytes());
-            scripts.extend(varint(script.len()));
-            scripts.extend(script);
+        for input in inputs {
+            outpoints.extend(input.txid.wire_bytes());
+            outpoints.extend(input.vout.to_le_bytes());
+            amounts.extend(input.value.to_le_bytes());
+            scripts.extend(varint(input.script_pubkey.len()));
+            scripts.extend(&input.script_pubkey);
             sequences.extend(u32::MAX.to_le_bytes());
         }
         for data in [outpoints, amounts, scripts, sequences, encode_outputs(tx)] {
@@ -106,27 +106,30 @@ fn protocol_sighash(
     if kind.has_witness() {
         let mut prevouts = Vec::new();
         let mut sequences = Vec::new();
-        for (txid, vout, _, _) in inputs {
-            prevouts.extend(decode_txid_le(txid).unwrap());
-            prevouts.extend(vout.to_le_bytes());
+        for input in inputs {
+            prevouts.extend(input.txid.wire_bytes());
+            prevouts.extend(input.vout.to_le_bytes());
             sequences.extend(u32::MAX.to_le_bytes());
         }
         raw.extend(dsha256(&prevouts));
         raw.extend(dsha256(&sequences));
-        raw.extend(decode_txid_le(&inputs[index].0).unwrap());
-        raw.extend(inputs[index].1.to_le_bytes());
+        raw.extend(inputs[index].txid.wire_bytes());
+        raw.extend(inputs[index].vout.to_le_bytes());
         let script_code = ScriptBuf::new_p2pkh(&key.pubkey_hash());
         raw.extend(varint(script_code.len()));
         raw.extend(script_code.as_bytes());
-        raw.extend(inputs[index].2.to_le_bytes());
+        raw.extend(inputs[index].value.to_le_bytes());
         raw.extend(u32::MAX.to_le_bytes());
         raw.extend(dsha256(&encode_outputs(tx)));
     } else {
         raw.extend(varint(inputs.len()));
-        for (i, (txid, vout, _, script)) in inputs.iter().enumerate() {
-            raw.extend(
-                build_input(txid, *vout, if i == index { script } else { &[] }, u32::MAX).unwrap(),
-            );
+        for (i, input) in inputs.iter().enumerate() {
+            let script: &[u8] = if i == index {
+                &input.script_pubkey
+            } else {
+                &[]
+            };
+            raw.extend(build_input(&input.txid, input.vout, script, u32::MAX));
         }
         raw.extend(varint(tx.output.len()));
         raw.extend(encode_outputs(tx));
@@ -212,12 +215,13 @@ fn version_three_multikey_inputs_verify_against_peercoin_preimages_on_both_netwo
                 let signature =
                     bitcoin::secp256k1::schnorr::Signature::from_slice(&signature).unwrap();
                 let output_key =
-                    bitcoin::secp256k1::XOnlyPublicKey::from_slice(&inputs[i].3[2..]).unwrap();
+                    bitcoin::secp256k1::XOnlyPublicKey::from_slice(&inputs[i].script_pubkey[2..])
+                        .unwrap();
                 Secp256k1::new()
                     .verify_schnorr(&signature, &Message::from_digest(digest), &output_key)
                     .unwrap();
                 let mut wrong_other_prevout = inputs.clone();
-                wrong_other_prevout[0].2 += 1;
+                wrong_other_prevout[0].value += 1;
                 let incorrect = protocol_sighash(&tx, &wrong_other_prevout, i, kinds[i], &key);
                 assert!(
                     Secp256k1::new()
@@ -233,7 +237,7 @@ fn version_three_multikey_inputs_verify_against_peercoin_preimages_on_both_netwo
                 .unwrap();
             if kinds[i].has_witness() {
                 let mut wrong_amount = inputs.clone();
-                wrong_amount[i].2 += 1;
+                wrong_amount[i].value += 1;
                 let incorrect = protocol_sighash(&tx, &wrong_amount, i, kinds[i], &key);
                 assert!(
                     Secp256k1::new()
@@ -424,8 +428,12 @@ fn refuses_wrong_network_wrong_keys_bad_inputs_and_out_of_range_amounts() {
     for bad in [
         vec![],
         vec![inputs[0].clone(), inputs[0].clone()],
-        vec![("not hex".into(), 0, 1_000_000, script.clone())],
-        vec![("0".repeat(64), u32::MAX, 1_000_000, script.clone())],
+        vec![Input::fixture(
+            &"0".repeat(64),
+            u32::MAX,
+            1_000_000,
+            script.clone(),
+        )],
         vec![input(1, 0, &script)],
         vec![input(1, u64::MAX, &script)],
         vec![

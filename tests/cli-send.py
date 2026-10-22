@@ -40,7 +40,7 @@ class SendTests(unittest.TestCase):
                         # The hash the stored transaction was signed to, as a node answers.
                         with sqlite3.connect(pathlib.Path(directory)/'spectra.sqlite') as db:
                             artifacts = [json.loads(row[0]) for row in db.execute('SELECT payload FROM send_artifacts')]
-                        artifact = next(a for a in artifacts if a['submission'] and a['submission']['payload'] == call['params'][0])
+                        artifact = next(a for a in artifacts if a['view']['signed_payload'] == call['params'][0])
                         return {'jsonrpc':'2.0', 'id':call['id'], 'result':artifact['view']['transaction_hash']}
                     values = {'eth_chainId': '0x1', 'eth_getBalance': '0x8ac7230489e80000', 'eth_estimateGas': '0x5208',
                               'eth_getCode': '0x', 'eth_getTransactionCount': '0x7',

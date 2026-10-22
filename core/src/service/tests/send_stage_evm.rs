@@ -384,7 +384,7 @@ async fn an_altered_stored_send_is_refused_wherever_it_is_read() {
     }
     let signed = sign(&service, &built).await.unwrap();
     store.alter(&signed.id, |payload| {
-        payload["submission"]["payload"] = json!("0xdeadbeef")
+        payload["submission"]["payload"] = json!({ "hex": "0xdeadbeef" })
     });
     let refused = service
         .broadcast_send(signed.id.clone(), vec![accepts.uri()])

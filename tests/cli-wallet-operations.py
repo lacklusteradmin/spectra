@@ -254,7 +254,7 @@ class WalletOperationsTests(unittest.TestCase):
         assert self.run_cli('send', 'list')['artifacts'] == [], 'a refusal builds nothing'
         Node.state['blockers'] = []
         built = self.run_cli('wallet', 'close', 'XRP', '--to', XRP_DESTINATION)['artifact']
-        blob = json.loads(self.sign_and_broadcast(built, '/xrpl'))['tx_blob_hex']
+        blob = self.sign_and_broadcast(built, '/xrpl')
         assert Node.submitted == [blob], Node.submitted
         assert [(row['kind'], row['amount']) for row in self.history()] == [('send', '24.8')], self.history()
 
@@ -271,7 +271,7 @@ class WalletOperationsTests(unittest.TestCase):
                      env={'CLOSING_KEY': stellar_secret(bytes.fromhex(merge['seed']))})
         self.endpoint('stellar-testnet', 'horizon', '/horizon')
         built = self.run_cli('wallet', 'close', 'XLM', '--to', destination)['artifact']
-        signed = json.loads(self.sign_and_broadcast(built, '/horizon'))['signed_xdr_b64']
+        signed = self.sign_and_broadcast(built, '/horizon')
         assert Node.submitted == [signed], Node.submitted
         assert [row['kind'] for row in self.history()] == ['send'], self.history()
 
@@ -285,7 +285,7 @@ class WalletOperationsTests(unittest.TestCase):
         self.run_cli('wallet', 'import', '--chain', 'near', '--name', 'NEAR', '--no-password', env={'SPECTRA_SEED': PHRASE})
         self.endpoint('near', 'near-json-rpc', '/near')
         built = self.run_cli('wallet', 'delete-key', 'NEAR', '--key', dapp)['artifact']
-        signed = json.loads(self.sign_and_broadcast(built, '/near'))['signed_tx_b64']
+        signed = self.sign_and_broadcast(built, '/near')
         assert Node.submitted == [signed], Node.submitted
         assert [row['kind'] for row in self.history()] == ['deleteAccessKey'], self.history()
 
@@ -298,7 +298,7 @@ class WalletOperationsTests(unittest.TestCase):
         self.run_cli('wallet', 'import', '--chain', 'near', '--name', 'NEAR', '--no-password', env={'SPECTRA_SEED': PHRASE})
         self.endpoint('near', 'near-json-rpc', '/near')
         built = self.run_cli('wallet', 'refund-storage', 'NEAR', '--contract', 'empty.near')['artifact']
-        signed = json.loads(self.sign_and_broadcast(built, '/near'))['signed_tx_b64']
+        signed = self.sign_and_broadcast(built, '/near')
         assert Node.submitted == [signed], Node.submitted
         assert [(row['kind'], row['amount']) for row in self.history()] == [('refundTokenStorage', '0.00125')], \
             self.history()
@@ -308,7 +308,7 @@ class WalletOperationsTests(unittest.TestCase):
         self.run_cli('wallet', 'import', '--chain', 'sui', '--name', 'SUI', '--no-password', env={'SPECTRA_SEED': PHRASE})
         self.endpoint('sui', 'sui-json-rpc', '/sui')
         built = self.run_cli('wallet', 'merge', 'SUI', '--coin-type', SUI_TOKEN)['artifact']
-        signed = json.loads(self.sign_and_broadcast(built, '/sui'))['tx_bytes_b64']
+        signed = json.loads(self.sign_and_broadcast(built, '/sui'))['tx_bytes']
         assert Node.submitted == [signed], Node.submitted
         assert [row['kind'] for row in self.history()] == ['mergeCoins'], self.history()
 

@@ -27,13 +27,6 @@ pub struct TonHistoryEntry {
     pub comment: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TonSendResult {
-    pub message_hash: String,
-    /// Base64-encoded BOC — stored for rebroadcast.
-    pub boc_b64: String,
-}
-
 // ── Client
 
 /// An account as `getAddressInformation` shows it.
@@ -339,14 +332,12 @@ fn ton_history_from_transactions(txs: Vec<TonTx>) -> Vec<TonHistoryEntry> {
 }
 
 impl ToncenterV2Client {
-    /// Send a pre-built BOC (for rebroadcast).
-    pub async fn send_boc(&self, boc_b64: &str) -> Result<TonSendResult, ApiError> {
+    /// Send a signed BOC; the hash of the message it carries.
+    pub async fn send_boc(&self, boc_b64: &str) -> Result<String, ApiError> {
         let body = json!({"boc": boc_b64});
-        let boc_b64 = boc_b64.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();
             let body = body.clone();
-            let boc_b64 = boc_b64.clone();
             let url = format!("{}/sendBocReturnHash", base.trim_end_matches('/'));
             async move {
                 let resp: Value = client
@@ -375,10 +366,7 @@ impl ToncenterV2Client {
                         "TON broadcast: invalid hash length".into(),
                     ));
                 }
-                Ok(TonSendResult {
-                    message_hash: hash,
-                    boc_b64,
-                })
+                Ok(hash)
             }
         })
         .await

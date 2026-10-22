@@ -241,8 +241,12 @@ impl WalletService {
                     .ok_or_else(|| {
                         SpectraBridgeError::failure(format!("transfer {}: malformed value", e.txid))
                     })?;
+                let status = crate::store::wallet_domain::TransactionStatus::from_raw(&e.status)
+                    .ok_or_else(|| {
+                        SpectraBridgeError::failure(format!("transfer {}: unknown status", e.txid))
+                    })?;
                 Ok(EvmNativeTransferItem {
-                    status: e.status,
+                    status,
                     // Compared against the lowercased wallet address, as token
                     // transfers already are; an explorer may answer checksummed.
                     from_address: e.from.to_lowercase(),

@@ -74,7 +74,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
             crate::registry::Chain::Bitcoin,
             vec![ResolvedPendingStatus {
                 id: "tx1".into(),
-                status: "confirmed".into(),
+                status: crate::store::wallet_domain::TransactionStatus::Confirmed,
                 confirmations: Some(6),
                 receipt_block_number: Some(900_000),
                 evm_receipt_cost: None,
@@ -105,7 +105,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
             crate::registry::Chain::Bitcoin,
             vec![ResolvedPendingStatus {
                 id: "tx1".into(),
-                status: "confirmed".into(),
+                status: crate::store::wallet_domain::TransactionStatus::Confirmed,
                 confirmations: Some(6),
                 receipt_block_number: None,
                 evm_receipt_cost: None,

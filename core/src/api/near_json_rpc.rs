@@ -17,13 +17,6 @@ pub struct NearBalance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NearSendResult {
-    pub txid: String,
-    /// Base64-encoded signed transaction — stored for rebroadcast.
-    pub signed_tx_b64: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NearFtMetadata {
     pub spec: String,
     pub name: String,
@@ -821,7 +814,7 @@ fn near_function_call_fee(
 
 impl NearClient {
     /// Rebroadcast a pre-signed transaction (base64-encoded).
-    pub async fn broadcast_signed_tx_b64(&self, tx_b64: &str) -> Result<NearSendResult, ApiError> {
+    pub async fn broadcast_signed_tx_b64(&self, tx_b64: &str) -> Result<String, ApiError> {
         let result = self.call("broadcast_tx_commit", json!([tx_b64])).await?;
         let txid = result
             .get("transaction")
@@ -829,10 +822,7 @@ impl NearClient {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        Ok(NearSendResult {
-            txid,
-            signed_tx_b64: tx_b64.to_string(),
-        })
+        Ok(txid)
     }
 }
 

@@ -9,6 +9,7 @@ use crate::api::utxo::UtxoHistoryEntry;
 use crate::api::{HistoryPage, error::ApiError};
 use crate::fetch::history::BitcoinHistorySnapshot;
 use crate::registry::Chain;
+use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 use futures::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
@@ -205,13 +206,16 @@ where
                     net.unsigned_abs(),
                     u32::from(network.native_decimals()),
                 ),
-                kind: if net > 0 { "receive" } else { "send" }.into(),
-                status: if row.confirmed {
-                    "confirmed"
+                kind: if net > 0 {
+                    TransactionKind::Receive
                 } else {
-                    "pending"
-                }
-                .into(),
+                    TransactionKind::Send
+                },
+                status: if row.confirmed {
+                    TransactionStatus::Confirmed
+                } else {
+                    TransactionStatus::Pending
+                },
                 block_height: row.block_height.map(|h| h as i64),
                 created_at_unix: row.block_time.unwrap_or(0) as f64,
             })
@@ -319,7 +323,7 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(first.items[0].amount_btc, "1.223456");
-            assert_eq!(first.items[0].kind, "receive");
+            assert_eq!(first.items[0].kind, TransactionKind::Receive);
             let next = page(
                 chain,
                 &["a".into(), "b".into()],
@@ -330,7 +334,7 @@ mod tests {
             .await
             .unwrap();
             assert_eq!(next.items[0].amount_btc, "0.4");
-            assert_eq!(next.items[0].kind, "send");
+            assert_eq!(next.items[0].kind, TransactionKind::Send);
             let other = if chain.is_testnet() {
                 Chain::Peercoin
             } else {
@@ -388,7 +392,7 @@ mod tests {
         assert!(
             items
                 .iter()
-                .all(|r| r.amount_btc == "0.00000001" && r.kind == "receive")
+                .all(|r| r.amount_btc == "0.00000001" && r.kind == TransactionKind::Receive)
         );
         assert_eq!(
             items.iter().map(|r| &r.txid).collect::<HashSet<_>>().len(),

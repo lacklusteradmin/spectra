@@ -15,7 +15,7 @@ pub(crate) struct UtxoSendSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct UtxoPreparedInput {
     pub source: UtxoSendSource,
-    pub utxo: (String, u32, u64, Vec<u8>),
+    pub utxo: crate::api::utxo::UtxoInput,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -420,12 +420,16 @@ impl StoredSend {
                     "ICP execution proof attached to another protocol",
                 ));
             };
-            let active: Vec<super::icp_staking::SignedIcpStakingCall> = self
-                .submission
-                .as_ref()
-                .map(|s| serde_json::from_str(&s.payload))
-                .transpose()?
-                .unwrap_or_default();
+            let active: &[super::icp_staking::SignedIcpStakingCall] =
+                match self.submission.as_ref().map(|s| &s.payload) {
+                    None => &[],
+                    Some(super::payload::SignedPayload::IcpStaking(calls)) => calls,
+                    Some(_) => {
+                        return Err(SendError::invalid(
+                            "Staking was not signed as ICP ingress calls",
+                        ));
+                    }
+                };
             let controller = hex::decode(&prepared.controller_hex)?;
             for call in active
                 .iter()
@@ -477,7 +481,7 @@ impl StoredSend {
             (None, SendStage::Prepared)
                 if self.view.signed_payload.is_none() && self.view.transaction_hash.is_none() => {}
             (Some(signed), SendStage::Signed)
-                if self.view.signed_payload.as_ref() == Some(&signed.payload)
+                if self.view.signed_payload == Some(signed.payload.to_string())
                     && self.view.transaction_hash == signed.transaction_hash => {}
             _ => {
                 return Err(SendError::Invalid(

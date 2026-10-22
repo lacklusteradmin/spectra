@@ -86,8 +86,8 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
         &Default::default(),
         crate::fetch::history::NormalizedHistoryItem {
             deployment_id: Some("bitcoin-testnet-4:native".to_string()),
-            kind: "receive".to_string(),
-            status: "confirmed".to_string(),
+            kind: crate::store::wallet_domain::TransactionKind::Receive,
+            status: crate::store::wallet_domain::TransactionStatus::Confirmed,
             asset_display_name: "Bitcoin".to_string(),
             symbol: "tBTC".to_string(),
             chain_id: crate::registry::Chain::BitcoinTestnet4,
@@ -124,8 +124,8 @@ fn an_undated_entry_is_stored_as_unknown() {
     let target = &targets(&state, Chain::Litecoin, &[])[0];
     let entry = |timestamp| crate::fetch::history::NormalizedHistoryItem {
         deployment_id: Some("litecoin:native".to_string()),
-        kind: "receive".to_string(),
-        status: "pending".to_string(),
+        kind: crate::store::wallet_domain::TransactionKind::Receive,
+        status: crate::store::wallet_domain::TransactionStatus::Pending,
         asset_display_name: "Litecoin".to_string(),
         symbol: "LTC".to_string(),
         chain_id: crate::registry::Chain::Litecoin,
@@ -180,8 +180,8 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
         &Default::default(),
         crate::fetch::history::NormalizedHistoryItem {
             deployment_id: None,
-            kind: "receive".to_string(),
-            status: "confirmed".to_string(),
+            kind: crate::store::wallet_domain::TransactionKind::Receive,
+            status: crate::store::wallet_domain::TransactionStatus::Confirmed,
             asset_display_name: "Solana".to_string(),
             symbol: "SOL".to_string(),
             chain_id: crate::registry::Chain::Solana,
@@ -210,8 +210,8 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
     // An empty hash is no hash, not an empty one.
     let mut entry = crate::fetch::history::NormalizedHistoryItem {
         deployment_id: None,
-        kind: "send".to_string(),
-        status: "confirmed".to_string(),
+        kind: crate::store::wallet_domain::TransactionKind::Send,
+        status: crate::store::wallet_domain::TransactionStatus::Confirmed,
         asset_display_name: "Solana".to_string(),
         symbol: "SOL".to_string(),
         chain_id: crate::registry::Chain::Solana,
@@ -247,8 +247,8 @@ fn a_listed_token_is_named_as_the_list_names_it() {
     let id = "xrp:trust line token:USD.rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq";
     let entry = crate::fetch::history::NormalizedHistoryItem {
         deployment_id: Some(id.into()),
-        kind: "receive".to_string(),
-        status: "confirmed".to_string(),
+        kind: crate::store::wallet_domain::TransactionKind::Receive,
+        status: crate::store::wallet_domain::TransactionStatus::Confirmed,
         asset_display_name: "USD.rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq".to_string(),
         symbol: "USD.rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq".to_string(),
         chain_id: Chain::Xrp,
@@ -706,7 +706,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         .unwrap();
     let page = EvmHistoryPageDecoded {
         native: vec![EvmNativeTransferItem {
-            status: "failed".into(),
+            status: crate::store::wallet_domain::TransactionStatus::Failed,
             from_address: "0x1111111111111111111111111111111111111111".into(),
             to_address: "0x2222222222222222222222222222222222222222".into(),
             amount_decimal: "1".into(),
@@ -716,21 +716,22 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         }],
         ..Default::default()
     };
-    let fetched = evm_record(
-        build_evm_transaction_records(EvmTransactionRecordRequest {
-            decoded_page: page,
-            normalized_address: "0x1111111111111111111111111111111111111111".into(),
-            chain_id: Chain::EthereumSepolia,
-            token_source_used: None,
-            wallets: vec![EvmTransactionRecordWalletInput {
-                wallet_id: "w".into(),
-                wallet_name: "W".into(),
-            }],
-            unknown_timestamp_sentinel_unix: 0.0,
-        })
-        .remove(0),
+    let fetched = build_evm_transaction_records(EvmTransactionRecordRequest {
+        decoded_page: page,
+        normalized_address: "0x1111111111111111111111111111111111111111".into(),
+        chain_id: Chain::EthereumSepolia,
+        token_source_used: None,
+        wallets: vec![EvmTransactionRecordWalletInput {
+            wallet_id: "w".into(),
+            wallet_name: "W".into(),
+        }],
+        unknown_timestamp_sentinel_unix: 0.0,
+    })
+    .remove(0);
+    assert_eq!(
+        fetched.status,
+        crate::store::wallet_domain::TransactionStatus::Failed
     );
-    assert_eq!(fetched.status, "failed");
     assert_eq!(fetched.asset_display_name, "Test Ethereum");
     assert_eq!(fetched.symbol, "tETH");
     assert_eq!(
@@ -739,10 +740,10 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
     );
     let mut local = fetched.clone();
     local.id = "local-send".into();
-    local.status = "pending".into();
+    local.status = crate::store::wallet_domain::TransactionStatus::Pending;
     service
         .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![local.into()],
+            records: vec![local],
         })
         .await
         .unwrap();
@@ -834,10 +835,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
             wallet_name: "W".into(),
         }],
         unknown_timestamp_sentinel_unix: 0.0,
-    })
-    .into_iter()
-    .map(evm_record)
-    .collect();
+    });
     let merged = crate::fetch::transactions::merge_transactions(
         crate::fetch::transactions::TransactionMergeRequest {
             existing_transactions: vec![],
