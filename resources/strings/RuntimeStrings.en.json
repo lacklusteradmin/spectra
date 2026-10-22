@@ -2089,7 +2089,6 @@
   "no node configured to list the account's assets": "no node configured to list the account's assets",
   "no scan candidates for this chain": "no scan candidates for this chain",
   "no sealed secret for this wallet": "no sealed secret for this wallet",
-  "node returned no transaction identifier": "node returned no transaction identifier",
   "non-expensive": "non-expensive",
   "nonce exceeds supported range": "nonce exceeds supported range",
   "offline": "offline",

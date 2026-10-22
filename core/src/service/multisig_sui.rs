@@ -324,13 +324,15 @@ impl WalletService {
         let (transaction, signature) = Self::finalize_sui(wallet, session)?;
         let digest = sui::transaction_digest(&bytes);
         let accepted = self
-            .broadcast_raw_extract(
+            .broadcast_raw(
                 wallet.chain_id,
-                json!({ "tx_bytes_b64": transaction, "sig_b64": signature }).to_string(),
-                "digest".into(),
+                crate::send::payload::SignedPayload::Sui {
+                    transaction,
+                    signature,
+                },
             )
             .await?;
-        if !accepted.is_empty() && accepted != digest {
+        if accepted != digest {
             return Err(SpectraBridgeError::failure(
                 "The network executed another transaction digest than the session's",
             ));

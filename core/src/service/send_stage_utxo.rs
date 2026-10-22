@@ -4,6 +4,7 @@
 //! the amount and the fee, change back to the wallet's own address, and each
 //! input signed with its own address's key.
 use super::*;
+use crate::api::utxo::{Txid, UtxoInput};
 use crate::send::account_utxo::{AccountProtocol, PreparedAccountTransfer};
 use crate::send::payload::PreparedSubmission;
 use crate::send::stages::{PreparedPayload, StoredSend, UtxoPreparedInput, UtxoSendSource};
@@ -12,9 +13,22 @@ use zeroize::Zeroizing;
 
 /// One confirmed output at a wallet address, as its indexer reports it.
 struct AddressOutput {
-    txid: String,
+    txid: Txid,
     vout: u32,
     value: u64,
+}
+
+impl AddressOutput {
+    /// An indexer's output, its txid refused unless it is one.
+    fn read(txid: &str, vout: u32, value: u64) -> Result<Self, SpectraBridgeError> {
+        Ok(Self {
+            txid: txid
+                .parse()
+                .map_err(|_| SpectraBridgeError::invalid("The indexer reported an invalid txid"))?,
+            vout,
+            value,
+        })
+    }
 }
 
 /// The indexer an account UTXO network's outputs are read from.
@@ -52,23 +66,15 @@ impl OutputReader {
                 .await?
                 .into_iter()
                 .filter(|utxo| utxo.status.confirmed)
-                .map(|utxo| AddressOutput {
-                    txid: utxo.txid,
-                    vout: utxo.vout,
-                    value: utxo.value,
-                })
-                .collect(),
+                .map(|utxo| AddressOutput::read(&utxo.txid, utxo.vout, utxo.value))
+                .collect::<Result<_, _>>()?,
             Self::Insight(client) => client
                 .fetch_utxos(&source.address)
                 .await?
                 .into_iter()
                 .filter(|utxo| utxo.confirmations > 0)
-                .map(|utxo| AddressOutput {
-                    txid: utxo.txid,
-                    vout: utxo.vout,
-                    value: utxo.value_atoms,
-                })
-                .collect(),
+                .map(|utxo| AddressOutput::read(&utxo.txid, utxo.vout, utxo.value_atoms))
+                .collect::<Result<_, _>>()?,
             Self::Kaspa(client) => {
                 let mut outputs = Vec::new();
                 for utxo in client.fetch_utxos(&source.address).await? {
@@ -81,11 +87,11 @@ impl OutputReader {
                         ));
                     }
                     if !utxo.is_coinbase {
-                        outputs.push(AddressOutput {
-                            txid: utxo.txid,
-                            vout: utxo.vout,
-                            value: utxo.value_sompi,
-                        });
+                        outputs.push(AddressOutput::read(
+                            &utxo.txid,
+                            utxo.vout,
+                            utxo.value_sompi,
+                        )?);
                     }
                 }
                 outputs
@@ -224,19 +230,19 @@ fn select(
 ) -> Result<Selection, SpectraBridgeError> {
     candidates.sort_by(|a, b| {
         b.utxo
-            .2
-            .cmp(&a.utxo.2)
-            .then_with(|| (&a.utxo.0, a.utxo.1).cmp(&(&b.utxo.0, b.utxo.1)))
+            .value
+            .cmp(&a.utxo.value)
+            .then_with(|| (a.utxo.txid, a.utxo.vout).cmp(&(b.utxo.txid, b.utxo.vout)))
     });
     let mut total = 0u64;
     for count in 1..=candidates.len() {
         total = total
-            .checked_add(candidates[count - 1].utxo.2)
+            .checked_add(candidates[count - 1].utxo.value)
             .ok_or_else(|| SpectraBridgeError::invalid("input total overflow"))?;
         let shape = Shape {
             inputs: candidates[..count]
                 .iter()
-                .map(|input| input.utxo.3.as_slice())
+                .map(|input| input.utxo.script_pubkey.as_slice())
                 .collect(),
             outputs: vec![recipient_script.len(), change_script.len()],
         };
@@ -297,19 +303,16 @@ impl WalletService {
         let mut outpoints = BTreeSet::new();
         for source in sources {
             for output in reader.confirmed(&source).await? {
-                crate::send::bitcoin_wire::decode_txid_le(&output.txid)?;
-                if output.value == 0
-                    || !outpoints.insert((output.txid.to_ascii_lowercase(), output.vout))
-                {
+                if output.value == 0 || !outpoints.insert((output.txid, output.vout)) {
                     return Err(SpectraBridgeError::invalid("Invalid or duplicate input"));
                 }
                 inputs.push(UtxoPreparedInput {
-                    utxo: (
-                        output.txid,
-                        output.vout,
-                        output.value,
-                        source.script_pubkey.clone(),
-                    ),
+                    utxo: UtxoInput {
+                        txid: output.txid,
+                        vout: output.vout,
+                        value: output.value,
+                        script_pubkey: source.script_pubkey.clone(),
+                    },
                     source: source.clone(),
                 });
             }
@@ -417,7 +420,7 @@ impl WalletService {
         if chain.mainnet_counterpart() == Chain::Zcash {
             let total = inputs
                 .iter()
-                .try_fold(0u64, |sum, input| sum.checked_add(input.utxo.2));
+                .try_fold(0u64, |sum, input| sum.checked_add(input.utxo.value));
             if total.is_none_or(|total| total > 21_000_000 * 100_000_000) {
                 return Err(SpectraBridgeError::invalid(
                     "Zcash inputs exceed the available money range",
@@ -455,7 +458,7 @@ impl WalletService {
         chain: Chain,
         stored: &StoredSend,
         signer: &super::send_identity::ResolvedSendIdentity,
-    ) -> Result<(PreparedSubmission, Vec<String>), SpectraBridgeError> {
+    ) -> Result<PreparedSubmission, SpectraBridgeError> {
         let PreparedPayload::AccountTransfer(prepared) = &stored.prepared else {
             return Err(SpectraBridgeError::invalid("Expected an account transfer"));
         };
@@ -480,7 +483,6 @@ impl WalletService {
         let reader = OutputReader::new(self, chain).await;
         let mut current: BTreeMap<String, Vec<AddressOutput>> = BTreeMap::new();
         let mut keys = Vec::with_capacity(prepared.inputs.len());
-        let mut resources = Vec::with_capacity(prepared.inputs.len());
         for input in &prepared.inputs {
             let key = by_address
                 .get(input.source.address.as_str())
@@ -493,32 +495,22 @@ impl WalletService {
                 current.insert(input.source.address.clone(), outputs);
             }
             if !current[&input.source.address].iter().any(|output| {
-                output.txid.eq_ignore_ascii_case(&input.utxo.0)
-                    && output.vout == input.utxo.1
-                    && output.value == input.utxo.2
+                output.txid == input.utxo.txid
+                    && output.vout == input.utxo.vout
+                    && output.value == input.utxo.value
             }) {
                 return Err(SpectraBridgeError::failure(
                     "Input changed or was spent; build and review again",
                 ));
             }
             keys.push(Zeroizing::new(hex::decode(key.private_key_hex.as_str())?));
-            resources.push(format!(
-                "{}:utxo:{}:{}",
-                chain.str_id(),
-                input.utxo.0.to_ascii_lowercase(),
-                input.utxo.1
-            ));
         }
         let signed = prepared.sign(&keys)?;
-        Ok((
-            PreparedSubmission {
-                payload: signed.payload,
-                result_field: "txid".into(),
-                transaction_hash: signed.transaction_hash,
-                nonce: None,
-            },
-            resources,
-        ))
+        Ok(PreparedSubmission {
+            payload: signed.payload,
+            transaction_hash: signed.transaction_hash,
+            nonce: None,
+        })
     }
 
     /// What a send of `amount` from the wallet's account would spend and
@@ -553,11 +545,14 @@ impl WalletService {
         let inputs = self.account_inputs(chain, wallet_id).await?;
         let total = inputs
             .iter()
-            .try_fold(0u64, |sum, input| sum.checked_add(input.utxo.2))
+            .try_fold(0u64, |sum, input| sum.checked_add(input.utxo.value))
             .ok_or_else(|| SpectraBridgeError::invalid("input total overflow"))?;
         let units = |raw: u64| crate::decimal::from_units(u128::from(raw), decimals);
         let all = Shape {
-            inputs: inputs.iter().map(|input| input.utxo.3.as_slice()).collect(),
+            inputs: inputs
+                .iter()
+                .map(|input| input.utxo.script_pubkey.as_slice())
+                .collect(),
             outputs: vec![recipient_script.len()],
         };
         let max_sendable = if inputs.is_empty() {
@@ -590,7 +585,7 @@ impl WalletService {
                     inputs: selection
                         .inputs
                         .iter()
-                        .map(|input| input.utxo.3.as_slice())
+                        .map(|input| input.utxo.script_pubkey.as_slice())
                         .collect(),
                     outputs,
                 };

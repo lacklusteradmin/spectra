@@ -20,8 +20,83 @@ use crate::api::{
 use crate::registry::Chain;
 use crate::{Endpoint, EndpointApi};
 
-/// Outpoint, amount and actual output script derived from verified raw bytes.
-pub(crate) type VerifiedUtxoInput = (String, u32, u64, Vec<u8>);
+/// A transaction id: 32 bytes in the order explorers display them, always
+/// spelled in lowercase hex. Parsing accepts either case, so two spellings of
+/// one transaction are one value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct Txid([u8; 32]);
+
+impl Txid {
+    /// The bytes as the Bitcoin family carries them in an outpoint: reversed
+    /// from display order.
+    pub(crate) fn wire_bytes(&self) -> [u8; 32] {
+        let mut bytes = self.0;
+        bytes.reverse();
+        bytes
+    }
+
+    /// The bytes in display order, as Kaspa carries them.
+    pub(crate) fn display_bytes(&self) -> [u8; 32] {
+        self.0
+    }
+}
+
+impl std::str::FromStr for Txid {
+    type Err = hex::FromHexError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        <[u8; 32] as hex::FromHex>::from_hex(text).map(Self)
+    }
+}
+
+impl From<Txid> for bitcoin::Txid {
+    fn from(txid: Txid) -> Self {
+        use bitcoin::hashes::Hash;
+        Self::from_byte_array(txid.wire_bytes())
+    }
+}
+
+impl std::fmt::Display for Txid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&hex::encode(self.0))
+    }
+}
+
+impl Serialize for Txid {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for Txid {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+/// An output to spend: its outpoint, amount and output script.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct UtxoInput {
+    pub txid: Txid,
+    pub vout: u32,
+    pub value: u64,
+    pub script_pubkey: Vec<u8>,
+}
+
+#[cfg(test)]
+impl UtxoInput {
+    /// A fixture input, its txid in hex.
+    pub(crate) fn fixture(txid: &str, vout: u32, value: u64, script_pubkey: Vec<u8>) -> Self {
+        Self {
+            txid: txid.parse().expect("fixture txid"),
+            vout,
+            value,
+            script_pubkey,
+        }
+    }
+}
 
 // ── Answers
 
@@ -225,7 +300,7 @@ impl UtxoClient {
     pub(crate) async fn fetch_peercoin_inputs(
         &self,
         address: &str,
-    ) -> Result<Vec<VerifiedUtxoInput>, ApiError> {
+    ) -> Result<Vec<UtxoInput>, ApiError> {
         self.race(|adapter| async move {
             match adapter {
                 Adapter::Blockbook(client) => client.fetch_peercoin_inputs(address).await,
@@ -354,9 +429,9 @@ impl UtxoClient {
             async move {
                 match adapter? {
                     Adapter::Esplora(c) => c.broadcast_raw_tx(raw_tx_hex).await,
-                    Adapter::Blockbook(c) => Ok(c.broadcast_raw_tx(raw_tx_hex).await?.txid),
+                    Adapter::Blockbook(c) => c.broadcast_raw_tx(raw_tx_hex).await,
                     Adapter::Blockcypher(c) => c.broadcast_raw_tx(raw_tx_hex).await,
-                    Adapter::Whatsonchain(c) => Ok(c.broadcast_raw_tx(raw_tx_hex).await?.txid),
+                    Adapter::Whatsonchain(c) => c.broadcast_raw_tx(raw_tx_hex).await,
                     Adapter::BchRest(c) => c.broadcast_raw_tx(raw_tx_hex).await,
                 }
             }
@@ -378,6 +453,33 @@ mod tests {
     use super::*;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// A txid is 32 bytes of hex in either case, spelled back in lowercase;
+    /// anything else is refused rather than read as some other outpoint.
+    #[test]
+    fn a_txid_has_one_spelling_and_refuses_anything_else() {
+        let lower = format!("{}01", "ab".repeat(31));
+        let upper: Txid = lower.to_ascii_uppercase().parse().unwrap();
+        assert_eq!(upper, lower.parse::<Txid>().unwrap());
+        assert_eq!(upper.to_string(), lower);
+        assert_eq!(
+            serde_json::to_string(&upper).unwrap(),
+            format!("\"{lower}\"")
+        );
+        assert_eq!(upper.wire_bytes()[0], 0x01);
+        assert_eq!(upper.display_bytes()[31], 0x01);
+        for bad in [
+            String::new(),
+            "not hex".into(),
+            "0102".into(),
+            "00".repeat(31),
+            "00".repeat(33),
+            format!(" {}", "00".repeat(32)),
+        ] {
+            assert!(bad.parse::<Txid>().is_err(), "{bad:?}");
+            assert!(serde_json::from_value::<Txid>(serde_json::json!(bad)).is_err());
+        }
+    }
 
     fn endpoint(api: EndpointApi, server: &MockServer) -> Endpoint {
         Endpoint {

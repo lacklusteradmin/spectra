@@ -123,9 +123,8 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
             .sign_send(artifact.id, artifact.review_digest, None)
             .await
             .unwrap();
-        let payload: Value = serde_json::from_str(signed.signed_payload.as_ref().unwrap()).unwrap();
         let boc = STANDARD
-            .decode(payload["boc_b64"].as_str().unwrap())
+            .decode(signed.signed_payload.as_ref().unwrap())
             .unwrap();
         // Independently read the emitted BOC's signed body, including its
         // expiry bytes; comparing two calls to the builder could hide an override.
@@ -193,7 +192,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
         )
         .unwrap();
         let hash = STANDARD.encode(crate::derivation::ton::boc_root_hash(&raw).unwrap());
-        let payload = json!({"boc_b64":STANDARD.encode(&raw)}).to_string();
+        let payload = crate::send::payload::SignedPayload::Base64(STANDARD.encode(&raw));
         let mut trace: Value =
             serde_json::from_str(include_str!("../../../tests/fixtures/ton-status-v3.json"))
                 .unwrap();
@@ -306,7 +305,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
                 review: SendArtifactReview::default(),
                 prepared_details: serde_json::to_string_pretty(&prepared).unwrap(),
                 signing_payload_hex: String::new(),
-                signed_payload: Some(payload.clone()),
+                signed_payload: Some(payload.to_string()),
                 transaction_hash: Some(hash.clone()),
                 attempts: vec![BroadcastAttempt {
                     endpoint: server.uri(),
@@ -322,7 +321,6 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             prepared,
             submission: Some(crate::send::payload::PreparedSubmission {
                 payload,
-                result_field: "message_hash".into(),
                 transaction_hash: Some(hash.clone()),
                 nonce: Some(7),
             }),
@@ -332,7 +330,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
         };
         stored.view.review_digest = stored.digest().unwrap();
         stored.signed_digest = stored.submission_digest().unwrap();
-        service.save_send_artifact(&stored, vec![]).await.unwrap();
+        service.save_send_artifact(&stored, &[]).await.unwrap();
         let mut record = service
             .begin_send_record(chain, &request, &sender)
             .await

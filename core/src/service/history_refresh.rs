@@ -121,7 +121,7 @@ pub(super) fn record_for(
     target: &Target,
     names: &HashMap<String, (String, String)>,
     entry: crate::fetch::history::NormalizedHistoryItem,
-) -> crate::fetch::transactions::FetchedTransactionRecord {
+) -> crate::store::persistence_models::TransactionRecord {
     // A token the user lists is called what the list calls it; the feed's
     // own name for an unknown contract is the contract itself.
     let (asset_display_name, symbol) = entry
@@ -130,7 +130,8 @@ pub(super) fn record_for(
         .and_then(|id| names.get(id))
         .cloned()
         .unwrap_or((entry.asset_display_name, entry.symbol));
-    crate::fetch::transactions::FetchedTransactionRecord {
+    crate::store::persistence_models::TransactionRecord {
+        actions: Default::default(),
         // The feed names every row's deployment; the ticker is display text.
         deployment_id: entry.deployment_id,
         id: crate::store::new_transaction_id(),
@@ -437,7 +438,7 @@ impl WalletService {
                 });
             }
 
-            let planned = crate::fetch::history_decode::build_evm_transaction_records(
+            let records = crate::fetch::history_decode::build_evm_transaction_records(
                 crate::fetch::history_decode::EvmTransactionRecordRequest {
                     decoded_page: decoded,
                     normalized_address: normalized_address.clone(),
@@ -458,7 +459,7 @@ impl WalletService {
                     unknown_timestamp_sentinel_unix: SENTINEL_CREATED_AT_UNIX,
                 },
             );
-            incoming.extend(planned.into_iter().map(evm_record));
+            incoming.extend(records);
         }
 
         let change = self.merge_fetched_history(incoming).await?;
@@ -474,45 +475,6 @@ impl WalletService {
             exhausted,
             diagnostics,
         })
-    }
-}
-
-/// A planned EVM record as a stored one. The amount crosses as a decimal
-/// string and lands as the `f64` the store holds.
-fn evm_record(
-    planned: crate::fetch::history_decode::EvmHistoryTransactionRecord,
-) -> crate::fetch::transactions::FetchedTransactionRecord {
-    crate::fetch::transactions::FetchedTransactionRecord {
-        deployment_id: planned.deployment_id,
-        id: crate::store::new_transaction_id(),
-        wallet_id: Some(planned.wallet_id),
-        kind: planned.kind,
-        status: planned.status,
-        wallet_name: planned.wallet_name,
-        asset_display_name: planned.asset_display_name,
-        symbol: planned.symbol,
-        chain_id: planned.chain_id,
-        amount: crate::decimal::canonical(&planned.amount_decimal).unwrap_or_else(|| "0".into()),
-        address: planned.counterparty,
-        transaction_hash: Some(planned.transaction_hash).filter(|hash| !hash.is_empty()),
-        nonce: None,
-        receipt_block_number: Some(planned.block_number),
-        receipt_gas_used: None,
-        receipt_effective_gas_price_gwei: None,
-        receipt_network_fee: None,
-        fee_rate_description: None,
-        confirmation_count: None,
-        confirmed_network_fee: None,
-        used_change_output: None,
-        source_derivation_path: None,
-        change_derivation_path: None,
-        source_address: Some(planned.source_address).filter(|address| !address.is_empty()),
-        change_address: None,
-        signed_transaction_payload: None,
-        signed_transaction_payload_format: None,
-        failure_reason: None,
-        transaction_history_source: Some(planned.source_used),
-        created_at_unix: planned.created_at_unix,
     }
 }
 

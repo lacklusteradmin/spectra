@@ -69,7 +69,7 @@ try:
         assert signed['transaction_hash'] and not submitted, signed
         assert run('send', 'inspect', signed['id'])['artifact'] == signed
         run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
-        assert submitted == [json.loads(signed['signed_payload'])['cbor_hex']], submitted
+        assert submitted == [signed['signed_payload']], submitted
         print('Cardano staged send: built, signed without submitting, broadcast once as signed')
 finally:
     server.shutdown(); server.server_close(); worker.join()

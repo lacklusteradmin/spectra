@@ -17,7 +17,6 @@ import http.server
 import json
 import os
 import pathlib
-import re
 import subprocess
 import sys
 import tempfile
@@ -37,10 +36,47 @@ PROXY = ('0x608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa61948
 SINGLETON = '41675c099f32341bf84bfc5382af534df5c7461a'
 REJECTED = 3
 submitted = []
+ROUNDS = [0x0000000000000001, 0x0000000000008082, 0x800000000000808A, 0x8000000080008000,
+          0x000000000000808B, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
+          0x000000000000008A, 0x0000000000000088, 0x0000000080008009, 0x000000008000000A,
+          0x000000008000808B, 0x800000000000008B, 0x8000000000008089, 0x8000000000008003,
+          0x8000000000008002, 0x8000000000000080, 0x000000000000800A, 0x800000008000000A,
+          0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008]
+# Keccak lane rotations, indexed x + 5y.
+ROTATIONS = [0, 1, 62, 28, 27, 36, 44, 6, 55, 20, 3, 10, 43, 25, 39, 41, 45, 15, 21, 8, 18, 2, 61, 56, 14]
+LANE = (1 << 64) - 1
 
 
 def word(value):
     return format(value, '064x')
+
+
+def keccak256(data):
+    """Keccak-256 as Ethereum hashes: the original padding, which hashlib's
+    sha3_256 does not use."""
+    def rotl(value, n):
+        return ((value << n) | (value >> (64 - n))) & LANE
+
+    padded = bytearray(data) + b'\x01' + bytes(-(len(data) + 1) % 136)
+    padded[-1] |= 0x80
+    a = [0] * 25
+    for block in range(0, len(padded), 136):
+        for i in range(17):
+            a[i] ^= int.from_bytes(padded[block + 8 * i:block + 8 * i + 8], 'little')
+        for rc in ROUNDS:
+            c = [a[x] ^ a[x + 5] ^ a[x + 10] ^ a[x + 15] ^ a[x + 20] for x in range(5)]
+            a = [a[i] ^ c[(i - 1) % 5] ^ rotl(c[(i + 1) % 5], 1) for i in range(25)]
+            b = [0] * 25
+            for i in range(25):
+                x, y = i % 5, i // 5
+                b[y + 5 * ((2 * x + 3 * y) % 5)] = rotl(a[i], ROTATIONS[i])
+            a = [b[i] ^ (~b[(i + 1) % 5 + i // 5 * 5] & b[(i + 2) % 5 + i // 5 * 5]) for i in range(25)]
+            a[0] ^= rc
+    return b''.join(lane.to_bytes(8, 'little') for lane in a[:4])
+
+
+def transaction_hash(raw):
+    return '0x' + keccak256(bytes.fromhex(raw[2:])).hex()
 
 
 class Node(http.server.BaseHTTPRequestHandler):
@@ -75,8 +111,7 @@ class Node(http.server.BaseHTTPRequestHandler):
                 result = '0x' + word(int(SINGLETON, 16) if singleton else 0)
             elif method == 'eth_sendRawTransaction':
                 submitted.append(params[0])
-                # A node's answer is the hash; core checks it only when given.
-                result = ''
+                result = transaction_hash(params[0])
             else:
                 result = {'eth_chainId': hex(11155111), 'eth_getBalance': hex(10 * 10**18),
                           'eth_getTransactionCount': '0x4', 'eth_estimateGas': '0x186a0', 'eth_blockNumber': '0x20',
@@ -133,7 +168,7 @@ try:
         assert joined['id'] == created['id'] and signed_by(joined) == sorted(OWNERS[:2]), joined
         executed = run('p0', 'multisig', 'submit', created['id'], '--executor', 'Owner', '--yes')['session']
         assert len(submitted) == 1, submitted
-        assert re.fullmatch('0x[0-9a-f]{64}', executed['submittedTxid'] or ''), executed
+        assert executed['submittedTxid'] == transaction_hash(submitted[0]), executed
         run('p0', 'multisig', 'submit', created['id'], '--executor', 'Owner', '--yes',
             refusal=(REJECTED, 'This session was already submitted.'))
         assert run('p0', 'multisig', 'show', created['id'])['session']['submittedTxid'] == executed['submittedTxid']

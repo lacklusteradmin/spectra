@@ -9,7 +9,8 @@
 
 use crate::send::error::SendError;
 
-use super::bitcoin_wire::{decode_txid_le, p2pkh_script, varint};
+use super::bitcoin_wire::{p2pkh_script, varint};
+use crate::api::utxo::UtxoInput;
 
 // ── Network upgrade descriptor ────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ const PERSONAL_TX_SIG_DIGEST: &[u8] = b"Zcash___TxInHash";
 /// Sign a transparent V5 transaction spending `utxos`, each with the key of
 /// the same index in `private_keys`, whose P2PKH script it must pay.
 pub(crate) fn sign_transaction(
-    utxos: &[(String, u32, u64, Vec<u8>)],
+    utxos: &[UtxoInput],
     private_keys: &[&[u8]],
     outputs: &[(Vec<u8>, u64)],
     expiry_height: u32,
@@ -90,7 +91,7 @@ pub(crate) fn sign_transaction(
     for (utxo, private_key) in utxos.iter().zip(private_keys) {
         let key = SecretKey::from_slice(private_key).map_err(SendError::invalid)?;
         let pubkey_bytes = secp256k1::PublicKey::from_secret_key(&secp, &key).serialize();
-        if utxo.3 != p2pkh_script(&crate::derivation::bitcoin::hash160(&pubkey_bytes)) {
+        if utxo.script_pubkey != p2pkh_script(&crate::derivation::bitcoin::hash160(&pubkey_bytes)) {
             return Err(SendError::Invalid(
                 "Zcash input does not belong to the signing key".into(),
             ));
@@ -98,7 +99,7 @@ pub(crate) fn sign_transaction(
         keys.push((key, pubkey_bytes));
     }
     // Per-tx digests that are constant across all inputs.
-    let prevouts_digest = compute_prevouts_digest(utxos)?;
+    let prevouts_digest = compute_prevouts_digest(utxos);
     let amounts_digest = compute_amounts_digest(utxos);
     let scripts_digest = compute_scripts_digest(utxos);
     let sequence_digest = compute_sequence_digest(utxos.len());
@@ -108,9 +109,8 @@ pub(crate) fn sign_transaction(
     let orchard_digest = compute_empty_orchard_digest();
 
     let mut signed_inputs: Vec<Vec<u8>> = Vec::with_capacity(utxos.len());
-    for ((txid, vout, value, script_pubkey), (secret_key, pubkey_bytes)) in utxos.iter().zip(&keys)
-    {
-        let txin_sig_digest = compute_txin_sig_digest(txid, *vout, *value, script_pubkey)?;
+    for (utxo, (secret_key, pubkey_bytes)) in utxos.iter().zip(&keys) {
+        let txin_sig_digest = compute_txin_sig_digest(utxo);
         let transparent_digest = compute_transparent_sig_digest(
             &prevouts_digest,
             &amounts_digest,
@@ -140,8 +140,8 @@ pub(crate) fn sign_transaction(
         script_sig.extend_from_slice(pubkey_bytes);
 
         let mut inp = Vec::new();
-        inp.extend_from_slice(&decode_txid_le(txid)?);
-        inp.extend_from_slice(&vout.to_le_bytes());
+        inp.extend_from_slice(&utxo.txid.wire_bytes());
+        inp.extend_from_slice(&utxo.vout.to_le_bytes());
         inp.extend_from_slice(&varint(script_sig.len()));
         inp.extend_from_slice(&script_sig);
         inp.extend_from_slice(&0xffff_ffffu32.to_le_bytes());
@@ -205,28 +205,28 @@ fn compute_header_digest(expiry_height: u32, nu: ZcashNetworkUpgrade) -> [u8; 32
     blake2b_personalized(PERSONAL_TX_HEADERS, &buf)
 }
 
-fn compute_prevouts_digest(utxos: &[(String, u32, u64, Vec<u8>)]) -> Result<[u8; 32], SendError> {
+fn compute_prevouts_digest(utxos: &[UtxoInput]) -> [u8; 32] {
     let mut buf = Vec::with_capacity(36 * utxos.len());
-    for (txid, vout, _, _) in utxos {
-        buf.extend_from_slice(&decode_txid_le(txid)?);
-        buf.extend_from_slice(&vout.to_le_bytes());
+    for utxo in utxos {
+        buf.extend_from_slice(&utxo.txid.wire_bytes());
+        buf.extend_from_slice(&utxo.vout.to_le_bytes());
     }
-    Ok(blake2b_personalized(PERSONAL_TX_PREVOUTS, &buf))
+    blake2b_personalized(PERSONAL_TX_PREVOUTS, &buf)
 }
 
-fn compute_amounts_digest(utxos: &[(String, u32, u64, Vec<u8>)]) -> [u8; 32] {
+fn compute_amounts_digest(utxos: &[UtxoInput]) -> [u8; 32] {
     let mut buf = Vec::with_capacity(8 * utxos.len());
-    for (_, _, value, _) in utxos {
-        buf.extend_from_slice(&value.to_le_bytes());
+    for utxo in utxos {
+        buf.extend_from_slice(&utxo.value.to_le_bytes());
     }
     blake2b_personalized(PERSONAL_TX_PER_INPUT_AMOUNTS, &buf)
 }
 
-fn compute_scripts_digest(utxos: &[(String, u32, u64, Vec<u8>)]) -> [u8; 32] {
+fn compute_scripts_digest(utxos: &[UtxoInput]) -> [u8; 32] {
     let mut buf = Vec::new();
-    for (_, _, _, script) in utxos {
-        buf.extend_from_slice(&varint(script.len()));
-        buf.extend_from_slice(script);
+    for utxo in utxos {
+        buf.extend_from_slice(&varint(utxo.script_pubkey.len()));
+        buf.extend_from_slice(&utxo.script_pubkey);
     }
     blake2b_personalized(PERSONAL_TX_PER_INPUT_SCRIPTS, &buf)
 }
@@ -249,23 +249,18 @@ fn compute_outputs_digest(outputs: &[(Vec<u8>, u64)]) -> [u8; 32] {
     blake2b_personalized(PERSONAL_TX_TRANSPARENT_OUTPUTS, &buf)
 }
 
-fn compute_txin_sig_digest(
-    txid: &str,
-    vout: u32,
-    value: u64,
-    script_pubkey: &[u8],
-) -> Result<[u8; 32], SendError> {
+fn compute_txin_sig_digest(utxo: &UtxoInput) -> [u8; 32] {
     // ZIP-244 txin_sig_digest preimage:
     //   prevout (36) || value (8) || script_pubkey (with varint length) ||
     //   nSequence (4). Hash type belongs only in transparent_sig_digest.
     let mut buf = Vec::new();
-    buf.extend_from_slice(&decode_txid_le(txid)?);
-    buf.extend_from_slice(&vout.to_le_bytes());
-    buf.extend_from_slice(&value.to_le_bytes());
-    buf.extend_from_slice(&varint(script_pubkey.len()));
-    buf.extend_from_slice(script_pubkey);
+    buf.extend_from_slice(&utxo.txid.wire_bytes());
+    buf.extend_from_slice(&utxo.vout.to_le_bytes());
+    buf.extend_from_slice(&utxo.value.to_le_bytes());
+    buf.extend_from_slice(&varint(utxo.script_pubkey.len()));
+    buf.extend_from_slice(&utxo.script_pubkey);
     buf.extend_from_slice(&0xffff_ffffu32.to_le_bytes()); // nSequence
-    Ok(blake2b_personalized(PERSONAL_TX_SIG_DIGEST, &buf))
+    blake2b_personalized(PERSONAL_TX_SIG_DIGEST, &buf)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -364,8 +359,8 @@ mod zip244_tests {
             .iter()
             .enumerate()
             .map(|(index, owner)| {
-                (
-                    format!("{index:02x}").repeat(32),
+                UtxoInput::fixture(
+                    &format!("{index:02x}").repeat(32),
                     index as u32,
                     100_000,
                     script(*owner),
@@ -387,18 +382,12 @@ mod zip244_tests {
             assert_eq!(script_sig[der_len], SIGHASH_ALL as u8);
             assert_eq!(&script_sig[der_len + 2..], public[*owner]);
             let transparent = compute_transparent_sig_digest(
-                &compute_prevouts_digest(&inputs).unwrap(),
+                &compute_prevouts_digest(&inputs),
                 &compute_amounts_digest(&inputs),
                 &compute_scripts_digest(&inputs),
                 &compute_sequence_digest(inputs.len()),
                 &compute_outputs_digest(&outputs),
-                &compute_txin_sig_digest(
-                    &inputs[index].0,
-                    inputs[index].1,
-                    inputs[index].2,
-                    &inputs[index].3,
-                )
-                .unwrap(),
+                &compute_txin_sig_digest(&inputs[index]),
             );
             let digest = compute_zip244_txid_digest(
                 &compute_header_digest(2_000_040, upgrade),
@@ -429,7 +418,12 @@ mod zip244_tests {
         let mut key = [0; 32];
         key[31] = 1;
         let script = hex::decode("76a914751e76e8199196d454941c45d1b3a323f1433bd688ac").unwrap();
-        let inputs = vec![("11".repeat(32), 2, 1_000_000, script.clone())];
+        let inputs = vec![UtxoInput::fixture(
+            &"11".repeat(32),
+            2,
+            1_000_000,
+            script.clone(),
+        )];
         let outputs = vec![(script.clone(), 100_000), (script, 890_000)];
         let (raw, txid) = sign_transaction(
             &inputs,

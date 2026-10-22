@@ -120,8 +120,14 @@ impl WalletService {
                             .await?
                             .into_iter()
                             .map(|output| {
-                                let (txid, vout, value, _) = output.input;
-                                (txid, vout, value, output.confirmations, output.mature)
+                                let input = output.input;
+                                (
+                                    input.txid.to_string(),
+                                    input.vout,
+                                    input.value,
+                                    output.confirmations,
+                                    output.mature,
+                                )
                             })
                             .collect()
                     } else {

@@ -2,18 +2,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::registry::Chain;
+use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
 // ── Normalized chain history
 
 /// One transaction of a chain's history in the shape every chain shares, with
 /// nothing chain-specific left to parse.
-#[derive(Debug, Clone, Serialize, uniffi::Record)]
+#[derive(Debug, Clone, uniffi::Record)]
+// Serialized only to compare rows against the fixtures below.
+#[cfg_attr(test, derive(Serialize))]
 pub struct NormalizedHistoryItem {
     pub deployment_id: Option<String>,
-    /// `"receive"` or `"send"`.
-    pub kind: String,
-    /// `"confirmed"` or `"pending"`.
-    pub status: String,
+    pub kind: TransactionKind,
+    pub status: TransactionStatus,
     pub asset_display_name: String,
     pub symbol: String,
     pub chain_id: crate::registry::Chain,
@@ -289,20 +290,21 @@ pub fn normalize_chain_history(
                     });
 
             let block_height = shape.block_height.and_then(|field| entry[field].as_i64());
-            let status = match shape.status {
-                StatusRule::AlwaysConfirmed => "confirmed",
-                StatusRule::ConfirmedFlag => {
-                    if entry["confirmed"].as_bool().unwrap_or(false) {
-                        "confirmed"
-                    } else {
-                        "pending"
+            // An EVM row carries the execution result the explorer gave; one
+            // that names none is refused rather than guessed at.
+            let status = if chain.is_evm() {
+                TransactionStatus::from_raw(entry.get("status")?.as_str()?)?
+            } else {
+                match shape.status {
+                    StatusRule::AlwaysConfirmed => TransactionStatus::Confirmed,
+                    StatusRule::ConfirmedFlag if entry["confirmed"].as_bool().unwrap_or(false) => {
+                        TransactionStatus::Confirmed
                     }
-                }
-                StatusRule::ConfirmedWhenMined => {
-                    if block_height.unwrap_or(0) > 0 {
-                        "confirmed"
-                    } else {
-                        "pending"
+                    StatusRule::ConfirmedWhenMined if block_height.unwrap_or(0) > 0 => {
+                        TransactionStatus::Confirmed
+                    }
+                    StatusRule::ConfirmedFlag | StatusRule::ConfirmedWhenMined => {
+                        TransactionStatus::Pending
                     }
                 }
             };
@@ -344,16 +346,12 @@ pub fn normalize_chain_history(
 
             Some(NormalizedHistoryItem {
                 deployment_id: Some(deployment_id),
-                kind: if is_incoming { "receive" } else { "send" }.to_string(),
-                status: if chain.is_evm() {
-                    entry
-                        .get("status")
-                        .and_then(Value::as_str)
-                        .unwrap_or("pending")
+                kind: if is_incoming {
+                    TransactionKind::Receive
                 } else {
-                    status
-                }
-                .to_string(),
+                    TransactionKind::Send
+                },
+                status,
                 asset_display_name: entry_asset.to_string(),
                 symbol: entry_symbol.to_string(),
                 chain_id: chain,
@@ -694,15 +692,36 @@ mod normalize_chain_history_tests {
         let negative = r#"[{"txid":"x","amount_planck":-60000000000.0,"timestamp":1,"from":"a","to":"b","is_incoming":true}]"#;
         let rows = normalize_chain_history(crate::registry::Chain::Polkadot, negative);
         assert_eq!(rows[0].amount, "6");
-        assert_eq!(rows[0].kind, "receive");
+        assert_eq!(rows[0].kind, TransactionKind::Receive);
 
         let unsigned = r#"[{"txid":"y","net_sats":-500,"confirmed":true,"block_time":1}]"#;
         let rows = normalize_chain_history(crate::registry::Chain::Bitcoin, unsigned);
         assert_eq!(rows[0].amount, "0.000005");
         assert_eq!(
-            rows[0].kind, "send",
+            rows[0].kind,
+            TransactionKind::Send,
             "no is_incoming flag: the sign decides"
         );
+    }
+
+    /// An EVM row says how its execution ended. One that says nothing, or
+    /// something no status names, is refused, not read as pending.
+    #[test]
+    fn an_evm_row_without_a_known_status_is_refused() {
+        let row = |status: &str| {
+            normalize_chain_history(
+                crate::registry::Chain::Ethereum,
+                &format!(
+                    r#"[{{"txid":"p","is_incoming":true{status},"value_wei":"1","from":"a","to":"b","block_number":1,"timestamp":1700000000}}]"#
+                ),
+            )
+        };
+        assert_eq!(
+            row(r#","status":"failed""#)[0].status,
+            TransactionStatus::Failed
+        );
+        assert!(row("").is_empty(), "missing");
+        assert!(row(r#","status":"reverted""#).is_empty(), "unknown");
     }
 
     /// Unparsable JSON, or a JSON document that is not an array, yields
@@ -752,8 +771,8 @@ pub struct BitcoinHistorySnapshot {
     pub txid: String,
     /// The net movement, as an exact decimal in BTC.
     pub amount_btc: String,
-    pub kind: String,
-    pub status: String,
+    pub kind: TransactionKind,
+    pub status: TransactionStatus,
     pub block_height: Option<i64>,
     pub created_at_unix: f64,
 }

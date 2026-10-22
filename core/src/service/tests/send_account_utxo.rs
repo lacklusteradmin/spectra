@@ -307,7 +307,7 @@ async fn an_account_transfer_spends_outputs_from_each_address_with_its_own_key()
                 (
                     input.source.address.clone(),
                     input.source.derivation_path.clone(),
-                    input.utxo.2,
+                    input.utxo.value,
                 )
             })
             .collect();

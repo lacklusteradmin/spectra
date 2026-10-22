@@ -91,13 +91,6 @@ pub(crate) struct WocTxVoutScriptPubKey {
 
 // ── Public result types
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WhatsonchainSendResult {
-    pub txid: String,
-    #[serde(default)]
-    pub raw_tx_hex: String,
-}
-
 // ── Client
 
 pub struct WhatsonchainClient {
@@ -383,7 +376,7 @@ fn bsv_history_from_details(
 }
 
 impl WhatsonchainClient {
-    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<WhatsonchainSendResult, ApiError> {
+    pub async fn broadcast_raw_tx(&self, hex_tx: &str) -> Result<String, ApiError> {
         let hex = hex_tx.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -392,15 +385,11 @@ impl WhatsonchainClient {
             async move {
                 // WhatsOnChain /tx/raw expects `{"txhex": "<hex>"}` and
                 // responds with a bare JSON string containing the txid.
-                let raw_tx_hex = hex.clone();
                 let body = json!({ "txhex": hex });
                 let txid: String = client
                     .post_json(&url, &body, RetryProfile::ChainWrite)
                     .await?;
-                Ok(WhatsonchainSendResult {
-                    txid: txid.trim().trim_matches('"').to_string(),
-                    raw_tx_hex,
-                })
+                Ok(txid.trim().trim_matches('"').to_string())
             }
         })
         .await

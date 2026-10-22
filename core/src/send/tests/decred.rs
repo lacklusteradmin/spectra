@@ -8,7 +8,12 @@ use crate::send::flow;
 fn signature_hash_matches_dcrd() {
     let inputs: Vec<DcrInputBuild> = (0u8..3)
         .map(|i| DcrInputBuild {
-            outpoint_txid: blake256(&[i]).to_vec(),
+            // dcrd's hash is in wire order; a txid is spelled reversed.
+            txid: {
+                let mut display = blake256(&[i]);
+                display.reverse();
+                hex::encode(display).parse().unwrap()
+            },
             vout: u32::from(i),
             tree: TX_TREE_REGULAR,
             sequence: 0xFFFF_FFFF,
@@ -118,7 +123,7 @@ fn signed_transaction_pays_the_script_each_address_names() {
             .unwrap()
             .script_pubkey();
         let inputs = vec![DcrInputBuild {
-            outpoint_txid: vec![0x11; 32],
+            txid: "11".repeat(32).parse().unwrap(),
             vout: 0,
             tree: TX_TREE_REGULAR,
             sequence: 0xFFFF_FFFF,
@@ -207,12 +212,12 @@ fn each_input_signs_with_the_key_of_the_address_it_pays() {
         .script_pubkey()
     };
     let owners = [0usize, 1, 0];
-    let utxos: Vec<(String, u32, u64, Vec<u8>)> = owners
+    let utxos: Vec<UtxoInput> = owners
         .iter()
         .enumerate()
         .map(|(index, owner)| {
-            (
-                format!("{index:02x}").repeat(32),
+            UtxoInput::fixture(
+                &format!("{index:02x}").repeat(32),
                 index as u32,
                 100_000,
                 script(*owner),
@@ -233,12 +238,12 @@ fn each_input_signs_with_the_key_of_the_address_it_pays() {
     let inputs: Vec<DcrInputBuild> = utxos
         .iter()
         .map(|utxo| DcrInputBuild {
-            outpoint_txid: decode_txid_le(&utxo.0).unwrap(),
-            vout: utxo.1,
+            txid: utxo.txid,
+            vout: utxo.vout,
             tree: TX_TREE_REGULAR,
             sequence: 0xFFFF_FFFF,
-            amount: utxo.2,
-            script_pubkey: utxo.3.clone(),
+            amount: utxo.value,
+            script_pubkey: utxo.script_pubkey.clone(),
         })
         .collect();
     let prefix_hash = blake256(&serialize_prefix(&inputs, &outputs, 0, 0));

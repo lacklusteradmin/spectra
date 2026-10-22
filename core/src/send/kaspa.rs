@@ -27,6 +27,7 @@ use crate::send::error::SendError;
 
 use serde::Serialize;
 
+use crate::api::utxo::{Txid, UtxoInput};
 use crate::derivation::kaspa::decode_kaspa_address;
 use crate::registry::Chain;
 
@@ -67,7 +68,7 @@ pub(crate) fn recipient_script(chain: Chain, address: &str) -> Result<Vec<u8>, S
 
 /// One input and the key of the address it pays.
 pub(crate) struct KaspaSigningInput<'a> {
-    pub utxo: &'a (String, u32, u64, Vec<u8>),
+    pub utxo: &'a UtxoInput,
     pub private_key: &'a [u8],
 }
 
@@ -85,12 +86,12 @@ pub(crate) fn sign(
     let builds: Vec<KaspaInputBuild> = inputs
         .iter()
         .map(|input| KaspaInputBuild {
-            txid: input.utxo.0.clone(),
-            vout: input.utxo.1,
+            txid: input.utxo.txid,
+            vout: input.utxo.vout,
             sequence: 0,
             sig_op_count: SIG_OP_COUNT_DEFAULT,
-            amount: input.utxo.2,
-            script_pubkey: input.utxo.3.clone(),
+            amount: input.utxo.value,
+            script_pubkey: input.utxo.script_pubkey.clone(),
             script_version: 0,
         })
         .collect();
@@ -109,7 +110,7 @@ pub(crate) fn sign(
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct KaspaInputBuild {
-    txid: String,
+    txid: Txid,
     vout: u32,
     sequence: u64,
     sig_op_count: u8,
@@ -174,13 +175,6 @@ fn kaspa_payment_script(version: u8, payload: &[u8]) -> Result<Vec<u8>, SendErro
     }
 }
 
-fn decode_transaction_id(txid: &str) -> Result<[u8; 32], SendError> {
-    hex::decode(txid)
-        .map_err(|e| SendError::Invalid(format!("kaspa txid: {e}").into()))?
-        .try_into()
-        .map_err(|_| SendError::Invalid("kaspa txid must contain 32 bytes".into()))
-}
-
 // ── Sighash construction ──────────────────────────────────────────────────
 
 fn blake2b256_keyed(key: &[u8], data: &[u8]) -> [u8; 32] {
@@ -193,13 +187,13 @@ fn blake2b256_keyed(key: &[u8], data: &[u8]) -> [u8; 32] {
     out
 }
 
-fn prev_outputs_hash(inputs: &[KaspaInputBuild]) -> Result<[u8; 32], SendError> {
+fn prev_outputs_hash(inputs: &[KaspaInputBuild]) -> [u8; 32] {
     let mut buf = Vec::with_capacity(36 * inputs.len());
     for input in inputs {
-        buf.extend_from_slice(&decode_transaction_id(&input.txid)?);
+        buf.extend_from_slice(&input.txid.display_bytes());
         buf.extend_from_slice(&input.vout.to_le_bytes());
     }
-    Ok(blake2b256_keyed(KASPA_SIGHASH_KEY, &buf))
+    blake2b256_keyed(KASPA_SIGHASH_KEY, &buf)
 }
 
 fn sequences_hash(inputs: &[KaspaInputBuild]) -> [u8; 32] {
@@ -239,7 +233,7 @@ fn sighash_for_input_with_lock_time(
     outputs_h: &[u8; 32],
     payload_h: &[u8; 32],
     lock_time: u64,
-) -> Result<[u8; 32], SendError> {
+) -> [u8; 32] {
     let input = &inputs[signing_index];
     let mut buf = Vec::new();
     buf.extend_from_slice(&TX_VERSION.to_le_bytes());
@@ -247,7 +241,7 @@ fn sighash_for_input_with_lock_time(
     buf.extend_from_slice(sequences);
     buf.extend_from_slice(sigopcounts);
     // The input being signed, serialized inline.
-    buf.extend_from_slice(&decode_transaction_id(&input.txid)?);
+    buf.extend_from_slice(&input.txid.display_bytes());
     buf.extend_from_slice(&input.vout.to_le_bytes());
     buf.extend_from_slice(&input.script_version.to_le_bytes());
     buf.extend_from_slice(&(input.script_pubkey.len() as u64).to_le_bytes());
@@ -261,7 +255,7 @@ fn sighash_for_input_with_lock_time(
     buf.extend_from_slice(&0u64.to_le_bytes()); // gas
     buf.extend_from_slice(payload_h);
     buf.push(SIGHASH_ALL);
-    Ok(blake2b256_keyed(KASPA_SIGHASH_KEY, &buf))
+    blake2b256_keyed(KASPA_SIGHASH_KEY, &buf)
 }
 
 fn sign_kaspa_inputs(
@@ -285,7 +279,7 @@ fn sign_kaspa_inputs(
                 "kaspa input does not belong to its signing key".into(),
             ));
         }
-        if !outpoints.insert((decode_transaction_id(&input.txid)?, input.vout)) {
+        if !outpoints.insert((input.txid, input.vout)) {
             return Err(SendError::Invalid("kaspa: duplicate input".into()));
         }
         keypairs.push(keypair);
@@ -294,7 +288,7 @@ fn sign_kaspa_inputs(
         return Err(SendError::Invalid("kaspa: one key per input".into()));
     }
 
-    let prevouts = prev_outputs_hash(inputs)?;
+    let prevouts = prev_outputs_hash(inputs);
     let sequences = sequences_hash(inputs);
     let sigopcounts = sig_op_counts_hash(inputs);
     let outputs_h = outputs_hash(outputs);
@@ -311,7 +305,7 @@ fn sign_kaspa_inputs(
             &outputs_h,
             &payload_h,
             0,
-        )?;
+        );
         let msg = Message::from_digest_slice(&sighash).map_err(SendError::invalid)?;
         let sig = secp.sign_schnorr(&msg, keypair);
         let mut sig_with_type = sig.as_ref().to_vec();
@@ -400,7 +394,7 @@ fn build_broadcast_body(
         .zip(signed_sig_scripts)
         .map(|(input, script)| WireInput {
             previous_outpoint: WireOutpoint {
-                transaction_id: input.txid.clone(),
+                transaction_id: input.txid.to_string(),
                 index: input.vout,
             },
             signature_script: hex::encode(script),
@@ -446,17 +440,15 @@ mod tests {
         ))
         .unwrap();
         let vector = &fixtures["kaspa"];
-        let utxos: Vec<(String, u32, u64, Vec<u8>)> = vector["inputs"]
+        let utxos: Vec<UtxoInput> = vector["inputs"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|input| {
-                (
-                    input["txid"].as_str().unwrap().to_string(),
-                    input["vout"].as_u64().unwrap() as u32,
-                    input["value"].as_u64().unwrap(),
-                    hex::decode(input["script"].as_str().unwrap()).unwrap(),
-                )
+            .map(|input| UtxoInput {
+                txid: input["txid"].as_str().unwrap().parse().unwrap(),
+                vout: input["vout"].as_u64().unwrap() as u32,
+                value: input["value"].as_u64().unwrap(),
+                script_pubkey: hex::decode(input["script"].as_str().unwrap()).unwrap(),
             })
             .collect();
         let keys: Vec<Vec<u8>> = vector["inputs"]
@@ -488,12 +480,12 @@ mod tests {
         let builds: Vec<KaspaInputBuild> = utxos
             .iter()
             .map(|utxo| KaspaInputBuild {
-                txid: utxo.0.clone(),
-                vout: utxo.1,
+                txid: utxo.txid,
+                vout: utxo.vout,
                 sequence: 0,
                 sig_op_count: SIG_OP_COUNT_DEFAULT,
-                amount: utxo.2,
-                script_pubkey: utxo.3.clone(),
+                amount: utxo.value,
+                script_pubkey: utxo.script_pubkey.clone(),
                 script_version: 0,
             })
             .collect();
@@ -510,14 +502,13 @@ mod tests {
             let digest = sighash_for_input_with_lock_time(
                 &builds,
                 index,
-                &prev_outputs_hash(&builds).unwrap(),
+                &prev_outputs_hash(&builds),
                 &sequences_hash(&builds),
                 &sig_op_counts_hash(&builds),
                 &outputs_hash(&output_builds),
                 &payload_hash(),
                 0,
-            )
-            .unwrap();
+            );
             assert_eq!(
                 hex::encode(digest),
                 expected.as_str().unwrap(),
@@ -530,7 +521,8 @@ mod tests {
             )
             .unwrap();
             assert_eq!((script[0], script[65]), (65, SIGHASH_ALL));
-            let key = secp256k1::XOnlyPublicKey::from_slice(&utxos[index].3[1..33]).unwrap();
+            let key =
+                secp256k1::XOnlyPublicKey::from_slice(&utxos[index].script_pubkey[1..33]).unwrap();
             secp.verify_schnorr(
                 &secp256k1::schnorr::Signature::from_slice(&script[1..65]).unwrap(),
                 &secp256k1::Message::from_digest(digest),
@@ -563,7 +555,7 @@ mod tests {
             .unwrap();
         let inputs = (0..3)
             .map(|i| KaspaInputBuild {
-                txid: id.into(),
+                txid: id.parse().unwrap(),
                 vout: i,
                 sequence: i as u64,
                 sig_op_count: 0,
@@ -583,14 +575,13 @@ mod tests {
         let digest = sighash_for_input_with_lock_time(
             &inputs,
             0,
-            &prev_outputs_hash(&inputs).unwrap(),
+            &prev_outputs_hash(&inputs),
             &sequences_hash(&inputs),
             &sig_op_counts_hash(&inputs),
             &outputs_hash(&outputs),
             &payload_hash(),
             1615462089000,
-        )
-        .unwrap();
+        );
         assert_eq!(
             hex::encode(digest),
             "03b7ac6927b2b67100734c3cc313ff8c2e8b3ce3e746d46dd660b706a916b1f5"

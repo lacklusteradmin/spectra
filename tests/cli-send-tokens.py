@@ -129,7 +129,7 @@ try:
         trace = live['trace_response']['traces'][0]
         trace['is_incomplete'] = True
         run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
-        assert live['submitted'] == [json.loads(signed['signed_payload'])['boc_b64']], live['submitted']
+        assert live['submitted'] == [signed['signed_payload']], live['submitted']
         assert poll() == [], 'an incomplete trace is not final'
         trace['is_incomplete'] = False
         root = trace['transactions'][trace['trace']['tx_hash']]

@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::utxo::UtxoInput;
 use bitcoin::absolute::LockTime;
 use bitcoin::hashes::Hash;
 use bitcoin::script::{Builder, PushBytesBuf};
@@ -40,9 +41,9 @@ fn address(chain: Chain, kind: InputKind, key: &[u8]) -> String {
     bs58::encode(payload).with_check().into_string()
 }
 
-fn input(index: u8, kind: InputKind, key: &[u8]) -> (String, u32, u64, Vec<u8>) {
-    (
-        format!("{index:02x}").repeat(32),
+fn input(index: u8, kind: InputKind, key: &[u8]) -> UtxoInput {
+    UtxoInput::fixture(
+        &format!("{index:02x}").repeat(32),
         index.into(),
         100_000 + u64::from(index),
         kind.script(&public_key(key)).into_bytes(),
@@ -246,7 +247,7 @@ fn legacy_native_and_nested_spends_sign_each_network_and_return_same_type_change
             assert_eq!(tx.output[1].script_pubkey, kind.script(&public_key(&key)));
             assert_eq!(tx.output[1].value.to_sat(), 49_003);
             for (index, utxo) in utxos.iter().enumerate() {
-                verify_input(&tx, index, kind, &key, utxo.2);
+                verify_input(&tx, index, kind, &key, utxo.value);
             }
             assert_eq!(tx.compute_txid().to_string(), independent_txid(&tx));
             if kind == InputKind::P2pkh {
@@ -262,7 +263,7 @@ fn legacy_native_and_nested_spends_sign_each_network_and_return_same_type_change
                 );
             }
             let estimated = estimate_ltc_vsize(
-                utxos.iter().map(|utxo| utxo.3.as_slice()),
+                utxos.iter().map(|utxo| utxo.script_pubkey.as_slice()),
                 destination.len(),
                 Some(tx.output[1].script_pubkey.as_bytes()),
             )
@@ -313,11 +314,11 @@ fn restored_addresses_spend_different_keys_and_scripts_into_fresh_change() {
         InputKind::P2wpkh.script(&public_key(&change_key))
     );
     for (index, ((kind, key), utxo)) in kinds.iter().zip(&keys).zip(&utxos).enumerate() {
-        verify_input(&tx, index, *kind, key, utxo.2);
+        verify_input(&tx, index, *kind, key, utxo.value);
     }
     assert_eq!(tx.compute_txid().to_string(), independent_txid(&tx));
     let estimate = estimate_ltc_vsize(
-        utxos.iter().map(|utxo| utxo.3.as_slice()),
+        utxos.iter().map(|utxo| utxo.script_pubkey.as_slice()),
         recipient.len(),
         Some(tx.output[1].script_pubkey.as_bytes()),
     )
@@ -340,7 +341,7 @@ fn sender_and_input_validation_refuse_unowned_and_unsupported_scripts() {
     }
     let utxo = input(1, InputKind::P2wpkh, &key);
     let destination = InputKind::P2pkh.script(&public_key(&key));
-    let sign = |utxos: &[(String, u32, u64, Vec<u8>)], change: &str, key: &[u8]| {
+    let sign = |utxos: &[UtxoInput], change: &str, key: &[u8]| {
         sign_ltc_with_output_script(
             Chain::Litecoin,
             utxos,
@@ -374,18 +375,26 @@ fn sender_and_input_validation_refuse_unowned_and_unsupported_scripts() {
         );
     }
     for invalid in [
-        ("bad".into(), utxo.1, utxo.2, utxo.3.clone()),
-        (utxo.0.clone(), utxo.1, 0, utxo.3.clone()),
-        ("00".repeat(32), u32::MAX, utxo.2, utxo.3.clone()),
-        (utxo.0.clone(), utxo.1, utxo.2, vec![0x00, 0x20, 0x55]),
-        (
-            utxo.0.clone(),
-            utxo.1,
-            utxo.2,
-            InputKind::P2wpkh
+        UtxoInput {
+            value: 0,
+            ..utxo.clone()
+        },
+        UtxoInput::fixture(
+            &"00".repeat(32),
+            u32::MAX,
+            utxo.value,
+            utxo.script_pubkey.clone(),
+        ),
+        UtxoInput {
+            script_pubkey: vec![0x00, 0x20, 0x55],
+            ..utxo.clone()
+        },
+        UtxoInput {
+            script_pubkey: InputKind::P2wpkh
                 .script(&public_key(&wrong_key))
                 .into_bytes(),
-        ),
+            ..utxo.clone()
+        },
     ] {
         assert!(sign(&[invalid], &sender, &key).is_err());
     }
@@ -447,7 +456,7 @@ fn dust_boundary_and_checked_accounting_return_only_spendable_change() {
             Chain::Litecoin,
             std::slice::from_ref(&utxo),
             destination.as_bytes(),
-            utxo.2 - 1_000 - change,
+            utxo.value - 1_000 - change,
             1_000,
             &sender,
             &key,
@@ -493,10 +502,10 @@ fn money_range_rejects_invalid_provider_values_before_signing() {
             assert!(validate_ltc_values(chain, values).is_err());
         }
         let mut utxo = input(1, InputKind::P2wpkh, &key);
-        utxo.2 = maximum;
+        utxo.value = maximum;
         let sender = address(chain, InputKind::P2wpkh, &key);
         let script = InputKind::P2pkh.script(&public_key(&key));
-        let sign = |utxo: &(String, u32, u64, Vec<u8>), amount, fee| {
+        let sign = |utxo: &UtxoInput, amount, fee| {
             sign_ltc_with_output_script(
                 chain,
                 std::slice::from_ref(utxo),
@@ -515,7 +524,7 @@ fn money_range_rejects_invalid_provider_values_before_signing() {
         assert!(sign(&utxo, maximum + 1, 0).is_err());
         assert!(sign(&utxo, maximum, 1).is_err());
         assert!(sign(&utxo, 1, u64::MAX).is_err());
-        utxo.2 = maximum + 1;
+        utxo.value = maximum + 1;
         assert!(sign(&utxo, 1, 1_000).is_err());
     }
     assert!(validate_ltc_values(Chain::Bitcoin, [1]).is_err());

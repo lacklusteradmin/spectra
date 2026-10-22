@@ -1,12 +1,10 @@
 //! Bitcoin's legacy wire format, shared by every chain that inherited it.
 //!
-//! `varint` had nine identical copies across this folder, `dsha256` six, and
-//! the txid decoder five under three names. The copies agreed on the bytes and
-//! disagreed on what to do when the input was wrong: two swallowed a bad txid
-//! into an empty prevout, which builds a structurally invalid transaction and
-//! reports success. Here it is one error.
+//! `varint` had nine identical copies across this folder and `dsha256` six.
+//! A txid arrives parsed as [`Txid`], so a bad one is refused where it is read,
+//! never swallowed into an empty prevout here.
 
-use crate::send::error::SendError;
+use crate::api::utxo::Txid;
 
 use sha2::{Digest, Sha256};
 
@@ -33,20 +31,6 @@ pub(crate) fn dsha256(data: &[u8]) -> [u8; 32] {
     Sha256::digest(Sha256::digest(data)).into()
 }
 
-/// Decode a display-order txid into the little-endian bytes an outpoint
-/// carries.
-pub(crate) fn decode_txid_le(txid: &str) -> Result<Vec<u8>, SendError> {
-    let mut bytes =
-        hex::decode(txid).map_err(|e| SendError::Invalid(format!("txid decode: {e}").into()))?;
-    if bytes.len() != 32 {
-        return Err(SendError::Invalid(
-            "txid must contain exactly 32 bytes".into(),
-        ));
-    }
-    bytes.reverse();
-    Ok(bytes)
-}
-
 /// `OP_DUP OP_HASH160 <20-byte hash> OP_EQUALVERIFY OP_CHECKSIG`.
 pub(crate) fn p2pkh_script(hash: &[u8; 20]) -> Vec<u8> {
     let mut script = vec![0x76u8, 0xa9, 0x14];
@@ -68,18 +52,13 @@ pub(crate) fn p2pkh_script_sig(der_sig: &[u8], pubkey: &[u8]) -> Vec<u8> {
 }
 
 /// One serialized transaction input: outpoint, script sig, sequence.
-pub(crate) fn build_input(
-    txid: &str,
-    vout: u32,
-    script_sig: &[u8],
-    sequence: u32,
-) -> Result<Vec<u8>, SendError> {
-    let mut out = decode_txid_le(txid)?;
+pub(crate) fn build_input(txid: &Txid, vout: u32, script_sig: &[u8], sequence: u32) -> Vec<u8> {
+    let mut out = txid.wire_bytes().to_vec();
     out.extend_from_slice(&vout.to_le_bytes());
     out.extend_from_slice(&varint(script_sig.len()));
     out.extend_from_slice(script_sig);
     out.extend_from_slice(&sequence.to_le_bytes());
-    Ok(out)
+    out
 }
 
 /// A version-1 transaction with zero locktime, from already-serialized inputs
@@ -122,27 +101,6 @@ mod tests {
         );
     }
 
-    /// A txid that is not hex is an error, not an empty outpoint.
-    #[test]
-    fn a_bad_txid_is_refused() {
-        assert!(decode_txid_le("not hex").is_err());
-        assert!(build_input("not hex", 0, &[], 0xffff_ffff).is_err());
-        for bad in [
-            String::new(),
-            "0102".into(),
-            "00".repeat(31),
-            "00".repeat(33),
-        ] {
-            assert!(decode_txid_le(&bad).is_err());
-        }
-        let mut expected = vec![0; 32];
-        expected[0] = 1;
-        assert_eq!(
-            decode_txid_le(&format!("{}01", "00".repeat(31))).unwrap(),
-            expected
-        );
-    }
-
     #[test]
     fn a_p2pkh_script_is_twenty_five_bytes() {
         let script = p2pkh_script(&[0x11; 20]);
@@ -153,13 +111,11 @@ mod tests {
 
     #[test]
     fn a_transaction_frames_its_inputs_and_outputs() {
-        let input = build_input(
-            "00000000000000000000000000000000000000000000000000000000000000ff",
-            1,
-            &[0xaa],
-            0xffff_ffff,
-        )
-        .unwrap();
+        let txid = "00000000000000000000000000000000000000000000000000000000000000ff"
+            .parse()
+            .unwrap();
+        let input = build_input(&txid, 1, &[0xaa], 0xffff_ffff);
+        assert_eq!(input[0], 0xff, "an outpoint carries its txid reversed");
         let raw = build_tx(&[input], &[(p2pkh_script(&[0x22; 20]), 1_000)]);
         assert_eq!(&raw[..4], &1u32.to_le_bytes());
         assert_eq!(raw[4], 1, "one input");

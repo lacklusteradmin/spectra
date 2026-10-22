@@ -130,6 +130,8 @@ async fn a_signed_cardano_transaction_is_broadcast_only_to_a_node_on_its_network
     assert!(submissions().await.is_empty());
     live.lock().unwrap().magic = MAINNET;
     wallet.broadcast(&signed).await.unwrap();
-    let payload: Value = serde_json::from_str(signed.signed_payload.as_deref().unwrap()).unwrap();
-    assert_eq!(submissions().await, [payload["cbor_hex"].as_str().unwrap()]);
+    assert_eq!(
+        submissions().await,
+        [signed.signed_payload.as_deref().unwrap()]
+    );
 }

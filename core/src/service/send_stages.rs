@@ -139,7 +139,10 @@ impl WalletService {
                 this.validate_prepared_protocol_state(chain, &stored)
                     .await?;
             }
-            let (submission, resources) = match &stored.prepared {
+            // What the transaction consumes, read from the reviewed artifact
+            // before anything is signed: a payload that cannot say refuses.
+            let reservations = stored.reservations()?;
+            let submission = match &stored.prepared {
                 PreparedPayload::ZcashShielded(p) => {
                     this.sign_zcash_shielded(&stored, p, password.as_ref().map(|p| p.as_str()))
                         .await?
@@ -152,33 +155,27 @@ impl WalletService {
                     let key = Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
                     let raw = p.sign(&key)?;
                     use sha3::Digest;
-                    (
-                        crate::send::payload::PreparedSubmission {
-                            payload: format!("0x{}", hex::encode(&raw)),
-                            result_field: "txid".into(),
-                            transaction_hash: Some(format!(
-                                "0x{}",
-                                hex::encode(sha3::Keccak256::digest(&raw))
-                            )),
-                            nonce: Some(p.nonce),
-                        },
-                        vec![format!(
-                            "{}:{}:nonce:{}",
-                            chain.str_id(),
-                            signer.from_address,
-                            p.nonce
-                        )],
-                    )
+                    crate::send::payload::PreparedSubmission {
+                        payload: crate::send::payload::SignedPayload::Hex(format!(
+                            "0x{}",
+                            hex::encode(&raw)
+                        )),
+                        transaction_hash: Some(format!(
+                            "0x{}",
+                            hex::encode(sha3::Keccak256::digest(&raw))
+                        )),
+                        nonce: Some(p.nonce),
+                    }
                 }
                 _ => this.sign_staged_protocol(chain, &stored, &signer).await?,
             };
             stored.view.stage = SendStage::Signed;
-            stored.view.signed_payload = Some(submission.payload.clone());
+            stored.view.signed_payload = Some(submission.payload.to_string());
             stored.view.transaction_hash = submission.transaction_hash.clone();
             stored.submission = Some(submission);
             stored.signed_digest = stored.submission_digest()?;
             stored.view.revision += 1;
-            this.save_send_artifact(&stored, resources).await?;
+            this.save_send_artifact(&stored, &reservations).await?;
             Ok(stored.view)
         })
         .await
@@ -227,7 +224,7 @@ impl WalletService {
     pub(super) async fn save_send_artifact(
         &self,
         stored: &StoredSend,
-        resources: Vec<String>,
+        reservations: &[crate::send::reservation::Reservation],
     ) -> Result<(), SpectraBridgeError> {
         let _writer = self.state_writer.lock().await;
         let state = self.app_state().await;
@@ -238,8 +235,11 @@ impl WalletService {
         )?;
         let db = self.bound_database().await?;
         let stored = stored.clone();
-        tokio::task::spawn_blocking(move || crate::wallet_db::send_save(&db, &stored, &resources))
-            .await??;
+        let reservations = reservations.to_vec();
+        tokio::task::spawn_blocking(move || {
+            crate::wallet_db::send_save(&db, &stored, &reservations)
+        })
+        .await??;
         Ok(())
     }
     async fn broadcast_send_owned(
@@ -316,12 +316,9 @@ impl WalletService {
                     chain,
                     vec![crate::store::ResolvedPendingStatus {
                         id: record.id.clone(),
-                        status: if outcome.succeeded {
-                            "confirmed"
-                        } else {
-                            "failed"
-                        }
-                        .into(),
+                        status: crate::store::wallet_domain::TransactionStatus::executed(
+                            outcome.succeeded,
+                        ),
                         confirmations: None,
                         receipt_block_number: Some(
                             i64::try_from(outcome.block_number)
@@ -384,7 +381,9 @@ impl WalletService {
                         chain,
                         vec![crate::store::ResolvedPendingStatus {
                             id: record.id.clone(),
-                            status: if succeeded { "confirmed" } else { "failed" }.into(),
+                            status: crate::store::wallet_domain::TransactionStatus::executed(
+                                succeeded,
+                            ),
                             confirmations: None,
                             receipt_block_number: block
                                 .map(i64::try_from)
@@ -435,7 +434,7 @@ impl WalletService {
         }
         stored.view.selected_endpoints = endpoints.clone();
         stored.view.revision += 1;
-        self.save_send_artifact(&stored, Vec::new()).await?;
+        self.save_send_artifact(&stored, &[]).await?;
         let existing = self
             .fetch_all_history_records()
             .await?
@@ -553,34 +552,23 @@ impl WalletService {
             submissions.push((api, endpoint));
         }
         stored.view.revision += 1;
-        self.save_send_artifact(&stored, Vec::new()).await?;
+        self.save_send_artifact(&stored, &[]).await?;
         let submission = &submission;
         let artifact_id = &stored.view.id;
-        let results = futures::future::join_all(submissions.into_iter().map(|(api, endpoint)| {
-            let payload = submission.payload.clone();
-            async move {
-                if icp_staking {
-                    return self
-                        .broadcast_icp_staking_at(&endpoint, artifact_id, &payload)
-                        .await;
+        let results =
+            futures::future::join_all(submissions.into_iter().map(|(api, endpoint)| async move {
+                match &submission.payload {
+                    crate::send::payload::SignedPayload::IcpStaking(calls) => {
+                        self.broadcast_icp_staking_at(&endpoint, artifact_id, calls)
+                            .await
+                    }
+                    payload => {
+                        self.broadcast_at(chain, api, Arc::new(vec![endpoint]), payload)
+                            .await
+                    }
                 }
-                self.broadcast_at(chain, api, Arc::new(vec![endpoint]), payload)
-                    .await
-                    .and_then(|result| {
-                        let value: serde_json::Value = serde_json::from_str(&result)?;
-                        value[&submission.result_field]
-                            .as_str()
-                            .filter(|s| !s.is_empty())
-                            .map(str::to_owned)
-                            .ok_or_else(|| {
-                                SpectraBridgeError::failure(
-                                    "Node returned no transaction identifier",
-                                )
-                            })
-                    })
-            }
-        }))
-        .await;
+            }))
+            .await;
         for (offset, result) in results.into_iter().enumerate() {
             let attempt = &mut stored.view.attempts[first + offset];
             match result {
@@ -635,7 +623,7 @@ impl WalletService {
             .await;
         }
         stored.view.revision += 1;
-        self.save_send_artifact(&stored, Vec::new()).await?;
+        self.save_send_artifact(&stored, &[]).await?;
         if let Some(accepted) = stored
             .view
             .attempts
@@ -868,7 +856,7 @@ impl WalletService {
             icp_staking_receipts: vec![],
         };
         stored.view.review_digest = stored.digest()?;
-        self.save_send_artifact(&stored, Vec::new()).await?;
+        self.save_send_artifact(&stored, &[]).await?;
         Ok(stored.view)
     }
 }

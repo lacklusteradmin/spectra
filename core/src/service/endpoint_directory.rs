@@ -933,12 +933,14 @@ mod tests {
             "42"
         );
         assert_eq!(broadcast.received_requests().await.unwrap().len(), 0);
-        let result = service
-            .broadcast_raw(crate::registry::Chain::Ethereum, "0xdeadbeef".into())
-            .await
-            .unwrap();
         assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&result).unwrap()["txid"],
+            service
+                .broadcast_raw(
+                    crate::registry::Chain::Ethereum,
+                    crate::send::payload::SignedPayload::Hex("0xdeadbeef".into()),
+                )
+                .await
+                .unwrap(),
             "0xaccepted"
         );
         assert!(
@@ -960,7 +962,10 @@ mod tests {
             .unwrap();
         assert!(
             service
-                .broadcast_raw(crate::registry::Chain::Ethereum, "0xdeadbeef".into())
+                .broadcast_raw(
+                    crate::registry::Chain::Ethereum,
+                    crate::send::payload::SignedPayload::Hex("0xdeadbeef".into()),
+                )
                 .await
                 .is_err()
         );

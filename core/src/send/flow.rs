@@ -311,21 +311,6 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
 
 // ── Chain predicates ──────────────────────────────────────────────
 
-/// A top-level field of a send result's JSON as a string; numbers and
-/// booleans are stringified. A missing key, a null or invalid JSON is `""`.
-/// For the loose reads of a submission's answer — a hash, a signature, a
-/// digest — whose shape the node decides.
-pub(crate) fn extract_json_string_field(json: &str, key: &str) -> String {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(json) else {
-        return String::new();
-    };
-    match v.as_object().and_then(|obj| obj.get(key)) {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Null) | None => String::new(),
-        Some(other) => other.to_string(),
-    }
-}
-
 /// The chain whose derivation recipe `chain` uses, or `None` for a chain with
 /// no BIP-32 path. A testnet names itself.
 pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String> {
@@ -446,17 +431,6 @@ mod flow_helpers_tests {
         // 20% of 1 wei rounds up, never down to the same fee.
         let r = evm_replacement_fee_bump("1.000000001", "1.000000001").unwrap();
         assert_eq!(r.max_fee_gwei, "1.200000002");
-    }
-
-    #[test]
-    fn extract_field_handles_strings_numbers_and_missing() {
-        let j = r#"{"txid":"0xabc","nonce":7,"flag":true,"none":null}"#;
-        assert_eq!(extract_json_string_field(j, "txid"), "0xabc");
-        assert_eq!(extract_json_string_field(j, "nonce"), "7");
-        assert_eq!(extract_json_string_field(j, "flag"), "true");
-        assert_eq!(extract_json_string_field(j, "none"), "");
-        assert_eq!(extract_json_string_field(j, "missing"), "");
-        assert_eq!(extract_json_string_field("{not json", "x"), "");
     }
 
     #[test]

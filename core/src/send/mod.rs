@@ -45,6 +45,7 @@ pub mod peercoin;
 pub mod polkadot;
 pub mod polkadot_pools;
 pub(crate) mod psbt;
+pub(crate) mod reservation;
 pub(crate) mod safe;
 pub mod solana;
 pub(crate) mod solana_token;
@@ -171,7 +172,8 @@ pub struct SendExecutionResult {
     /// EVM-specific details (nonce, raw_tx_hex, gas_limit), converted directly
     /// from the protocol result. `None` for non-EVM chains.
     pub evm: Option<crate::send::ethereum::EvmSendDetails>,
-    /// The signed transaction, hex-encoded, when `sign_only` was asked for.
+    /// The signed transaction as its network takes it, when `sign_only` was
+    /// asked for.
     pub signed_payload: Option<String>,
 }
 

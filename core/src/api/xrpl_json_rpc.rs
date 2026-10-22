@@ -33,13 +33,6 @@ pub struct XrpHistoryEntry {
     pub amount_display: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct XrpSendResult {
-    pub txid: String,
-    /// Signed tx blob hex — stored for rebroadcast.
-    pub tx_blob_hex: String,
-}
-
 // ── Client
 
 pub struct XrplClient {
@@ -1010,8 +1003,8 @@ fn xrp_history_from_transactions(
 }
 
 impl XrplClient {
-    /// Submit a pre-signed transaction blob (for rebroadcast).
-    pub async fn submit_signed_blob(&self, tx_blob_hex: &str) -> Result<XrpSendResult, ApiError> {
+    /// Submit a signed transaction blob; its hash once the ledger takes it.
+    pub async fn submit_signed_blob(&self, tx_blob_hex: &str) -> Result<String, ApiError> {
         let result = self.call("submit", json!({"tx_blob": tx_blob_hex})).await?;
         let engine_result = result
             .get("engine_result")
@@ -1037,10 +1030,7 @@ impl XrplClient {
             .filter(|hash| !hash.is_empty())
             .or_decode("submit: missing transaction hash")?
             .to_string();
-        Ok(XrpSendResult {
-            txid,
-            tx_blob_hex: tx_blob_hex.to_string(),
-        })
+        Ok(txid)
     }
 }
 

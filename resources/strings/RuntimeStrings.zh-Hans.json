@@ -2089,7 +2089,6 @@
   "no node configured to list the account's assets": "未配置可列出该账户资产的节点",
   "no scan candidates for this chain": "此链没有可扫描的候选地址",
   "no sealed secret for this wallet": "此钱包没有已加密保存的密钥",
-  "node returned no transaction identifier": "节点未返回交易标识符",
   "non-expensive": "低成本",
   "nonce exceeds supported range": "nonce 超出支持的范围",
   "offline": "离线",

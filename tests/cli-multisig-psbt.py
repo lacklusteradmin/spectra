@@ -15,6 +15,7 @@ Core's tests own the rules: coin selection, fees, review digests, spent
 inputs and foreign coins (core/src/service/tests/multisig_psbt.rs,
 core/src/send/tests/psbt.rs).
 """
+import hashlib
 import http.server
 import json
 import os
@@ -35,6 +36,28 @@ GENESIS = '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f'
 USAGE = 2
 funds = {}
 broadcasts = []
+
+
+def txid(raw):
+    """A transaction's id as a node names it: the double SHA-256 of its
+    serialization without witnesses, byte-reversed."""
+    tx = bytes.fromhex(raw)
+    if tx[4:6] == b'\x00\x01':
+        def count(at):
+            first = tx[at]
+            size = {0xfd: 2, 0xfe: 4, 0xff: 8}.get(first, 0)
+            return (int.from_bytes(tx[at + 1:at + 1 + size], 'little') if size else first), at + 1 + size
+
+        inputs, at = count(6)
+        for _ in range(inputs):
+            script, at = count(at + 36)
+            at += script + 4
+        outputs, at = count(at)
+        for _ in range(outputs):
+            script, at = count(at + 8)
+            at += script
+        tx = tx[:4] + tx[6:at] + tx[-4:]
+    return hashlib.sha256(hashlib.sha256(tx).digest()).digest()[::-1].hex()
 
 
 class Esplora(http.server.BaseHTTPRequestHandler):
@@ -68,8 +91,7 @@ class Esplora(http.server.BaseHTTPRequestHandler):
         body = self.rfile.read(int(self.headers.get('Content-Length', '0'))).decode()
         if self.path.rstrip('/') == '/tx':
             broadcasts.append(body)
-            # Esplora answers with the txid; core checks it only when given.
-            return self.reply('', text=True)
+            return self.reply(txid(body), text=True)
         self.send_error(404, self.path)
 
 

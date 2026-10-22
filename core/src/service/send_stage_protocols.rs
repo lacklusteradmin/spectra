@@ -1,6 +1,6 @@
 use super::*;
 use crate::api::error::{ApiError, OrDecode};
-use crate::send::payload::PreparedSubmission;
+use crate::send::payload::{PreparedSubmission, SignedPayload};
 use crate::send::payment_memo::PaymentMemo;
 use crate::send::stages::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -1177,13 +1177,12 @@ impl WalletService {
         chain: Chain,
         stored: &StoredSend,
         signer: &super::send_identity::ResolvedSendIdentity,
-    ) -> Result<(PreparedSubmission, Vec<String>), SpectraBridgeError> {
+    ) -> Result<PreparedSubmission, SpectraBridgeError> {
         let eps = self
             .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
         let seed = || crate::send::keys::Ed25519Seed::from_hex(&signer.private_key_hex);
-        let mut resources = Vec::new();
-        let (payload, field, hash) = match &stored.prepared {
+        let (payload, hash) = match &stored.prepared {
             // Signed with the shielded account's key, which the seed
             // derives: `sign_send` does that before this is reached.
             PreparedPayload::ZcashShielded(_) | PreparedPayload::LitecoinMweb(_) => {
@@ -1201,18 +1200,7 @@ impl WalletService {
                     ));
                 }
                 let (raw, hash) = p.sign(&seed()?)?;
-                resources.push(format!(
-                    "{}:{}:{}:nonce:{}",
-                    chain.str_id(),
-                    stored.view.sender,
-                    hex::encode(p.public_key),
-                    p.nonce
-                ));
-                (
-                    json!({"signed_tx_b64":STANDARD.encode(raw)}).to_string(),
-                    "txid",
-                    Some(hash),
-                )
+                (SignedPayload::Base64(STANDARD.encode(raw)), Some(hash))
             }
             PreparedPayload::NearFunctionCall(p) => {
                 if !NearClient::new(eps)
@@ -1224,18 +1212,7 @@ impl WalletService {
                     ));
                 }
                 let (raw, hash) = p.sign(&seed()?)?;
-                resources.push(format!(
-                    "{}:{}:{}:nonce:{}",
-                    chain.str_id(),
-                    stored.view.sender,
-                    hex::encode(p.public_key),
-                    p.nonce
-                ));
-                (
-                    json!({"signed_tx_b64":STANDARD.encode(raw)}).to_string(),
-                    "txid",
-                    Some(hash),
-                )
+                (SignedPayload::Base64(STANDARD.encode(raw)), Some(hash))
             }
             PreparedPayload::Near {
                 public_key,
@@ -1297,18 +1274,8 @@ impl WalletService {
                         key,
                     )?
                 };
-                resources.push(format!(
-                    "{}:{}:{}:nonce:{nonce}",
-                    chain.str_id(),
-                    stored.view.sender,
-                    hex::encode(public_key)
-                ));
                 let hash = crate::send::near::signed_transaction_hash(&raw)?;
-                (
-                    json!({"signed_tx_b64":STANDARD.encode(raw)}).to_string(),
-                    "txid",
-                    Some(hash),
-                )
+                (SignedPayload::Base64(STANDARD.encode(raw)), Some(hash))
             }
             PreparedPayload::Ton {
                 seqno,
@@ -1351,15 +1318,9 @@ impl WalletService {
                         3,
                     )?
                 };
-                resources.push(format!(
-                    "{}:{}:sequence:{seqno}",
-                    chain.str_id(),
-                    stored.view.sender
-                ));
                 let message_hash = STANDARD.encode(crate::derivation::ton::boc_root_hash(&raw)?);
                 (
-                    json!({"boc_b64":STANDARD.encode(raw)}).to_string(),
-                    "message_hash",
+                    SignedPayload::Base64(STANDARD.encode(raw)),
                     Some(message_hash),
                 )
             }
@@ -1367,12 +1328,7 @@ impl WalletService {
                 let (raw, hash) = self
                     .sign_monero(p, &stored.view.wallet_id, &signer.private_key_hex)
                     .await?;
-                resources = p
-                    .input_key_images
-                    .iter()
-                    .map(|image| format!("{}:key-image:{image}", chain.str_id()))
-                    .collect();
-                (raw, "txid", Some(hash))
+                (SignedPayload::Hex(raw), Some(hash))
             }
             PreparedPayload::Icp(p) => {
                 if (crate::store::now_unix() * 1_000_000_000.0) as u64 >= p.ingress_expiry_ns {
@@ -1380,14 +1336,10 @@ impl WalletService {
                         "ICP transaction expired; build and review again",
                     ));
                 }
-                resources.push(format!(
-                    "{}:{}:transfer:{}:{}",
-                    chain.str_id(),
-                    stored.view.sender,
-                    p.created_at_time_ns,
-                    p.memo
-                ));
-                (p.sign(&seed()?)?, "txid", Some(p.transaction_hash()?))
+                (
+                    SignedPayload::Json(p.sign(&seed()?)?),
+                    Some(p.transaction_hash()?),
+                )
             }
             PreparedPayload::IcpStaking(p) => {
                 if (crate::store::now_unix() * 1_000_000_000.0) as u64 >= p.ingress_expiry_ns {
@@ -1396,16 +1348,10 @@ impl WalletService {
                     ));
                 }
                 let calls = p.sign(&seed()?)?;
-                resources.push(format!(
-                    "{}:neuron:{}:{}",
-                    chain.str_id(),
-                    p.controller_hex,
-                    p.subaccount_hex
-                ));
                 let hash = calls.last().map(|c| c.request_id.clone()).ok_or_else(|| {
                     SpectraBridgeError::invalid("Missing ICP staking ingress IDs")
                 })?;
-                (serde_json::to_string(&calls)?, "ingress_id", Some(hash))
+                (SignedPayload::IcpStaking(calls), Some(hash))
             }
             PreparedPayload::AccountTransfer(_) => {
                 return self.sign_account_transfer(chain, stored, signer).await;
@@ -1447,12 +1393,7 @@ impl WalletService {
                     &key,
                     public,
                 )?;
-                resources.push(format!(
-                    "{}:{}:sequence:{sequence}",
-                    chain.str_id(),
-                    stored.view.sender
-                ));
-                (json!({"tx_blob_hex":blob}).to_string(), "txid", None)
+                (SignedPayload::Hex(blob), None)
             }
             PreparedPayload::XrpIssuedPayment(prepared) => {
                 if XrplClient::new(eps)
@@ -1481,13 +1422,7 @@ impl WalletService {
                     &key,
                     public,
                 )?;
-                resources.push(format!(
-                    "{}:{}:sequence:{}",
-                    chain.str_id(),
-                    stored.view.sender,
-                    prepared.sequence
-                ));
-                (json!({"tx_blob_hex":blob}).to_string(), "txid", None)
+                (SignedPayload::Hex(blob), None)
             }
             PreparedPayload::XrpTrustSet(prepared) => {
                 if XrplClient::new(eps)
@@ -1512,13 +1447,7 @@ impl WalletService {
                     &key,
                     public,
                 )?;
-                resources.push(format!(
-                    "{}:{}:sequence:{}",
-                    chain.str_id(),
-                    stored.view.sender,
-                    prepared.sequence
-                ));
-                (json!({"tx_blob_hex":blob}).to_string(), "txid", None)
+                (SignedPayload::Hex(blob), None)
             }
             PreparedPayload::StellarAssetPayment(prepared) => {
                 if HorizonClient::new(eps)
@@ -1544,17 +1473,7 @@ impl WalletService {
                     &key,
                     &public,
                 )?;
-                resources.push(format!(
-                    "{}:{}:sequence:{}",
-                    chain.str_id(),
-                    stored.view.sender,
-                    prepared.sequence
-                ));
-                (
-                    json!({"signed_xdr_b64":STANDARD.encode(raw)}).to_string(),
-                    "txid",
-                    None,
-                )
+                (SignedPayload::Base64(STANDARD.encode(raw)), None)
             }
             PreparedPayload::StellarChangeTrust(prepared) => {
                 if HorizonClient::new(eps)
@@ -1578,17 +1497,7 @@ impl WalletService {
                     &key,
                     &public,
                 )?;
-                resources.push(format!(
-                    "{}:{}:sequence:{}",
-                    chain.str_id(),
-                    stored.view.sender,
-                    prepared.sequence
-                ));
-                (
-                    json!({"signed_xdr_b64":STANDARD.encode(raw)}).to_string(),
-                    "txid",
-                    None,
-                )
+                (SignedPayload::Base64(STANDARD.encode(raw)), None)
             }
             PreparedPayload::XrpAccountDelete {
                 sequence,
@@ -1624,12 +1533,7 @@ impl WalletService {
                     &key,
                     public,
                 )?;
-                resources.push(format!(
-                    "{}:{}:sequence:{sequence}",
-                    chain.str_id(),
-                    stored.view.sender
-                ));
-                (json!({"tx_blob_hex":blob}).to_string(), "txid", None)
+                (SignedPayload::Hex(blob), None)
             }
             PreparedPayload::StellarAccountMerge {
                 sequence,
@@ -1660,16 +1564,7 @@ impl WalletService {
                     &key,
                     &public,
                 )?;
-                resources.push(format!(
-                    "{}:{}:sequence:{sequence}",
-                    chain.str_id(),
-                    stored.view.sender
-                ));
-                (
-                    json!({"signed_xdr_b64":STANDARD.encode(raw)}).to_string(),
-                    "txid",
-                    None,
-                )
+                (SignedPayload::Base64(STANDARD.encode(raw)), None)
             }
             PreparedPayload::Stellar {
                 sequence,
@@ -1699,16 +1594,7 @@ impl WalletService {
                     &key,
                     &public,
                 )?;
-                resources.push(format!(
-                    "{}:{}:sequence:{sequence}",
-                    chain.str_id(),
-                    stored.view.sender
-                ));
-                (
-                    json!({"signed_xdr_b64":STANDARD.encode(raw)}).to_string(),
-                    "txid",
-                    None,
-                )
+                (SignedPayload::Base64(STANDARD.encode(raw)), None)
             }
             PreparedPayload::Substrate(prepared) => {
                 crate::api::http::race(&eps, |endpoint| async move {
@@ -1735,15 +1621,8 @@ impl WalletService {
                     "0x{}",
                     hex::encode(crate::send::substrate::blake2b_256(&raw))
                 );
-                resources.push(format!(
-                    "{}:{}:nonce:{}",
-                    chain.str_id(),
-                    stored.view.sender,
-                    prepared.nonce
-                ));
                 (
-                    json!({"extrinsic_hex":format!("0x{}",hex::encode(raw))}).to_string(),
-                    "txid",
+                    SignedPayload::Hex(format!("0x{}", hex::encode(raw))),
                     Some(hash),
                 )
             }
@@ -1763,12 +1642,6 @@ impl WalletService {
                             "Cardano input changed; build and review again",
                         ));
                     }
-                    resources.push(format!(
-                        "{}:utxo:{}:{}",
-                        chain.str_id(),
-                        input.tx_hash,
-                        input.tx_index
-                    ));
                 }
                 prepared
                     .clone()
@@ -1785,8 +1658,7 @@ impl WalletService {
                 let public = decode_hex_array::<32>(&hex::encode(public), "Cardano public key")?;
                 let raw = prepared.sign(key, &public)?;
                 (
-                    json!({"cbor_hex":raw}).to_string(),
-                    "txid",
+                    SignedPayload::Hex(raw),
                     Some(hex::encode(prepared.transaction_hash()?)),
                 )
             }
@@ -1803,27 +1675,13 @@ impl WalletService {
                         "Solana blockhash expired; build and review again",
                     ));
                 }
-                for (account, _) in &closure.accounts {
-                    resources.push(format!("{}:token-account:{account}", chain.str_id()));
-                }
                 let raw = p.sign(&seed()?)?;
                 (
-                    STANDARD.encode(&raw),
-                    "signature",
+                    SignedPayload::Base64(STANDARD.encode(&raw)),
                     Some(bs58::encode(&raw[1..65]).into_string()),
                 )
             }
             PreparedPayload::Solana(p) => {
-                if let Some(staking) = &stored.view.staking {
-                    let account = if let Some(seed) = &p.account_seed {
-                        crate::send::solana::stake_account_address(&stored.view.sender, seed)?
-                    } else {
-                        staking.position_id.clone().ok_or_else(|| {
-                            SpectraBridgeError::invalid("Missing Solana stake account")
-                        })?
-                    };
-                    resources.push(format!("{}:stake:{}", chain.str_id(), account));
-                }
                 let client = SolanaClient::new(eps);
                 let valid = client
                     .call(
@@ -1838,8 +1696,7 @@ impl WalletService {
                 }
                 let raw = p.sign(&seed()?)?;
                 (
-                    STANDARD.encode(&raw),
-                    "signature",
+                    SignedPayload::Base64(STANDARD.encode(&raw)),
                     Some(bs58::encode(&raw[1..65]).into_string()),
                 )
             }
@@ -1854,66 +1711,32 @@ impl WalletService {
                 }
                 let key = decode_private_key(&signer.private_key_hex)?;
                 (
-                    p.clone().sign(&key)?,
-                    "txid",
+                    SignedPayload::Json(p.clone().sign(&key)?),
                     p.body["txID"].as_str().map(str::to_string),
                 )
             }
             PreparedPayload::Aptos(p) => {
-                let seq = p.body["sequence_number"]
-                    .as_str()
-                    .and_then(|value| value.parse::<u64>().ok())
-                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos sequence"))?;
-                resources.push(format!(
-                    "{}:{}:sequence:{seq}",
-                    chain.str_id(),
-                    stored.view.sender
-                ));
                 let (body, hash) = p.clone().sign(&seed()?)?;
-                (
-                    json!({"signed_body_json":body}).to_string(),
-                    "txid",
-                    Some(hash),
-                )
+                (SignedPayload::Json(body), Some(hash))
             }
             PreparedPayload::SuiMerge(merge) => {
                 let p = &merge.transaction;
-                resources = p
-                    .objects
-                    .iter()
-                    .map(|c| {
-                        format!(
-                            "{}:object:{}:{}",
-                            chain.str_id(),
-                            hex::encode(c.id),
-                            c.version
-                        )
-                    })
-                    .collect();
                 let (bytes, signature) = p.clone().sign(&seed()?)?;
                 (
-                    json!({"tx_bytes_b64":bytes,"sig_b64":signature}).to_string(),
-                    "digest",
+                    SignedPayload::Sui {
+                        transaction: bytes,
+                        signature,
+                    },
                     Some(p.transaction_digest()),
                 )
             }
             PreparedPayload::Sui(p) => {
-                resources = p
-                    .objects
-                    .iter()
-                    .map(|c| {
-                        format!(
-                            "{}:object:{}:{}",
-                            chain.str_id(),
-                            hex::encode(c.id),
-                            c.version
-                        )
-                    })
-                    .collect();
                 let (bytes, signature) = p.clone().sign(&seed()?)?;
                 (
-                    json!({"tx_bytes_b64":bytes,"sig_b64":signature}).to_string(),
-                    "digest",
+                    SignedPayload::Sui {
+                        transaction: bytes,
+                        signature,
+                    },
                     Some(p.transaction_digest()),
                 )
             }
@@ -1923,15 +1746,11 @@ impl WalletService {
                 ));
             }
         };
-        Ok((
-            PreparedSubmission {
-                payload,
-                result_field: field.into(),
-                transaction_hash: hash,
-                nonce: None,
-            },
-            resources,
-        ))
+        Ok(PreparedSubmission {
+            payload,
+            transaction_hash: hash,
+            nonce: None,
+        })
     }
 }
 
@@ -2119,7 +1938,7 @@ impl WalletService {
                     .ok_or_else(|| SpectraBridgeError::failure("Missing signed transaction"))?;
                 let expiry = super::zcash_shielded::zcash_expiry_height(
                     &chain.zcash_network()?,
-                    &submission.payload,
+                    submission.payload.raw_hex()?,
                 )?;
                 let lightwalletd = self
                     .api_endpoints(

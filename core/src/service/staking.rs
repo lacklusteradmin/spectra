@@ -234,7 +234,7 @@ impl WalletService {
                 icp_staking_receipts: vec![],
             };
             stored.view.review_digest = stored.digest()?;
-            this.save_send_artifact(&stored, vec![]).await?;
+            this.save_send_artifact(&stored, &[]).await?;
             Ok(stored.view)
         })
         .await
@@ -359,7 +359,7 @@ impl WalletService {
                     chain,
                     vec![crate::store::ResolvedPendingStatus {
                         id: id.clone(),
-                        status: if succeeded { "confirmed" } else { "failed" }.into(),
+                        status: crate::store::wallet_domain::TransactionStatus::executed(succeeded),
                         confirmations: None,
                         receipt_block_number: block
                             .map(i64::try_from)

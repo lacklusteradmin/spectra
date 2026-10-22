@@ -267,7 +267,10 @@ panic when broken, since a broken embedded file is a build defect.
 prepared content, signed bytes, and per-endpoint submission attempts.
 `execute_send` composes these operations. SQLite stores secret-free typed
 artifacts with revision checks and atomic nonce/input reservations; wallet
-removal also removes its artifacts. A reviewed digest commits to the exact
+removal also removes its artifacts. A signed artifact derives its reservations
+from its own prepared content (`StoredSend::reservations`), each spelled one
+way per resource, so two artifacts consuming one input or nonce cannot both be
+stored. A reviewed digest commits to the exact
 prepared content. Signing may validate freshness but never changes that content;
 broadcast never rebuilds or signs. Unknown submission outcomes retain the same
 payload for inspection and explicit retry. On-chain status remains history's

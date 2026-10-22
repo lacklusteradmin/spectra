@@ -81,10 +81,6 @@ pub(crate) fn replaceable_send(
     })
 }
 
-pub(crate) fn status_string(status: TransactionStatus) -> String {
-    status.as_raw().to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

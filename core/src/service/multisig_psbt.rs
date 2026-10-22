@@ -356,10 +356,10 @@ impl WalletService {
             .await?
         {
             let outpoint = bitcoin::OutPoint {
-                txid: input.utxo.0.parse().map_err(SpectraBridgeError::failure)?,
-                vout: input.utxo.1,
+                txid: input.utxo.txid.into(),
+                vout: input.utxo.vout,
             };
-            held_outputs.insert(outpoint, (input.utxo.2, places[&input.source.address]));
+            held_outputs.insert(outpoint, (input.utxo.value, places[&input.source.address]));
         }
         Ok((held_outputs, own_scripts))
     }
@@ -378,24 +378,14 @@ impl WalletService {
                 sources.push(multisig_source(wallet.chain_id, policy, input.place)?);
             }
         }
-        let unspent: std::collections::HashSet<(String, u32, u64)> = self
+        let unspent: std::collections::HashSet<(bitcoin::Txid, u32, u64)> = self
             .inputs_paying(wallet.chain_id, sources)
             .await?
             .into_iter()
-            .map(|input| {
-                (
-                    input.utxo.0.to_ascii_lowercase(),
-                    input.utxo.1,
-                    input.utxo.2,
-                )
-            })
+            .map(|input| (input.utxo.txid.into(), input.utxo.vout, input.utxo.value))
             .collect();
         for input in &review.inputs {
-            if !unspent.contains(&(
-                input.outpoint.txid.to_string(),
-                input.outpoint.vout,
-                input.value,
-            )) {
+            if !unspent.contains(&(input.outpoint.txid, input.outpoint.vout, input.value)) {
                 return Err(SpectraBridgeError::invalid(
                     "An input is spent, unconfirmed or not of the amount the PSBT says; build it again.",
                 ));
@@ -490,12 +480,12 @@ impl WalletService {
             .into_iter()
             .map(|input| {
                 let outpoint = bitcoin::OutPoint {
-                    txid: input.utxo.0.parse().map_err(SpectraBridgeError::failure)?,
-                    vout: input.utxo.1,
+                    txid: input.utxo.txid.into(),
+                    vout: input.utxo.vout,
                 };
-                Ok((outpoint, input.utxo.2, places[&input.source.address]))
+                (outpoint, input.utxo.value, places[&input.source.address])
             })
-            .collect::<Result<_, SpectraBridgeError>>()?;
+            .collect();
         candidates.retain(|(outpoint, _, _)| !pending.contains(outpoint));
         candidates.sort_by_key(|(_, value, _)| std::cmp::Reverse(*value));
         let mut selected = Vec::new();
@@ -632,13 +622,14 @@ impl WalletService {
         };
         self.psbt_inputs_unspent(wallet, &policy, &review).await?;
         let txid = self
-            .broadcast_raw_extract(
+            .broadcast_raw(
                 chain,
-                hex::encode(bitcoin::consensus::serialize(&tx)),
-                "txid".into(),
+                crate::send::payload::SignedPayload::Hex(hex::encode(
+                    bitcoin::consensus::serialize(&tx),
+                )),
             )
             .await?;
-        if !txid.is_empty() && !txid.eq_ignore_ascii_case(&review.txid) {
+        if !txid.eq_ignore_ascii_case(&review.txid) {
             return Err(SpectraBridgeError::failure(
                 "The network accepted another transaction id than the session's",
             ));

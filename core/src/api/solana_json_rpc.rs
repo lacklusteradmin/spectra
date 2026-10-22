@@ -31,13 +31,6 @@ pub struct SolanaTransfer {
     pub to: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SolanaSendResult {
-    pub signature: String,
-    #[serde(default)]
-    pub signed_tx_base64: String,
-}
-
 #[derive(Debug, Clone)]
 pub struct SplBalance {
     pub mint: String,
@@ -783,10 +776,7 @@ fn solana_transfers_in_transaction(tx: &Value, sig: &str, address: &str) -> Vec<
 
 impl SolanaClient {
     /// Broadcast an already-signed transaction given as a base64 string.
-    pub async fn broadcast_raw(
-        &self,
-        signed_tx_base64: &str,
-    ) -> Result<SolanaSendResult, ApiError> {
+    pub async fn broadcast_raw(&self, signed_tx_base64: &str) -> Result<String, ApiError> {
         let result = self
             .call(
                 "sendTransaction",
@@ -797,10 +787,7 @@ impl SolanaClient {
             .as_str()
             .or_decode("sendTransaction: expected string")?
             .to_string();
-        Ok(SolanaSendResult {
-            signature,
-            signed_tx_base64: signed_tx_base64.to_string(),
-        })
+        Ok(signature)
     }
 }
 

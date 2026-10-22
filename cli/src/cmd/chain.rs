@@ -669,7 +669,8 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
             return;
         }
         for entry in entries.iter().take(args.limit) {
-            let incoming = entry.kind.eq_ignore_ascii_case("receive");
+            let incoming =
+                entry.kind == spectra_core::store::wallet_domain::TransactionKind::Receive;
             let (mark, amount) = if incoming {
                 (
                     "↓",

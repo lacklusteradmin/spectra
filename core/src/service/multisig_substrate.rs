@@ -475,7 +475,7 @@ impl WalletService {
             approvals,
         });
         if executes {
-            stored.submitted_txid = Some(sent.txid);
+            stored.submitted_txid = Some(sent);
         }
         Ok(())
     }

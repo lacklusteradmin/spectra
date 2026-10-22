@@ -190,7 +190,7 @@ pub enum TransactionCommand {
     /// crosses the FFI. The merge strategy is not a parameter: it is a
     /// property of the chain and comes from `registry::Chain`.
     Merge {
-        incoming: Vec<crate::fetch::transactions::FetchedTransactionRecord>,
+        incoming: Vec<crate::store::persistence_models::TransactionRecord>,
         chain_id: crate::registry::Chain,
         preserve_created_at_sentinel_unix: Option<f64>,
     },

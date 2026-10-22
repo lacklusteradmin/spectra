@@ -14,8 +14,8 @@ fn signed_transaction(chain: Chain, to: &str) -> ::bitcoin::Transaction {
     let key = [1; 32];
     let hash = sender_hash(&key);
     let sender = address(version, &hash);
-    let inputs = vec![(
-        "11".repeat(32),
+    let inputs = vec![crate::api::utxo::UtxoInput::fixture(
+        &"11".repeat(32),
         0,
         100_000,
         bitcoin_wire::p2pkh_script(&hash),

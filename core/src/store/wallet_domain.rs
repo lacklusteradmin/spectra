@@ -124,6 +124,15 @@ impl TransactionStatus {
         }
     }
 
+    /// How a transaction the chain executed ended.
+    pub(crate) fn executed(succeeded: bool) -> Self {
+        if succeeded {
+            Self::Confirmed
+        } else {
+            Self::Failed
+        }
+    }
+
     /// The inverse, for a status read back from a string. `None` means the
     /// string names no status; what to do about that is the caller's rule.
     pub(crate) fn from_raw(raw: &str) -> Option<Self> {

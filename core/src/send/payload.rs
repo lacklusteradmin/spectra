@@ -42,10 +42,66 @@ pub(crate) const SUBMISSION_FORMAT: &str = "core.submission_json";
 /// the wallet seed or wallet signing keys.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedSubmission {
-    pub payload: String,
-    pub result_field: String,
+    pub payload: SignedPayload,
     pub transaction_hash: Option<String>,
     pub nonce: Option<u64>,
+}
+
+/// A signed transaction in the form its network's nodes take it. The
+/// endpoint's API names the form; a broadcast refuses any other.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SignedPayload {
+    /// The transaction's bytes in hex, `0x`-prefixed where the network
+    /// writes them so (EVM, Substrate). An Aptos transaction in this form
+    /// is its BCS.
+    Hex(String),
+    /// The transaction's bytes in standard base64.
+    Base64(String),
+    /// A document the node takes whole: a Tron transaction, an Aptos signed
+    /// body, an ICP or Kaspa submission.
+    Json(String),
+    /// A Sui transaction's bytes and its signature, both base64.
+    Sui {
+        transaction: String,
+        signature: String,
+    },
+    /// ICP staking's signed ingress calls, submitted in turn.
+    IcpStaking(Vec<super::icp_staking::SignedIcpStakingCall>),
+}
+
+impl SignedPayload {
+    /// The raw transaction a hex payload carries.
+    pub(crate) fn raw_hex(&self) -> Result<&str, super::error::SendError> {
+        match self {
+            Self::Hex(raw) => Ok(raw),
+            _ => Err(super::error::SendError::invalid(
+                "Signed transaction is not raw bytes",
+            )),
+        }
+    }
+}
+
+/// What a person is shown, and what a sign-only send hands out: the signed
+/// transaction as its network's tools take it.
+impl std::fmt::Display for SignedPayload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Hex(text) | Self::Base64(text) | Self::Json(text) => f.write_str(text),
+            // As `sui_executeTransactionBlock` names its two parts.
+            Self::Sui {
+                transaction,
+                signature,
+            } => write!(
+                f,
+                "{}",
+                serde_json::json!({ "tx_bytes": transaction, "signatures": [signature] })
+            ),
+            Self::IcpStaking(calls) => {
+                f.write_str(&serde_json::to_string(calls).map_err(|_| std::fmt::Error)?)
+            }
+        }
+    }
 }
 
 pub(crate) fn bitcoin_transaction_id(raw: &str) -> Option<String> {

@@ -1,51 +1,8 @@
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-/// Wire/merge form of a transaction record.
-///
-/// Incoming kind/status strings are normalized into the strongly typed stored
-/// enums. Both representations use Unix seconds, including fractional seconds.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct FetchedTransactionRecord {
-    /// Known for local sends; provider history may omit protocol identity.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub deployment_id: Option<String>,
-    pub id: String,
-    pub wallet_id: Option<String>,
-    pub kind: String,
-    pub status: String,
-    pub wallet_name: String,
-    pub asset_display_name: String,
-    pub symbol: String,
-    pub chain_id: crate::registry::Chain,
-    /// Exact decimal in the asset's units.
-    pub amount: String,
-    pub address: String,
-    pub transaction_hash: Option<String>,
-    pub nonce: Option<i64>,
-    pub receipt_block_number: Option<i64>,
-    pub receipt_gas_used: Option<String>,
-    /// Exact decimal gwei.
-    pub receipt_effective_gas_price_gwei: Option<String>,
-    /// Exact decimal in the gas asset.
-    pub receipt_network_fee: Option<String>,
-    pub fee_rate_description: Option<String>,
-    pub confirmation_count: Option<i64>,
-    /// Exact decimal in the gas asset.
-    pub confirmed_network_fee: Option<String>,
-    pub used_change_output: Option<bool>,
-    pub source_derivation_path: Option<String>,
-    pub change_derivation_path: Option<String>,
-    pub source_address: Option<String>,
-    pub change_address: Option<String>,
-    pub signed_transaction_payload: Option<String>,
-    pub signed_transaction_payload_format: Option<String>,
-    pub failure_reason: Option<crate::store::persistence_models::TransactionFailure>,
-    pub transaction_history_source: Option<String>,
-    pub created_at_unix: f64,
-}
+use crate::store::persistence_models::TransactionRecord;
+use crate::store::wallet_domain::TransactionKind;
 
 /// What a stored `transaction_history_source` names.
 ///
@@ -99,8 +56,7 @@ pub fn history_source(source: String) -> Option<HistorySource> {
     })
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionMergeStrategy {
     StandardUtxo,
     Dogecoin,
@@ -108,131 +64,15 @@ pub enum TransactionMergeStrategy {
     Evm,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
 pub struct TransactionMergeRequest {
-    pub existing_transactions: Vec<FetchedTransactionRecord>,
-    pub incoming_transactions: Vec<FetchedTransactionRecord>,
+    pub existing_transactions: Vec<TransactionRecord>,
+    pub incoming_transactions: Vec<TransactionRecord>,
     pub strategy: TransactionMergeStrategy,
     pub chain_id: crate::registry::Chain,
     pub preserve_created_at_sentinel_unix: Option<f64>,
 }
 
-// Wire/storage conversion normalizes kind/status; Unix timestamps are unchanged.
-
-use crate::store::persistence_models::TransactionRecord;
-use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
-
-fn kind_from_raw(raw: &str) -> TransactionKind {
-    match raw {
-        "send" => TransactionKind::Send,
-        "stake" => TransactionKind::Stake,
-        "unstake" => TransactionKind::Unstake,
-        "withdraw" => TransactionKind::Withdraw,
-        "claimRewards" => TransactionKind::ClaimRewards,
-        "revokeApproval" => TransactionKind::RevokeApproval,
-        "deleteAccessKey" => TransactionKind::DeleteAccessKey,
-        "mergeCoins" => TransactionKind::MergeCoins,
-        "closeTokenAccounts" => TransactionKind::CloseTokenAccounts,
-        "refundTokenStorage" => TransactionKind::RefundTokenStorage,
-        "trustAsset" => TransactionKind::TrustAsset,
-        "shield" => TransactionKind::Shield,
-        "removeTrustLine" => TransactionKind::RemoveTrustLine,
-        _ => TransactionKind::Receive,
-    }
-}
-
-fn kind_to_raw(kind: TransactionKind) -> &'static str {
-    kind.as_raw()
-}
-
-/// Resolve unknown wire status by kind: receives default to pending,
-/// sends to confirmed. Persisted status is required, so this fallback
-/// is applied only at ingestion.
-fn status_from_raw(raw: &str, kind: TransactionKind) -> TransactionStatus {
-    TransactionStatus::from_raw(raw).unwrap_or(if kind.is_submitted() {
-        TransactionStatus::Confirmed
-    } else {
-        TransactionStatus::Pending
-    })
-}
-
-impl From<TransactionRecord> for FetchedTransactionRecord {
-    fn from(stored: TransactionRecord) -> Self {
-        Self {
-            deployment_id: stored.deployment_id,
-            id: stored.id,
-            wallet_id: stored.wallet_id,
-            kind: kind_to_raw(stored.kind).to_string(),
-            status: stored.status.as_raw().to_string(),
-            wallet_name: stored.wallet_name,
-            asset_display_name: stored.asset_display_name,
-            symbol: stored.symbol,
-            chain_id: stored.chain_id,
-            amount: stored.amount,
-            address: stored.address,
-            transaction_hash: stored.transaction_hash,
-            nonce: stored.nonce,
-            receipt_block_number: stored.receipt_block_number,
-            receipt_gas_used: stored.receipt_gas_used,
-            receipt_effective_gas_price_gwei: stored.receipt_effective_gas_price_gwei,
-            receipt_network_fee: stored.receipt_network_fee,
-            fee_rate_description: stored.fee_rate_description,
-            confirmation_count: stored.confirmation_count,
-            confirmed_network_fee: stored.confirmed_network_fee,
-            used_change_output: stored.used_change_output,
-            source_derivation_path: stored.source_derivation_path,
-            change_derivation_path: stored.change_derivation_path,
-            source_address: stored.source_address,
-            change_address: stored.change_address,
-            signed_transaction_payload: stored.signed_transaction_payload,
-            signed_transaction_payload_format: stored.signed_transaction_payload_format,
-            failure_reason: stored.failure_reason,
-            transaction_history_source: stored.transaction_history_source,
-            created_at_unix: stored.created_at_unix,
-        }
-    }
-}
-
-impl From<FetchedTransactionRecord> for TransactionRecord {
-    fn from(wire: FetchedTransactionRecord) -> Self {
-        Self {
-            actions: Default::default(),
-            deployment_id: wire.deployment_id,
-            id: wire.id,
-            wallet_id: wire.wallet_id,
-            kind: kind_from_raw(&wire.kind),
-            status: status_from_raw(&wire.status, kind_from_raw(&wire.kind)),
-            wallet_name: wire.wallet_name,
-            asset_display_name: wire.asset_display_name,
-            symbol: wire.symbol,
-            chain_id: wire.chain_id,
-            amount: wire.amount,
-            address: wire.address,
-            transaction_hash: wire.transaction_hash,
-            nonce: wire.nonce,
-            receipt_block_number: wire.receipt_block_number,
-            receipt_gas_used: wire.receipt_gas_used,
-            receipt_effective_gas_price_gwei: wire.receipt_effective_gas_price_gwei,
-            receipt_network_fee: wire.receipt_network_fee,
-            fee_rate_description: wire.fee_rate_description,
-            confirmation_count: wire.confirmation_count,
-            confirmed_network_fee: wire.confirmed_network_fee,
-            used_change_output: wire.used_change_output,
-            source_derivation_path: wire.source_derivation_path,
-            change_derivation_path: wire.change_derivation_path,
-            source_address: wire.source_address,
-            change_address: wire.change_address,
-            signed_transaction_payload: wire.signed_transaction_payload,
-            signed_transaction_payload_format: wire.signed_transaction_payload_format,
-            failure_reason: wire.failure_reason,
-            transaction_history_source: wire.transaction_history_source,
-            created_at_unix: wire.created_at_unix,
-        }
-    }
-}
-
-pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<FetchedTransactionRecord> {
+pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<TransactionRecord> {
     let TransactionMergeRequest {
         existing_transactions,
         incoming_transactions,
@@ -258,14 +98,14 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<FetchedTransa
     }
 
     for incoming in incoming_transactions {
-        if !incoming_is_relevant(&incoming, &strategy, chain_id) {
+        if !incoming_is_relevant(&incoming, strategy, chain_id) {
             continue;
         }
 
         let key = bucket_key(&incoming);
         let candidates = index.get(&key);
-        let operation_key = (key.0, key.1.clone(), "send".to_string(), key.3.clone());
-        let operation_candidates = if incoming.kind == "receive" {
+        let operation_key = (key.0, key.1.clone(), TransactionKind::Send, key.3.clone());
+        let operation_candidates = if incoming.kind == TransactionKind::Receive {
             index.get(&operation_key)
         } else {
             None
@@ -277,17 +117,17 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<FetchedTransa
                 operation_candidates
                     .into_iter()
                     .flatten()
-                    .filter(|&&i| kind_from_raw(&merged_transactions[i].kind).is_operation()),
+                    .filter(|&&i| merged_transactions[i].kind.is_operation()),
             )
             .copied()
-            .find(|&i| matches_identity(&merged_transactions[i], &incoming, &strategy, chain_id));
+            .find(|&i| matches_identity(&merged_transactions[i], &incoming, strategy, chain_id));
 
         if let Some(existing_index) = existing_index {
             let existing = merged_transactions[existing_index].clone();
             merged_transactions[existing_index] = merge_record(
                 existing,
                 incoming,
-                &strategy,
+                strategy,
                 preserve_created_at_sentinel_unix,
             );
         } else {
@@ -310,30 +150,31 @@ pub fn merge_transactions(request: TransactionMergeRequest) -> Vec<FetchedTransa
 
 /// The four fields every merge strategy checks for exact equality before its
 /// own finer-grained rule — everything `matches_identity` could possibly
-/// match narrows to records sharing this key.
+/// match narrows to records sharing this key. An operation buckets as a
+/// send; a provider's receive row of it looks there too.
 type IdentityBucketKey = (
     crate::registry::Chain,
     Option<String>,
-    String,
+    TransactionKind,
     Option<String>,
 );
 
-fn bucket_key(record: &FetchedTransactionRecord) -> IdentityBucketKey {
+fn bucket_key(record: &TransactionRecord) -> IdentityBucketKey {
     (
         record.chain_id,
         record.transaction_hash.clone(),
-        if kind_from_raw(&record.kind).is_operation() {
-            "send".into()
+        if record.kind.is_operation() {
+            TransactionKind::Send
         } else {
-            record.kind.clone()
+            record.kind
         },
         record.wallet_id.clone(),
     )
 }
 
 fn incoming_is_relevant(
-    incoming: &FetchedTransactionRecord,
-    strategy: &TransactionMergeStrategy,
+    incoming: &TransactionRecord,
+    strategy: TransactionMergeStrategy,
     chain_id: crate::registry::Chain,
 ) -> bool {
     if incoming.chain_id != chain_id || incoming.transaction_hash.is_none() {
@@ -349,9 +190,9 @@ fn incoming_is_relevant(
 }
 
 fn matches_identity(
-    existing: &FetchedTransactionRecord,
-    incoming: &FetchedTransactionRecord,
-    strategy: &TransactionMergeStrategy,
+    existing: &TransactionRecord,
+    incoming: &TransactionRecord,
+    strategy: TransactionMergeStrategy,
     chain_id: crate::registry::Chain,
 ) -> bool {
     // The asset is its deployment — chain, standard and contract — never its
@@ -388,23 +229,23 @@ fn matches_identity(
 }
 
 /// A provider's row of a transaction core recorded as an operation.
-fn operation_provider_match(
-    existing: &FetchedTransactionRecord,
-    incoming: &FetchedTransactionRecord,
-) -> bool {
-    kind_from_raw(&existing.kind).is_operation()
-        && matches!(incoming.kind.as_str(), "send" | "receive")
+fn operation_provider_match(existing: &TransactionRecord, incoming: &TransactionRecord) -> bool {
+    existing.kind.is_operation()
+        && matches!(
+            incoming.kind,
+            TransactionKind::Send | TransactionKind::Receive
+        )
 }
 
 fn merge_record(
-    existing: FetchedTransactionRecord,
-    incoming: FetchedTransactionRecord,
-    strategy: &TransactionMergeStrategy,
+    existing: TransactionRecord,
+    incoming: TransactionRecord,
+    strategy: TransactionMergeStrategy,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> FetchedTransactionRecord {
+) -> TransactionRecord {
     let mut incoming = incoming;
-    if kind_from_raw(&existing.kind).is_operation() {
-        incoming.kind = existing.kind.clone();
+    if existing.kind.is_operation() {
+        incoming.kind = existing.kind;
         incoming.amount = existing.amount.clone();
         incoming.address = existing.address.clone();
     }
@@ -432,10 +273,11 @@ fn counterparty(existing: String, incoming: String) -> String {
 }
 
 fn merge_standard_utxo(
-    existing: FetchedTransactionRecord,
-    incoming: FetchedTransactionRecord,
-) -> FetchedTransactionRecord {
-    FetchedTransactionRecord {
+    existing: TransactionRecord,
+    incoming: TransactionRecord,
+) -> TransactionRecord {
+    TransactionRecord {
+        actions: Default::default(),
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -479,11 +321,9 @@ fn merge_standard_utxo(
     }
 }
 
-fn merge_dogecoin(
-    existing: FetchedTransactionRecord,
-    incoming: FetchedTransactionRecord,
-) -> FetchedTransactionRecord {
-    FetchedTransactionRecord {
+fn merge_dogecoin(existing: TransactionRecord, incoming: TransactionRecord) -> TransactionRecord {
+    TransactionRecord {
+        actions: Default::default(),
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -534,11 +374,12 @@ fn merge_dogecoin(
 }
 
 fn merge_account_based(
-    existing: FetchedTransactionRecord,
-    incoming: FetchedTransactionRecord,
+    existing: TransactionRecord,
+    incoming: TransactionRecord,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> FetchedTransactionRecord {
-    FetchedTransactionRecord {
+) -> TransactionRecord {
+    TransactionRecord {
+        actions: Default::default(),
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -587,11 +428,12 @@ fn merge_account_based(
 }
 
 fn merge_evm(
-    existing: FetchedTransactionRecord,
-    incoming: FetchedTransactionRecord,
+    existing: TransactionRecord,
+    incoming: TransactionRecord,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> FetchedTransactionRecord {
-    FetchedTransactionRecord {
+) -> TransactionRecord {
+    TransactionRecord {
+        actions: Default::default(),
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -662,18 +504,18 @@ fn normalize_evm_address(address: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        FetchedTransactionRecord, TransactionMergeRequest, TransactionMergeStrategy,
-        merge_transactions,
-    };
+    use super::{TransactionMergeRequest, TransactionMergeStrategy, merge_transactions};
+    use crate::store::persistence_models::TransactionRecord;
+    use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
-    fn sample_transaction(chain_id: crate::registry::Chain) -> FetchedTransactionRecord {
-        FetchedTransactionRecord {
+    fn sample_transaction(chain_id: crate::registry::Chain) -> TransactionRecord {
+        TransactionRecord {
+            actions: Default::default(),
             deployment_id: None,
             id: "tx-1".to_string(),
             wallet_id: Some("wallet-1".to_string()),
-            kind: "receive".to_string(),
-            status: "pending".to_string(),
+            kind: TransactionKind::Receive,
+            status: TransactionStatus::Pending,
             wallet_name: "Wallet".to_string(),
             asset_display_name: "Bitcoin".to_string(),
             symbol: "BTC".to_string(),
@@ -709,19 +551,24 @@ mod tests {
     #[test]
     fn staking_history_keeps_intent_and_amount_when_native_provider_reports_transfer() {
         use crate::registry::Chain;
-        for kind in ["stake", "unstake", "withdraw", "claimRewards"] {
-            for provider_kind in ["send", "receive"] {
+        for kind in [
+            TransactionKind::Stake,
+            TransactionKind::Unstake,
+            TransactionKind::Withdraw,
+            TransactionKind::ClaimRewards,
+        ] {
+            for provider_kind in [TransactionKind::Send, TransactionKind::Receive] {
                 for strategy in [
                     TransactionMergeStrategy::AccountBased,
                     TransactionMergeStrategy::Evm,
                 ] {
                     let mut existing = sample_transaction(Chain::Polkadot);
-                    existing.kind = kind.into();
+                    existing.kind = kind;
                     existing.amount = "90".into();
                     existing.deployment_id = Some("polkadot:native".into());
                     let mut incoming = existing.clone();
-                    incoming.kind = provider_kind.into();
-                    incoming.status = "confirmed".into();
+                    incoming.kind = provider_kind;
+                    incoming.status = TransactionStatus::Confirmed;
                     incoming.amount = "0".into();
                     incoming.address = "provider-contract".into();
                     incoming.receipt_block_number = Some(99);
@@ -735,7 +582,7 @@ mod tests {
                     assert_eq!(result.len(), 1);
                     assert_eq!(result[0].kind, kind);
                     assert_eq!(result[0].amount, "90");
-                    assert_eq!(result[0].status, "confirmed");
+                    assert_eq!(result[0].status, TransactionStatus::Confirmed);
                     assert_eq!(result[0].receipt_block_number, Some(99));
                 }
             }
@@ -747,7 +594,7 @@ mod tests {
         let existing = sample_transaction(crate::registry::Chain::Bitcoin);
         let mut incoming = sample_transaction(crate::registry::Chain::Bitcoin);
         incoming.id = "tx-2".to_string();
-        incoming.status = "confirmed".to_string();
+        incoming.status = TransactionStatus::Confirmed;
         incoming.amount = "2".into();
         incoming.address = "incoming-address".to_string();
         incoming.receipt_gas_used = None;
@@ -772,7 +619,7 @@ mod tests {
         assert_eq!(merged.len(), 1);
         let record = &merged[0];
         assert_eq!(record.id, "tx-1");
-        assert_eq!(record.status, "confirmed");
+        assert_eq!(record.status, TransactionStatus::Confirmed);
         assert_eq!(record.amount, "2");
         assert_eq!(record.confirmation_count, Some(12));
         assert_eq!(record.receipt_gas_used.as_deref(), Some("100"));
@@ -893,7 +740,7 @@ mod tests {
         incoming.symbol = "USDT".to_string();
         incoming.amount = "50".into();
         incoming.address = "0xBBBB".to_string();
-        incoming.status = "confirmed".to_string();
+        incoming.status = TransactionStatus::Confirmed;
 
         let merged = merge_transactions(TransactionMergeRequest {
             existing_transactions: vec![usdc, usdt],
@@ -913,7 +760,8 @@ mod tests {
             .find(|r| r.id == "tx-usdc")
             .expect("USDC untouched");
         assert_eq!(
-            usdc_row.status, "pending",
+            usdc_row.status,
+            TransactionStatus::Pending,
             "the USDC row must not have been touched"
         );
         let usdt_row = merged
@@ -921,7 +769,8 @@ mod tests {
             .find(|r| r.id == "tx-usdt")
             .expect("USDT updated");
         assert_eq!(
-            usdt_row.status, "confirmed",
+            usdt_row.status,
+            TransactionStatus::Confirmed,
             "the USDT row is the one that should have merged"
         );
     }
@@ -974,105 +823,6 @@ mod tests {
             )
         );
         assert_eq!(record.created_at_unix, 900.0);
-    }
-}
-
-// ── FFI surface ─────────────────────────────────────────────────────────────
-
-#[cfg(test)]
-mod wire_persisted_conversion {
-    use super::*;
-
-    /// Every field populated with a distinguishable value, so a field dropped
-    /// or crossed in the conversion shows up as an inequality rather than
-    /// passing on defaults.
-    fn populated_wire() -> FetchedTransactionRecord {
-        FetchedTransactionRecord {
-            deployment_id: None,
-            id: "TX-1".to_string(),
-            wallet_id: Some("w1".to_string()),
-            kind: "send".to_string(),
-            status: "confirmed".to_string(),
-            wallet_name: "Wallet".to_string(),
-            asset_display_name: "Bitcoin".to_string(),
-            symbol: "BTC".to_string(),
-            chain_id: crate::registry::Chain::Bitcoin,
-            amount: "1.25".into(),
-            address: "bc1qexample".to_string(),
-            transaction_hash: Some("0xhash".to_string()),
-            nonce: Some(7),
-            receipt_block_number: Some(1234),
-            receipt_gas_used: Some("21000".to_string()),
-            receipt_effective_gas_price_gwei: Some("12.5".into()),
-            receipt_network_fee: Some("0.00042".into()),
-            fee_rate_description: Some("12 sat/vB".to_string()),
-            confirmation_count: Some(6),
-            confirmed_network_fee: Some("1.5".into()),
-            used_change_output: Some(true),
-            source_derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
-            change_derivation_path: Some("m/84'/0'/0'/1/0".to_string()),
-            source_address: Some("bc1qsource".to_string()),
-            change_address: Some("bc1qchange".to_string()),
-            signed_transaction_payload: Some("deadbeef".to_string()),
-            signed_transaction_payload_format: Some("hex".to_string()),
-            failure_reason: Some(
-                crate::store::persistence_models::TransactionFailure::Reported {
-                    message: "none".into(),
-                },
-            ),
-            transaction_history_source: Some("esplora".to_string()),
-            created_at_unix: 1_700_000_000.0,
-        }
-    }
-
-    #[test]
-    fn wire_to_stored_and_back_is_lossless() {
-        let original = populated_wire();
-        let stored: TransactionRecord = original.clone().into();
-        let round_tripped: FetchedTransactionRecord = stored.into();
-        assert_eq!(round_tripped, original);
-    }
-
-    #[test]
-    fn the_unix_timestamp_is_unchanged() {
-        let stored: TransactionRecord = populated_wire().into();
-        // Identical Unix seconds in storage, FFI, and provider records.
-        assert_eq!(stored.created_at_unix, 1_700_000_000.0);
-        let back: FetchedTransactionRecord = stored.into();
-        assert_eq!(back.created_at_unix, 1_700_000_000.0);
-    }
-
-    /// The wire status is a free string. One that names none of the three is
-    /// read by kind, once, here — a stored record has no absent status for a
-    /// read site to interpret its own way.
-    #[test]
-    fn an_unknown_wire_status_is_read_by_kind() {
-        let mut wire = populated_wire();
-        wire.status = "who-knows".to_string();
-
-        wire.kind = "send".to_string();
-        let as_send: TransactionRecord = wire.clone().into();
-        assert_eq!(as_send.status, TransactionStatus::Confirmed);
-
-        wire.kind = "receive".to_string();
-        let as_receive: TransactionRecord = wire.into();
-        assert_eq!(as_receive.status, TransactionStatus::Pending);
-    }
-
-    #[test]
-    fn the_three_named_statuses_survive_a_round_trip() {
-        for (raw, status) in [
-            ("pending", TransactionStatus::Pending),
-            ("confirmed", TransactionStatus::Confirmed),
-            ("failed", TransactionStatus::Failed),
-        ] {
-            let mut wire = populated_wire();
-            wire.status = raw.to_string();
-            let stored: TransactionRecord = wire.into();
-            assert_eq!(stored.status, status);
-            let back: FetchedTransactionRecord = stored.into();
-            assert_eq!(back.status, raw);
-        }
     }
 }
 

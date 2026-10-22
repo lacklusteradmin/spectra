@@ -17,14 +17,6 @@ pub struct TronBalance {
     pub sun: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TronSendResult {
-    pub txid: String,
-    /// Full signed transaction JSON for rebroadcast. Serialized as a JSON string.
-    #[serde(default)]
-    pub signed_tx_json: String,
-}
-
 /// A TRC-20 balance with the contract's validated metadata.
 #[derive(Debug, Clone)]
 pub struct Trc20Balance {
@@ -951,7 +943,7 @@ impl TronHttpClient {
         })
     }
 
-    pub async fn broadcast_raw(&self, signed_tx_json: &str) -> Result<TronSendResult, ApiError> {
+    pub async fn broadcast_raw(&self, signed_tx_json: &str) -> Result<String, ApiError> {
         let body: Value = serde_json::from_str(signed_tx_json)
             .map_err(|e| ApiError::InvalidInput(format!("invalid signed Tron transaction: {e}")))?;
         let raw = hex::decode(
@@ -972,10 +964,7 @@ impl TronHttpClient {
                 "Tron broadcast refused: {result}"
             )));
         }
-        Ok(TronSendResult {
-            txid,
-            signed_tx_json: signed_tx_json.into(),
-        })
+        Ok(txid)
     }
 }
 

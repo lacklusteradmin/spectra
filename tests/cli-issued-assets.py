@@ -113,7 +113,7 @@ class IssuedAssetTests(unittest.TestCase):
         with sqlite3.connect(pathlib.Path(self.directory.name) / 'spectra.sqlite') as db:
             return sorted(json.loads(row[0])['kind'] for row in db.execute('SELECT payload FROM history_records'))
 
-    def sign_and_broadcast(self, artifact, path, field):
+    def sign_and_broadcast(self, artifact, path):
         """Signs the reviewed transaction and broadcasts it: the node receives
         exactly the signed bytes, once."""
         before = len(Node.submitted)
@@ -121,7 +121,7 @@ class IssuedAssetTests(unittest.TestCase):
                               '--endpoint', self.base + path)['artifact']
         assert len(Node.submitted) == before, 'signing broadcasts nothing'
         self.run_cli('send', 'broadcast-signed', signed['id'], '--endpoint', self.base + path, '--yes')
-        assert Node.submitted[before:] == [json.loads(signed['signed_payload'])[field]], Node.submitted
+        assert Node.submitted[before:] == [signed['signed_payload']], Node.submitted
 
     def test_xrpl_trust_pay_and_remove(self):
         holder = XRPL['account']
@@ -139,15 +139,15 @@ class IssuedAssetTests(unittest.TestCase):
         usd = f'USD.{ISSUER}'
 
         trust = self.run_cli('wallet', 'trust', 'XRP', '--asset', usd)['artifact']
-        self.sign_and_broadcast(trust, '/xrpl', 'tx_blob_hex')
+        self.sign_and_broadcast(trust, '/xrpl')
         Node.state['lines'][holder] = [xrp_line(ISSUER, '150'), xrp_line(ISSUER, '0', SOLO)]
         Node.state['roots'][holder]['Sequence'] = 10
         payment = self.run_cli('send', 'build', '--from', 'XRP', '--to', DESTINATION,
                                '--contract', usd, '--amount', '123.456')['artifact']
-        self.sign_and_broadcast(payment, '/xrpl', 'tx_blob_hex')
+        self.sign_and_broadcast(payment, '/xrpl')
         Node.state['roots'][holder]['Sequence'] = 11
         removal = self.run_cli('wallet', 'untrust', 'XRP', '--asset', f'{SOLO}.{ISSUER}')['artifact']
-        self.sign_and_broadcast(removal, '/xrpl', 'tx_blob_hex')
+        self.sign_and_broadcast(removal, '/xrpl')
         assert self.history_kinds() == ['removeTrustLine', 'send', 'trustAsset'], self.history_kinds()
 
     def test_stellar_trust_pay_and_remove(self):
@@ -175,15 +175,15 @@ class IssuedAssetTests(unittest.TestCase):
         self.endpoint('stellar-testnet', 'horizon', '/horizon')
 
         trust = self.run_cli('wallet', 'trust', 'XLM', '--asset', usdc)['artifact']
-        self.sign_and_broadcast(trust, '/horizon', 'signed_xdr_b64')
+        self.sign_and_broadcast(trust, '/horizon')
         Node.state['stellar'][source] = account(123456789015, [line('USDC', '100.0000000'),
                                                                line('LONGASSET12', '0.0000000')])
         payment = self.run_cli('send', 'build', '--from', 'XLM', '--to', STELLAR['destination'],
                                '--contract', usdc, '--amount', '12.3456789')['artifact']
-        self.sign_and_broadcast(payment, '/horizon', 'signed_xdr_b64')
+        self.sign_and_broadcast(payment, '/horizon')
         Node.state['stellar'][source]['sequence'] = '123456789016'
         removal = self.run_cli('wallet', 'untrust', 'XLM', '--asset', f'LONGASSET12:{issuer}')['artifact']
-        self.sign_and_broadcast(removal, '/horizon', 'signed_xdr_b64')
+        self.sign_and_broadcast(removal, '/horizon')
         assert self.history_kinds() == ['removeTrustLine', 'send', 'trustAsset'], self.history_kinds()
 
 

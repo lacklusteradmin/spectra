@@ -310,7 +310,9 @@ mod receipt_cost_completeness {
                             chain,
                             vec![crate::store::ResolvedPendingStatus {
                                 id: "pending".into(),
-                                status: if is_failed { "failed" } else { "confirmed" }.into(),
+                                status: crate::store::wallet_domain::TransactionStatus::executed(
+                                    !is_failed,
+                                ),
                                 confirmations: None,
                                 receipt_block_number: Some(7),
                                 evm_receipt_cost: crate::store::EvmReceiptCost::from_receipt(

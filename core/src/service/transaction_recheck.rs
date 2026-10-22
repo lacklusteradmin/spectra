@@ -133,7 +133,6 @@ impl WalletService {
                     ),
                 )]);
                 let current_status = current.status;
-                let old_status = current_status.as_raw().to_string();
                 let new_status = if confirmed {
                     crate::store::wallet_domain::TransactionStatus::Confirmed
                 } else {
@@ -142,8 +141,8 @@ impl WalletService {
                 let decision = crate::store::apply_resolved_pending_transaction_statuses(
                     vec![crate::store::ResolvedPendingTransactionInput {
                         id: current.id.clone(),
-                        old_status: old_status.clone(),
-                        new_status: new_status.as_raw().to_string(),
+                        old_status: current_status,
+                        new_status,
                     }],
                     &mut trackers,
                     now,

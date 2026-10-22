@@ -434,13 +434,12 @@ impl WalletService {
             ));
         }
         let hash = self
-            .broadcast_raw_extract(
+            .broadcast_raw(
                 wallet.chain_id,
-                json!({ "signed_xdr_b64": reviewed.data }).to_string(),
-                "txid".into(),
+                crate::send::payload::SignedPayload::Base64(reviewed.data),
             )
             .await?;
-        if !hash.is_empty() && !hash.eq_ignore_ascii_case(&reviewed.transaction_id) {
+        if !hash.eq_ignore_ascii_case(&reviewed.transaction_id) {
             return Err(SpectraBridgeError::failure(
                 "The network accepted another transaction hash than the session's",
             ));

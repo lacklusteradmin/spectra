@@ -40,13 +40,6 @@ pub struct StellarHistoryEntry {
     pub amount_display: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StellarSendResult {
-    pub txid: String,
-    /// Base64-encoded signed XDR envelope — stored for rebroadcast.
-    pub signed_xdr_b64: String,
-}
-
 // ── Horizon API response types
 
 /// A Stellar account's reserve inputs, in stroops and counts.
@@ -807,8 +800,8 @@ pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, ApiError> {
 }
 
 impl HorizonClient {
-    /// Submit a pre-signed XDR envelope (for rebroadcast).
-    pub async fn submit_envelope_b64(&self, tx_b64: &str) -> Result<StellarSendResult, ApiError> {
+    /// Submit a signed XDR envelope; the hash Horizon names it by.
+    pub async fn submit_envelope_b64(&self, tx_b64: &str) -> Result<String, ApiError> {
         let tx_b64 = tx_b64.to_string();
         race(&self.endpoints, |base| {
             let client = self.client.clone();
@@ -827,10 +820,7 @@ impl HorizonClient {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                Ok(StellarSendResult {
-                    txid: hash,
-                    signed_xdr_b64: tx_b64.clone(),
-                })
+                Ok(hash)
             }
         })
         .await

@@ -336,7 +336,9 @@ impl WalletService {
             .submission
             .as_ref()
             .ok_or_else(|| fail("Staking has not been signed"))?;
-        let calls: Vec<SignedIcpStakingCall> = serde_json::from_str(&submission.payload)?;
+        let crate::send::payload::SignedPayload::IcpStaking(calls) = &submission.payload else {
+            return Err(fail("Staking was not signed as ICP ingress calls"));
+        };
         if calls.len() != prepared.calls.len() {
             return Err(fail("ICP ingress steps differ from reviewed operation"));
         }
@@ -351,7 +353,7 @@ impl WalletService {
         }
         for call in calls {
             let current = self.load_send_artifact(stored.view.id.clone()).await?;
-            if Self::saved_icp_reply(&current, &call)? {
+            if Self::saved_icp_reply(&current, call)? {
                 continue;
             }
             let id: [u8; 32] = hex::decode(&call.request_id)?
@@ -370,7 +372,7 @@ impl WalletService {
                             block: None,
                         });
                     }
-                    self.save_icp_reply(&stored.view.id, &call, &certified)
+                    self.save_icp_reply(&stored.view.id, call, &certified)
                         .await?;
                 }
                 IngressStatus::Rejected(_) => {
@@ -888,13 +890,15 @@ impl WalletService {
             ));
         }
         prepared.validate_original_funding(owner.as_slice())?;
-        let signed: Vec<SignedIcpStakingCall> = serde_json::from_str(
-            &stored
-                .submission
-                .as_ref()
-                .ok_or_else(|| fail("Missing original signed steps"))?
-                .payload,
-        )?;
+        let crate::send::payload::SignedPayload::IcpStaking(signed) = &stored
+            .submission
+            .as_ref()
+            .ok_or_else(|| fail("Missing original signed steps"))?
+            .payload
+        else {
+            return Err(fail("Staking was not signed as ICP ingress calls"));
+        };
+        let signed = signed.clone();
         if signed.len() != prepared.calls.len() {
             return Err(fail("Original ICP step journal is inconsistent"));
         }
@@ -1066,18 +1070,17 @@ impl WalletService {
         }
         stored.view.revision += 1;
         stored.view.review_digest = stored.digest()?;
-        self.save_send_artifact(&stored, vec![]).await?;
+        self.save_send_artifact(&stored, &[]).await?;
         Ok(stored.view)
     }
     pub(super) async fn broadcast_icp_staking_at(
         &self,
         endpoint: &str,
         artifact_id: &str,
-        payload: &str,
+        calls: &[SignedIcpStakingCall],
     ) -> Result<String, SpectraBridgeError> {
-        let calls: Vec<SignedIcpStakingCall> = serde_json::from_str(payload)?;
         let client = IcpReplicaClient::new(Arc::new(vec![endpoint.into()]));
-        for call in &calls {
+        for call in calls {
             let stored = self.load_send_artifact(artifact_id.to_string()).await?;
             if Self::saved_icp_reply(&stored, call)? {
                 continue;

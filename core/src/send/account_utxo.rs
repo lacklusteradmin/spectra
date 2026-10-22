@@ -7,6 +7,7 @@
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
+use super::payload::SignedPayload;
 use super::stages::UtxoPreparedInput;
 use super::zcash::ZcashNetworkUpgrade;
 use crate::registry::Chain;
@@ -68,7 +69,7 @@ pub(crate) struct PreparedAccountTransfer {
 /// What signing produced: the payload broadcast takes, and the transaction
 /// hash where it is known before the network says.
 pub(crate) struct SignedAccountTransfer {
-    pub payload: String,
+    pub payload: super::payload::SignedPayload,
     pub transaction_hash: Option<String>,
 }
 
@@ -84,8 +85,8 @@ impl PreparedAccountTransfer {
         }
         let mut outpoints = std::collections::HashSet::new();
         for input in &self.inputs {
-            if input.utxo.3 != input.source.script_pubkey
-                || !outpoints.insert((&input.utxo.0, input.utxo.1))
+            if input.utxo.script_pubkey != input.source.script_pubkey
+                || !outpoints.insert((&input.utxo.txid, input.utxo.vout))
             {
                 return Err(SendError::Invalid("Invalid prepared input".into()));
             }
@@ -93,7 +94,7 @@ impl PreparedAccountTransfer {
         let total_in = self
             .inputs
             .iter()
-            .try_fold(0u64, |sum, input| sum.checked_add(input.utxo.2));
+            .try_fold(0u64, |sum, input| sum.checked_add(input.utxo.value));
         let total_out = self
             .outputs
             .iter()
@@ -117,10 +118,10 @@ impl PreparedAccountTransfer {
         }
         let utxos = self.inputs.iter().map(|input| &input.utxo);
         let raw_hex = |raw: Vec<u8>| {
-            let payload = hex::encode(raw);
+            let raw = hex::encode(raw);
             SignedAccountTransfer {
-                transaction_hash: crate::send::payload::bitcoin_transaction_id(&payload),
-                payload,
+                transaction_hash: crate::send::payload::bitcoin_transaction_id(&raw),
+                payload: SignedPayload::Hex(raw),
             }
         };
         Ok(match self.protocol {
@@ -161,12 +162,12 @@ impl PreparedAccountTransfer {
                     upgrade,
                 )?;
                 SignedAccountTransfer {
-                    payload: hex::encode(raw),
+                    payload: SignedPayload::Hex(hex::encode(raw)),
                     transaction_hash: Some(txid),
                 }
             }
             AccountProtocol::Decred => SignedAccountTransfer {
-                payload: hex::encode(super::decred::sign(
+                payload: SignedPayload::Hex(hex::encode(super::decred::sign(
                     &utxos
                         .zip(keys)
                         .map(|(utxo, key)| super::decred::DecredSigningInput {
@@ -175,21 +176,23 @@ impl PreparedAccountTransfer {
                         })
                         .collect::<Vec<_>>(),
                     &self.outputs,
-                )?),
+                )?)),
                 transaction_hash: None,
             },
             AccountProtocol::Kaspa => SignedAccountTransfer {
-                payload: super::kaspa::sign(
-                    &utxos
-                        .zip(keys)
-                        .map(|(utxo, key)| super::kaspa::KaspaSigningInput {
-                            utxo,
-                            private_key: key,
-                        })
-                        .collect::<Vec<_>>(),
-                    &self.outputs,
-                )?
-                .to_string(),
+                payload: SignedPayload::Json(
+                    super::kaspa::sign(
+                        &utxos
+                            .zip(keys)
+                            .map(|(utxo, key)| super::kaspa::KaspaSigningInput {
+                                utxo,
+                                private_key: key,
+                            })
+                            .collect::<Vec<_>>(),
+                        &self.outputs,
+                    )?
+                    .to_string(),
+                ),
                 transaction_hash: None,
             },
         })

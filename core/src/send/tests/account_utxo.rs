@@ -11,7 +11,7 @@ fn transfer(
     protocol: AccountProtocol,
 ) -> (PreparedAccountTransfer, Vec<Zeroizing<Vec<u8>>>) {
     let (utxos, keys, outputs) = spend(vector);
-    let total: u64 = utxos.iter().map(|utxo| utxo.2).sum();
+    let total: u64 = utxos.iter().map(|utxo| utxo.value).sum();
     let paid: u64 = outputs.iter().map(|output| output.1).sum();
     (
         PreparedAccountTransfer {
@@ -19,9 +19,9 @@ fn transfer(
                 .into_iter()
                 .map(|utxo| UtxoPreparedInput {
                     source: UtxoSendSource {
-                        address: format!("source of {}:{}", utxo.0, utxo.1),
+                        address: format!("source of {}:{}", utxo.txid, utxo.vout),
                         derivation_path: None,
-                        script_pubkey: utxo.3.clone(),
+                        script_pubkey: utxo.script_pubkey.clone(),
                     },
                     utxo,
                 })
@@ -42,20 +42,29 @@ fn each_protocol_signs_its_vector_through_the_transfer() {
     let bitcoin = &fixtures["bitcoin"][1];
     let (prepared, keys) = transfer(bitcoin, AccountProtocol::Bitcoin);
     let signed = prepared.sign(&keys).unwrap();
-    assert_eq!(signed.payload, bitcoin["raw"].as_str().unwrap());
+    assert_eq!(
+        signed.payload.raw_hex().unwrap(),
+        bitcoin["raw"].as_str().unwrap()
+    );
     assert_eq!(signed.transaction_hash.as_deref(), bitcoin["txid"].as_str());
 
     for vector in fixtures["legacy"].as_array().unwrap() {
         let fork_id = vector["fork_id"].as_u64().map(|id| id as u32);
         let (prepared, keys) = transfer(vector, AccountProtocol::LegacyP2pkh { fork_id });
         let signed = prepared.sign(&keys).unwrap();
-        assert_eq!(signed.payload, vector["raw"].as_str().unwrap());
+        assert_eq!(
+            signed.payload.raw_hex().unwrap(),
+            vector["raw"].as_str().unwrap()
+        );
         assert_eq!(signed.transaction_hash.as_deref(), vector["txid"].as_str());
     }
 
     let (prepared, keys) = transfer(&fixtures["kaspa"], AccountProtocol::Kaspa);
-    let body: serde_json::Value =
-        serde_json::from_str(&prepared.sign(&keys).unwrap().payload).unwrap();
+    let crate::send::payload::SignedPayload::Json(body) = prepared.sign(&keys).unwrap().payload
+    else {
+        panic!("Kaspa submits a JSON body")
+    };
+    let body: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(body["transaction"]["inputs"].as_array().unwrap().len(), 3);
 
     // Fewer keys than inputs, a fee that does not balance, an input whose
@@ -66,7 +75,7 @@ fn each_protocol_signs_its_vector_through_the_transfer() {
     unbalanced.fee += 1;
     assert!(unbalanced.sign(&keys).is_err());
     let mut foreign = prepared.clone();
-    foreign.inputs[0].source.script_pubkey = foreign.inputs[1].utxo.3.clone();
+    foreign.inputs[0].source.script_pubkey = foreign.inputs[1].utxo.script_pubkey.clone();
     foreign.inputs[0].source.script_pubkey[5] ^= 1;
     assert!(foreign.sign(&keys).is_err());
 }

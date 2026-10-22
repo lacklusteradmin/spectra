@@ -289,7 +289,7 @@ impl WalletService {
             icp_staking_receipts: vec![],
         };
         stored.view.review_digest = stored.digest()?;
-        self.save_send_artifact(&stored, Vec::new()).await?;
+        self.save_send_artifact(&stored, &[]).await?;
         Ok(stored.view)
     }
 }

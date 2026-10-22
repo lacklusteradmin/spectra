@@ -556,7 +556,7 @@ impl WalletService {
         }
         stored.body = SessionBody::Ton(refreshed);
         if executes {
-            stored.submitted_txid = Some(sent.message_hash);
+            stored.submitted_txid = Some(sent);
         }
         Ok(())
     }

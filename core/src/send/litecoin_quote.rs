@@ -35,9 +35,11 @@ pub(crate) fn quote_inputs(
         return Ok(None);
     }
     let total =
-        super::litecoin::validate_ltc_values(chain, inputs.iter().map(|input| input.utxo.2))?;
+        super::litecoin::validate_ltc_values(chain, inputs.iter().map(|input| input.utxo.value))?;
     let size = super::litecoin::estimate_ltc_vsize(
-        inputs.iter().map(|input| input.utxo.3.as_slice()),
+        inputs
+            .iter()
+            .map(|input| input.utxo.script_pubkey.as_slice()),
         recipient_len,
         Some(change_script),
     )?;
@@ -106,7 +108,7 @@ mod tests {
                 derivation_path: None,
                 script_pubkey: script.clone(),
             },
-            utxo: ("11".repeat(32), 0, value, script),
+            utxo: crate::api::utxo::UtxoInput::fixture(&"11".repeat(32), 0, value, script),
         }
     }
 
@@ -130,20 +132,23 @@ mod tests {
                     .unwrap()
                     .script_pubkey();
                 let estimated_size = crate::send::litecoin::estimate_ltc_vsize(
-                    [input.utxo.3.as_slice()],
+                    [input.utxo.script_pubkey.as_slice()],
                     recipient.len(),
-                    Some(&input.utxo.3),
+                    Some(&input.utxo.script_pubkey),
                 )
                 .unwrap();
                 let base_fee = estimated_size * 2;
-                let dust =
-                    crate::send::litecoin::litecoin_dust_threshold(chain, &input.utxo.3).unwrap();
+                let dust = crate::send::litecoin::litecoin_dust_threshold(
+                    chain,
+                    &input.utxo.script_pubkey,
+                )
+                .unwrap();
                 for change in [0, dust - 1, dust, dust + 1] {
-                    let amount = input.utxo.2 - base_fee - change;
+                    let amount = input.utxo.value - base_fee - change;
                     let preview = quote_inputs(
                         chain,
                         std::slice::from_ref(&input),
-                        &input.utxo.3,
+                        &input.utxo.script_pubkey,
                         &destination,
                         amount,
                         2,
@@ -156,7 +161,7 @@ mod tests {
                         matches!(preview.terms, SendFeeTerms::Utxo { uses_change_output, .. } if uses_change_output == uses_change)
                     );
                     assert_eq!(fee, base_fee + if uses_change { 0 } else { change });
-                    assert_eq!(units(&preview.max_sendable), input.utxo.2 - base_fee);
+                    assert_eq!(units(&preview.max_sendable), input.utxo.value - base_fee);
                     let raw = crate::send::litecoin::sign_ltc_with_output_script(
                         chain,
                         std::slice::from_ref(&input.utxo),
@@ -172,7 +177,7 @@ mod tests {
                     assert_eq!(transaction.output.len(), if uses_change { 2 } else { 1 });
                     let output_total: u64 =
                         transaction.output.iter().map(|o| o.value.to_sat()).sum();
-                    assert_eq!(input.utxo.2 - output_total, fee);
+                    assert_eq!(input.utxo.value - output_total, fee);
                     assert!(transaction.vsize() as u64 <= estimated_size);
                 }
             }
@@ -184,12 +189,12 @@ mod tests {
         let chain = Chain::Litecoin;
         let input = prepared_input(chain, BitcoinScriptType::P2wpkh, 10);
         assert!(
-            quote_inputs(chain, &[], &input.utxo.3, "", 0, 1)
+            quote_inputs(chain, &[], &input.utxo.script_pubkey, "", 0, 1)
                 .unwrap()
                 .is_none()
         );
-        assert!(quote_inputs(chain, &[], &input.utxo.3, "invalid", 0, 1).is_err());
-        let change_script = input.utxo.3.clone();
+        assert!(quote_inputs(chain, &[], &input.utxo.script_pubkey, "invalid", 0, 1).is_err());
+        let change_script = input.utxo.script_pubkey.clone();
         let preview = quote_inputs(chain, &[input], &change_script, "", 10, 1)
             .unwrap()
             .unwrap();
@@ -215,13 +220,16 @@ mod tests {
             BitcoinScriptType::P2wpkh,
         ] {
             let recipient = prepared_input(chain, script_type, 1);
-            let dust =
-                crate::send::litecoin::litecoin_dust_threshold(chain, &recipient.utxo.3).unwrap();
+            let dust = crate::send::litecoin::litecoin_dust_threshold(
+                chain,
+                &recipient.utxo.script_pubkey,
+            )
+            .unwrap();
             let quote = |amount| {
                 quote_inputs(
                     chain,
                     std::slice::from_ref(&input),
-                    &input.utxo.3,
+                    &input.utxo.script_pubkey,
                     &recipient.source.address,
                     amount,
                     1,
@@ -233,9 +241,16 @@ mod tests {
             assert!(quote(0).unwrap().is_some());
         }
         assert!(
-            quote_inputs(chain, std::slice::from_ref(&input), &input.utxo.3, "", 1, 1)
-                .unwrap()
-                .is_some()
+            quote_inputs(
+                chain,
+                std::slice::from_ref(&input),
+                &input.utxo.script_pubkey,
+                "",
+                1,
+                1
+            )
+            .unwrap()
+            .is_some()
         );
     }
 
@@ -245,19 +260,20 @@ mod tests {
         let mut input = prepared_input(chain, BitcoinScriptType::P2wpkh, 100_000);
         let recipient = prepared_input(chain, BitcoinScriptType::P2pkh, 1);
         let dust =
-            crate::send::litecoin::litecoin_dust_threshold(chain, &recipient.utxo.3).unwrap();
+            crate::send::litecoin::litecoin_dust_threshold(chain, &recipient.utxo.script_pubkey)
+                .unwrap();
         let size = crate::send::litecoin::estimate_ltc_vsize(
-            [input.utxo.3.as_slice()],
-            recipient.utxo.3.len(),
-            Some(&input.utxo.3),
+            [input.utxo.script_pubkey.as_slice()],
+            recipient.utxo.script_pubkey.len(),
+            Some(&input.utxo.script_pubkey),
         )
         .unwrap();
         for (available, maximum) in [(dust + size - 1, 0), (dust + size, dust)] {
-            input.utxo.2 = available;
+            input.utxo.value = available;
             let preview = quote_inputs(
                 chain,
                 std::slice::from_ref(&input),
-                &input.utxo.3,
+                &input.utxo.script_pubkey,
                 &recipient.source.address,
                 0,
                 1,
@@ -270,7 +286,7 @@ mod tests {
             quote_inputs(
                 chain,
                 std::slice::from_ref(&input),
-                &input.utxo.3,
+                &input.utxo.script_pubkey,
                 "",
                 chain.litecoin_max_money().unwrap() + 1,
                 1,
@@ -287,7 +303,7 @@ mod tests {
         let preview = quote_inputs(
             chain,
             std::slice::from_ref(&input),
-            &input.utxo.3,
+            &input.utxo.script_pubkey,
             "",
             maximum,
             1,
@@ -301,19 +317,27 @@ mod tests {
             quote_inputs(
                 chain,
                 std::slice::from_ref(&input),
-                &input.utxo.3,
+                &input.utxo.script_pubkey,
                 "",
                 1,
                 u64::MAX,
             )
             .is_err()
         );
-        input.utxo.2 = maximum + 1;
+        input.utxo.value = maximum + 1;
         assert!(
-            quote_inputs(chain, std::slice::from_ref(&input), &input.utxo.3, "", 1, 1,).is_err()
+            quote_inputs(
+                chain,
+                std::slice::from_ref(&input),
+                &input.utxo.script_pubkey,
+                "",
+                1,
+                1,
+            )
+            .is_err()
         );
-        input.utxo.2 = 0;
-        let change_script = input.utxo.3.clone();
+        input.utxo.value = 0;
+        let change_script = input.utxo.script_pubkey.clone();
         assert!(quote_inputs(chain, &[input], &change_script, "", 1, 1).is_err());
     }
 }

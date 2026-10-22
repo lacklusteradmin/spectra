@@ -111,7 +111,7 @@ pub(crate) fn estimate_ltc_vsize<'a>(
 
 /// One discovered or imported input paired with its own signing key.
 pub(crate) struct LtcSigningInput<'a> {
-    pub utxo: &'a (String, u32, u64, Vec<u8>),
+    pub utxo: &'a crate::api::utxo::UtxoInput,
     pub private_key: &'a [u8],
 }
 
@@ -134,7 +134,7 @@ pub(crate) fn sign_ltc_inputs_with_output_script(
             "Litecoin recipient amount is below the dust threshold".into(),
         ));
     }
-    let total = validate_ltc_values(chain, inputs.iter().map(|input| input.utxo.2))?;
+    let total = validate_ltc_values(chain, inputs.iter().map(|input| input.utxo.value))?;
     let change = super::accounting::checked_change([total], amount_sat, fee_sat)?;
     let (change_kind, change_script) = sender_script(chain, change_address)?;
     let change_dust = litecoin_dust_threshold(chain, change_script.as_bytes())?;
@@ -147,7 +147,7 @@ pub(crate) fn sign_ltc_inputs_with_output_script(
     change_kind.validate_key(&change_script, &change_key)?;
 
     for input in inputs {
-        litecoin_kind(Script::from_bytes(&input.utxo.3))?;
+        litecoin_kind(Script::from_bytes(&input.utxo.script_pubkey))?;
     }
     let mut outputs = vec![(to_script.to_vec(), amount_sat)];
     if change > 0 && change >= change_dust {
@@ -173,7 +173,7 @@ pub(crate) fn sign_ltc_inputs_with_output_script(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn sign_ltc_with_output_script(
     chain: Chain,
-    utxos: &[(String, u32, u64, Vec<u8>)],
+    utxos: &[crate::api::utxo::UtxoInput],
     to_script: &[u8],
     amount_sat: u64,
     fee_sat: u64,
