@@ -1,7 +1,12 @@
-//! NEAR native, NEP-141 and staking share protocol admission-fee accounting.
+//! NEAR: native, NEP-141 and staking sends share protocol admission-fee
+//! accounting, and their staged transactions are built, revalidated, signed
+//! and expired here.
+use super::send_stage_protocols::StagedAmount;
 use super::*;
 use crate::api::endpoint::EndpointApi;
+use crate::send::payload::SignedPayload;
 use crate::send::stages::{PreparedPayload, StoredSend};
+use base64::{Engine, engine::general_purpose::STANDARD};
 
 pub(super) struct NearSendQuote {
     pub budget: u128,
@@ -229,3 +234,235 @@ impl WalletService {
 #[cfg(test)]
 #[path = "tests/send_near.rs"]
 mod send_near_tests;
+
+impl WalletService {
+    /// Recheck a prepared NEAR transaction against the chain.
+    pub(super) async fn validate_near_state(
+        &self,
+        stored: &StoredSend,
+    ) -> Result<(), SpectraBridgeError> {
+        match &stored.prepared {
+            PreparedPayload::Near { .. } => self.validate_near_transfer_state(stored).await?,
+            // Staking is validated apart; a NEAR call that is not staking is
+            // a storage refund.
+            PreparedPayload::NearFunctionCall(prepared) => {
+                self.validate_token_storage_refund(stored, prepared).await?
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub(super) async fn prepare_near(
+        &self,
+        chain: Chain,
+        request: &mut crate::send::SendExecutionRequest,
+        sender: &str,
+        staged: StagedAmount,
+    ) -> Result<PreparedPayload, SpectraBridgeError> {
+        let StagedAmount { eps, amount, .. } = staged;
+        let to = request.to_address.as_str();
+        Ok(match chain.mainnet_counterpart() {
+            Chain::Near => {
+                let client = NearClient::new(eps);
+                client.verify_network(chain).await?;
+                let quote = self
+                    .near_send_quote(
+                        chain,
+                        sender,
+                        to,
+                        amount,
+                        request.contract_address.as_deref(),
+                    )
+                    .await?;
+                if let Some(reviewed) = &request.fee_amount
+                    && crate::amount::input::parse_raw_amount(
+                        reviewed,
+                        u32::from(chain.native_decimals()),
+                    )? < quote.budget
+                {
+                    return Err(SpectraBridgeError::invalid(
+                        "NEAR fee exceeds reviewed budget; review again",
+                    ));
+                }
+                let required = quote.required(amount, request.contract_address.is_none())?;
+                if quote.spendable < required {
+                    return Err(SpectraBridgeError::invalid(
+                        "Insufficient spendable NEAR for amount, protocol fee and storage stake",
+                    ));
+                }
+                if quote.token_balance.is_some_and(|balance| balance < amount) {
+                    return Err(SpectraBridgeError::invalid("Insufficient NEP-141 balance"));
+                }
+                request.fee_amount = Some(crate::amount::decimal::from_units(
+                    quote.budget,
+                    u32::from(chain.native_decimals()),
+                ));
+                let public_key: [u8; 32] =
+                    if sender.len() == 64 && sender.bytes().all(|b| b.is_ascii_hexdigit()) {
+                        hex::decode(sender)?
+                            .try_into()
+                            .map_err(|_| SpectraBridgeError::failure("Invalid NEAR public key"))?
+                    } else {
+                        // A named account signs with the key recorded at import,
+                        // whichever other full-access keys it has.
+                        super::wallet_near_keys::near_signing_key(
+                            &self.stored_wallet(&request.wallet_id).await?,
+                            sender,
+                        )?
+                    };
+                let nonce = client
+                    .fetch_full_access_key_nonce(sender, &bs58::encode(public_key).into_string())
+                    .await?
+                    .checked_add(1)
+                    .ok_or_else(|| SpectraBridgeError::failure("Nonce exhausted"))?;
+                let block_hash = crate::derivation::solana::decode_b58_32(
+                    &client.fetch_latest_block_hash().await?,
+                )?;
+                PreparedPayload::Near {
+                    public_key,
+                    nonce,
+                    block_hash,
+                    amount,
+                    token_contract: request.contract_address.clone(),
+                    fee_budget: quote.budget.to_string(),
+                    registration_deposit: quote.registration.map(|deposit| deposit.to_string()),
+                }
+            }
+            _ => {
+                return Err(SpectraBridgeError::failure("Not a NEAR network"));
+            }
+        })
+    }
+
+    pub(super) async fn sign_staged_near(
+        &self,
+        chain: Chain,
+        stored: &StoredSend,
+        signer: &super::send_identity::ResolvedSendIdentity,
+    ) -> Result<(SignedPayload, Option<String>), SpectraBridgeError> {
+        let eps = self
+            .endpoints_for(chain, &[EndpointCapability::Verification])
+            .await;
+        let seed = || crate::send::keys::Ed25519Seed::from_hex(&signer.private_key_hex);
+        Ok(match &stored.prepared {
+            PreparedPayload::NearDeleteKey(p) => {
+                if !NearClient::new(eps)
+                    .transaction_block_is_valid(chain, &p.block_hash)
+                    .await?
+                {
+                    return Err(SpectraBridgeError::invalid(
+                        "NEAR block reference is stale; review again",
+                    ));
+                }
+                let (raw, hash) = p.sign(&seed()?)?;
+                (SignedPayload::Base64(STANDARD.encode(raw)), Some(hash))
+            }
+            PreparedPayload::NearFunctionCall(p) => {
+                if !NearClient::new(eps)
+                    .transaction_block_is_valid(chain, &p.block_hash)
+                    .await?
+                {
+                    return Err(SpectraBridgeError::invalid(
+                        "NEAR block reference is stale; review again",
+                    ));
+                }
+                let (raw, hash) = p.sign(&seed()?)?;
+                (SignedPayload::Base64(STANDARD.encode(raw)), Some(hash))
+            }
+            PreparedPayload::Near {
+                public_key,
+                nonce,
+                block_hash,
+                amount,
+                token_contract,
+                registration_deposit,
+                ..
+            } => {
+                let client = NearClient::new(eps);
+                if seed()?.public_key() != *public_key
+                    || client
+                        .fetch_full_access_key_nonce(
+                            &stored.view.sender,
+                            &bs58::encode(public_key).into_string(),
+                        )
+                        .await?
+                        .checked_add(1)
+                        != Some(*nonce)
+                    || !client.transaction_block_is_valid(chain, block_hash).await?
+                {
+                    return Err(crate::error::SpectraBridgeError::failure(
+                        "NEAR signer, nonce or block reference is stale; build and review again",
+                    ));
+                }
+                let bytes = zeroize::Zeroizing::new(hex::decode(signer.private_key_hex.as_str())?);
+                let key: &[u8; 32] = bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| SpectraBridgeError::failure("Invalid NEAR seed"))?;
+                let raw = if let Some(contract) = token_contract {
+                    crate::send::near::build_near_function_call_tx(
+                        &stored.view.sender,
+                        public_key,
+                        *nonce,
+                        contract,
+                        &crate::send::near::nep141_transfer_calls(
+                            &stored.view.recipient,
+                            *amount,
+                            registration_deposit
+                                .as_deref()
+                                .map(str::parse)
+                                .transpose()
+                                .map_err(SpectraBridgeError::invalid)?,
+                            chain.near_token_gas_limit().unwrap(),
+                        )?,
+                        block_hash,
+                        key,
+                    )?
+                } else {
+                    crate::send::near::build_near_transfer_tx(
+                        &stored.view.sender,
+                        public_key,
+                        *nonce,
+                        &stored.view.recipient,
+                        *amount,
+                        block_hash,
+                        key,
+                    )?
+                };
+                let hash = crate::send::near::signed_transaction_hash(&raw)?;
+                (SignedPayload::Base64(STANDARD.encode(raw)), Some(hash))
+            }
+            _ => {
+                return Err(SpectraBridgeError::failure("Not a NEAR transaction"));
+            }
+        })
+    }
+
+    /// Whether a signed NEAR transaction can no longer land.
+    pub(super) async fn near_signature_expired(
+        &self,
+        chain: Chain,
+        stored: &StoredSend,
+    ) -> Result<bool, SpectraBridgeError> {
+        let endpoints = self
+            .endpoints_for(chain, &[EndpointCapability::Verification])
+            .await;
+        let Some(block_hash) = near_block_hash(&stored.prepared) else {
+            return Ok(false);
+        };
+        Ok(!NearClient::new(endpoints)
+            .transaction_block_is_valid(chain, block_hash)
+            .await?)
+    }
+}
+
+/// The block a NEAR transaction references, which expires it.
+fn near_block_hash(prepared: &PreparedPayload) -> Option<&[u8; 32]> {
+    match prepared {
+        PreparedPayload::Near { block_hash, .. } => Some(block_hash),
+        PreparedPayload::NearFunctionCall(p) => Some(&p.block_hash),
+        PreparedPayload::NearDeleteKey(p) => Some(&p.block_hash),
+        _ => None,
+    }
+}

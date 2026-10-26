@@ -25,10 +25,6 @@ symptom, and delete the item with the change.
 
 ### Core
 
-- [ ] **`send_stage_protocols.rs` is four chain ladders** (prepare, validate,
-  sign, expiry) with copied XRP/Stellar sequence checks and NEAR expiry arms.
-  Split it per protocol, as `send_near.rs` and `send_stage_litecoin.rs`
-  already are.
 - [ ] **Token standards are strings.** About 140 literals across 16 files,
   the closed set spelled five times, a `"Native"` sentinel, and the
   deployment id format built in six places. Add a `TokenStandard` enum and
