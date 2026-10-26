@@ -1,6 +1,6 @@
 use super::*;
 use crate::api::endpoint::EndpointApi;
-use crate::api::error::{ApiError, OrDecode};
+use crate::api::error::ApiError;
 use crate::send::payload::{PreparedSubmission, SignedPayload};
 use crate::send::payment_memo::PaymentMemo;
 use crate::send::stages::*;
@@ -78,26 +78,17 @@ impl WalletService {
                         .await,
                     chain.evm_chain_id()?,
                 );
-                let nonce =
-                    if stored
-                        .request
-                        .evm_overrides
-                        .as_ref()
-                        .and_then(|overrides| overrides.nonce)
-                        .is_some()
-                    {
-                        let response = client
-                            .call(
-                                "eth_getTransactionCount",
-                                json!([stored.view.sender, "latest"]),
-                            )
-                            .await?;
-                        crate::api::evm_json_rpc::parse_hex_u64(response.as_str().ok_or_else(
-                            || SpectraBridgeError::failure("Missing confirmed nonce"),
-                        )?)?
-                    } else {
-                        client.fetch_nonce(&stored.view.sender).await?
-                    };
+                let nonce = if stored
+                    .request
+                    .evm_overrides
+                    .as_ref()
+                    .and_then(|overrides| overrides.nonce)
+                    .is_some()
+                {
+                    client.fetch_latest_nonce(&stored.view.sender).await?
+                } else {
+                    client.fetch_nonce(&stored.view.sender).await?
+                };
                 if prepared.chain_id != chain.evm_chain_id()? || nonce > prepared.nonce {
                     return Err(SpectraBridgeError::failure(
                         "Prepared nonce or network is stale; build and review again",
@@ -130,12 +121,8 @@ impl WalletService {
                     )
                     .await,
                 );
-                let expected = chain
-                    .aptos_chain_id()
-                    .ok_or_else(|| SpectraBridgeError::failure("Missing Aptos network identity"))?;
-                if client.fetch_ledger_info().await?.0 != u64::from(expected)
-                    || prepared.chain_id() != Some(expected)
-                {
+                client.verify_network(chain).await?;
+                if prepared.chain_id() != chain.aptos_chain_id() {
                     return Err(SpectraBridgeError::failure(
                         "Aptos endpoint or prepared transaction is on the wrong network",
                     ));
@@ -1079,14 +1066,10 @@ impl WalletService {
                     .ok_or_else(|| SpectraBridgeError::invalid("Invalid fee"))?;
                 let client = AptosClient::new(eps);
                 let sequence = client.fetch_account_info(sender).await?.0;
+                client.verify_network(chain).await?;
                 let network = chain
                     .aptos_chain_id()
                     .ok_or_else(|| SpectraBridgeError::failure("Missing Aptos network identity"))?;
-                if client.fetch_ledger_info().await?.0 != u64::from(network) {
-                    return Err(SpectraBridgeError::failure(
-                        "Aptos endpoint is on the wrong network",
-                    ));
-                }
                 let balance = AptosClient::new(
                     self.endpoints_for(chain, &[EndpointCapability::Balance])
                         .await,
@@ -1668,13 +1651,10 @@ impl WalletService {
             }
             PreparedPayload::SolanaAccountClosure(closure) => {
                 let p = &closure.transaction;
-                let valid = SolanaClient::new(eps)
-                    .call(
-                        "isBlockhashValid",
-                        json!([p.blockhash, {"commitment":"confirmed"}]),
-                    )
-                    .await?;
-                if valid["value"].as_bool() != Some(true) {
+                if !SolanaClient::new(eps)
+                    .blockhash_is_valid(&p.blockhash)
+                    .await?
+                {
                     return Err(SpectraBridgeError::failure(
                         "Solana blockhash expired; build and review again",
                     ));
@@ -1686,14 +1666,10 @@ impl WalletService {
                 )
             }
             PreparedPayload::Solana(p) => {
-                let client = SolanaClient::new(eps);
-                let valid = client
-                    .call(
-                        "isBlockhashValid",
-                        json!([p.blockhash, {"commitment":"confirmed"}]),
-                    )
-                    .await?;
-                if valid["value"].as_bool() != Some(true) {
+                if !SolanaClient::new(eps)
+                    .blockhash_is_valid(&p.blockhash)
+                    .await?
+                {
                     return Err(SpectraBridgeError::failure(
                         "Solana blockhash expired; build and review again",
                     ));
@@ -1785,7 +1761,12 @@ impl WalletService {
         chain: Chain,
         endpoint: &str,
     ) -> Result<(), ApiError> {
-        let wrong_network = || ApiError::invalid("Endpoint is on the wrong network");
+        let api = self.endpoint_api(chain, endpoint).await;
+        if crate::api::network::verify_network(chain, api, endpoint).await? {
+            return Ok(());
+        }
+        // A network core cannot ask who it is: only a catalog endpoint, whose
+        // network was checked when it was added, is trusted to be it.
         let known = crate::catalog::endpoints::catalog()
             .records
             .iter()
@@ -1794,77 +1775,7 @@ impl WalletService {
                     && chain.endpoint_apis().contains(&r.api)
                     && r.endpoint.trim_end_matches('/') == endpoint.trim_end_matches('/')
             });
-        let eps = Arc::new(vec![endpoint.to_string()]);
-        if chain.is_evm() {
-            let actual = EvmClient::new(eps, chain.evm_chain_id()?)
-                .call("eth_chainId", json!([]))
-                .await?;
-            if crate::api::evm_json_rpc::parse_hex_u64(
-                actual
-                    .as_str()
-                    .or_decode("Missing endpoint network identity")?,
-            )? != chain.evm_chain_id()?
-            {
-                return Err(wrong_network());
-            }
-        } else if matches!(
-            chain.mainnet_counterpart(),
-            Chain::Polkadot | Chain::Bittensor
-        ) {
-            SubstrateClient::new(eps).polkadot_context(chain).await?;
-        } else if chain.mainnet_counterpart() == Chain::Sui {
-            SuiClient::new(eps).verify_network(chain).await?;
-        } else if chain.mainnet_counterpart() == Chain::Solana {
-            SolanaClient::new(eps).verify_network(chain).await?;
-        } else if chain.mainnet_counterpart() == Chain::Near {
-            NearClient::new(eps).verify_network(chain).await?;
-        } else if chain.mainnet_counterpart() == Chain::Stellar {
-            HorizonClient::new(eps).verify_network(chain).await?;
-        } else if chain.mainnet_counterpart() == Chain::Xrp {
-            XrplClient::new(eps).verify_network(chain).await?;
-        } else if chain.mainnet_counterpart() == Chain::Cardano {
-            KoiosClient::new(eps).verify_network(chain).await?;
-        } else if chain.mainnet_counterpart() == Chain::Tron {
-            TronHttpClient::new(eps).verify_network(chain).await?;
-        } else if chain.mainnet_counterpart() == Chain::Ton {
-            ToncenterV2Client::new(eps).verify_network(chain).await?;
-        } else if chain.mainnet_counterpart() == Chain::Aptos {
-            let expected = chain
-                .aptos_chain_id()
-                .or_decode("Missing Aptos network identity")?;
-            if AptosClient::new(eps).fetch_ledger_info().await?.0 != u64::from(expected) {
-                return Err(wrong_network());
-            }
-        } else if chain.mainnet_counterpart() == Chain::Zcash {
-            BlockbookClient::new(eps, chain).zcash_context().await?;
-        } else if chain.mainnet_counterpart() == Chain::Peercoin {
-            BlockbookClient::new(eps, chain)
-                .verify_peercoin_network()
-                .await?;
-        } else if matches!(
-            chain.mainnet_counterpart(),
-            Chain::Litecoin | Chain::Bitcoin
-        ) {
-            // The indexer names the network's genesis block at height 0.
-            let api = self
-                .endpoint_api(chain, endpoint)
-                .await
-                .ok_or_else(|| ApiError::invalid("Endpoint is not this network's indexer"))?;
-            let client = crate::api::utxo::UtxoClient::new(
-                chain,
-                vec![crate::api::endpoint::Endpoint {
-                    api,
-                    url: endpoint.to_string(),
-                }],
-            );
-            if client.fetch_block_hash(0).await? != chain.genesis_block_hash()? {
-                return Err(wrong_network());
-            }
-        } else if chain == Chain::Icp {
-            IcpClient::new(eps).verify_network().await?;
-        } else if chain.mainnet_counterpart() == Chain::Monero {
-            crate::api::monero_daemon_rpc::daemon(endpoint, chain).await?;
-        } else if !known {
+        if !known {
             return Err(ApiError::invalid(
                 "Endpoint network and broadcast capability cannot be verified",
             ));
@@ -1961,24 +1872,14 @@ impl WalletService {
                 expiry != 0 && tip >= expiry
             }
             PreparedPayload::Solana(p) => {
-                SolanaClient::new(endpoints)
-                    .call(
-                        "isBlockhashValid",
-                        json!([p.blockhash, {"commitment":"confirmed"}]),
-                    )
-                    .await?["value"]
-                    .as_bool()
-                    != Some(true)
+                !SolanaClient::new(endpoints)
+                    .blockhash_is_valid(&p.blockhash)
+                    .await?
             }
             PreparedPayload::SolanaAccountClosure(p) => {
-                SolanaClient::new(endpoints)
-                    .call(
-                        "isBlockhashValid",
-                        json!([p.transaction.blockhash, {"commitment":"confirmed"}]),
-                    )
-                    .await?["value"]
-                    .as_bool()
-                    != Some(true)
+                !SolanaClient::new(endpoints)
+                    .blockhash_is_valid(&p.transaction.blockhash)
+                    .await?
             }
             _ => false,
         };

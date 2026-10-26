@@ -1,4 +1,3 @@
-use crate::api::error::{ApiError, OrDecode};
 use crate::registry::Chain;
 use crate::validation::address::validate_address;
 use serde::{Deserialize, Serialize};
@@ -155,12 +154,6 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
     results
 }
 
-async fn fetch_eth_rpc_hex(url: &str, method: &str) -> Result<u64, ApiError> {
-    let client = crate::api::evm_json_rpc::EvmClient::new(std::sync::Arc::new(vec![url.into()]), 0);
-    let result = client.call(method, serde_json::json!([])).await?;
-    crate::api::evm_json_rpc::parse_hex_u64(result.as_str().or_decode("expected a hex quantity")?)
-}
-
 /// Check that an endpoint serves the chain it was configured for, and that it
 /// has a block height.
 ///
@@ -183,8 +176,10 @@ pub(crate) async fn self_tests_run_evm_rpc(
     };
     let label = chain.chain_display_name();
     let expected = chain.evm_chain_id().expect("EVM chain filtered above");
-    let reported = fetch_eth_rpc_hex(&rpc_url, "eth_chainId").await;
-    let block = fetch_eth_rpc_hex(&rpc_url, "eth_blockNumber").await;
+    let client =
+        crate::api::evm_json_rpc::EvmClient::new(std::sync::Arc::new(vec![rpc_url]), expected);
+    let reported = client.fetch_chain_id().await;
+    let block = client.fetch_block_number().await;
     match (reported, block) {
         (Ok(reported), Ok(latest_block)) => vec![
             ChainSelfTestResult {

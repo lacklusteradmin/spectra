@@ -168,12 +168,7 @@ impl WalletService {
             self.endpoints_for(chain, &[EndpointCapability::Verification])
                 .await,
         );
-        let (ledger_chain, _) = client.fetch_ledger_info().await?;
-        if Some(ledger_chain) != chain.aptos_chain_id().map(u64::from) {
-            return Err(SpectraBridgeError::invalid(
-                "The Aptos endpoint is on another network.",
-            ));
-        }
+        client.verify_network(chain).await?;
         Ok(client)
     }
 

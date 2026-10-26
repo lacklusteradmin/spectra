@@ -148,7 +148,11 @@ impl EvmClient {
         }
     }
 
-    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
+    pub(in crate::api) async fn call(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
             EndpointApi::EvmJsonRpc,
             &self.client,
@@ -373,6 +377,46 @@ impl EvmClient {
         Ok(EvmBalance {
             balance_wei: wei.to_string(),
         })
+    }
+
+    /// The EIP-155 chain id the node reports.
+    pub(crate) async fn fetch_chain_id(&self) -> Result<u64, ApiError> {
+        self.fetch_quantity("eth_chainId").await
+    }
+
+    /// The node's latest block number.
+    pub(crate) async fn fetch_block_number(&self) -> Result<u64, ApiError> {
+        self.fetch_quantity("eth_blockNumber").await
+    }
+
+    async fn fetch_quantity(&self, method: &str) -> Result<u64, ApiError> {
+        let result = self.call(method, json!([])).await?;
+        parse_hex_u64(
+            result
+                .as_str()
+                .ok_or_else(|| ApiError::decode(format!("{method}: expected a hex quantity")))?,
+        )
+    }
+
+    /// Refuses a node whose EIP-155 chain id is not the one this client signs for.
+    pub(crate) async fn verify_network(&self) -> Result<(), ApiError> {
+        if self.fetch_chain_id().await? != self.chain_id {
+            return Err(ApiError::invalid("Endpoint is on the wrong network"));
+        }
+        Ok(())
+    }
+
+    /// The next nonce counting only mined transactions, where
+    /// [`EvmClient::fetch_nonce`] counts the pool's too.
+    pub(crate) async fn fetch_latest_nonce(&self, address: &str) -> Result<u64, ApiError> {
+        let result = self
+            .call("eth_getTransactionCount", json!([address, "latest"]))
+            .await?;
+        parse_hex_u64(
+            result
+                .as_str()
+                .or_decode("eth_getTransactionCount: expected string")?,
+        )
     }
 
     pub async fn fetch_nonce(&self, address: &str) -> Result<u64, ApiError> {

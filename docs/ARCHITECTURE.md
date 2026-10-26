@@ -247,9 +247,14 @@ panic when broken, since a broken embedded file is a build defect.
   parsed them. `service/network_history.rs` picks a chain's adapter and gives
   each entry its asset identity as a `NormalizedHistoryItem`; nothing is
   serialized to be read back by field name.
-- `service/network.rs` owns endpoint health and status probes. Its siblings
-  `network_balance`, `network_tokens`, `network_history` and
-  `network_prices` own the corresponding reads and dispatch.
+- `api/network.rs` proves an endpoint is the network it is configured for,
+  through each client's own `verify_network`, before core signs or submits
+  through it; `api/health.rs` holds the read-only health probes. Neither
+  decides policy: `service/network.rs` runs the probes and records them, and
+  the send stages decide that only a catalog endpoint may skip a network
+  core cannot ask. Its siblings `network_balance`, `network_tokens`,
+  `network_history` and `network_prices` own the corresponding reads and
+  dispatch.
 - `service/history_refresh.rs` reads an account UTXO wallet's history over
   every address its account is known to hold. `service/bitcoin_history.rs`
   owns provider pagination and buffered block-cohort aggregation; a display

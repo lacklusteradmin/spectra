@@ -251,6 +251,20 @@ impl AptosClient {
         Ok(Some((sequence, key)))
     }
 
+    /// Refuses a node whose ledger belongs to another network.
+    pub(crate) async fn verify_network(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<(), ApiError> {
+        let expected = chain
+            .aptos_chain_id()
+            .or_decode("Missing Aptos network identity")?;
+        if self.fetch_ledger_info().await?.0 != u64::from(expected) {
+            return Err(ApiError::invalid("Aptos endpoint is on the wrong network"));
+        }
+        Ok(())
+    }
+
     pub async fn fetch_ledger_info(&self) -> Result<(u64, String), ApiError> {
         let resp: Value = self.get("/").await?;
         let chain_id: u64 = resp

@@ -1,8 +1,8 @@
-//! Read-only protocol checks against the endpoint actually configured.
-use crate::api::endpoint::{EndpointApi, EndpointCapability};
+//! Read-only protocol checks against the endpoint actually configured: does
+//! it answer, and as the network it is configured for.
+use crate::api::endpoint::{Endpoint, EndpointApi, EndpointCapability};
 use crate::api::error::ApiError;
 use crate::api::http::{HttpClient, RetryProfile};
-use crate::catalog::endpoints::EndpointRecord;
 use crate::registry::{Chain, EvmHistorySource};
 use serde_json::{Value, json};
 
@@ -133,10 +133,14 @@ impl Check {
     }
 }
 
-fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError> {
+fn checks(
+    chain: Chain,
+    endpoint: &Endpoint,
+    capabilities: &[EndpointCapability],
+) -> Result<Vec<Check>, ApiError> {
     use EndpointApi::*;
-    let api = record.api;
-    let base = record.endpoint.trim_end_matches('/');
+    let api = endpoint.api;
+    let base = endpoint.url.trim_end_matches('/');
     let get = |suffix: &str, field| Check::get(format!("{base}{suffix}"), Response::Field(field));
     let rpc = |method: &str| Check::rpc(base, method, json!([]), Response::RpcValue);
     let checks = match api {
@@ -153,7 +157,7 @@ fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError>
         MoneroDaemonRpc => vec![Check::rpc(&format!("{base}/json_rpc"), "get_info", json!({}), Response::Monero)],
         Esplora => vec![Check::get(format!("{base}/blocks/tip/height"), Response::Height)],
         Blockscout => ["txlist", "tokentx"].into_iter()
-            .filter(|action| record.capabilities.contains(&if *action == "txlist" { EndpointCapability::History } else { EndpointCapability::TokenHistory }))
+            .filter(|action| capabilities.contains(&if *action == "txlist" { EndpointCapability::History } else { EndpointCapability::TokenHistory }))
             .map(|action| crate::api::blockscout::explorer_query_url(
                 EvmHistorySource::Open(base),
                 &format!("module=account&action={action}&address={ZERO_EVM}&sort=desc&page=1&offset=1"),
@@ -198,10 +202,16 @@ fn checks(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError>
     Ok(checks)
 }
 
-pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool, String) {
-    if record.api == EndpointApi::Blockbook && chain.mainnet_counterpart() == Chain::Peercoin {
+/// Whether `endpoint` was checked at all, whether it passed, and what was
+/// found.
+pub(crate) async fn probe(
+    chain: Chain,
+    endpoint: &Endpoint,
+    capabilities: &[EndpointCapability],
+) -> (bool, bool, String) {
+    if endpoint.api == EndpointApi::Blockbook && chain.mainnet_counterpart() == Chain::Peercoin {
         return match crate::api::blockbook::BlockbookClient::new(
-            std::sync::Arc::new(vec![record.endpoint.clone()]),
+            std::sync::Arc::new(vec![endpoint.url.clone()]),
             chain,
         )
         .verify_peercoin_network()
@@ -211,9 +221,9 @@ pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool,
             Err(error) => (true, false, error.to_string()),
         };
     }
-    if record.api == EndpointApi::Lightwalletd {
+    if endpoint.api == EndpointApi::Lightwalletd {
         return match crate::api::lightwalletd::LightwalletdClient::new(std::sync::Arc::new(vec![
-            record.endpoint.clone(),
+            endpoint.url.clone(),
         ]))
         .session(chain)
         .await
@@ -226,9 +236,9 @@ pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool,
             Err(error) => (true, false, error.to_string()),
         };
     }
-    if record.api == EndpointApi::LitecoinP2p {
+    if endpoint.api == EndpointApi::LitecoinP2p {
         return match crate::api::litecoin_p2p::LitecoinP2pClient::new(std::sync::Arc::new(vec![
-            record.endpoint.clone(),
+            endpoint.url.clone(),
         ]))
         .session(chain, &Default::default())
         .await
@@ -244,7 +254,7 @@ pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool,
             Err(error) => (true, false, error.to_string()),
         };
     }
-    if record.api == EndpointApi::AptosIndexer {
+    if endpoint.api == EndpointApi::AptosIndexer {
         let Some(expected) = chain.aptos_chain_id() else {
             return (
                 false,
@@ -253,7 +263,7 @@ pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool,
             );
         };
         return match crate::api::aptos_indexer::AptosIndexerClient::new(
-            std::sync::Arc::new(vec![record.endpoint.clone()]),
+            std::sync::Arc::new(vec![endpoint.url.clone()]),
             expected,
         )
         .verify_network()
@@ -263,10 +273,11 @@ pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool,
             Err(error) => (true, false, error.to_string()),
         };
     }
-    if record.api == EndpointApi::SubstrateJsonRpc && chain.mainnet_counterpart() == Chain::Polkadot
+    if endpoint.api == EndpointApi::SubstrateJsonRpc
+        && chain.mainnet_counterpart() == Chain::Polkadot
     {
         return match crate::api::substrate_json_rpc::SubstrateClient::new(std::sync::Arc::new(
-            vec![record.endpoint.clone()],
+            vec![endpoint.url.clone()],
         ))
         .polkadot_context(chain)
         .await
@@ -279,7 +290,7 @@ pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool,
             Err(error) => (true, false, error.to_string()),
         };
     }
-    let checks = match checks(chain, record) {
+    let checks = match checks(chain, endpoint, capabilities) {
         Ok(checks) => checks,
         Err(error) => return (false, false, error.to_string()),
     };
@@ -308,5 +319,5 @@ pub(super) async fn probe(chain: Chain, record: &EndpointRecord) -> (bool, bool,
 }
 
 #[cfg(test)]
-#[path = "tests/endpoint_health.rs"]
+#[path = "tests/health.rs"]
 mod tests;

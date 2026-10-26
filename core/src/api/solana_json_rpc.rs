@@ -72,7 +72,11 @@ impl SolanaClient {
         }
     }
 
-    pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
+    pub(in crate::api) async fn call(
+        &self,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
             EndpointApi::SolanaJsonRpc,
             &self.client,
@@ -287,6 +291,20 @@ pub(crate) struct SolanaTokenAccount {
 // unified history, account existence.
 
 impl SolanaClient {
+    /// Whether a transaction built on `blockhash` can still land: the cluster
+    /// has not yet expired it at confirmed commitment.
+    pub(crate) async fn blockhash_is_valid(&self, blockhash: &str) -> Result<bool, ApiError> {
+        let valid = self
+            .call(
+                "isBlockhashValid",
+                json!([blockhash, {"commitment": "confirmed"}]),
+            )
+            .await?;
+        valid["value"]
+            .as_bool()
+            .or_decode("isBlockhashValid: missing value")
+    }
+
     pub(crate) async fn verify_network(
         &self,
         chain: crate::registry::Chain,
