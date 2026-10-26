@@ -1,6 +1,16 @@
 import Foundation
 import SwiftUI
 import UIKit
+extension TokenStandard {
+    /// The protocol's name, as core spells it.
+    var name: String { tokenStandardName(standard: self) }
+}
+
+extension AssetHolding {
+    /// The holding's protocol, or that it is the network's own coin.
+    var standardLabel: String { tokenStandard?.name ?? AppLocalization.string("Native") }
+}
+
 extension TokenPreferenceEntry: Identifiable {
     public var id: String { token.deploymentId }
     /// The chain hosting this token.

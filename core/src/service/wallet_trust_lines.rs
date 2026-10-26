@@ -198,7 +198,7 @@ impl WalletService {
                 "a watch-only wallet cannot send",
             ));
         }
-        let standard = chain.token_standard_for_identifier(&asset);
+        let standard = crate::catalog::tokens::resolve_token_standard(chain, None, &asset)?;
         let asset = crate::catalog::tokens::validate_protocol_identifier(chain, standard, &asset)?;
         let endpoints = self
             .endpoints_for(chain, &[EndpointCapability::Verification])

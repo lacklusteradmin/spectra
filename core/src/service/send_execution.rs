@@ -10,10 +10,11 @@ pub(super) fn validate_execution_amount(
 ) -> Result<(), SpectraBridgeError> {
     match request.contract_address.as_deref() {
         Some(identifier) => {
-            let standard = request
-                .token_standard
-                .as_deref()
-                .unwrap_or_else(|| chain.token_standard_for_identifier(identifier));
+            let standard = crate::catalog::tokens::resolve_token_standard(
+                chain,
+                request.token_standard,
+                identifier,
+            )?;
             crate::catalog::tokens::validate_protocol_identifier(chain, standard, identifier)?;
             if !chain.sends_token_standard(standard) {
                 return Err(SpectraBridgeError::invalid(format!(
@@ -254,7 +255,7 @@ impl WalletService {
         chain: Chain,
         contract: &str,
     ) -> Result<Option<u32>, SpectraBridgeError> {
-        let standard = chain.token_standard_for_identifier(contract);
+        let standard = crate::catalog::tokens::resolve_token_standard(chain, None, contract)?;
         crate::catalog::tokens::validate_protocol_identifier(chain, standard, contract)?;
         if !chain.allows_token_standard(standard) {
             return Err(SpectraBridgeError::invalid(format!(
@@ -262,7 +263,7 @@ impl WalletService {
             )));
         }
         // A protocol that fixes every token's places has nothing to read.
-        if let Some(places) = crate::catalog::tokens::fixed_token_decimals(standard) {
+        if let Some(places) = standard.fixed_decimals() {
             return Ok(Some(places));
         }
         let endpoints = self
@@ -276,11 +277,13 @@ impl WalletService {
         }
         if chain.mainnet_counterpart() == Chain::Tron {
             let client = crate::api::tron_http::TronHttpClient::new(endpoints);
-            return Ok(Some(u32::from(if standard == "TRC-10" {
-                client.fetch_trc10_metadata(chain, contract).await?.decimals
-            } else {
-                client.fetch_trc20_metadata(contract).await?.decimals
-            })));
+            return Ok(Some(u32::from(
+                if standard == crate::registry::TokenStandard::Trc10 {
+                    client.fetch_trc10_metadata(chain, contract).await?.decimals
+                } else {
+                    client.fetch_trc20_metadata(contract).await?.decimals
+                },
+            )));
         }
         if chain.mainnet_counterpart() == Chain::Solana {
             let client = crate::api::solana_json_rpc::SolanaClient::new(endpoints);

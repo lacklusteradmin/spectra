@@ -849,7 +849,7 @@ mod owned_world_chain_nonce_rollover {
             symbol: "ETH".into(),
             coingecko_id: "ethereum".into(),
             chain_id: chain,
-            token_standard: "Native".into(),
+            token_standard: None,
             contract_address: None,
             amount: "1".into(),
         });

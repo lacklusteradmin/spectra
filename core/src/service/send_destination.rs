@@ -198,7 +198,7 @@ pub(super) fn destination_probe_asset(
     Ok((
         chain,
         Some(TokenDescriptor {
-            standard: identity.standard,
+            standard: Some(identity.standard),
             contract: identity.contract,
             symbol: holding.symbol.clone(),
             decimals,

@@ -118,13 +118,9 @@ fn the_token_list_keeps_each_tokens_deployments_together() {
     custom.token.symbol = "AAA".into();
     custom.token.token_id = "custom:aaa".into();
     custom.token.contract = format!("0x{}", "42".repeat(20));
-    custom.token.kind = crate::catalog::tokens::TokenKind::Protocol {
-        standard: custom.token.token_standard.clone(),
-        identifier: custom.token.contract.clone(),
-    };
     custom.token.deployment_id = crate::catalog::tokens::protocol_deployment_id(
         custom.token.chain_id,
-        &custom.token.token_standard,
+        custom.token.token_standard.unwrap(),
         &custom.token.contract,
     )
     .unwrap();
@@ -162,25 +158,21 @@ async fn reopening_prefers_catalog_identity_and_deduplicates_protocol_aliases() 
         .unwrap();
     let mut alias = built_in.clone();
     alias.is_built_in = false;
-    alias.token.token_standard = "ERC-20".into();
+    alias.token.token_standard = Some(crate::registry::TokenStandard::Erc20);
     alias.token.symbol = "STALE".into();
     let mut custom = alias.clone();
     custom.token.contract = format!("0x{}", "Aa".repeat(20));
     custom.token.token_id = "custom:other".into();
     custom.token.symbol = "OTHER".into();
-    custom.token.kind = crate::catalog::tokens::TokenKind::Protocol {
-        standard: custom.token.token_standard.clone(),
-        identifier: custom.token.contract.clone(),
-    };
     custom.token.deployment_id = crate::catalog::tokens::protocol_deployment_id(
         custom.token.chain_id,
-        &custom.token.token_standard,
+        custom.token.token_standard.unwrap(),
         &custom.token.contract,
     )
     .unwrap();
     let mut second_alias = custom.clone();
     second_alias.token.contract = custom.token.contract.to_lowercase();
-    second_alias.token.token_standard = "BEP-20".into();
+    second_alias.token.token_standard = Some(crate::registry::TokenStandard::Bep20);
     second_alias.token.symbol = "DUPLICATE".into();
     let state = crate::store::state::ResidentState {
         token_preferences: vec![alias, custom.clone(), second_alias],

@@ -9,7 +9,7 @@ fn holding(symbol: &str, chain: crate::registry::Chain, amount: f64) -> AssetHol
         symbol: symbol.to_string(),
         coingecko_id: symbol.to_lowercase(),
         chain_id: chain,
-        token_standard: "Native".to_string(),
+        token_standard: None,
         contract_address: None,
         amount: crate::amount::decimal::from_f64(amount).unwrap(),
     }
@@ -96,16 +96,16 @@ async fn a_row_is_per_asset_and_breaks_down_by_chain() {
 #[tokio::test]
 async fn an_unvouched_token_is_never_merged_by_symbol() {
     let mut real = holding("USDX", crate::registry::Chain::Ethereum, 1.0);
-    real.token_standard = "ERC-20".into();
+    real.token_standard = Some(crate::registry::TokenStandard::Erc20);
     real.contract_address = Some("0x000000000000000000000000000000000000aaaa".into());
     real.coingecko_id = String::new();
     let mut lookalike = holding("USDX", crate::registry::Chain::Tron, 999.0);
-    lookalike.token_standard = "TRC-20".into();
+    lookalike.token_standard = Some(crate::registry::TokenStandard::Trc20);
     lookalike.contract_address = Some("T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb".into());
     lookalike.coingecko_id = String::new();
     // And a second contract on the same chain, same symbol.
     let mut sibling = holding("USDX", crate::registry::Chain::Ethereum, 2.0);
-    sibling.token_standard = "ERC-20".into();
+    sibling.token_standard = Some(crate::registry::TokenStandard::Erc20);
     sibling.contract_address = Some("0x000000000000000000000000000000000000bbbb".into());
     sibling.coingecko_id = String::new();
 

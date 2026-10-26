@@ -205,7 +205,7 @@ async fn a_stellar_trustline_says_why_it_cannot_come_off_and_what_it_locks() {
 
 fn descriptor(contract: &str) -> TokenDescriptor {
     TokenDescriptor {
-        standard: String::new(),
+        standard: None,
         contract: contract.into(),
         symbol: "USD".into(),
         decimals: 0,

@@ -108,7 +108,7 @@ pub struct SendExecutionRequest {
     pub contract_address: Option<String>,
     /// Actual token protocol; omitted values are resolved by core before reads.
     #[uniffi(default = None)]
-    pub token_standard: Option<String>,
+    pub token_standard: Option<crate::registry::TokenStandard>,
     /// Token decimals for raw-unit conversion.
     pub token_decimals: Option<u32>,
     // ── Chain-specific optional fields ───────────────────────────────────

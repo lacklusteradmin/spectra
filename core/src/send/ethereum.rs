@@ -243,7 +243,8 @@ pub fn prepare_evm_send_assembly(
     let Some(token) = input.token else {
         return Err(EvmSendError::UnsupportedAsset);
     };
-    let matches = ["ERC-20", "BEP-20", "ARC-20"].iter().any(|standard| {
+    use crate::registry::TokenStandard as S;
+    let matches = [S::Erc20, S::Bep20, S::Arc20].into_iter().any(|standard| {
         crate::catalog::tokens::protocol_deployment_id(chain, standard, &token.contract_address)
             .as_deref()
             == Some(input.deployment_id.as_str())

@@ -840,6 +840,7 @@
   "Name the wallet that signs.": "請指定簽署的錢包。",
   "Named Account (Optional)": "命名帳戶（選用）",
   "Named account": "命名帳戶",
+  "Native": "原生",
   "Native SegWit": "原生隔離見證",
   "Native script, as cardano-cli writes it": "原生腳本，格式與 cardano-cli 輸出的相同",
   "Needs your endpoint": "需要你的端點",

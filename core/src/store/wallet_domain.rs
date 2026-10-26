@@ -166,7 +166,8 @@ pub struct AssetHolding {
     pub symbol: String,
     pub coingecko_id: String,
     pub chain_id: crate::registry::Chain,
-    pub token_standard: String,
+    /// The protocol a token is; `None` for the network's own coin.
+    pub token_standard: Option<crate::registry::TokenStandard>,
     pub contract_address: Option<String>,
     /// The balance, as an exact decimal in the asset's own units.
     pub amount: String,
@@ -175,7 +176,7 @@ pub struct AssetHolding {
 impl AssetHolding {
     /// Native is an explicit protocol type, never a symbol comparison.
     pub fn is_native(&self) -> bool {
-        self.token_standard == "Native"
+        self.token_standard.is_none()
             && self
                 .contract_address
                 .as_deref()
@@ -183,19 +184,12 @@ impl AssetHolding {
     }
 
     pub fn deployment_id(&self) -> String {
-        let network = &self.chain_id;
-        if self.is_native() {
-            return format!("{network}:native");
-        }
         let contract = crate::catalog::tokens::normalize_token_identifier(
             self.contract_address.clone(),
             self.chain_id,
         )
         .unwrap_or_default();
-        format!(
-            "{network}:{}:{contract}",
-            self.token_standard.to_lowercase()
-        )
+        crate::catalog::tokens::deployment_id(self.chain_id, self.token_standard, &contract)
     }
 
     pub fn catalog_token(&self) -> Option<&'static crate::catalog::tokens::TokenDeploymentEntry> {
@@ -221,20 +215,20 @@ impl AssetHolding {
             self.contract_address.clone(),
             self.chain_id,
         );
-        if self.token_standard == "Native" {
-            if self.contract_address.is_some() {
+        match self.token_standard {
+            None if self.contract_address.is_some() => {
                 return Err(E::invalid("native token cannot carry a contract"));
             }
-        } else {
-            let contract = self
-                .contract_address
-                .as_ref()
-                .ok_or_else(|| E::invalid("protocol token requires an identifier"))?;
-            self.contract_address = Some(crate::catalog::tokens::validate_protocol_identifier(
-                network,
-                &self.token_standard,
-                contract,
-            )?);
+            None => {}
+            Some(standard) => {
+                let contract = self
+                    .contract_address
+                    .as_ref()
+                    .ok_or_else(|| E::invalid("protocol token requires an identifier"))?;
+                self.contract_address = Some(crate::catalog::tokens::validate_protocol_identifier(
+                    network, standard, contract,
+                )?);
+            }
         }
         if let Some(token) = self.catalog_token() {
             self.name = token.name.clone();

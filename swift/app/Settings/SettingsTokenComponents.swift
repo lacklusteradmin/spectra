@@ -86,7 +86,7 @@ struct TokenRegistryNetworkRow: View {
                 Text(entry.token.chainId.displayName).font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.primary)
                 Spacer()
-                Text(entry.token.tokenStandard).font(.caption.weight(.semibold)).foregroundStyle(.tint)
+                Text(verbatim: entry.token.tokenStandard?.name ?? "").font(.caption.weight(.semibold)).foregroundStyle(.tint)
                     .padding(.horizontal, SpectraLayout.Space.s).padding(.vertical, SpectraLayout.Space.xxs)
                     .background(Capsule(style: .continuous).fill(Color.accentColor.opacity(0.12)))
             }

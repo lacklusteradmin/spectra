@@ -127,7 +127,7 @@ fn new_evm_mainnets_have_native_assets_and_shared_wallet_rules() {
         assert!(chain.derives_from_private_key());
         assert!(chain.supports_watch_only_import());
         assert!(chain.sends_tokens());
-        assert!(chain.allows_token_standard("ERC-20"));
+        assert!(chain.allows_token_standard(crate::registry::TokenStandard::Erc20));
         assert_eq!(chain.coin_symbol(), symbol);
         assert_eq!(chain.native_decimals(), 18);
         assert_eq!(chain.entry().artwork_name, artwork);
@@ -203,7 +203,10 @@ fn verified_new_chain_tokens_have_exact_deployment_identity() {
         assert_eq!(deployment.chain_id, chain);
         assert_eq!(deployment.contract, contract);
         assert_eq!(deployment.decimals, decimals);
-        assert_eq!(deployment.token_standard, "ERC-20");
+        assert_eq!(
+            deployment.token_standard,
+            Some(crate::registry::TokenStandard::Erc20)
+        );
         assert!(!deployment.is_native());
     }
 }
@@ -369,7 +372,7 @@ fn token_hosting_follows_the_token_protocol_set() {
     assert!(!Chain::Bitcoin.hosts_tokens() && !Chain::Monero.hosts_tokens());
     for chain in Chain::all().filter(|c| c.hosts_tokens()) {
         for standard in chain.token_standards() {
-            assert!(chain.allows_token_standard(standard), "{}", chain.str_id());
+            assert!(chain.allows_token_standard(*standard), "{}", chain.str_id());
         }
     }
 }
@@ -377,7 +380,13 @@ fn token_hosting_follows_the_token_protocol_set() {
 #[test]
 fn protocol_sets_keep_legacy_and_current_protocols_on_one_network() {
     for chain in [Chain::Tron, Chain::TronNile] {
-        assert_eq!(chain.token_standards(), ["TRC-10", "TRC-20"]);
+        assert_eq!(
+            chain.token_standards(),
+            [
+                crate::registry::TokenStandard::Trc10,
+                crate::registry::TokenStandard::Trc20
+            ]
+        );
         let entries = &chain.entry().token_standards;
         let prompts: Vec<(&str, &str)> = entries
             .iter()
@@ -389,12 +398,21 @@ fn protocol_sets_keep_legacy_and_current_protocols_on_one_network() {
         );
     }
     for chain in [Chain::Aptos, Chain::AptosTestnet] {
-        assert_eq!(chain.token_standards(), ["Aptos Coin", "AIP-21"]);
+        assert_eq!(
+            chain.token_standards(),
+            [
+                crate::registry::TokenStandard::AptosCoin,
+                crate::registry::TokenStandard::Aip21
+            ]
+        );
         assert_eq!(
             chain.token_standard_for_identifier("0x1::coin::T"),
-            "Aptos Coin"
+            Some(crate::registry::TokenStandard::AptosCoin)
         );
-        assert_eq!(chain.token_standard_for_identifier("0x123"), "AIP-21");
+        assert_eq!(
+            chain.token_standard_for_identifier("0x123"),
+            Some(crate::registry::TokenStandard::Aip21)
+        );
     }
 }
 

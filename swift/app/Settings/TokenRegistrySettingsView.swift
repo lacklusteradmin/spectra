@@ -129,7 +129,7 @@ struct TokenRegistrySettingsView: View {
                 ([group.symbol, group.name]
                 + group.entries.flatMap { entry in
                     [entry.token.chainId.displayName,
-                     entry.token.tokenStandard, entry.token.contract, entry.token.coingeckoId, entry.token.coinpaprikaId]
+                     entry.token.tokenStandard?.name ?? "", entry.token.contract, entry.token.coingeckoId, entry.token.coinpaprikaId]
                 })
                 .joined(separator: " ").lowercased()
             return haystack.contains(query)

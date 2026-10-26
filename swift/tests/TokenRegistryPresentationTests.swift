@@ -36,15 +36,15 @@ struct TokenRegistryPresentationTests: IsolatedAppStateSuite {
     @Test func aTokenIsAddedUnderTheStandardTheFormNames() async throws {
         let state = makeState()
         let standards = try #require(Chain.tron.entry?.tokenStandards)
-        #expect(standards.map(\.standard) == ["TRC-10", "TRC-20"])
+        #expect(standards.map(\.standard) == [.trc10, .trc20])
         #expect(standards.map(\.identifierPrompt) == ["Token ID", "Contract Address"])
         let unnamed = await state.tokenPreferences.addCustom(
             chain: .tron, symbol: "OLD", name: "Old", contractAddress: "1009999", decimals: 6)
         #expect(unnamed == AppLocalization.string("Choose the standard the token was issued under."))
         let named = await state.tokenPreferences.addCustom(
-            chain: .tron, standard: "TRC-10", symbol: "OLD", name: "Old", contractAddress: "1009999", decimals: 6)
+            chain: .tron, standard: .trc10, symbol: "OLD", name: "Old", contractAddress: "1009999", decimals: 6)
         #expect(named == nil)
-        #expect(state.tokenPreferences.entries.contains { $0.token.tokenStandard == "TRC-10" && $0.token.contract == "1009999" })
+        #expect(state.tokenPreferences.entries.contains { $0.token.tokenStandard == .trc10 && $0.token.contract == "1009999" })
     }
 
     @Test func tokenManagementScreensRenderInARealWindow() async throws {

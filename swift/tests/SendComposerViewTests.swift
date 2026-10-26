@@ -121,9 +121,9 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
         let holdings: [AssetHolding] = [
             .fixture(name: "Ethereum", symbol: "ETH", coingeckoId: "ethereum", chainId: .ethereum, amount: "1.5"),
             .fixture(name: "USD Coin", symbol: "USDC", coingeckoId: "usd-coin", chainId: .ethereum,
-                tokenStandard: "ERC-20", contractAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", amount: "2500"),
+                tokenStandard: .erc20, contractAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", amount: "2500"),
             .fixture(name: "Tether", symbol: "USDT", coingeckoId: "tether", chainId: .ethereum,
-                tokenStandard: "ERC-20", contractAddress: "0xdac17f958d2ee523a2206206994597c13d831ec7", amount: "1000")
+                tokenStandard: .erc20, contractAddress: "0xdac17f958d2ee523a2206206994597c13d831ec7", amount: "1000")
         ]
         // The capability flag is render-fixture metadata. No secret is stored
         // and this suite never calls signing, preview transport or broadcast.

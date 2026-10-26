@@ -41,7 +41,7 @@ final class TokenPreferencesState {
     /// Add a token under `standard`, one of `chain`'s protocols — the
     /// network's only one when `nil` — or edit `editing`, which keeps its own.
     func addCustom(
-        chain: Chain, standard: String? = nil, symbol: String, name: String, contractAddress: String,
+        chain: Chain, standard: TokenStandard? = nil, symbol: String, name: String, contractAddress: String,
         coingeckoId: String = "", coinpaprikaId: String = "", decimals: UInt32, editing: TokenPreferenceEntry? = nil
     ) async -> String? {
         let command: StateCommand

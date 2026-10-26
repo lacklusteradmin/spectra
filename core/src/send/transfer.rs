@@ -4,7 +4,7 @@ use crate::store::wallet_domain::{AssetHolding, TokenPreferenceEntry};
 /// A token's contract and its own decimals.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendTokenIdentity {
-    pub standard: String,
+    pub standard: crate::registry::TokenStandard,
     pub contract: String,
     pub decimals: u32,
 }
@@ -40,13 +40,14 @@ impl SendAsset {
             preferences
                 .iter()
                 .find(|entry| entry.token.matches_holding(holding))
-                .map_or(SendAssetKind::UntrackedToken, |entry| {
-                    SendAssetKind::Token(SendTokenIdentity {
-                        standard: entry.token.token_standard.clone(),
+                .and_then(|entry| {
+                    Some(SendAssetKind::Token(SendTokenIdentity {
+                        standard: entry.token.token_standard?,
                         contract: entry.token.contract.clone(),
                         decimals: entry.token.decimals,
-                    })
+                    }))
                 })
+                .unwrap_or(SendAssetKind::UntrackedToken)
         };
         Some(Self {
             chain,
@@ -67,7 +68,7 @@ impl SendAsset {
     pub fn is_sendable(&self) -> bool {
         match &self.kind {
             SendAssetKind::Native => true,
-            SendAssetKind::Token(token) => self.chain.sends_token_standard(&token.standard),
+            SendAssetKind::Token(token) => self.chain.sends_token_standard(token.standard),
             SendAssetKind::UntrackedToken => false,
         }
     }
@@ -101,11 +102,8 @@ mod tests {
             symbol: symbol.to_string(),
             coingecko_id: String::new(),
             chain_id: chain,
-            token_standard: if let Some(contract) = contract {
-                chain.token_standard_for_identifier(contract).to_string()
-            } else {
-                "Native".to_string()
-            },
+            token_standard: contract
+                .and_then(|contract| chain.token_standard_for_identifier(contract)),
             contract_address: contract.map(str::to_string),
             amount: "1".into(),
         }
@@ -117,14 +115,10 @@ mod tests {
             token: crate::catalog::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
-                kind: crate::catalog::tokens::TokenKind::Protocol {
-                    standard: "fixture".into(),
-                    identifier: "fixture".into(),
-                },
                 chain_id: chain,
                 name: symbol.into(),
                 symbol: symbol.into(),
-                token_standard: chain.token_standard_for_identifier(contract).to_string(),
+                token_standard: chain.token_standard_for_identifier(contract),
                 contract: contract.to_string(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),

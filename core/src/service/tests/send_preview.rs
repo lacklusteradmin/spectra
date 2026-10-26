@@ -233,9 +233,9 @@ async fn seed_probe_holding(
         coingecko_id: String::new(),
         chain_id: chain,
         token_standard: if let Some((contract, _)) = token {
-            chain.token_standard_for_identifier(contract).into()
+            chain.token_standard_for_identifier(contract)
         } else {
-            "Native".into()
+            None
         },
         contract_address: token.map(|(contract, _)| contract.to_string()),
         amount: "1".into(),
@@ -247,14 +247,10 @@ async fn seed_probe_holding(
             token: crate::catalog::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
-                kind: crate::catalog::tokens::TokenKind::Protocol {
-                    standard: chain.token_standard_for_identifier(contract).into(),
-                    identifier: contract.into(),
-                },
                 chain_id: chain,
                 name: symbol.to_string(),
                 symbol: symbol.to_string(),
-                token_standard: chain.token_standard_for_identifier(contract).into(),
+                token_standard: chain.token_standard_for_identifier(contract),
                 contract: contract.to_string(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),
@@ -581,7 +577,7 @@ mod failed_reads {
                     crate::registry::Chain::Tron,
                     "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7".into(),
                     vec![TokenDescriptor {
-                        standard: String::new(),
+                        standard: None,
                         contract: trc20_contract_fixture(),
                         symbol: "TEST".into(),
                         decimals: 18,

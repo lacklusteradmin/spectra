@@ -550,7 +550,7 @@ struct WalletDetailView: View {
             )
             VStack(alignment: .leading, spacing: SpectraLayout.Space.xxs) {
                 Text(holding.coin.name).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary)
-                Text("\(holding.coin.symbol) • \(holding.coin.tokenStandard)").font(.caption).foregroundStyle(.secondary)
+                Text(verbatim: "\(holding.coin.symbol) • \(holding.coin.standardLabel)").font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: SpectraLayout.Space.xxs) {

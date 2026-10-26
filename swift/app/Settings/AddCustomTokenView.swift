@@ -9,7 +9,7 @@ struct AddCustomTokenView: View {
     /// The protocol the token is added under. Chosen, not guessed, where the
     /// network has several: an ERC-20 and a BEP-20 contract look alike, and a
     /// TRC-10 ID is not a TRC-20 address.
-    @State private var selectedStandard: String?
+    @State private var selectedStandard: TokenStandard?
     @State private var symbolInput = ""
     @State private var nameInput = ""
     @State private var identifierInput = ""
@@ -40,7 +40,7 @@ struct AddCustomTokenView: View {
                 if let editing {
                     // A token keeps the network and protocol it was added under.
                     LabeledContent(AppLocalization.string("Network"), value: editing.token.chainId.displayName)
-                    LabeledContent(AppLocalization.string("Standard"), value: editing.token.tokenStandard)
+                    LabeledContent(AppLocalization.string("Standard"), value: editing.token.tokenStandard?.name ?? "")
                     Text(editing.token.contract).font(.caption.monospaced()).textSelection(.enabled)
                 } else {
                     Picker(AppLocalization.string("Network"), selection: $selectedChain) {
@@ -49,13 +49,13 @@ struct AddCustomTokenView: View {
                     }
                     if standards.count > 1 {
                         Picker(AppLocalization.string("Standard"), selection: $selectedStandard) {
-                            Text(AppLocalization.string("Select a standard")).tag(nil as String?)
+                            Text(AppLocalization.string("Select a standard")).tag(nil as TokenStandard?)
                             ForEach(standards, id: \.standard) { entry in
-                                Text(verbatim: entry.standard).tag(Optional(entry.standard))
+                                Text(verbatim: entry.standard.name).tag(Optional(entry.standard))
                             }
                         }
                     } else if let only = standards.first {
-                        LabeledContent(AppLocalization.string("Standard"), value: only.standard)
+                        LabeledContent(AppLocalization.string("Standard"), value: only.standard.name)
                     }
                     TextField(AppLocalization.string(identifierPrompt), text: $identifierInput)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()

@@ -465,7 +465,7 @@ private struct AssetChainBreakdownCard: View {
             let badge = AssetHolding.nativeChainBadge(for: holding.coin.chain) ?? (nil, holding.coin.color)
             AssetBreakdownRow(
                 badgeArtworkName: badge.artworkName, badgeColor: badge.color, badgeMark: holding.coin.chainName,
-                title: holding.coin.chainName, subtitle: holding.coin.tokenStandard,
+                title: holding.coin.chainName, subtitle: holding.coin.standardLabel,
                 amountText: store.amounts.formattedAssetAmount(
                     holding.coin.amount, symbol: holding.coin.symbol, deploymentId: holding.coin.holdingKey),
                 valueText: store.amounts.formattedFiat(holding.value),

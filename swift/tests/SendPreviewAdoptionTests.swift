@@ -18,7 +18,7 @@ struct SendPreviewAdoptionTests: IsolatedAppStateSuite {
         let sol = AssetHolding.fixture(name: "Solana", symbol: "SOL", chainId: Chain.solana, amount: "1")
         #expect(store.quote(walletId: "w", coin: sol)?.shortcuts[100] == "0.999994999")
         #expect(store.quote(walletId: "other", coin: sol) == nil)
-        let token = AssetHolding.fixture(name: "Other", symbol: "OTH", chainId: Chain.solana, tokenStandard: "SPL",
+        let token = AssetHolding.fixture(name: "Other", symbol: "OTH", chainId: Chain.solana, tokenStandard: .spl,
             contractAddress: "other", amount: "1")
         #expect(store.quote(walletId: "w", coin: token) == nil)
         // The same asset on another network is another holding.

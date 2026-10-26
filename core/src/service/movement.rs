@@ -115,7 +115,7 @@ mod tests {
                 symbol: "ETH".into(),
                 chain_id: crate::registry::Chain::Ethereum,
                 coingecko_id: "ethereum".into(),
-                token_standard: "Native".into(),
+                token_standard: None,
                 contract_address: None,
                 amount: "1".into(),
             }],

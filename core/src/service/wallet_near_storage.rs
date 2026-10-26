@@ -182,7 +182,7 @@ impl WalletService {
             let signer = super::wallet_near_keys::near_signing_key(&wallet, &account)?;
             let contract = crate::catalog::tokens::validate_protocol_identifier(
                 chain,
-                "NEP-141",
+                crate::registry::TokenStandard::Nep141,
                 contract.trim(),
             )
             .map_err(|_| {

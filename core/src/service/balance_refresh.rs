@@ -121,10 +121,14 @@ impl WalletService {
         if !known.is_empty() {
             let descriptors = known
                 .iter()
-                .filter(|p| chain.allows_token_standard(&p.token.token_standard))
+                .filter(|p| {
+                    p.token
+                        .token_standard
+                        .is_some_and(|standard| chain.allows_token_standard(standard))
+                })
                 .map(|p| {
                     Ok(TokenDescriptor {
-                        standard: p.token.token_standard.clone(),
+                        standard: p.token.token_standard,
                         contract: p.token.contract.clone(),
                         symbol: p.token.symbol.clone(),
                         decimals: u8::try_from(p.token.decimals)
@@ -261,7 +265,7 @@ mod tests {
         let mut current = token.holding_template();
         current.amount = "4".into();
         let mut old = current.clone();
-        old.token_standard = "ERC-20".into();
+        old.token_standard = Some(crate::registry::TokenStandard::Erc20);
         old.name = "Old custom token".into();
         old.coingecko_id.clear();
         old.amount = "9".into();
@@ -384,7 +388,7 @@ mod tests {
         service
             .apply_state_command(StateCommand::AddCustomToken {
                 chain_id: Chain::Tron,
-                standard: Some("TRC-10".into()),
+                standard: Some(crate::registry::TokenStandard::Trc10),
                 symbol: "T10".into(),
                 name: "T10".into(),
                 contract: "1002000".into(),
@@ -400,7 +404,10 @@ mod tests {
         let mut token20 = state
             .token_preferences
             .iter()
-            .find(|p| p.token.chain_id == Chain::Tron && p.token.token_standard == "TRC-20")
+            .find(|p| {
+                p.token.chain_id == Chain::Tron
+                    && p.token.token_standard == Some(crate::registry::TokenStandard::Trc20)
+            })
             .unwrap()
             .token
             .holding_template();
@@ -409,7 +416,7 @@ mod tests {
         let mut token10 = state
             .token_preferences
             .iter()
-            .find(|p| p.token.token_standard == "TRC-10")
+            .find(|p| p.token.token_standard == Some(crate::registry::TokenStandard::Trc10))
             .unwrap()
             .token
             .holding_template();
@@ -436,7 +443,7 @@ mod tests {
             updated
                 .holdings
                 .iter()
-                .find(|h| h.token_standard == "TRC-10")
+                .find(|h| h.token_standard == Some(crate::registry::TokenStandard::Trc10))
                 .unwrap()
                 .amount,
             "2.5"
@@ -450,7 +457,7 @@ mod tests {
             state.wallets[0]
                 .holdings
                 .iter()
-                .find(|h| h.token_standard == "TRC-10")
+                .find(|h| h.token_standard == Some(crate::registry::TokenStandard::Trc10))
                 .unwrap()
                 .amount,
             "2.5"
@@ -459,7 +466,7 @@ mod tests {
             state
                 .token_preferences
                 .iter()
-                .any(|p| p.token.token_standard == "TRC-10")
+                .any(|p| p.token.token_standard == Some(crate::registry::TokenStandard::Trc10))
         );
     }
 

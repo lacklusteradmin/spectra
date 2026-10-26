@@ -762,7 +762,7 @@ pub enum StateCommand {
     /// Rejection emits `tokenPreferenceRejected` without changing state.
     AddCustomToken {
         #[uniffi(default = None)]
-        standard: Option<String>,
+        standard: Option<crate::registry::TokenStandard>,
         chain_id: crate::registry::Chain,
         symbol: String,
         name: String,
@@ -1357,88 +1357,73 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
             let hosting = token_hosting_chain(chain_id);
             // Named, never guessed: the network's only protocol, or the one
             // asked for among several.
-            let standards = chain_id.token_standards();
-            let standard = match standard.map(|s| s.trim().to_string()) {
-                Some(named) if !named.is_empty() => Ok(named),
-                _ if standards.len() == 1 => Ok(standards[0].clone()),
-                _ => Err(TokenPreferenceRejection::StandardRequired),
+            let standard = match (standard, chain_id.token_standards()) {
+                (Some(named), _) if chain_id.allows_token_standard(named) => Ok(named),
+                (Some(_), _) => Err(TokenPreferenceRejection::UnsupportedStandard),
+                (None, [only]) => Ok(*only),
+                (None, _) => Err(TokenPreferenceRejection::StandardRequired),
             };
-            let standard_rejection = match &standard {
-                Err(reason) => Some(*reason),
-                Ok(named) if !chain_id.allows_token_standard(named) => {
-                    Some(TokenPreferenceRejection::UnsupportedStandard)
-                }
-                Ok(_) => None,
-            };
-            let standard = standard.unwrap_or_default();
-            if let Ok(normalized) =
-                crate::catalog::tokens::validate_protocol_identifier(chain_id, &standard, &contract)
+            if let Ok(standard) = standard
+                && let Ok(normalized) = crate::catalog::tokens::validate_protocol_identifier(
+                    chain_id, standard, &contract,
+                )
             {
                 contract = normalized;
             }
             // Where the protocol fixes a token's places, they are the
             // protocol's, whatever was typed.
-            let decimals =
-                crate::catalog::tokens::fixed_token_decimals(&standard).unwrap_or(decimals);
+            let decimals = standard
+                .ok()
+                .and_then(|standard| standard.fixed_decimals())
+                .unwrap_or(decimals);
 
-            let rejection = match hosting {
-                None => Some(TokenPreferenceRejection::UnknownChain),
-                Some(_) if standard_rejection.is_some() => standard_rejection,
-                Some(_) if symbol.is_empty() => Some(TokenPreferenceRejection::EmptySymbol),
-                // Twelve characters is longer than any symbol is spelled; past
-                // it the field has a pasted name or a whole address in it.
-                Some(_) if symbol.chars().count() > MAX_TOKEN_SYMBOL_CHARS => {
-                    Some(TokenPreferenceRejection::SymbolTooLong)
-                }
-                Some(_) if name.is_empty() => Some(TokenPreferenceRejection::EmptyName),
-                Some(_) if !valid_price_id(&coingecko_id) || !valid_price_id(&coinpaprika_id) => {
-                    Some(TokenPreferenceRejection::InvalidPriceId)
-                }
-                Some(_) if contract.is_empty() => Some(TokenPreferenceRejection::EmptyContract),
-                Some(_) if decimals > MAX_TOKEN_DECIMALS => {
-                    Some(TokenPreferenceRejection::TooManyDecimals)
-                }
-                Some(hosting)
-                    if crate::catalog::tokens::validate_protocol_identifier(
-                        hosting, &standard, &contract,
+            let rejection = match (hosting, standard) {
+                (None, _) => Some(TokenPreferenceRejection::UnknownChain),
+                (Some(_), Err(reason)) => Some(reason),
+                (Some(hosting), Ok(standard)) => match () {
+                    _ if symbol.is_empty() => Some(TokenPreferenceRejection::EmptySymbol),
+                    // Twelve characters is longer than any symbol is spelled;
+                    // past it the field has a pasted name or a whole address.
+                    _ if symbol.chars().count() > MAX_TOKEN_SYMBOL_CHARS => {
+                        Some(TokenPreferenceRejection::SymbolTooLong)
+                    }
+                    _ if name.is_empty() => Some(TokenPreferenceRejection::EmptyName),
+                    _ if !valid_price_id(&coingecko_id) || !valid_price_id(&coinpaprika_id) => {
+                        Some(TokenPreferenceRejection::InvalidPriceId)
+                    }
+                    _ if contract.is_empty() => Some(TokenPreferenceRejection::EmptyContract),
+                    _ if decimals > MAX_TOKEN_DECIMALS => {
+                        Some(TokenPreferenceRejection::TooManyDecimals)
+                    }
+                    _ if crate::catalog::tokens::validate_protocol_identifier(
+                        hosting, standard, &contract,
                     )
                     .is_err() =>
-                {
-                    Some(TokenPreferenceRejection::InvalidContract)
-                }
-                Some(hosting) if token_preference_row(state, hosting, &contract).is_some() => {
-                    Some(TokenPreferenceRejection::DuplicateToken)
-                }
-                Some(_) => None,
+                    {
+                        Some(TokenPreferenceRejection::InvalidContract)
+                    }
+                    _ if token_preference_row(state, hosting, &contract).is_some() => {
+                        Some(TokenPreferenceRejection::DuplicateToken)
+                    }
+                    _ => None,
+                },
             };
 
-            match (rejection, hosting) {
-                (Some(reason), _) => events.push(token_preference_rejected(reason)),
-                (None, Some(hosting)) => {
+            match (rejection, hosting, standard) {
+                (Some(reason), ..) => events.push(token_preference_rejected(reason)),
+                (None, Some(hosting), Ok(standard)) => {
+                    let deployment_id =
+                        crate::catalog::tokens::deployment_id(hosting, Some(standard), &contract);
                     state.token_preferences.push(
                         crate::store::wallet_domain::TokenPreferenceEntry {
                             is_built_in: false,
                             token: crate::catalog::tokens::TokenDeploymentEntry {
-                                deployment_id: format!(
-                                    "{}:{}:{}",
-                                    hosting.str_id(),
-                                    standard.to_lowercase(),
-                                    contract
-                                ),
-                                token_id: format!(
-                                    "custom:{}:{}:{}",
-                                    hosting.str_id(),
-                                    standard.to_lowercase(),
-                                    contract
-                                ),
-                                kind: crate::catalog::tokens::TokenKind::Protocol {
-                                    standard: standard.clone(),
-                                    identifier: contract.clone(),
-                                },
+                                token_id: format!("custom:{deployment_id}"),
+                                deployment_id,
                                 chain_id: hosting,
                                 name,
                                 symbol: symbol.clone(),
-                                token_standard: standard.clone(),
+                                token_standard: Some(standard),
                                 contract,
                                 coingecko_id: coingecko_id.trim().to_lowercase(),
                                 coinpaprika_id: coinpaprika_id.trim().to_lowercase(),
@@ -1454,7 +1439,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                         symbol: Some(symbol),
                     });
                 }
-                (None, None) => unreachable!("an unknown chain is rejected above"),
+                (None, ..) => unreachable!("an unknown chain or standard is rejected above"),
             }
         }
         StateCommand::UpdateCustomToken {
@@ -1495,9 +1480,10 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                 token.symbol = symbol.clone();
                 token.coingecko_id = coingecko_id.trim().to_lowercase();
                 token.coinpaprika_id = coinpaprika_id.trim().to_lowercase();
-                token.decimals =
-                    crate::catalog::tokens::fixed_token_decimals(&token.token_standard)
-                        .unwrap_or(decimals);
+                token.decimals = token
+                    .token_standard
+                    .and_then(|standard| standard.fixed_decimals())
+                    .unwrap_or(decimals);
                 state.quotes.prices.remove(&token.deployment_id);
                 state.quotes.prices_attempt_at = None;
                 crate::store::sort_token_preferences(&mut state.token_preferences);
@@ -1661,7 +1647,9 @@ mod tests {
         let command =
             |chain_id, standard: Option<&str>, contract: &str| StateCommand::AddCustomToken {
                 chain_id,
-                standard: standard.map(str::to_string),
+                standard: standard.map(|name| {
+                    crate::registry::TokenStandard::parse(name).expect("a standard's name")
+                }),
                 symbol: "CUSTOM".into(),
                 name: "Custom".into(),
                 contract: contract.into(),
@@ -1728,27 +1716,27 @@ mod tests {
                 .token_preferences
                 .iter()
                 .find(|p| p.token.deployment_id == id)
-                .map(|p| p.token.token_standard.clone())
+                .and_then(|p| p.token.token_standard)
+                .map(|standard| standard.as_str())
         };
+        assert_eq!(standard_of(&state, "tron:trc-10:1002000"), Some("TRC-10"));
         assert_eq!(
-            standard_of(&state, "tron:trc-10:1002000").as_deref(),
-            Some("TRC-10")
-        );
-        assert_eq!(
-            standard_of(&state, "aptos:aptos coin:0x1::coin::T").as_deref(),
+            standard_of(&state, "aptos:aptos coin:0x1::coin::T"),
             Some("Aptos Coin")
         );
         assert!(
             state
                 .token_preferences
                 .iter()
-                .any(|p| p.token.chain_id == Chain::BnbChain && p.token.token_standard == "BEP-20")
+                .any(|p| p.token.chain_id == Chain::BnbChain
+                    && p.token.token_standard == Some(crate::registry::TokenStandard::Bep20))
         );
         assert!(
             state
                 .token_preferences
                 .iter()
-                .any(|p| p.token.chain_id == Chain::Solana && p.token.token_standard == "SPL")
+                .any(|p| p.token.chain_id == Chain::Solana
+                    && p.token.token_standard == Some(crate::registry::TokenStandard::Spl))
         );
 
         // ERC-20 and BEP-20 are two labels of one protocol: one contract.
@@ -1765,12 +1753,6 @@ mod tests {
                 Chain::Solana,
                 "ERC-20",
                 address,
-                TokenPreferenceRejection::UnsupportedStandard,
-            ),
-            (
-                Chain::Tron,
-                "unknown",
-                "1002001",
                 TokenPreferenceRejection::UnsupportedStandard,
             ),
             (
@@ -1879,7 +1861,7 @@ mod tests {
         // The deployment’s standard follows its identifier, not a network-wide default.
         assert_eq!(
             added.state.token_preferences[0].token.token_standard,
-            "ERC-20"
+            Some(crate::registry::TokenStandard::Erc20)
         );
         assert!(!added.state.token_preferences[0].is_built_in);
 

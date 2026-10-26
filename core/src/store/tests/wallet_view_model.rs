@@ -20,7 +20,7 @@ fn summary() -> WalletState {
             symbol: "BTC".to_string(),
             coingecko_id: "bitcoin".to_string(),
             chain_id: crate::registry::Chain::Bitcoin,
-            token_standard: "Native".to_string(),
+            token_standard: None,
             contract_address: None,
             amount: "1.5".into(),
         }],

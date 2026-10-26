@@ -283,14 +283,10 @@ fn descriptors_are_the_known_tokens_for_the_chain() {
             token: crate::catalog::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
-                kind: crate::catalog::tokens::TokenKind::Protocol {
-                    standard: "fixture".into(),
-                    identifier: "fixture".into(),
-                },
                 chain_id: chain,
                 name: "Token".to_string(),
                 symbol: "TKN".to_string(),
-                token_standard: "erc20".to_string(),
+                token_standard: Some(crate::registry::TokenStandard::Erc20),
                 contract: contract.to_string(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),
@@ -811,7 +807,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
     ]
     .into_iter()
     .map(|contract| EvmTokenTransferItem {
-        standard: String::new(),
+        standard: None,
         contract_address: contract.into(),
         token_name: "Same".into(),
         symbol: "SAME".into(),

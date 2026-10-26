@@ -10,7 +10,7 @@ fn native(chain: Chain) -> AssetHolding {
         name: chain.coin_name().into(),
         symbol: chain.coin_symbol().into(),
         chain_id: chain,
-        token_standard: "Native".into(),
+        token_standard: None,
         coingecko_id: chain.coingecko_id().into(),
         contract_address: None,
         amount: "0".into(),
@@ -22,7 +22,7 @@ fn symbols_and_market_ids_never_identify_a_holding() {
     let eth = native(Chain::Ethereum);
     let base = native(Chain::Base);
     let mut lookalike = eth.clone();
-    lookalike.token_standard = "ERC-20".into();
+    lookalike.token_standard = Some(crate::registry::TokenStandard::Erc20);
     lookalike.contract_address = Some("0x1111111111111111111111111111111111111111".into());
     assert!(!lookalike.is_native());
     assert_ne!(lookalike.deployment_id(), eth.deployment_id());
@@ -59,7 +59,7 @@ async fn invalid_protocol_identity_is_refused_before_storage() {
         true,
     );
     let mut holding = native(Chain::Ethereum);
-    holding.token_standard = "ERC-20".into();
+    holding.token_standard = Some(crate::registry::TokenStandard::Erc20);
     wallet.holdings.push(holding);
     assert!(
         service

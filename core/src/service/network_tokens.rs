@@ -35,14 +35,12 @@ fn validate_token_reads(
     tokens: &mut [TokenDescriptor],
 ) -> Result<(), SpectraBridgeError> {
     for token in tokens {
-        let standard = token.standard_on(chain).to_string();
-        token.contract = crate::catalog::tokens::validate_protocol_identifier(
-            chain,
-            &standard,
-            &token.contract,
-        )?;
-        token.standard = standard.clone();
-        if !chain.allows_token_standard(&standard) {
+        let standard =
+            crate::catalog::tokens::resolve_token_standard(chain, token.standard, &token.contract)?;
+        token.contract =
+            crate::catalog::tokens::validate_protocol_identifier(chain, standard, &token.contract)?;
+        token.standard = Some(standard);
+        if !chain.allows_token_standard(standard) {
             return Err(SpectraBridgeError::invalid(format!(
                 "{standard} balance reads are not supported"
             )));
@@ -230,7 +228,8 @@ impl WalletService {
                 if endpoints.is_empty() {
                     return Ok(None);
                 }
-                let places = crate::catalog::tokens::fixed_token_decimals("Trust Line Token")
+                let places = crate::registry::TokenStandard::TrustLineToken
+                    .fixed_decimals()
                     .expect("issued currencies are kept at fixed places");
                 crate::api::xrpl_json_rpc::XrplClient::new(endpoints)
                     .fetch_trust_lines(address, None)
@@ -319,7 +318,7 @@ impl WalletService {
     /// A token's decimals as its contract states them, for a holding whose
     /// listing did not carry them.
     async fn token_decimals(&self, chain: Chain, contract: &str) -> Result<u8, SpectraBridgeError> {
-        let standard = chain.token_standard_for_identifier(contract);
+        let standard = crate::catalog::tokens::resolve_token_standard(chain, None, contract)?;
         crate::catalog::tokens::validate_protocol_identifier(chain, standard, contract)?;
         if !chain.allows_token_standard(standard) {
             return Err(SpectraBridgeError::invalid(format!(
@@ -340,7 +339,7 @@ impl WalletService {
                     chain,
                     self.trc20_metadata.clone(),
                 );
-                if standard == "TRC-10" {
+                if standard == crate::registry::TokenStandard::Trc10 {
                     client.fetch_trc10_metadata(chain, contract).await?.decimals
                 } else {
                     client.read_metadata(contract).await?.decimals
@@ -413,7 +412,7 @@ impl WalletService {
                     ),
                 };
                 Ok::<_, SpectraBridgeError>(TokenBalanceResult {
-                    standard: token.standard_on(chain).to_string(),
+                    standard: token.standard_on(chain),
                     contract_address: token.contract.clone(),
                     symbol: token.symbol.clone(),
                     decimals,
@@ -511,9 +510,9 @@ impl WalletService {
                     .or_else(|| entry.and_then(|e| u8::try_from(e.decimals).ok()))
                     .unwrap_or(0);
                     TokenBalanceResult {
-                        standard: entry.map(|e| e.token_standard.clone()).unwrap_or_else(|| {
-                            chain.token_standard_for_identifier(&b.contract).into()
-                        }),
+                        standard: entry
+                            .and_then(|e| e.token_standard)
+                            .or_else(|| chain.token_standard_for_identifier(&b.contract)),
                         contract_address: entry.map_or(b.contract, |e| e.contract.clone()),
                         symbol: entry.map(|e| e.symbol.clone()).unwrap_or_default(),
                         decimals,
@@ -569,7 +568,7 @@ impl WalletService {
                         let address = address.clone();
                         let contract = t.contract.clone();
                         let symbol = t.symbol.clone();
-                        let standard = t.standard_on(chain).to_string();
+                        let standard = t.standard_on(chain);
                         async move {
                             // Balance and decimals together: the token's own
                             // count wins over the catalog's, which can only
@@ -618,9 +617,9 @@ impl WalletService {
                         let contract = t.contract.clone();
                         let holder = address.clone();
                         let symbol = t.symbol.clone();
-                        let standard = t.standard_on(chain).to_string();
+                        let standard = t.standard_on(chain);
                         async move {
-                            if standard == "TRC-10" {
+                            if standard == Some(crate::registry::TokenStandard::Trc10) {
                                 let b = client
                                     .fetch_trc10_balance(chain, &contract, &holder)
                                     .await?;
@@ -670,7 +669,7 @@ impl WalletService {
                         let address = address.clone();
                         let mint = t.contract.clone();
                         let symbol = t.symbol.clone();
-                        let standard = t.standard_on(chain).to_string();
+                        let standard = t.standard_on(chain);
                         let catalog_decimals = t.decimals;
                         async move {
                             let found = client
@@ -714,7 +713,7 @@ impl WalletService {
                         let contract = t.contract.clone();
                         let holder = address.clone();
                         let symbol = t.symbol.clone();
-                        let standard = t.standard_on(chain).to_string();
+                        let standard = t.standard_on(chain);
                         async move {
                             let (raw, meta) = tokio::join!(
                                 client.fetch_ft_balance_of(&contract, &holder),
@@ -799,7 +798,7 @@ impl WalletService {
                         .zip(reads)
                         .map(|((token, contract), read)| {
                             read.map(|(raw, decimals)| TokenBalanceResult {
-                                standard: token.standard_on(chain).to_string(),
+                                standard: token.standard_on(chain),
                                 contract_address: contract,
                                 symbol: token.symbol.clone(),
                                 decimals,
@@ -858,7 +857,7 @@ mod a_listing_answers_for_every_known_token {
         let usdc = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
         let usdt = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
         let descriptor = |contract: &str| TokenDescriptor {
-            standard: String::new(),
+            standard: None,
             contract: contract.into(),
             symbol: "TKN".into(),
             decimals: 18,
@@ -1023,7 +1022,7 @@ mod decimals_come_from_the_chain {
                     chain,
                     "whoever".into(),
                     vec![TokenDescriptor {
-                        standard: String::new(),
+                        standard: None,
                         contract: contract.into(),
                         symbol: "TEST".into(),
                         decimals: 18,
@@ -1095,7 +1094,7 @@ mod decimals_come_from_the_chain {
         }])
         .unwrap();
         let descriptor = |contract: &str| TokenDescriptor {
-            standard: String::new(),
+            standard: None,
             contract: contract.into(),
             symbol: "TEST".into(),
             decimals: 18,
@@ -1166,7 +1165,7 @@ mod decimals_come_from_the_chain {
         }])
         .unwrap();
         let descriptor = |contract: &str| TokenDescriptor {
-            standard: String::new(),
+            standard: None,
             contract: contract.into(),
             symbol: "TEST".into(),
             // Wrong on purpose: the token's own count is the one used.
@@ -1193,8 +1192,14 @@ mod decimals_come_from_the_chain {
             })
             .collect();
         assert_eq!(read, [(usdc, 6, "2500000", "2.5"), (coin, 2, "700", "7")]);
-        assert_eq!(rows[0].standard, "AIP-21");
-        assert_eq!(rows[1].standard, "Aptos Coin");
+        assert_eq!(
+            rows[0].standard,
+            Some(crate::registry::TokenStandard::Aip21)
+        );
+        assert_eq!(
+            rows[1].standard,
+            Some(crate::registry::TokenStandard::AptosCoin)
+        );
     }
 
     #[tokio::test]
@@ -1209,14 +1214,14 @@ mod decimals_come_from_the_chain {
         }])
         .unwrap();
         let token = TokenDescriptor {
-            standard: "TRC-20".into(),
+            standard: Some(crate::registry::TokenStandard::Trc20),
             contract: "1002000".into(),
             symbol: "T10".into(),
             decimals: 6,
             name: None,
         };
         let mut legacy = [TokenDescriptor {
-            standard: "TRC-10".into(),
+            standard: Some(crate::registry::TokenStandard::Trc10),
             ..token.clone()
         }];
         super::validate_token_reads(Chain::Tron, &mut legacy).expect("TRC-10 is supported on Tron");
@@ -1243,7 +1248,7 @@ mod decimals_come_from_the_chain {
         );
         assert!(server.received_requests().await.unwrap().is_empty());
         let descriptor = TokenDescriptor {
-            standard: "ERC-20".into(),
+            standard: Some(crate::registry::TokenStandard::Erc20),
             contract: "11111111111111111111111111111111".into(),
             symbol: "BAD".into(),
             decimals: 6,
@@ -1316,7 +1321,7 @@ mod decimals_come_from_the_chain {
                 Chain::NearTestnet,
                 "owner.testnet".into(),
                 vec![TokenDescriptor {
-                    standard: String::new(),
+                    standard: None,
                     contract: "fixture.testnet".into(),
                     symbol: "TST".into(),
                     decimals: 18,
@@ -1329,7 +1334,7 @@ mod decimals_come_from_the_chain {
             .iter()
             .map(|r| {
                 (
-                    r.standard.as_str(),
+                    r.standard.map_or("", |standard| standard.as_str()),
                     r.contract_address.as_str(),
                     r.decimals,
                     r.balance_raw.as_str(),

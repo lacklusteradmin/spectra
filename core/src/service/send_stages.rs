@@ -681,13 +681,15 @@ impl WalletService {
                         chain,
                     ) == normalized
             });
-            let standard = tracked
-                .map(|p| p.token.token_standard.as_str())
-                .or(request.token_standard.as_deref())
-                .unwrap_or_else(|| chain.token_standard_for_identifier(contract));
+            let standard = crate::catalog::tokens::resolve_token_standard(
+                chain,
+                tracked
+                    .and_then(|p| p.token.token_standard)
+                    .or(request.token_standard),
+                contract,
+            )?;
             if request
                 .token_standard
-                .as_deref()
                 .is_some_and(|requested| requested != standard)
             {
                 return Err(SpectraBridgeError::invalid(
@@ -702,7 +704,7 @@ impl WalletService {
                     "{standard} transfers are not supported"
                 )));
             }
-            request.token_standard = Some(standard.to_string());
+            request.token_standard = Some(standard);
         }
         super::send_execution::send_chain_for(&state, &request.wallet_id, chain)?;
         let wallet = state

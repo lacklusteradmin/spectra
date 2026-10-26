@@ -840,6 +840,7 @@
   "Name the wallet that signs.": "Name the wallet that signs.",
   "Named Account (Optional)": "Named Account (Optional)",
   "Named account": "Named account",
+  "Native": "Native",
   "Native SegWit": "Native SegWit",
   "Native script, as cardano-cli writes it": "Native script, as cardano-cli writes it",
   "Needs your endpoint": "Needs your endpoint",

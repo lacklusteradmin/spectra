@@ -119,10 +119,10 @@ extension AssetHolding {
     /// A holding as core would project it. The id follows core's
     /// `deployment_id` for the EVM-style contracts these tests use.
     static func fixture(
-        name: String, symbol: String, coingeckoId: String = "", chainId: Chain, tokenStandard: String = "Native",
+        name: String, symbol: String, coingeckoId: String = "", chainId: Chain, tokenStandard: TokenStandard? = nil,
         contractAddress: String? = nil, amount: String
     ) -> AssetHolding {
-        let id = contractAddress.map { "\(chainId.id):\(tokenStandard.lowercased()):\($0.lowercased())" } ?? "\(chainId.id):native"
+        let id = contractAddress.map { "\(chainId.id):\(tokenStandard?.name.lowercased() ?? ""):\($0.lowercased())" } ?? "\(chainId.id):native"
         return AssetHolding(
             id: id, name: name, symbol: symbol, coingeckoId: coingeckoId, chainId: chainId,
             tokenStandard: tokenStandard, contractAddress: contractAddress, amount: amount)

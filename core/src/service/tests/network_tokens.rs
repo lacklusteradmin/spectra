@@ -66,7 +66,7 @@ async fn a_cardano_wallet_holds_the_native_assets_its_base_address_outputs_hold(
     };
     let held = [(
         token.clone(),
-        "Cardano Native Token".to_string(),
+        Some(crate::registry::TokenStandard::CardanoNativeToken),
         0,
         "3".to_string(),
     )];
@@ -77,7 +77,7 @@ async fn a_cardano_wallet_holds_the_native_assets_its_base_address_outputs_hold(
             Chain::Cardano,
             wallet.address.clone(),
             vec![TokenDescriptor {
-                standard: String::new(),
+                standard: None,
                 contract: token.to_uppercase(),
                 symbol: "TEST".into(),
                 decimals: 0,

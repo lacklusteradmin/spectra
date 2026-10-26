@@ -80,7 +80,7 @@ struct CoinBadgeArtworkTests {
     @Test func anUnknownCoinFallsBackToItsLetter() {
         let unknown = CoinBadge(
             artworkName: AssetHolding.fixture(name: "USD Coin", symbol: "USDC", coingeckoId: "usd-coin", chainId: Chain.ethereum,
-                tokenStandard: "ERC-20", contractAddress: "0xdead", amount: "0").artworkName,
+                tokenStandard: .erc20, contractAddress: "0xdead", amount: "0").artworkName,
             fallbackText: "USDCE", color: .orange)
         #expect(unknown.artworkName == "")
     }

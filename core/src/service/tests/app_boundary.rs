@@ -133,7 +133,7 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
             name: "Solana".into(),
             symbol: "SOL".into(),
             chain_id: crate::registry::Chain::Solana,
-            token_standard: "Native".into(),
+            token_standard: None,
             amount: "2".into(),
             id: String::new(),
             coingecko_id: String::new(),

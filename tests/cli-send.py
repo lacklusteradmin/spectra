@@ -72,7 +72,7 @@ class SendTests(unittest.TestCase):
                     wid,payload=db.execute('SELECT id,payload FROM wallets').fetchone()
                     wallet=json.loads(payload)
                     wallet['holdings']=[dict(name='Ethereum',symbol='ETH',coingeckoId='ethereum',chainId='ethereum',
-                        tokenStandard='Native',contractAddress=None,amount='10')]
+                        tokenStandard=None,contractAddress=None,amount='10')]
                     db.execute('UPDATE wallets SET payload=? WHERE id=?',(json.dumps(wallet),wid))
                 args=('send','owned-broadcast','--wallet','Sealed','--holding','ethereum:native','--amount','1',
                       '--destination','0x'+'22'*20)

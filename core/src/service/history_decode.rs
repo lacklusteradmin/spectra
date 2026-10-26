@@ -11,7 +11,8 @@ use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
 #[derive(Debug, Clone)]
 pub struct EvmTokenTransferItem {
-    pub standard: String,
+    /// The token's protocol; `None` resolves from the contract.
+    pub standard: Option<crate::registry::TokenStandard>,
     pub contract_address: String,
     pub token_name: String,
     pub symbol: String,
@@ -109,14 +110,15 @@ pub(crate) fn build_evm_transaction_records(
     let page = request.decoded_page;
     let tokens = page.tokens.into_iter().map(|transfer| Transfer {
         status: TransactionStatus::Confirmed,
-        deployment_id: if transfer.standard.is_empty() {
-            crate::catalog::tokens::deployment_id_for(chain, Some(&transfer.contract_address))
-        } else {
-            crate::catalog::tokens::protocol_deployment_id(
+        deployment_id: match transfer.standard {
+            None => {
+                crate::catalog::tokens::deployment_id_for(chain, Some(&transfer.contract_address))
+            }
+            Some(standard) => crate::catalog::tokens::protocol_deployment_id(
                 chain,
-                &transfer.standard,
+                standard,
                 &transfer.contract_address,
-            )
+            ),
         },
         asset_display_name: transfer.token_name,
         symbol: transfer.symbol,
@@ -242,7 +244,7 @@ mod tests {
     fn plans_evm_transaction_records_for_matching_transfers() {
         let page = EvmHistoryPageDecoded {
             tokens: vec![EvmTokenTransferItem {
-                standard: String::new(),
+                standard: None,
                 contract_address: "0xabc".into(),
                 token_name: "USD Coin".into(),
                 symbol: "USDC".into(),
@@ -388,7 +390,7 @@ mod tests {
     fn plans_evm_transaction_records_skips_unrelated_transfers() {
         let page = EvmHistoryPageDecoded {
             tokens: vec![EvmTokenTransferItem {
-                standard: String::new(),
+                standard: None,
                 contract_address: "0xabc".into(),
                 token_name: "USD Coin".into(),
                 symbol: "USDC".into(),
