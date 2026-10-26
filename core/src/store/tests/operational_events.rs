@@ -126,8 +126,8 @@ async fn clearing_one_chain_leaves_the_others() {
 /// appending anything.
 #[tokio::test]
 async fn core_records_its_own_refresh_and_recheck_outcomes() {
-    use crate::fetch::refresh_policy::DeviceConditions;
     use crate::service::app_refresh::AppRefreshIntent;
+    use crate::service::refresh_policy::DeviceConditions;
     let db = tmp_db("core-owned");
     let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(db).await.expect("open");

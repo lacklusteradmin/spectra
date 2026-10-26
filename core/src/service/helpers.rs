@@ -10,8 +10,6 @@
 
 use super::*;
 
-use serde::Serialize;
-
 // ── Chain ID lookup ───────────────────────────────────────────────────────
 
 pub(super) fn evm_network(chain: Chain) -> Result<Chain, SpectraBridgeError> {
@@ -22,15 +20,6 @@ pub(super) fn evm_network(chain: Chain) -> Result<Chain, SpectraBridgeError> {
             "unsupported EVM chain_id: {chain}"
         )))
     }
-}
-
-/// Serialize a value to JSON, returning the bridge error type directly.
-/// Used by chain dispatch arms whose FFI signature is
-/// `Result<String, SpectraBridgeError>`. New endpoints should return a
-/// typed `#[derive(uniffi::Record)]` value directly rather than going
-/// through this helper.
-pub(super) fn json_response<T: Serialize>(value: &T) -> Result<String, SpectraBridgeError> {
-    serde_json::to_string(value).map_err(Into::into)
 }
 
 /// Decode a hex string of an exact byte length. Replaces repeated

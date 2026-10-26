@@ -31,6 +31,24 @@ pub struct SuiHistoryEntry {
     pub to: String,
 }
 
+impl SuiHistoryEntry {
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.digest,
+            amount: match self.amount_display {
+                Some(amount) => crate::api::history_page::HistoryAmount::Decimal(amount),
+                None => crate::api::history_page::HistoryAmount::unit_digits(&self.amount_mist)?,
+            },
+            contract: self.contract,
+            incoming: self.is_incoming,
+            outcome: crate::api::history_page::HistoryOutcome::Confirmed,
+            block_height: None,
+            timestamp: self.timestamp_ms.map(|t| t as f64 / 1e3),
+            counterparty: if self.is_incoming { self.from } else { self.to },
+        })
+    }
+}
+
 // ── Client
 
 pub struct SuiClient {

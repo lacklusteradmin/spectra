@@ -1,8 +1,8 @@
 //! Fetch and commit balances against the wallet and network that requested them.
 use super::*;
 #[cfg(test)]
-use crate::fetch::refresh_engine::refresh_entries_for;
-use crate::fetch::refresh_engine::{RefreshEntry, refresh_entry_for};
+use crate::service::refresh_engine::refresh_entries_for;
+use crate::service::refresh_engine::{RefreshEntry, refresh_entry_for};
 use crate::store::state::WalletState;
 use crate::store::wallet_domain::AssetHolding;
 use futures::{
@@ -745,7 +745,7 @@ mod concurrency_tests {
                     AppRefreshIntent::AfterSend {
                         chain_id: crate::registry::Chain::Stellar,
                     },
-                    crate::fetch::refresh_policy::DeviceConditions {
+                    crate::service::refresh_policy::DeviceConditions {
                         app_is_active: true,
                         is_network_reachable: true,
                         is_constrained_network: false,

@@ -25,14 +25,6 @@ symptom, and delete the item with the change.
 
 ### Core
 
-- [ ] **History round-trips through a JSON string.** Every `api` module returns
-  its own entry type; `service/network_history.rs` serializes each page to a
-  string and `fetch/history.rs` re-parses it by per-chain field names
-  (`HistoryShape`). Give `api` one typed history entry, map each adapter to
-  it, and delete `HistoryShape`, `RawHistoryPage` and the re-parse. With that
-  gone, `fetch/` is no longer a layer: move `refresh_*` and `history_store`
-  into `service/`, the merge rules into `store/` and `fetch/price.rs`'s
-  requests into `api/`.
 - [ ] **Network identity checks are rewritten per call site.**
   `send_stage_protocols.rs`, `pending_status.rs` and `multisig_aptos.rs`
   check each network's identity by hand (the Aptos ledger check five times)

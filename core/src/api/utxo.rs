@@ -136,6 +136,26 @@ pub struct UtxoHistoryEntry {
     pub fee_sats: Option<u64>,
 }
 
+impl UtxoHistoryEntry {
+    /// The address's net change says which way the transaction went.
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.txid,
+            contract: None,
+            amount: crate::api::history_page::HistoryAmount::signed_units(self.net_sats),
+            incoming: self.net_sats >= 0,
+            outcome: if self.confirmed {
+                crate::api::history_page::HistoryOutcome::Confirmed
+            } else {
+                crate::api::history_page::HistoryOutcome::Pending
+            },
+            block_height: self.block_height.and_then(|h| i64::try_from(h).ok()),
+            timestamp: self.block_time.map(|t| t as f64),
+            counterparty: String::new(),
+        })
+    }
+}
+
 /// Satoshis (or the coin's smallest unit) per virtual byte.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct FeeRate {

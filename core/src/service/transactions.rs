@@ -828,8 +828,8 @@ fn merge_history_rows(
         .map(|record| (record.id.to_lowercase(), fingerprint(record)))
         .collect();
 
-    let merged = crate::fetch::transactions::merge_transactions(
-        crate::fetch::transactions::TransactionMergeRequest {
+    let merged = crate::store::transaction_merge::merge_transactions(
+        crate::store::transaction_merge::TransactionMergeRequest {
             existing_transactions: existing,
             incoming_transactions: incoming,
             strategy: chain.transaction_merge_strategy(),

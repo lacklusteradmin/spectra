@@ -6,6 +6,7 @@ use futures::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::api::history_page::{HistoryAmount, HistoryEntry, HistoryOutcome};
 use crate::api::http::HttpClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,6 +18,21 @@ pub struct NearHistoryEntry {
     pub to: String,
     pub amount_yocto: String,
     pub is_incoming: bool,
+}
+
+impl NearHistoryEntry {
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.txid,
+            contract: None,
+            amount: crate::api::history_page::HistoryAmount::unit_digits(&self.amount_yocto)?,
+            incoming: self.is_incoming,
+            outcome: crate::api::history_page::HistoryOutcome::Confirmed,
+            block_height: None,
+            timestamp: Some(self.timestamp_ns as f64 / 1e9),
+            counterparty: if self.is_incoming { self.from } else { self.to },
+        })
+    }
 }
 
 pub struct NearblocksClient {
@@ -121,7 +137,7 @@ impl NearblocksClient {
         &self,
         account: &str,
         cursor: Option<&str>,
-    ) -> Result<crate::api::HistoryPage<Value>, ApiError> {
+    ) -> Result<crate::api::HistoryPage<HistoryEntry>, ApiError> {
         let suffix = cursor
             .map(|value| format!("&next={}", crate::api::history_page::query_value(value)))
             .unwrap_or_default();
@@ -153,7 +169,7 @@ impl NearblocksClient {
             );
         }
         let account = account.to_string();
-        let batches: Vec<Result<Vec<Value>, ApiError>> = stream::iter(unique).map(|hash| {
+        let batches: Vec<Result<Vec<HistoryEntry>, ApiError>> = stream::iter(unique).map(|hash| {
             let client = self.client.clone(); let endpoints = self.endpoints.clone(); let account = account.clone();
             async move {
                 let full: Value = client.get_path(&endpoints, &format!("/txns/{hash}/fts")).await?;
@@ -265,7 +281,11 @@ struct NearFtTotal {
     recipients: std::collections::BTreeSet<String>,
 }
 
-fn near_ft_history(rows: &[Value], account: &str, txid: &str) -> Result<Vec<Value>, ApiError> {
+fn near_ft_history(
+    rows: &[Value],
+    account: &str,
+    txid: &str,
+) -> Result<Vec<HistoryEntry>, ApiError> {
     let mut totals = std::collections::BTreeMap::<String, NearFtTotal>::new();
     let mut events = std::collections::HashSet::new();
     for row in rows {
@@ -348,12 +368,36 @@ fn near_ft_history(rows: &[Value], account: &str, txid: &str) -> Result<Vec<Valu
             }
         }
     }
-    Ok(totals.into_iter().filter(|(_, total)| total.received != total.spent).map(|(contract,total)| {
-        let incoming = total.received > total.spent;
-        let peers = if incoming { total.senders } else { total.recipients };
-        let other = if peers.len() == 1 { peers.into_iter().next().unwrap_or_default() } else { String::new() };
-        serde_json::json!({"txid":txid,"timestamp_ns":total.timestamp,"amount_display":crate::amount::decimal::from_units(total.received.abs_diff(total.spent),u32::from(total.decimals)),"contract":contract,"from":if incoming { other.as_str() } else { account },"to":if incoming { account } else { other.as_str() },"is_incoming":incoming})
-    }).collect())
+    Ok(totals
+        .into_iter()
+        .filter(|(_, total)| total.received != total.spent)
+        .map(|(contract, total)| {
+            let incoming = total.received > total.spent;
+            let peers = if incoming {
+                total.senders
+            } else {
+                total.recipients
+            };
+            HistoryEntry {
+                txid: txid.to_string(),
+                amount: HistoryAmount::Decimal(crate::amount::decimal::from_units(
+                    total.received.abs_diff(total.spent),
+                    u32::from(total.decimals),
+                )),
+                contract: Some(contract),
+                incoming,
+                outcome: HistoryOutcome::Confirmed,
+                block_height: None,
+                timestamp: Some(total.timestamp as f64 / 1e9),
+                // One other party is named; several are not one counterparty.
+                counterparty: if peers.len() == 1 {
+                    peers.into_iter().next().unwrap_or_default()
+                } else {
+                    String::new()
+                },
+            }
+        })
+        .collect())
 }
 
 /// Read every receipt in the originating transaction before presenting its
@@ -529,8 +573,11 @@ mod history_tests {
     fn ft_history_uses_signed_integer_deltas_and_requires_real_precision() {
         let mut row = json!({"cause":"TRANSFER","affected_account_id":"me.near","involved_account_id":"them.near","delta_amount":"-9007199254740993000000","transaction_hash":"hash","receipt_id":"receipt","event_index":1,"event_type":1,"block_timestamp":"1791130826972666500","contract_account_id":"token.near","meta":{"decimals":6}});
         let entries = near_ft_history(&[row.clone()], "me.near", "hash").unwrap();
-        assert_eq!(entries[0]["amount_display"], "9007199254740993");
-        assert_eq!(entries[0]["is_incoming"], false);
+        assert_eq!(
+            entries[0].amount,
+            HistoryAmount::Decimal("9007199254740993".into())
+        );
+        assert!(!entries[0].incoming);
         row["meta"]["decimals"] = json!(39);
         assert!(near_ft_history(&[row], "me.near", "hash").is_err());
     }
@@ -653,12 +700,8 @@ mod paging_tests {
         let client = NearblocksClient::new(std::sync::Arc::new(vec![server.uri()]));
         let first = client.fetch_ft_history_page(OWNER, None).await.unwrap();
         assert_eq!(first.next_cursor.as_deref(), Some("ft-next"));
-        let amounts: Vec<_> = first
-            .items
-            .iter()
-            .map(|row| row["amount_display"].clone())
-            .collect();
-        assert_eq!(amounts, [json!("7")]);
+        let amounts: Vec<_> = first.items.iter().map(|row| row.amount.clone()).collect();
+        assert_eq!(amounts, [HistoryAmount::Decimal("7".into())]);
         let second = client
             .fetch_ft_history_page(OWNER, first.next_cursor.as_deref())
             .await

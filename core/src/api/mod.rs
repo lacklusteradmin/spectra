@@ -4,9 +4,11 @@
 //! contract's reads and submissions, whichever chain uses it. `utxo` is the one
 //! module that spans several APIs — the UTXO family's client over them and the
 //! answer types they share. `http`, `json_rpc` and `grpc` are the transport
-//! under all of them, `time` the provider timestamps they read.
+//! under all of them, `time` the provider timestamps they read. Every history
+//! adapter converts its answer into one `history_page::HistoryEntry`. `price`
+//! is the market-quote and fiat-rate providers.
 //!
-//! `api` depends on nothing but the transport and `registry`: `fetch`, `send`,
+//! `api` depends on nothing but the transport and `registry`: `send`,
 //! `staking` and `service` call it, never the other way round. Building and
 //! signing transactions is per chain and lives in `send`.
 
@@ -16,6 +18,7 @@ pub(crate) mod grpc;
 pub(crate) mod history_page;
 pub mod http;
 pub(crate) mod json_rpc;
+pub mod price;
 pub(crate) mod tcp;
 pub mod time;
 pub mod tor;

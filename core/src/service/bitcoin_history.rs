@@ -7,13 +7,25 @@
 
 use crate::api::utxo::UtxoHistoryEntry;
 use crate::api::{HistoryPage, error::ApiError};
-use crate::fetch::history::BitcoinHistorySnapshot;
 use crate::registry::Chain;
 use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 use futures::{StreamExt, TryStreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashSet, VecDeque};
 use std::future::Future;
+
+/// One transfer of a Bitcoin wallet's history, netted over its addresses.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BitcoinHistorySnapshot {
+    pub txid: String,
+    /// The net movement, as an exact decimal in BTC.
+    pub amount_btc: String,
+    pub kind: TransactionKind,
+    pub status: TransactionStatus,
+    pub block_height: Option<i64>,
+    pub created_at_unix: f64,
+}
 
 #[derive(Serialize, Deserialize)]
 struct AddressCursor {

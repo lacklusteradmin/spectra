@@ -40,9 +40,9 @@ pub(crate) use crate::api::{
     toncenter_v2::ToncenterV2Client, tron_http::TronHttpClient, xrpl_json_rpc::XrplClient,
 };
 pub(crate) use crate::error::SpectraBridgeError;
-pub(crate) use crate::fetch::history_store::HistoryPaginationStore;
 pub(crate) use crate::registry::Chain;
 pub(crate) use crate::secrets::store::SecretStore;
+pub(crate) use crate::service::history_store::HistoryPaginationStore;
 pub(crate) use crate::store::state::{
     ResidentState, StateCommand, StateTransition, reduce_state_in_place,
 };
@@ -69,7 +69,12 @@ use crate::api::endpoint::EndpointApi;
 
 pub(crate) mod address_discovery;
 mod balance_refresh;
+pub(crate) mod bitcoin_history;
 mod diagnostic_state;
+pub mod history_decode;
+pub mod history_store;
+pub mod refresh_engine;
+pub mod refresh_policy;
 pub use diagnostic_state::{
     ChainDegradation, DiagnosticCommand, DiagnosticLog, DiagnosticLogInput, DiagnosticLogLevel,
     DiagnosticState, DiagnosticsPlatformInfo,
@@ -242,7 +247,7 @@ pub struct WalletService {
     /// restart should refresh, which is exactly what an empty clock already
     /// means. Core holds it so every front end, the CLI included, can ask the
     /// scheduling question.
-    pub(crate) refresh_clock: Arc<AsyncRwLock<crate::fetch::refresh_policy::RefreshClock>>,
+    pub(crate) refresh_clock: Arc<AsyncRwLock<crate::service::refresh_policy::RefreshClock>>,
 }
 #[uniffi::export]
 impl WalletService {

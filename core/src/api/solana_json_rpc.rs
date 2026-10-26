@@ -32,6 +32,23 @@ pub struct SolanaTransfer {
     pub to: String,
 }
 
+impl SolanaTransfer {
+    /// SPL transfers ride the same feed as native ones, with an amount
+    /// already in display units.
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.signature,
+            contract: (!self.mint.is_empty()).then_some(self.mint),
+            amount: crate::api::history_page::HistoryAmount::Decimal(self.amount_display),
+            incoming: self.is_incoming,
+            outcome: crate::api::history_page::HistoryOutcome::Confirmed,
+            block_height: None,
+            timestamp: self.timestamp.map(|t| t as f64),
+            counterparty: if self.is_incoming { self.from } else { self.to },
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SplBalance {
     pub mint: String,

@@ -168,14 +168,8 @@ impl FundsScan {
                     .await
                     .iter()
                     .any(|e| e.capabilities.contains(&EndpointCapability::History));
-            let used = is_funded
-                || (has_history
-                    && self
-                        .service
-                        .fetch_history_summary(chain, address)
-                        .await?
-                        .entry_count
-                        > 0);
+            let used =
+                is_funded || (has_history && self.service.has_history(chain, &address).await?);
             Ok::<_, SpectraBridgeError>((balance, is_funded, used))
         }
         .await;

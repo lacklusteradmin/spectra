@@ -178,8 +178,9 @@ impl ToncenterV3Client {
         chain: crate::registry::Chain,
         owner: &str,
         cursor: Option<&str>,
-    ) -> Result<crate::api::HistoryPage<serde_json::Value>, ApiError> {
+    ) -> Result<crate::api::HistoryPage<crate::api::history_page::HistoryEntry>, ApiError> {
         use crate::api::error::OrDecode;
+        use crate::api::history_page::{HistoryAmount, HistoryEntry, HistoryOutcome};
         let owner = raw_address(owner)?;
         let offset = cursor.map_or(Ok(0u64), |value| {
             value
@@ -247,12 +248,24 @@ impl ToncenterV3Client {
                 .or_decode("Jetton transfer: missing transaction hash")?;
             let timestamp =
                 crate::api::time::confirmed_history_time(row["transaction_now"].as_u64(), txid)?;
-            let lt = row["transaction_lt"]
+            row["transaction_lt"]
                 .as_str()
                 .filter(|value| value.parse::<u64>().is_ok())
                 .or_decode("Jetton transfer: missing logical time")?;
-            let event_id = format!("ton:jetton:{txid}:{lt}");
-            items.push(serde_json::json!({"event_id":event_id,"txid":txid,"timestamp":timestamp,"amount_display":crate::amount::decimal::from_units(amount,u32::from(decimals)),"contract":contract,"from":source,"to":destination,"is_incoming":destination==owner}));
+            let incoming = destination == owner;
+            items.push(HistoryEntry {
+                txid: txid.to_string(),
+                amount: HistoryAmount::Decimal(crate::amount::decimal::from_units(
+                    amount,
+                    u32::from(decimals),
+                )),
+                contract: Some(contract),
+                incoming,
+                outcome: HistoryOutcome::Confirmed,
+                block_height: None,
+                timestamp: Some(timestamp as f64),
+                counterparty: if incoming { source } else { destination },
+            });
         }
         Ok(crate::api::HistoryPage {
             items,

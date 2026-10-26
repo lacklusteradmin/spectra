@@ -145,8 +145,8 @@ impl Chain {
     /// Exhaustive so each new chain must specify its merge rule.
     pub fn transaction_merge_strategy(
         self,
-    ) -> crate::fetch::transactions::TransactionMergeStrategy {
-        use crate::fetch::transactions::TransactionMergeStrategy as S;
+    ) -> crate::store::transaction_merge::TransactionMergeStrategy {
+        use crate::store::transaction_merge::TransactionMergeStrategy as S;
         // Resolved through the mainnet counterpart so a testnet can never merge
         // differently from the chain it mirrors — listing them separately is
         // how `zcash-testnet` silently ended up account-based.

@@ -27,6 +27,21 @@ pub struct TonHistoryEntry {
     pub comment: Option<String>,
 }
 
+impl TonHistoryEntry {
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.txid,
+            contract: None,
+            amount: crate::api::history_page::HistoryAmount::Units(self.amount_nanotons.into()),
+            incoming: self.is_incoming,
+            outcome: crate::api::history_page::HistoryOutcome::Confirmed,
+            block_height: None,
+            timestamp: Some(self.timestamp as f64),
+            counterparty: if self.is_incoming { self.from } else { self.to },
+        })
+    }
+}
+
 // ── Client
 
 /// An account as `getAddressInformation` shows it.
