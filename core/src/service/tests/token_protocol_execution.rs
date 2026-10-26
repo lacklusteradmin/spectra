@@ -16,7 +16,7 @@ fn request(chain_id: Chain, token_standard: Option<&str>) -> SendExecutionReques
         to_address: "TD5gsCwxykWsLN9aPrq2TAfNjByuZKYp4E".into(),
         amount_str: "1".into(),
         contract_address: Some("1002000".into()),
-        token_standard: token_standard.map(str::to_string),
+        token_standard: token_standard.and_then(crate::registry::TokenStandard::parse),
         token_decimals: Some(6),
         fee_rate_svb: None,
         fee_sat: None,

@@ -106,8 +106,12 @@ The chain picker and wiki share `ChainTag` and the catalog's resolved tags;
 Address formats, derivation paths, address slots, EVM membership and routing
 facts belong there rather than in caller-owned lists.
 
-Token standards belong to individual deployments. A chain's configured
-standard is a default for input, not a restriction to one protocol. `Chain`
+Token standards belong to individual deployments. A standard is a
+`registry::TokenStandard`, spelled as its name (`"ERC-20"`) in the catalogs and
+the store; a network's own coin has none, rather than a sentinel standard, and
+`catalog::tokens::deployment_id` is the one place a deployment's id is spelled.
+A chain's configured standard is a default for input, not a restriction to one
+protocol. `Chain`
 validates the supported chain/standard/identifier combinations; the token
 catalog and persisted holdings use those rules. Read and send capabilities
 are checked separately, so a representable protocol cannot silently be routed

@@ -327,7 +327,7 @@ mod preflight_tests {
     fn holding(
         chain: crate::registry::Chain,
         symbol: &str,
-        standard: &str,
+        standard: Option<crate::registry::TokenStandard>,
         contract: Option<&str>,
     ) -> AssetHolding {
         AssetHolding {
@@ -336,13 +336,17 @@ mod preflight_tests {
             symbol: symbol.to_string(),
             coingecko_id: String::new(),
             chain_id: chain,
-            token_standard: standard.to_string(),
+            token_standard: standard,
             contract_address: contract.map(str::to_string),
             amount: "10".into(),
         }
     }
 
-    fn known(chain: Chain, standard: &str, contract: &str) -> TokenPreferenceEntry {
+    fn known(
+        chain: Chain,
+        standard: crate::registry::TokenStandard,
+        contract: &str,
+    ) -> TokenPreferenceEntry {
         TokenPreferenceEntry {
             is_built_in: false,
             token: crate::catalog::tokens::TokenDeploymentEntry {
@@ -351,14 +355,10 @@ mod preflight_tests {
                 )
                 .expect("valid protocol fixture"),
                 token_id: "fixture:token".into(),
-                kind: crate::catalog::tokens::TokenKind::Protocol {
-                    standard: standard.into(),
-                    identifier: contract.into(),
-                },
                 chain_id: chain,
                 name: "Token".into(),
                 symbol: "TOK".into(),
-                token_standard: standard.into(),
+                token_standard: Some(standard),
                 contract: contract.to_string(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),
@@ -377,9 +377,7 @@ mod preflight_tests {
     async fn sendability_follows_the_token_list_core_holds() {
         let service = WalletService::new(Vec::new()).expect("service");
         let mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-        let standard = Chain::Solana
-            .token_standard_for_identifier(mint)
-            .to_string();
+        let standard = Chain::Solana.token_standard_for_identifier(mint).unwrap();
         {
             let mut state = service.wallet_state.write().await;
             let mut wallet = WalletState::single_address(
@@ -393,7 +391,7 @@ mod preflight_tests {
             wallet.holdings = vec![holding(
                 crate::registry::Chain::Solana,
                 "USDC",
-                &standard,
+                Some(standard),
                 Some(mint),
             )];
             state.wallets.push(wallet);
@@ -412,7 +410,7 @@ mod preflight_tests {
             "an untracked mint is not sendable"
         );
         service.wallet_state.write().await.token_preferences =
-            vec![known(Chain::Solana, &standard, mint)];
+            vec![known(Chain::Solana, standard, mint)];
         let known_now = preflight().await.expect("a tracked mint is sendable");
         assert_eq!(known_now.token_contract_address.as_deref(), Some(mint));
     }
@@ -445,12 +443,7 @@ mod preflight_tests {
                 None,
                 false,
             );
-            wallet.holdings = vec![holding(
-                crate::registry::Chain::Bitcoin,
-                "BTC",
-                "Native",
-                None,
-            )];
+            wallet.holdings = vec![holding(crate::registry::Chain::Bitcoin, "BTC", None, None)];
             state.wallets.push(wallet);
         }
         let plan = service

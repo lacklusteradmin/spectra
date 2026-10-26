@@ -18,7 +18,10 @@ impl WalletService {
                     .request
                     .contract_address
                     .as_deref()
-                    .is_some_and(|id| chain.token_standard_for_identifier(id) == "TRC-10") =>
+                    .is_some_and(|id| {
+                        chain.token_standard_for_identifier(id)
+                            == Some(crate::registry::TokenStandard::Trc10)
+                    }) =>
             {
                 self.validate_tron_permission(chain, prepared, &stored.view.sender)
                     .await?;
@@ -66,12 +69,15 @@ impl WalletService {
         Ok(match chain.mainnet_counterpart() {
             Chain::Tron => {
                 use crate::send::tron::{Transfer, prepare_transfer_under};
-                let trc10 = request
-                    .contract_address
-                    .as_deref()
-                    .is_some_and(|id| chain.token_standard_for_identifier(id) == "TRC-10");
+                let trc10 = request.contract_address.as_deref().is_some_and(|id| {
+                    chain.token_standard_for_identifier(id)
+                        == Some(crate::registry::TokenStandard::Trc10)
+                });
                 let transfer = match request.contract_address.as_deref() {
-                    Some(asset_id) if chain.token_standard_for_identifier(asset_id) == "TRC-10" => {
+                    Some(asset_id)
+                        if chain.token_standard_for_identifier(asset_id)
+                            == Some(crate::registry::TokenStandard::Trc10) =>
+                    {
                         Transfer::Trc10 {
                             asset_id,
                             to,

@@ -330,7 +330,7 @@ fn token_descriptors(state: &ResidentState, chain: Chain) -> Vec<crate::service:
                 chain,
             )?;
             Some(crate::service::TokenDescriptor {
-                standard: entry.token.token_standard.clone(),
+                standard: entry.token.token_standard,
                 contract,
                 symbol: entry.token.symbol.clone(),
                 decimals: u8::try_from(entry.token.decimals).unwrap_or(u8::MAX),

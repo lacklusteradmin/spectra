@@ -80,8 +80,8 @@ pub struct AddArgs {
     chain: String,
     /// The token's protocol, as `chains` lists it (TRC-10 or TRC-20, ERC-20
     /// or BEP-20, …). Required where the network has more than one.
-    #[arg(long)]
-    standard: Option<String>,
+    #[arg(long, value_parser = parse_standard)]
+    standard: Option<spectra_core::registry::TokenStandard>,
     /// Symbol, as it should be displayed.
     #[arg(long)]
     symbol: String,
@@ -190,7 +190,6 @@ fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
             .map(|token| serde_json::json!({
                 "deployment_id": token.deployment_id,
                 "token_id": token.token_id,
-                "kind": token.kind,
                 "coingecko_id": token.coingecko_id,
                 "coinpaprika_id": token.coinpaprika_id,
                 "symbol": token.symbol,
@@ -263,23 +262,20 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         .into_iter()
         .find_map(|entry| {
             (entry.token.chain_id == chain_id
-                && spectra_core::catalog::tokens::validate_protocol_identifier(
-                    chain_id,
-                    &entry.token.token_standard,
-                    &args.contract,
-                )
-                .ok()
-                .as_deref()
-                    == Some(entry.token.contract.as_str()))
+                && entry.token.token_standard.is_some_and(|standard| {
+                    spectra_core::catalog::tokens::validate_protocol_identifier(
+                        chain_id,
+                        standard,
+                        &args.contract,
+                    )
+                    .is_ok_and(|contract| contract == entry.token.contract)
+                }))
             .then_some(entry.token.token_standard)
+            .flatten()
         });
     let decimals = args
         .decimals
-        .or_else(|| {
-            stored_standard
-                .as_deref()
-                .and_then(spectra_core::catalog::tokens::fixed_token_decimals)
-        })
+        .or_else(|| stored_standard.and_then(|standard| standard.fixed_decimals()))
         .ok_or_else(|| CliError::usage("--decimals is required for this token's standard"))?;
     let transition = ctx.apply(StateCommand::UpdateCustomToken {
         chain_id,
@@ -306,8 +302,8 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         .find(|entry| entry.id == chain_id.str_id())
         .map(|entry| entry.token_standards)
         .unwrap_or_default();
-    let named = match args.standard.as_deref() {
-        Some(name) => standards.iter().find(|s| s.standard == name),
+    let named = match args.standard {
+        Some(standard) => standards.iter().find(|s| s.standard == standard),
         None if standards.len() == 1 => standards.first(),
         None => None,
     };
@@ -340,14 +336,14 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         .iter()
         .find(|entry| {
             entry.token.chain_id == chain_id
-                && spectra_core::catalog::tokens::validate_protocol_identifier(
-                    chain_id,
-                    &entry.token.token_standard,
-                    &args.contract,
-                )
-                .ok()
-                .as_deref()
-                    == Some(entry.token.contract.as_str())
+                && entry.token.token_standard.is_some_and(|standard| {
+                    spectra_core::catalog::tokens::validate_protocol_identifier(
+                        chain_id,
+                        standard,
+                        &args.contract,
+                    )
+                    .is_ok_and(|contract| contract == entry.token.contract)
+                })
         })
         .ok_or_else(|| CliError::failure("core accepted the token but did not store it"))?;
     out.text(|| {
@@ -540,4 +536,15 @@ fn format_amount(out: Out, args: FormatArgs) -> CliResult<()> {
         "belowThreshold": text.below_threshold,
     }));
     Ok(())
+}
+
+/// A token protocol named as `chains` spells it.
+fn parse_standard(name: &str) -> Result<spectra_core::registry::TokenStandard, String> {
+    spectra_core::registry::TokenStandard::parse(name).ok_or_else(|| {
+        let names: Vec<&str> = spectra_core::registry::TokenStandard::ALL
+            .iter()
+            .map(|standard| standard.as_str())
+            .collect();
+        format!("unknown token standard; one of: {}", names.join(", "))
+    })
 }

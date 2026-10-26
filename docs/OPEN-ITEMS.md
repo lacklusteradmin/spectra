@@ -25,10 +25,6 @@ symptom, and delete the item with the change.
 
 ### Core
 
-- [ ] **Token standards are strings.** About 140 literals across 16 files,
-  the closed set spelled five times, a `"Native"` sentinel, and the
-  deployment id format built in six places. Add a `TokenStandard` enum and
-  one deployment-id constructor.
 - [ ] **One fact, two readers.** Token decimals are read by
   `send_execution::token_contract_decimals` and
   `network_tokens::token_decimals`, which disagree on caching and coverage;

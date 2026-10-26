@@ -117,7 +117,7 @@ pub(crate) struct TomlChain {
     /// The mainnet a test network tests. Written on testnets only.
     #[serde(default)]
     pub(crate) mainnet: Option<String>,
-    pub(crate) token_standards: Vec<String>,
+    pub(crate) token_standards: Vec<crate::registry::TokenStandard>,
     derivation_path: Vec<TomlDerivationPathEntry>,
     search_keywords: Vec<String>,
     /// The chain's place in the picker. Written on mainnets only.
@@ -175,24 +175,6 @@ struct TomlWikiChain {
     state_model: String,
 }
 
-/// What a token of `standard` is identified by, as a field asks for it.
-fn identifier_prompt_for(standard: &str) -> &'static str {
-    match standard {
-        "ERC-20" | "BEP-20" | "ARC-20" | "TRC-20" => "Contract Address",
-        "TRC-10" => "Token ID",
-        "SPL" => "Mint Address",
-        "TEP-74" => "Jetton Master Address",
-        "NEP-141" => "Contract Account ID",
-        "Sui Coin" => "Coin Standard Type",
-        "Aptos Coin" => "Coin Type",
-        "AIP-21" => "Fungible Asset Metadata Address",
-        "Trust Line Token" => "Currency Code and Issuer (CODE.rIssuer)",
-        "Stellar Asset" => "Asset Code and Issuer (CODE:ISSUER)",
-        "Cardano Native Token" => "Policy ID and Asset Name (POLICY.NAME)",
-        _ => "Token Identifier",
-    }
-}
-
 /// One token protocol a network supports, with what a token of it is
 /// identified by and the places it has when the protocol fixes them.
 ///
@@ -202,18 +184,18 @@ fn identifier_prompt_for(standard: &str) -> &'static str {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenStandardEntry {
-    pub standard: String,
+    pub standard: crate::registry::TokenStandard,
     pub identifier_prompt: String,
     /// The places every token of this protocol has: nothing to choose.
     pub fixed_decimals: Option<u32>,
 }
 
 impl TokenStandardEntry {
-    pub fn new(standard: &str) -> Self {
+    pub fn new(standard: crate::registry::TokenStandard) -> Self {
         Self {
-            standard: standard.to_string(),
-            identifier_prompt: identifier_prompt_for(standard).to_string(),
-            fixed_decimals: crate::catalog::tokens::fixed_token_decimals(standard),
+            standard,
+            identifier_prompt: standard.identifier_prompt().to_string(),
+            fixed_decimals: standard.fixed_decimals(),
         }
     }
 }
@@ -364,27 +346,6 @@ static DECLARED: LazyLock<TomlFile> = LazyLock::new(|| {
         let mut standards = std::collections::HashSet::new();
         for standard in &chain.token_standards {
             assert!(
-                matches!(
-                    standard.as_str(),
-                    "ERC-20"
-                        | "BEP-20"
-                        | "ARC-20"
-                        | "SPL"
-                        | "TRC-10"
-                        | "TRC-20"
-                        | "TEP-74"
-                        | "NEP-141"
-                        | "Sui Coin"
-                        | "Aptos Coin"
-                        | "AIP-21"
-                        | "Trust Line Token"
-                        | "Stellar Asset"
-                        | "Cardano Native Token"
-                ),
-                "unknown token protocol on {}: {standard}",
-                chain.id
-            );
-            assert!(
                 standards.insert(standard),
                 "duplicate token protocol on {}",
                 chain.id
@@ -495,8 +456,10 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
         .iter()
         .zip(crate::registry::Chain::all())
         .map(|(c, chain)| {
-            let native = crate::catalog::tokens::deployment(&format!("{}:native", c.id))
-                .expect("unknown native token deployment");
+            let native = crate::catalog::tokens::deployment(
+                &crate::catalog::tokens::deployment_id(chain, None, ""),
+            )
+            .expect("unknown native token deployment");
             assert!(
                 native.is_native() && native.chain_id == chain,
                 "native deployment belongs to another network"
@@ -555,7 +518,7 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 token_standards: c
                     .token_standards
                     .iter()
-                    .map(|standard| TokenStandardEntry::new(standard))
+                    .map(|standard| TokenStandardEntry::new(*standard))
                     .collect(),
                 native_coingecko_id: native.coingecko_id.clone(),
                 native_decimals: native.decimals,
@@ -1019,11 +982,8 @@ mod explicit_network_catalog {
     fn the_derived_columns_agree_with_what_they_derive_from() {
         for chain in Chain::all() {
             let e = entry(chain.str_id());
-            let standards: Vec<&str> = e
-                .token_standards
-                .iter()
-                .map(|s| s.standard.as_str())
-                .collect();
+            let standards: Vec<crate::registry::TokenStandard> =
+                e.token_standards.iter().map(|s| s.standard).collect();
             assert_eq!(standards, chain.token_standards(), "{}", e.id);
             for standard in &e.token_standards {
                 assert_ne!(

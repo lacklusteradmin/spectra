@@ -207,6 +207,56 @@ impl std::fmt::Display for Chain {
     }
 }
 
+/// A fungible-token protocol: what a token deployment is on the network that
+/// hosts it. Stored, printed and written in the catalogs as its name
+/// (`"ERC-20"`, `"Sui Coin"`), which [`TokenStandard::as_str`] spells.
+///
+/// A network's own coin has no standard: a holding or deployment of it
+/// carries `None`.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    uniffi::Enum,
+)]
+pub enum TokenStandard {
+    #[serde(rename = "ERC-20")]
+    Erc20,
+    #[serde(rename = "BEP-20")]
+    Bep20,
+    #[serde(rename = "ARC-20")]
+    Arc20,
+    #[serde(rename = "SPL")]
+    Spl,
+    #[serde(rename = "TRC-10")]
+    Trc10,
+    #[serde(rename = "TRC-20")]
+    Trc20,
+    #[serde(rename = "TEP-74")]
+    Tep74,
+    #[serde(rename = "NEP-141")]
+    Nep141,
+    #[serde(rename = "Sui Coin")]
+    SuiCoin,
+    #[serde(rename = "Aptos Coin")]
+    AptosCoin,
+    #[serde(rename = "AIP-21")]
+    Aip21,
+    #[serde(rename = "Trust Line Token")]
+    TrustLineToken,
+    #[serde(rename = "Stellar Asset")]
+    StellarAsset,
+    #[serde(rename = "Cardano Native Token")]
+    CardanoNativeToken,
+}
+
 /// The signature scheme a chain's raw private key belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyScheme {
@@ -311,7 +361,7 @@ impl Chain {
             symbol: self.coin_symbol().to_string(),
             coingecko_id: self.coingecko_id().to_string(),
             chain_id: self,
-            token_standard: "Native".to_string(),
+            token_standard: None,
             contract_address: None,
             amount: "0".to_string(),
         }

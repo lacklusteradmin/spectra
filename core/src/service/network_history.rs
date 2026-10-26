@@ -177,11 +177,11 @@ impl WalletService {
         // Only EVM chains are supported.
         let chain = evm_network(chain_id)?;
         for token in &tokens {
-            let standard = if token.standard.is_empty() {
-                chain.token_standard_for_identifier(&token.contract)
-            } else {
-                &token.standard
-            };
+            let standard = crate::catalog::tokens::resolve_token_standard(
+                chain,
+                token.standard,
+                &token.contract,
+            )?;
             crate::catalog::tokens::validate_protocol_identifier(chain, standard, &token.contract)?;
         }
 
@@ -273,7 +273,10 @@ impl WalletService {
 
         // Build a lookup map from contract address (lowercased) → known token metadata.
         let addr_lower = address.to_lowercase();
-        let token_map: std::collections::HashMap<String, (String, String, u8, String)> = tokens
+        let token_map: std::collections::HashMap<
+            String,
+            (String, String, u8, Option<crate::registry::TokenStandard>),
+        > = tokens
             .iter()
             .map(|t| {
                 (
@@ -282,11 +285,7 @@ impl WalletService {
                         t.symbol.clone(),
                         t.name.clone().unwrap_or_default(),
                         t.decimals,
-                        if t.standard.is_empty() {
-                            chain.token_standard_for_identifier(&t.contract).into()
-                        } else {
-                            t.standard.clone()
-                        },
+                        t.standard_on(chain),
                     ),
                 )
             })

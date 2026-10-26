@@ -3,6 +3,7 @@
 # Deployments reference tokens.id via token_id and chains.toml chains.id via chain_id.
 # Symbols are display labels. Precision belongs to the deployment.
 # Core derives deployment IDs from network, standard and contract; no stored deployment ID.
+# A deployment with a `standard` and `contract` is a token; one with neither is the network's own coin.
 # Keep each token immediately followed by its deployments; both tables are top-level.
 
 [[tokens]]
@@ -18,7 +19,6 @@ tags = []
 [[deployments]]
 token_id = "bitcoin"
 chain_id = "bitcoin"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -34,67 +34,56 @@ tags = []
 [[deployments]]
 token_id = "ethereum"
 chain_id = "ethereum"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "arbitrum"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "optimism"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "base"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "linea"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "scroll"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "blast"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "zksync-era"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "unichain"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "ink"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
 chain_id = "world-chain"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -110,7 +99,6 @@ tags = []
 [[deployments]]
 token_id = "solana"
 chain_id = "solana"
-kind = "native"
 decimals = 9
 
 [[tokens]]
@@ -126,7 +114,6 @@ tags = []
 [[deployments]]
 token_id = "dogecoin"
 chain_id = "dogecoin"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -142,7 +129,6 @@ tags = []
 [[deployments]]
 token_id = "ripple"
 chain_id = "xrp"
-kind = "native"
 decimals = 6
 
 [[tokens]]
@@ -158,7 +144,6 @@ tags = []
 [[deployments]]
 token_id = "litecoin"
 chain_id = "litecoin"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -174,7 +159,6 @@ tags = []
 [[deployments]]
 token_id = "bitcoin-cash"
 chain_id = "bitcoin-cash"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -190,7 +174,6 @@ tags = []
 [[deployments]]
 token_id = "tron"
 chain_id = "tron"
-kind = "native"
 decimals = 6
 
 [[tokens]]
@@ -206,7 +189,6 @@ tags = []
 [[deployments]]
 token_id = "stellar"
 chain_id = "stellar"
-kind = "native"
 decimals = 7
 
 [[tokens]]
@@ -222,7 +204,6 @@ tags = []
 [[deployments]]
 token_id = "cardano"
 chain_id = "cardano"
-kind = "native"
 decimals = 6
 
 [[tokens]]
@@ -238,7 +219,6 @@ tags = []
 [[deployments]]
 token_id = "polkadot"
 chain_id = "polkadot"
-kind = "native"
 decimals = 10
 
 [[tokens]]
@@ -254,7 +234,6 @@ tags = []
 [[deployments]]
 token_id = "avalanche-2"
 chain_id = "avalanche"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -270,7 +249,6 @@ tags = []
 [[deployments]]
 token_id = "sui"
 chain_id = "sui"
-kind = "native"
 decimals = 9
 
 [[tokens]]
@@ -286,7 +264,6 @@ tags = []
 [[deployments]]
 token_id = "aptos"
 chain_id = "aptos"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -302,7 +279,6 @@ tags = []
 [[deployments]]
 token_id = "the-open-network"
 chain_id = "ton"
-kind = "native"
 decimals = 9
 
 [[tokens]]
@@ -318,7 +294,6 @@ tags = []
 [[deployments]]
 token_id = "near"
 chain_id = "near"
-kind = "native"
 decimals = 24
 
 [[tokens]]
@@ -334,7 +309,6 @@ tags = []
 [[deployments]]
 token_id = "internet-computer"
 chain_id = "internet-computer"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -350,7 +324,6 @@ tags = []
 [[deployments]]
 token_id = "monero"
 chain_id = "monero"
-kind = "native"
 decimals = 12
 
 [[tokens]]
@@ -366,7 +339,6 @@ tags = []
 [[deployments]]
 token_id = "ethereum-classic"
 chain_id = "ethereum-classic"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -382,7 +354,6 @@ tags = []
 [[deployments]]
 token_id = "bitcoin-cash-sv"
 chain_id = "bitcoin-sv"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -398,13 +369,11 @@ tags = []
 [[deployments]]
 token_id = "binancecoin"
 chain_id = "bnb"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "binancecoin"
 chain_id = "opbnb"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -420,7 +389,6 @@ tags = []
 [[deployments]]
 token_id = "hyperliquid"
 chain_id = "hyperliquid"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -436,13 +404,11 @@ tags = []
 [[deployments]]
 token_id = "polygon-ecosystem-token"
 chain_id = "polygon"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "polygon-ecosystem-token"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6"
 decimals = 18
@@ -460,13 +426,11 @@ tags = []
 [[deployments]]
 token_id = "mantle"
 chain_id = "mantle"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "mantle"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x3c3a81e81dc49a522a592e7622a7e711c06bf354"
 decimals = 18
@@ -484,7 +448,6 @@ tags = []
 [[deployments]]
 token_id = "zcash"
 chain_id = "zcash"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -500,7 +463,6 @@ tags = []
 [[deployments]]
 token_id = "bitcoin-gold"
 chain_id = "bitcoin-gold"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -516,7 +478,6 @@ tags = []
 [[deployments]]
 token_id = "decred"
 chain_id = "decred"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -532,7 +493,6 @@ tags = []
 [[deployments]]
 token_id = "kaspa"
 chain_id = "kaspa"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -548,7 +508,6 @@ tags = []
 [[deployments]]
 token_id = "sei-network"
 chain_id = "sei"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -564,7 +523,6 @@ tags = []
 [[deployments]]
 token_id = "celo"
 chain_id = "celo"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -580,13 +538,11 @@ tags = []
 [[deployments]]
 token_id = "crypto-com-chain"
 chain_id = "cronos"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "crypto-com-chain"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b"
 decimals = 8
@@ -604,7 +560,6 @@ tags = []
 [[deployments]]
 token_id = "sonic-3"
 chain_id = "sonic"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -620,7 +575,6 @@ tags = []
 [[deployments]]
 token_id = "berachain-bera"
 chain_id = "berachain"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -636,7 +590,6 @@ tags = []
 [[deployments]]
 token_id = "dash"
 chain_id = "dash"
-kind = "native"
 decimals = 8
 
 [[tokens]]
@@ -652,7 +605,6 @@ tags = []
 [[deployments]]
 token_id = "okb"
 chain_id = "x-layer"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -668,7 +620,6 @@ tags = []
 [[deployments]]
 token_id = "bittensor"
 chain_id = "bittensor"
-kind = "native"
 decimals = 9
 
 [[tokens]]
@@ -684,7 +635,6 @@ tags = []
 [[deployments]]
 token_id = "plasma"
 chain_id = "plasma"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -700,7 +650,6 @@ tags = []
 [[deployments]]
 token_id = "monad"
 chain_id = "monad"
-kind = "native"
 decimals = 18
 
 [[tokens]]
@@ -716,7 +665,6 @@ tags = []
 [[deployments]]
 token_id = "aave"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9"
 decimals = 18
@@ -724,7 +672,6 @@ decimals = 18
 [[deployments]]
 token_id = "aave"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xba5ddd1f9d7f570dc94a51479a000e3bce967196"
 decimals = 18
@@ -732,7 +679,6 @@ decimals = 18
 [[deployments]]
 token_id = "aave"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x63706e401c06ac8513145b7687a14804d17f814b"
 decimals = 18
@@ -740,7 +686,6 @@ decimals = 18
 [[deployments]]
 token_id = "aave"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x76fb31fb4af56892a25e32cfc43de717950c9278"
 decimals = 18
@@ -748,7 +693,6 @@ decimals = 18
 [[deployments]]
 token_id = "aave"
 chain_id = "polygon"
-kind = "token"
 standard = "ERC-20"
 contract = "0xd6df932a45c0f255f85145f286ea0b292b21c90b"
 decimals = 18
@@ -766,7 +710,6 @@ tags = []
 [[deployments]]
 token_id = "aerodrome-finance"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x940181a94a35a4569e4529a3cdfb74e38fd98631"
 decimals = 18
@@ -784,7 +727,6 @@ tags = []
 [[deployments]]
 token_id = "arbitrum"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xb50721bcf8d664c30412cfbc6cf7a15145234ad1"
 decimals = 18
@@ -792,7 +734,6 @@ decimals = 18
 [[deployments]]
 token_id = "arbitrum"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x912ce59144191c1204e64559fe8253a0e49e6548"
 decimals = 18
@@ -810,7 +751,6 @@ tags = []
 [[deployments]]
 token_id = "bitget-token"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x54d2252757e1672eead234d27b1270728ff90581"
 decimals = 18
@@ -828,7 +768,6 @@ tags = []
 [[deployments]]
 token_id = "blast"
 chain_id = "blast"
-kind = "token"
 standard = "ERC-20"
 contract = "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad"
 decimals = 18
@@ -846,7 +785,6 @@ tags = ["meme"]
 [[deployments]]
 token_id = "bittorrent"
 chain_id = "tron"
-kind = "token"
 standard = "TRC-20"
 contract = "TAFjULxiVgT4qWk6UZwjqwZXTSaGaqnVp4"
 decimals = 18
@@ -864,7 +802,6 @@ tags = []
 [[deployments]]
 token_id = "bittorrent-old"
 chain_id = "tron"
-kind = "token"
 standard = "TRC-10"
 contract = "1002000"
 decimals = 6
@@ -882,7 +819,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "honey-3"
 chain_id = "berachain"
-kind = "token"
 standard = "ERC-20"
 contract = "0xfcbd14dc51f0a4d49d5e53c2e0950e0bc26d0dce"
 decimals = 18
@@ -900,7 +836,6 @@ tags = []
 [[deployments]]
 token_id = "pancakeswap-token"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x152649ea73beab28c5b49b26eb48f7ead6d4c898"
 decimals = 18
@@ -908,7 +843,6 @@ decimals = 18
 [[deployments]]
 token_id = "pancakeswap-token"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "4qQeZ5LwSz6HuupUu8jCtgXyW1mYQcNbFAW1sWZp89HL"
 decimals = 9
@@ -916,7 +850,6 @@ decimals = 9
 [[deployments]]
 token_id = "pancakeswap-token"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x3055913c90fcc1a6ce9a358911721eeb942013a1"
 decimals = 18
@@ -924,7 +857,6 @@ decimals = 18
 [[deployments]]
 token_id = "pancakeswap-token"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"
 decimals = 18
@@ -932,7 +864,6 @@ decimals = 18
 [[deployments]]
 token_id = "pancakeswap-token"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x1b896893dfc86bb67cf57767298b9073d2c1ba2c"
 decimals = 18
@@ -940,7 +871,6 @@ decimals = 18
 [[deployments]]
 token_id = "pancakeswap-token"
 chain_id = "linea"
-kind = "token"
 standard = "ERC-20"
 contract = "0x0d1e753a25ebda689453309112904807625befbe"
 decimals = 18
@@ -948,7 +878,6 @@ decimals = 18
 [[deployments]]
 token_id = "pancakeswap-token"
 chain_id = "opbnb"
-kind = "token"
 standard = "ERC-20"
 contract = "0x2779106e4f4a8a28d77a24c18283651a2ae22d1c"
 decimals = 18
@@ -956,7 +885,6 @@ decimals = 18
 [[deployments]]
 token_id = "pancakeswap-token"
 chain_id = "zksync-era"
-kind = "token"
 standard = "ERC-20"
 contract = "0x3a287a06c66f9e95a56327185ca2bdf5f031cecd"
 decimals = 18
@@ -964,7 +892,6 @@ decimals = 18
 [[deployments]]
 token_id = "pancakeswap-token"
 chain_id = "monad"
-kind = "token"
 standard = "ERC-20"
 contract = "0xf59d81cd43f620e722e07f9cb3f6e41b031017a3"
 decimals = 18
@@ -982,7 +909,6 @@ tags = []
 [[deployments]]
 token_id = "coinbase-wrapped-btc"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
 decimals = 8
@@ -990,7 +916,6 @@ decimals = 8
 [[deployments]]
 token_id = "coinbase-wrapped-btc"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "cbbtcf3aa214zXHbiAZQwf4122FBYbraNdFqgw4iMij"
 decimals = 8
@@ -998,7 +923,6 @@ decimals = 8
 [[deployments]]
 token_id = "coinbase-wrapped-btc"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
 decimals = 8
@@ -1006,7 +930,6 @@ decimals = 8
 [[deployments]]
 token_id = "coinbase-wrapped-btc"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
 decimals = 8
@@ -1024,7 +947,6 @@ tags = []
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xd533a949740bb3306d119cc777fa900ba034cd52"
 decimals = 18
@@ -1032,7 +954,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x11cdb42b0eb46d95f990bedd4695a6e3fa034978"
 decimals = 18
@@ -1040,7 +961,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x0994206dfe8de6ec6920ff4d779b0d950605fb53"
 decimals = 18
@@ -1048,7 +968,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x8ee73c484a26e0a5df2ee2a4960b789967dd0415"
 decimals = 18
@@ -1056,7 +975,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0xeebc562d445f4bc13ac75c8caabb438dfae42a1b"
 decimals = 18
@@ -1064,7 +982,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x9996d0276612d23b35f90c51ee935520b3d7355b"
 decimals = 18
@@ -1072,7 +989,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "celo"
-kind = "token"
 standard = "ERC-20"
 contract = "0x75184c282e55a7393053f0b8f4f3e7beae067fdc"
 decimals = 18
@@ -1080,7 +996,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "ink"
-kind = "token"
 standard = "ERC-20"
 contract = "0xac73671a1762fe835208fb93b7ae7490d1c2ccb3"
 decimals = 18
@@ -1088,7 +1003,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "mantle"
-kind = "token"
 standard = "ERC-20"
 contract = "0xe265fc71d45fd791c9ebf3ee0a53fbb220eb8f75"
 decimals = 18
@@ -1096,7 +1010,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "polygon"
-kind = "token"
 standard = "ERC-20"
 contract = "0x172370d5cd63279efa6d502dab29171933a610af"
 decimals = 18
@@ -1104,7 +1017,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "sonic"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5af79133999f7908953e94b7a5cf367740ebee35"
 decimals = 18
@@ -1112,7 +1024,6 @@ decimals = 18
 [[deployments]]
 token_id = "curve-dao-token"
 chain_id = "x-layer"
-kind = "token"
 standard = "ERC-20"
 contract = "0x3d5320821bfca19fb0b5428f2c79d63bd5246f89"
 decimals = 18
@@ -1130,7 +1041,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "dai"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x6b175474e89094c44da98b954eedeac495271d0f"
 decimals = 18
@@ -1138,7 +1048,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x50c5725949a6f0c72e6c4a641f24049a917db0cb"
 decimals = 18
@@ -1146,7 +1055,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "polygon"
-kind = "token"
 standard = "ERC-20"
 contract = "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063"
 decimals = 18
@@ -1154,7 +1062,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1"
 decimals = 18
@@ -1162,7 +1069,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1"
 decimals = 18
@@ -1170,7 +1076,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0xd586e7f844cea2f87f50152665bcbc2c279d8d70"
 decimals = 18
@@ -1178,7 +1083,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "linea"
-kind = "token"
 standard = "ERC-20"
 contract = "0x4af15ec2a0bd43db75dd04e62faa3b8ef36b00d5"
 decimals = 18
@@ -1186,7 +1090,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "scroll"
-kind = "token"
 standard = "ERC-20"
 contract = "0xca77eb3fefe3725dc33bccb54edefc3d9f764f97"
 decimals = 18
@@ -1194,7 +1097,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "zksync-era"
-kind = "token"
 standard = "ERC-20"
 contract = "0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656"
 decimals = 18
@@ -1202,7 +1104,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "unichain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x20cab320a855b39f724131c69424240519573f81"
 decimals = 18
@@ -1210,7 +1111,6 @@ decimals = 18
 [[deployments]]
 token_id = "dai"
 chain_id = "celo"
-kind = "token"
 standard = "ERC-20"
 contract = "0xac177de2439bd0c7659c61f373dbf247d1f41abe"
 decimals = 18
@@ -1228,7 +1128,6 @@ tags = []
 [[deployments]]
 token_id = "ethena"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x57e114b691db790c35207b2e685d4a43181e6061"
 decimals = 18
@@ -1236,7 +1135,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "72QvBVwpxqmheEPfaCwWSWqEFsUy3rhWt6JhQBMNTwD1"
 decimals = 9
@@ -1244,7 +1142,6 @@ decimals = 9
 [[deployments]]
 token_id = "ethena"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -1252,7 +1149,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "ton"
-kind = "token"
 standard = "TEP-74"
 contract = "0:058591596327b4965b25efce4ecce246f504fa3d7c9851d9a20b853de6506e1e"
 decimals = 6
@@ -1260,7 +1156,6 @@ decimals = 6
 [[deployments]]
 token_id = "ethena"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -1268,7 +1163,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "zksync-era"
-kind = "token"
 standard = "ERC-20"
 contract = "0x686b311f82b407f0be842652a98e5619f64cc25f"
 decimals = 18
@@ -1276,7 +1170,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -1284,7 +1177,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -1292,7 +1184,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "mantle"
-kind = "token"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -1300,7 +1191,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "blast"
-kind = "token"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -1308,7 +1198,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "linea"
-kind = "token"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -1316,7 +1205,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "scroll"
-kind = "token"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -1324,7 +1212,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "x-layer"
-kind = "token"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -1342,7 +1229,6 @@ tags = []
 [[deployments]]
 token_id = "ethereum-name-service"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xc18360217d8f7ab5e7c516566761ea12ce7f9d72"
 decimals = 18
@@ -1360,7 +1246,6 @@ tags = []
 [[deployments]]
 token_id = "ether-fi"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xfe0c30065b384f05761f15d0cc899d4f9f9cc0eb"
 decimals = 18
@@ -1368,7 +1253,6 @@ decimals = 18
 [[deployments]]
 token_id = "ether-fi"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x7189fb5b6504bbff6a852b13b7b82a3c118fdc27"
 decimals = 18
@@ -1376,7 +1260,6 @@ decimals = 18
 [[deployments]]
 token_id = "ether-fi"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x6c240dda6b5c336df09a4d011139beaaa1ea2aa2"
 decimals = 18
@@ -1384,7 +1267,6 @@ decimals = 18
 [[deployments]]
 token_id = "ether-fi"
 chain_id = "scroll"
-kind = "token"
 standard = "ERC-20"
 contract = "0x056a5fa5da84ceb7f93d36e545c5905607d8bd81"
 decimals = 18
@@ -1392,7 +1274,6 @@ decimals = 18
 [[deployments]]
 token_id = "ether-fi"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0xe0080d2f853ecddbd81a643dc10da075df26fd3f"
 decimals = 18
@@ -1410,7 +1291,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "euro-coin"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c"
 decimals = 6
@@ -1418,7 +1298,6 @@ decimals = 6
 [[deployments]]
 token_id = "euro-coin"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
 decimals = 6
@@ -1426,7 +1305,6 @@ decimals = 6
 [[deployments]]
 token_id = "euro-coin"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0xc891eb4cbdeff6e073e859e987815ed1505c2acd"
 decimals = 6
@@ -1434,7 +1312,6 @@ decimals = 6
 [[deployments]]
 token_id = "euro-coin"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42"
 decimals = 6
@@ -1442,7 +1319,6 @@ decimals = 6
 [[deployments]]
 token_id = "euro-coin"
 chain_id = "cronos"
-kind = "token"
 standard = "ERC-20"
 contract = "0xa6de01a2d62c6b5f3525d768f34d276652c554c8"
 decimals = 6
@@ -1450,7 +1326,6 @@ decimals = 6
 [[deployments]]
 token_id = "euro-coin"
 chain_id = "plasma"
-kind = "token"
 standard = "ERC-20"
 contract = "0x3ee196e78d4d4248b849b8e1c7f44c5457fafd2c"
 decimals = 6
@@ -1468,7 +1343,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "first-digital-usd"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xc5f0f7b66764f6ec8c8dff7ba683102295e16409"
 decimals = 18
@@ -1476,7 +1350,6 @@ decimals = 18
 [[deployments]]
 token_id = "first-digital-usd"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "9zNQRsGLjNKwCUU5Gq5LR8beUCPzQMVMqKAi3SSZh54u"
 decimals = 6
@@ -1484,7 +1357,6 @@ decimals = 6
 [[deployments]]
 token_id = "first-digital-usd"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x93c9932e4afa59201f0b5e63f7d816516f1669fe"
 decimals = 18
@@ -1492,7 +1364,6 @@ decimals = 18
 [[deployments]]
 token_id = "first-digital-usd"
 chain_id = "sui"
-kind = "token"
 standard = "Sui Coin"
 contract = "0xf16e6b723f242ec745dfd7634ad072c42d5c1d9ac9d62a39c381303eaa57693a::fdusd::FDUSD"
 decimals = 6
@@ -1500,7 +1371,6 @@ decimals = 6
 [[deployments]]
 token_id = "first-digital-usd"
 chain_id = "ton"
-kind = "token"
 standard = "TEP-74"
 contract = "0:f412fa64e2d8a614e1e6cb84afde5fca1145e533e74dd7f2a1ae84c27c1db090"
 decimals = 6
@@ -1508,7 +1378,6 @@ decimals = 6
 [[deployments]]
 token_id = "first-digital-usd"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0xc5f0f7b66764f6ec8c8dff7ba683102295e16409"
 decimals = 18
@@ -1526,7 +1395,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "gho"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f"
 decimals = 18
@@ -1534,7 +1402,6 @@ decimals = 18
 [[deployments]]
 token_id = "gho"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x7dff72693f6a4149b17e7c6314655f6a9f7c8b33"
 decimals = 18
@@ -1542,7 +1409,6 @@ decimals = 18
 [[deployments]]
 token_id = "gho"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0xfc421ad3c883bf9e7c4f42de845c4e4405799e73"
 decimals = 18
@@ -1550,7 +1416,6 @@ decimals = 18
 [[deployments]]
 token_id = "gho"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x6bb7a212910682dcfdbd5bcbb3e28fb4e8da10ee"
 decimals = 18
@@ -1568,7 +1433,6 @@ tags = []
 [[deployments]]
 token_id = "jupiter-exchange-solana"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
 decimals = 6
@@ -1586,7 +1450,6 @@ tags = []
 [[deployments]]
 token_id = "kucoin-shares"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xf34960d9d60be18cc1d5afc1a6f012a723a28811"
 decimals = 6
@@ -1604,7 +1467,6 @@ tags = []
 [[deployments]]
 token_id = "lombard-staked-btc"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x8236a87084f8b84306f72007f36f2618a5634494"
 decimals = 8
@@ -1612,7 +1474,6 @@ decimals = 8
 [[deployments]]
 token_id = "lombard-staked-btc"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "LBTCgU4b3wsFKsPwBn1rRZDx5DoFutM6RPiEt1TPDsY"
 decimals = 8
@@ -1620,7 +1481,6 @@ decimals = 8
 [[deployments]]
 token_id = "lombard-staked-btc"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0xecac9c5f704e954931349da37f60e39f515c11c1"
 decimals = 8
@@ -1628,7 +1488,6 @@ decimals = 8
 [[deployments]]
 token_id = "lombard-staked-btc"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0xecac9c5f704e954931349da37f60e39f515c11c1"
 decimals = 8
@@ -1646,7 +1505,6 @@ tags = []
 [[deployments]]
 token_id = "lido-dao"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5a98fcbea516cf06857215779fd812ca3bef1b32"
 decimals = 18
@@ -1654,7 +1512,6 @@ decimals = 18
 [[deployments]]
 token_id = "lido-dao"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x13ad51ed4f1b7e9dc168d8a00cb3f4ddd85efa60"
 decimals = 18
@@ -1662,7 +1519,6 @@ decimals = 18
 [[deployments]]
 token_id = "lido-dao"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0xfdb794692724153d1488ccdbe0c56c252596735f"
 decimals = 18
@@ -1670,7 +1526,6 @@ decimals = 18
 [[deployments]]
 token_id = "lido-dao"
 chain_id = "polygon"
-kind = "token"
 standard = "ERC-20"
 contract = "0xc3c7d422809852031b44ab29eec9f1eff2a58756"
 decimals = 18
@@ -1688,7 +1543,6 @@ tags = []
 [[deployments]]
 token_id = "leo-token"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x2af5d2ad76741191d15dfe7bf6ac92d4bd912ca3"
 decimals = 18
@@ -1706,7 +1560,6 @@ tags = []
 [[deployments]]
 token_id = "linea"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
 decimals = 18
@@ -1714,7 +1567,6 @@ decimals = 18
 [[deployments]]
 token_id = "linea"
 chain_id = "linea"
-kind = "token"
 standard = "ERC-20"
 contract = "0x1789e0043623282d5dcc7f213d703c6d8bafbb04"
 decimals = 18
@@ -1732,7 +1584,6 @@ tags = []
 [[deployments]]
 token_id = "chainlink"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x514910771af9ca656af840dff83e8264ecf986ca"
 decimals = 18
@@ -1740,7 +1591,6 @@ decimals = 18
 [[deployments]]
 token_id = "chainlink"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "LinkhB3afbBKb2EQQu7s7umdZceV3wcvAUJhQAfQ23L"
 decimals = 9
@@ -1748,7 +1598,6 @@ decimals = 9
 [[deployments]]
 token_id = "chainlink"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xf97f4df75117a78c1a5a0dbb814af92458539fb4"
 decimals = 18
@@ -1756,7 +1605,6 @@ decimals = 18
 [[deployments]]
 token_id = "chainlink"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0x5947bb275c521040051d82396192181b413227a3"
 decimals = 18
@@ -1764,7 +1612,6 @@ decimals = 18
 [[deployments]]
 token_id = "chainlink"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x404460c6a5ede2d891e8297795264fde62adbb75"
 decimals = 18
@@ -1772,7 +1619,6 @@ decimals = 18
 [[deployments]]
 token_id = "chainlink"
 chain_id = "hyperliquid"
-kind = "token"
 standard = "ERC-20"
 contract = "0x1ac2ee68b8d038c982c1e1f73f596927dd70de59"
 decimals = 18
@@ -1790,7 +1636,6 @@ tags = []
 [[deployments]]
 token_id = "morpho"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x58d97b57bb95320f9a05dc918aef65434969c2b2"
 decimals = 18
@@ -1798,7 +1643,6 @@ decimals = 18
 [[deployments]]
 token_id = "morpho"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x40bd670a58238e6e230c430bbb5ce6ec0d40df48"
 decimals = 18
@@ -1806,7 +1650,6 @@ decimals = 18
 [[deployments]]
 token_id = "morpho"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842"
 decimals = 18
@@ -1824,7 +1667,6 @@ tags = []
 [[deployments]]
 token_id = "ondo-finance"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xfaba6f8e4a5e8ab82f62fe7c39859fa577269be3"
 decimals = 18
@@ -1842,7 +1684,6 @@ tags = []
 [[deployments]]
 token_id = "optimism"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x4200000000000000000000000000000000000042"
 decimals = 18
@@ -1860,7 +1701,6 @@ tags = []
 [[deployments]]
 token_id = "pax-gold"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x45804880de22913dafe09f4980848ece6ecbaf78"
 decimals = 18
@@ -1878,7 +1718,6 @@ tags = []
 [[deployments]]
 token_id = "pendle"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x808507121b80c02388fad14726482e061b8da827"
 decimals = 18
@@ -1886,7 +1725,6 @@ decimals = 18
 [[deployments]]
 token_id = "pendle"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x0c880f6761f1af8d9aa9c466984b80dab9a8c9e8"
 decimals = 18
@@ -1894,7 +1732,6 @@ decimals = 18
 [[deployments]]
 token_id = "pendle"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0xa99f6e6785da0f5d6fb42495fe424bce029eeb3e"
 decimals = 18
@@ -1902,7 +1739,6 @@ decimals = 18
 [[deployments]]
 token_id = "pendle"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0xb3ed0a426155b79b898849803e3b36552f7ed507"
 decimals = 18
@@ -1920,7 +1756,6 @@ tags = ["meme"]
 [[deployments]]
 token_id = "pepe"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 decimals = 18
@@ -1928,7 +1763,6 @@ decimals = 18
 [[deployments]]
 token_id = "pepe"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
 decimals = 18
@@ -1936,7 +1770,6 @@ decimals = 18
 [[deployments]]
 token_id = "pepe"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x25d887ce7a35172c62febfd67a1856f20faebb00"
 decimals = 18
@@ -1954,7 +1787,6 @@ tags = ["meme"]
 [[deployments]]
 token_id = "pump-fun"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
 decimals = 6
@@ -1972,7 +1804,6 @@ tags = []
 [[deployments]]
 token_id = "pyth-network"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3"
 decimals = 6
@@ -1990,7 +1821,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "paypal-usd"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x6c3ea9036406852006290770bedfcaba0e23a0e8"
 decimals = 6
@@ -1998,7 +1828,6 @@ decimals = 6
 [[deployments]]
 token_id = "paypal-usd"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
 decimals = 6
@@ -2006,7 +1835,6 @@ decimals = 6
 [[deployments]]
 token_id = "paypal-usd"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x46850ad61c2b7d64d08c9c754f45254596696984"
 decimals = 6
@@ -2024,7 +1852,6 @@ tags = []
 [[deployments]]
 token_id = "raydium"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
 decimals = 6
@@ -2042,7 +1869,6 @@ tags = []
 [[deployments]]
 token_id = "rocket-pool-eth"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xae78736cd615f374d3085123a210448e74fc6393"
 decimals = 18
@@ -2050,7 +1876,6 @@ decimals = 18
 [[deployments]]
 token_id = "rocket-pool-eth"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xec70dcb4a1efa46b8f2d97c310c9c4790ba5ffa8"
 decimals = 18
@@ -2058,7 +1883,6 @@ decimals = 18
 [[deployments]]
 token_id = "rocket-pool-eth"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x9bcef72be871e61ed4fbbc7630889bee758eb81d"
 decimals = 18
@@ -2066,7 +1890,6 @@ decimals = 18
 [[deployments]]
 token_id = "rocket-pool-eth"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0xb6fe221fe9eef5aba221c348ba20a1bf5e73624c"
 decimals = 18
@@ -2084,7 +1907,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "ripple-usd"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x8292bb45bf1ee4d140127049757c2e0ff06317ed"
 decimals = 18
@@ -2102,7 +1924,6 @@ tags = []
 [[deployments]]
 token_id = "scroll"
 chain_id = "scroll"
-kind = "token"
 standard = "ERC-20"
 contract = "0xd29687c813d741e2f938f4ac377128810e217b1b"
 decimals = 18
@@ -2120,7 +1941,6 @@ tags = ["meme"]
 [[deployments]]
 token_id = "shiba-inu"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce"
 decimals = 18
@@ -2138,7 +1958,6 @@ tags = []
 [[deployments]]
 token_id = "sky"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x56072c95faa701256059aa122697b133aded9279"
 decimals = 18
@@ -2156,7 +1975,6 @@ tags = []
 [[deployments]]
 token_id = "staked-ether"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xae7ab96520de3a18e5e111b5eaab095312d7fe84"
 decimals = 18
@@ -2174,7 +1992,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x9d39a5de30e57443bff2a8307a4256c8797a3497"
 decimals = 18
@@ -2182,7 +1999,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "Eh6XEPhSwoLv5wFApukmnaVSHQ6sAnoD9BmgmwQoN2sN"
 decimals = 9
@@ -2190,7 +2006,6 @@ decimals = 9
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
@@ -2198,7 +2013,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
@@ -2206,7 +2020,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "zksync-era"
-kind = "token"
 standard = "ERC-20"
 contract = "0xad17da2f6ac76746ef261e835c50b2651ce36da8"
 decimals = 18
@@ -2214,7 +2027,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "aptos"
-kind = "token"
 standard = "AIP-21"
 contract = "0xb30a694a344edee467d9f82330bbe7c3b89f440a1ecd2da1f3bca266560fce69"
 decimals = 6
@@ -2222,7 +2034,6 @@ decimals = 6
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
@@ -2230,7 +2041,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "mantle"
-kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
@@ -2238,7 +2048,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "blast"
-kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
@@ -2246,7 +2055,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "berachain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
@@ -2254,7 +2062,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "linea"
-kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
@@ -2262,7 +2069,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "scroll"
-kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
@@ -2270,7 +2076,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-staked-usde"
 chain_id = "x-layer"
-kind = "token"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
 decimals = 18
@@ -2288,7 +2093,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "susds"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xa3931d71877c0e7a3148cb7eb4463524fec27fbd"
 decimals = 18
@@ -2296,7 +2100,6 @@ decimals = 18
 [[deployments]]
 token_id = "susds"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xddb46999f8891663a8f2828d25298f70416d7610"
 decimals = 18
@@ -2304,7 +2107,6 @@ decimals = 18
 [[deployments]]
 token_id = "susds"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0xb5b2dc7fd34c249f4be7fb1fcea07950784229e0"
 decimals = 18
@@ -2312,7 +2114,6 @@ decimals = 18
 [[deployments]]
 token_id = "susds"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5875eee11cf8398102fdad704c9e96607675467a"
 decimals = 18
@@ -2320,7 +2121,6 @@ decimals = 18
 [[deployments]]
 token_id = "susds"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0xb94d9613c7aab11e548a327154cc80eca911b5c1"
 decimals = 18
@@ -2328,7 +2128,6 @@ decimals = 18
 [[deployments]]
 token_id = "susds"
 chain_id = "unichain"
-kind = "token"
 standard = "ERC-20"
 contract = "0xa06b10db9f390990364a3984c04fadf1c13691b5"
 decimals = 18
@@ -2346,7 +2145,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "true-usd"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x0000000000085d4780b73119b644ae5ecd22b376"
 decimals = 18
@@ -2354,7 +2152,6 @@ decimals = 18
 [[deployments]]
 token_id = "true-usd"
 chain_id = "tron"
-kind = "token"
 standard = "TRC-20"
 contract = "TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4"
 decimals = 18
@@ -2362,7 +2159,6 @@ decimals = 18
 [[deployments]]
 token_id = "true-usd"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0x1c20e891bab6b1727d14da358fae2984ed9b59eb"
 decimals = 18
@@ -2370,7 +2166,6 @@ decimals = 18
 [[deployments]]
 token_id = "true-usd"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x40af3827f39d0eacbf4a168f8d4ee67c121d11c9"
 decimals = 18
@@ -2388,7 +2183,6 @@ tags = []
 [[deployments]]
 token_id = "uniswap"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984"
 decimals = 18
@@ -2396,7 +2190,6 @@ decimals = 18
 [[deployments]]
 token_id = "uniswap"
 chain_id = "unichain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x8f187aa05619a017077f5308904739877ce9ea21"
 decimals = 18
@@ -2414,7 +2207,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "usa"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x07041776f5007aca2a54844f50503a18a72a8b68"
 decimals = 6
@@ -2422,7 +2214,6 @@ decimals = 6
 [[deployments]]
 token_id = "usa"
 chain_id = "celo"
-kind = "token"
 standard = "ERC-20"
 contract = "0xd2ab3c9a02dbbab236bfec45d1d755df4267f771"
 decimals = 6
@@ -2440,7 +2231,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "usd1-wlfi"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d"
 decimals = 18
@@ -2448,7 +2238,6 @@ decimals = 18
 [[deployments]]
 token_id = "usd1-wlfi"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB"
 decimals = 6
@@ -2456,7 +2245,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd1-wlfi"
 chain_id = "tron"
-kind = "token"
 standard = "TRC-20"
 contract = "TPFqcBAaaUMCSVRCqPaQ9QnzKhmuoLR6Rc"
 decimals = 18
@@ -2464,7 +2252,6 @@ decimals = 18
 [[deployments]]
 token_id = "usd1-wlfi"
 chain_id = "aptos"
-kind = "token"
 standard = "AIP-21"
 contract = "0x5fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2"
 decimals = 6
@@ -2472,7 +2259,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd1-wlfi"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d"
 decimals = 18
@@ -2490,7 +2276,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "usdb"
 chain_id = "blast"
-kind = "token"
 standard = "ERC-20"
 contract = "0x4300000000000000000000000000000000000003"
 decimals = 18
@@ -2508,7 +2293,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 decimals = 6
@@ -2516,7 +2300,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 decimals = 6
@@ -2524,7 +2307,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
 decimals = 6
@@ -2532,7 +2314,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e"
 decimals = 6
@@ -2540,7 +2321,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "sui"
-kind = "token"
 standard = "Sui Coin"
 contract = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC"
 decimals = 6
@@ -2548,7 +2328,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "aptos"
-kind = "token"
 standard = "AIP-21"
 contract = "0xbae207659db88bea0cbead6da0ed00aac12edcdda169e591cd41c94180b46f3b"
 decimals = 6
@@ -2556,7 +2335,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "near"
-kind = "token"
 standard = "NEP-141"
 contract = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
 decimals = 6
@@ -2564,7 +2342,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 decimals = 6
@@ -2572,7 +2349,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "hyperliquid"
-kind = "token"
 standard = "ERC-20"
 contract = "0xb88339cb7199b77e23db6e890353e22632ba630f"
 decimals = 6
@@ -2580,7 +2356,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "polygon"
-kind = "token"
 standard = "ERC-20"
 contract = "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
 decimals = 6
@@ -2588,7 +2363,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "linea"
-kind = "token"
 standard = "ERC-20"
 contract = "0x176211869ca2b568f2a7d4ee941e073a821ee1ff"
 decimals = 6
@@ -2596,7 +2370,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "scroll"
-kind = "token"
 standard = "ERC-20"
 contract = "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4"
 decimals = 6
@@ -2604,7 +2377,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "mantle"
-kind = "token"
 standard = "ERC-20"
 contract = "0x09bc4e0d864854c6afb6eb9a9cdf58ac190d0df9"
 decimals = 6
@@ -2612,7 +2384,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "celo"
-kind = "token"
 standard = "ERC-20"
 contract = "0xceba9300f2b948710d2653dd7b07f33a8b32118c"
 decimals = 6
@@ -2620,7 +2391,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "cronos"
-kind = "token"
 standard = "ERC-20"
 contract = "0x3d7f2c478aafdb65542bcb44bceec05849999d2d"
 decimals = 6
@@ -2628,7 +2398,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "ink"
-kind = "token"
 standard = "ERC-20"
 contract = "0x2d270e6886d130d724215a266106e6832161eaed"
 decimals = 6
@@ -2636,7 +2405,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x0b2c639c533813f4aa9d7837caf62653d097ff85"
 decimals = 6
@@ -2644,7 +2412,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "sonic"
-kind = "token"
 standard = "ERC-20"
 contract = "0x29219dd400f2bf60e5a23d13be72b486d4038894"
 decimals = 6
@@ -2652,7 +2419,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "unichain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x078d782b760474a361dda0af3839290b0ef57ad6"
 decimals = 6
@@ -2660,7 +2426,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "x-layer"
-kind = "token"
 standard = "ERC-20"
 contract = "0xb6ceceab302e2e4948951ee7843fc24e92933061"
 decimals = 6
@@ -2668,7 +2433,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "zksync-era"
-kind = "token"
 standard = "ERC-20"
 contract = "0x1d17cbcf0d6d143135ae902365d2e5e2a16538d4"
 decimals = 6
@@ -2676,7 +2440,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "plasma"
-kind = "token"
 standard = "ERC-20"
 contract = "0x2d661c89d812261039af9764eceaaee884f5f67f"
 decimals = 6
@@ -2684,7 +2447,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "monad"
-kind = "token"
 standard = "ERC-20"
 contract = "0x754704bc059f8c67012fed69bc8a327a5aafb603"
 decimals = 6
@@ -2692,7 +2454,6 @@ decimals = 6
 [[deployments]]
 token_id = "usd-coin"
 chain_id = "world-chain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x79a02482a880bce3f13e09da970dc34db4cd24d1"
 decimals = 6
@@ -2710,7 +2471,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "usdd"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x4f8e5de400de08b164e7421b3ee387f461becd1a"
 decimals = 18
@@ -2718,7 +2478,6 @@ decimals = 18
 [[deployments]]
 token_id = "usdd"
 chain_id = "tron"
-kind = "token"
 standard = "TRC-20"
 contract = "TXDk8mbtRbXeYuMNS83CfKPaYYT8XWv9Hz"
 decimals = 18
@@ -2726,7 +2485,6 @@ decimals = 18
 [[deployments]]
 token_id = "usdd"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x45e51bc23d592eb2dba86da3985299f7895d66ba"
 decimals = 18
@@ -2744,7 +2502,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x4c9edd5852cd905f086c759e8383e09bff1e68b3"
 decimals = 18
@@ -2752,7 +2509,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "DEkqHyPN7GMRJ5cArtQFAWefqbZb33Hyf6s5iCwjEonT"
 decimals = 9
@@ -2760,7 +2516,6 @@ decimals = 9
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2768,7 +2523,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "aptos"
-kind = "token"
 standard = "AIP-21"
 contract = "0xf37a8864fe737eb8ec2c2931047047cbaed1beed3fb0e5b7c5526dafd3b9c2e9"
 decimals = 6
@@ -2776,7 +2530,6 @@ decimals = 6
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "ton"
-kind = "token"
 standard = "TEP-74"
 contract = "0:086fa2a675f74347b08dd4606a549b8fdb98829cb282bc1949d3b12fbaed9dcc"
 decimals = 6
@@ -2784,7 +2537,6 @@ decimals = 6
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2792,7 +2544,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "zksync-era"
-kind = "token"
 standard = "ERC-20"
 contract = "0x39fe7a0dacce31bd90418e3e659fb0b5f0b3db0d"
 decimals = 18
@@ -2800,7 +2551,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2808,7 +2558,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2816,7 +2565,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "mantle"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2824,7 +2572,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "blast"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2832,7 +2579,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "berachain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2840,7 +2586,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "linea"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2848,7 +2593,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "scroll"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2856,7 +2600,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "x-layer"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
@@ -2874,7 +2617,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "global-dollar"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xe343167631d89b6ffc58b88d6b7fb0228795491d"
 decimals = 6
@@ -2882,7 +2624,6 @@ decimals = 6
 [[deployments]]
 token_id = "global-dollar"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH"
 decimals = 6
@@ -2900,7 +2641,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "usds"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xdc035d45d973e3ec169d2276ddab16f1e407384f"
 decimals = 18
@@ -2908,7 +2648,6 @@ decimals = 18
 [[deployments]]
 token_id = "usds"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA"
 decimals = 6
@@ -2916,7 +2655,6 @@ decimals = 6
 [[deployments]]
 token_id = "usds"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x6491c05a82219b8d1479057361ff1654749b876b"
 decimals = 18
@@ -2924,7 +2662,6 @@ decimals = 18
 [[deployments]]
 token_id = "usds"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x4f13a96ec5c4cf34e442b46bbd98a0791f20edc3"
 decimals = 18
@@ -2932,7 +2669,6 @@ decimals = 18
 [[deployments]]
 token_id = "usds"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0x86ff09db814ac346a7c6fe2cd648f27706d1d470"
 decimals = 18
@@ -2940,7 +2676,6 @@ decimals = 18
 [[deployments]]
 token_id = "usds"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x820c137fa70c8691f0e44dc420a5e53c168921dc"
 decimals = 18
@@ -2948,7 +2683,6 @@ decimals = 18
 [[deployments]]
 token_id = "usds"
 chain_id = "unichain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x7e10036acc4b56d4dfca3b77810356ce52313f9c"
 decimals = 18
@@ -2966,7 +2700,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "tether"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xdac17f958d2ee523a2206206994597c13d831ec7"
 decimals = 6
@@ -2974,7 +2707,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
 decimals = 6
@@ -2982,7 +2714,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether"
 chain_id = "tron"
-kind = "token"
 standard = "TRC-20"
 contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
 decimals = 6
@@ -2990,7 +2721,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7"
 decimals = 6
@@ -2998,7 +2728,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether"
 chain_id = "aptos"
-kind = "token"
 standard = "AIP-21"
 contract = "0x357b0b74bc833e95a115ad22604854d6b0fca151cecd94111770e5d6ffc9dc2b"
 decimals = 6
@@ -3006,7 +2735,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether"
 chain_id = "ton"
-kind = "token"
 standard = "TEP-74"
 contract = "0:b113a994b5024a16719f69139328eb759596c38a25f59028b146fecdc3621dfe"
 decimals = 6
@@ -3014,7 +2742,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether"
 chain_id = "near"
-kind = "token"
 standard = "NEP-141"
 contract = "usdt.tether-token.near"
 decimals = 6
@@ -3032,7 +2759,6 @@ tags = ["stablecoin"]
 [[deployments]]
 token_id = "usdt0"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9"
 decimals = 6
@@ -3040,7 +2766,6 @@ decimals = 6
 [[deployments]]
 token_id = "usdt0"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0x01bff41798a0bcf287b996046ca68b395dbc1071"
 decimals = 6
@@ -3048,7 +2773,6 @@ decimals = 6
 [[deployments]]
 token_id = "usdt0"
 chain_id = "hyperliquid"
-kind = "token"
 standard = "ERC-20"
 contract = "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb"
 decimals = 6
@@ -3056,7 +2780,6 @@ decimals = 6
 [[deployments]]
 token_id = "usdt0"
 chain_id = "polygon"
-kind = "token"
 standard = "ERC-20"
 contract = "0xc2132d05d31c914a87c6611c10748aeb04b58e8f"
 decimals = 6
@@ -3064,7 +2787,6 @@ decimals = 6
 [[deployments]]
 token_id = "usdt0"
 chain_id = "mantle"
-kind = "token"
 standard = "ERC-20"
 contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
 decimals = 6
@@ -3072,7 +2794,6 @@ decimals = 6
 [[deployments]]
 token_id = "usdt0"
 chain_id = "sei"
-kind = "token"
 standard = "ERC-20"
 contract = "0x9151434b16b9763660705744891fa906f660ecc5"
 decimals = 6
@@ -3080,7 +2801,6 @@ decimals = 6
 [[deployments]]
 token_id = "usdt0"
 chain_id = "berachain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
 decimals = 6
@@ -3088,7 +2808,6 @@ decimals = 6
 [[deployments]]
 token_id = "usdt0"
 chain_id = "unichain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x9151434b16b9763660705744891fa906f660ecc5"
 decimals = 6
@@ -3096,7 +2815,6 @@ decimals = 6
 [[deployments]]
 token_id = "usdt0"
 chain_id = "ink"
-kind = "token"
 standard = "ERC-20"
 contract = "0x0200c29006150606b650577bbe7b6248f58470c1"
 decimals = 6
@@ -3104,7 +2822,6 @@ decimals = 6
 [[deployments]]
 token_id = "usdt0"
 chain_id = "x-layer"
-kind = "token"
 standard = "ERC-20"
 contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
 decimals = 6
@@ -3122,7 +2839,6 @@ tags = []
 [[deployments]]
 token_id = "wrapped-bitcoin"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"
 decimals = 8
@@ -3140,7 +2856,6 @@ tags = []
 [[deployments]]
 token_id = "weth"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
 decimals = 18
@@ -3158,7 +2873,6 @@ tags = []
 [[deployments]]
 token_id = "worldcoin-wld"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x163f8c2467924be0ae7b5347228cabf260318753"
 decimals = 18
@@ -3166,7 +2880,6 @@ decimals = 18
 [[deployments]]
 token_id = "worldcoin-wld"
 chain_id = "optimism"
-kind = "token"
 standard = "ERC-20"
 contract = "0xdc6ff44d5d932cbd77b52e5612ba0529dc6226f1"
 decimals = 18
@@ -3174,7 +2887,6 @@ decimals = 18
 [[deployments]]
 token_id = "worldcoin-wld"
 chain_id = "world-chain"
-kind = "token"
 standard = "ERC-20"
 contract = "0x2cfc85d8e48f8eab294be644d9e25c3030863003"
 decimals = 18
@@ -3192,7 +2904,6 @@ tags = []
 [[deployments]]
 token_id = "world-liberty-financial"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0xda5e1988097297dcdc1f90d4dfe7909e847cbef6"
 decimals = 18
@@ -3200,7 +2911,6 @@ decimals = 18
 [[deployments]]
 token_id = "world-liberty-financial"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g"
 decimals = 6
@@ -3208,7 +2918,6 @@ decimals = 6
 [[deployments]]
 token_id = "world-liberty-financial"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x47474747477b199288bf72a1d702f7fe0fb1deea"
 decimals = 18
@@ -3226,7 +2935,6 @@ tags = []
 [[deployments]]
 token_id = "wrapped-steth"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0"
 decimals = 18
@@ -3234,7 +2942,6 @@ decimals = 18
 [[deployments]]
 token_id = "wrapped-steth"
 chain_id = "unichain"
-kind = "token"
 standard = "ERC-20"
 contract = "0xc02fe7317d4eb8753a02c35fe019786854a92001"
 decimals = 18
@@ -3252,7 +2959,6 @@ tags = []
 [[deployments]]
 token_id = "tether-gold"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x68749665ff8d2d112fa859aa293f07a622782f38"
 decimals = 6
@@ -3270,7 +2976,6 @@ tags = []
 [[deployments]]
 token_id = "tether-gold-tokens"
 chain_id = "solana"
-kind = "token"
 standard = "SPL"
 contract = "AymATz4TCL9sWNEEV9Kvyz45CHVhDZ6kUgjTJPzLpU9P"
 decimals = 6
@@ -3278,7 +2983,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether-gold-tokens"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x40461291347e1ecbb09499f3371d3f17f10d7159"
 decimals = 6
@@ -3286,7 +2990,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether-gold-tokens"
 chain_id = "avalanche"
-kind = "token"
 standard = "ARC-20"
 contract = "0x2775d5105276781b4b85ba6ea6a6653beed1dd32"
 decimals = 6
@@ -3294,7 +2997,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether-gold-tokens"
 chain_id = "ton"
-kind = "token"
 standard = "TEP-74"
 contract = "0:3547f2ee4022c794c80ea354b81bb63b5b571dd05ac091b035d19abbadd74ac6"
 decimals = 6
@@ -3302,7 +3004,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether-gold-tokens"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x21caef8a43163eea865baee23b9c2e327696a3bf"
 decimals = 6
@@ -3310,7 +3011,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether-gold-tokens"
 chain_id = "hyperliquid"
-kind = "token"
 standard = "ERC-20"
 contract = "0xf4d9235269a96aadafc9adae454a0618ebe37949"
 decimals = 6
@@ -3318,7 +3018,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether-gold-tokens"
 chain_id = "polygon"
-kind = "token"
 standard = "ERC-20"
 contract = "0xf1815bd50389c46847f0bda824ec8da914045d14"
 decimals = 6
@@ -3326,7 +3025,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether-gold-tokens"
 chain_id = "celo"
-kind = "token"
 standard = "ERC-20"
 contract = "0xaf37e8b6c9ed7f6318979f56fc287d76c30847ff"
 decimals = 6
@@ -3334,7 +3032,6 @@ decimals = 6
 [[deployments]]
 token_id = "tether-gold-tokens"
 chain_id = "ink"
-kind = "token"
 standard = "ERC-20"
 contract = "0xf50258d3c1dd88946c567920b986a12e65b50dac"
 decimals = 6
@@ -3352,7 +3049,6 @@ tags = []
 [[deployments]]
 token_id = "zksync"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x66a5cfb2e9c529f14fe6364ad1075df3a649c0a5"
 decimals = 18
@@ -3360,7 +3056,6 @@ decimals = 18
 [[deployments]]
 token_id = "zksync"
 chain_id = "zksync-era"
-kind = "token"
 standard = "ERC-20"
 contract = "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"
 decimals = 18
@@ -3378,7 +3073,6 @@ tags = []
 [[deployments]]
 token_id = "layerzero"
 chain_id = "ethereum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
 decimals = 18
@@ -3386,7 +3080,6 @@ decimals = 18
 [[deployments]]
 token_id = "layerzero"
 chain_id = "arbitrum"
-kind = "token"
 standard = "ERC-20"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
 decimals = 18
@@ -3394,7 +3087,6 @@ decimals = 18
 [[deployments]]
 token_id = "layerzero"
 chain_id = "base"
-kind = "token"
 standard = "ERC-20"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
 decimals = 18
@@ -3402,7 +3094,6 @@ decimals = 18
 [[deployments]]
 token_id = "layerzero"
 chain_id = "bnb"
-kind = "token"
 standard = "BEP-20"
 contract = "0x6985884c4392d348587b19cb9eaaf157f13271cd"
 decimals = 18
@@ -3420,5 +3111,4 @@ tags = []
 [[deployments]]
 token_id = "peercoin"
 chain_id = "peercoin"
-kind = "native"
 decimals = 6

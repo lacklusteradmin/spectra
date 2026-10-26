@@ -184,7 +184,7 @@ impl Wallet {
         use crate::store::state::StateCommand;
         self.service
             .apply_state_command(StateCommand::AddCustomToken {
-                standard: Some(standard.into()),
+                standard: crate::registry::TokenStandard::parse(standard),
                 chain_id: self.chain,
                 symbol: "TEST".into(),
                 name: "Test".into(),
@@ -201,7 +201,7 @@ impl Wallet {
             symbol: "TEST".into(),
             coingecko_id: String::new(),
             chain_id: self.chain,
-            token_standard: standard.into(),
+            token_standard: crate::registry::TokenStandard::parse(standard),
             contract_address: Some(contract.into()),
             amount: amount.into(),
         };

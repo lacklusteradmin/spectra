@@ -988,7 +988,10 @@ fn dashboard_groups_from(
             let place = format!(
                 "{}|{}|{contract}",
                 coin.chain_id,
-                coin.token_standard.to_lowercase()
+                coin.token_standard.map_or_else(
+                    || "native".to_string(),
+                    |standard| standard.as_str().to_lowercase()
+                )
             );
             match by_place.get_mut(&place) {
                 Some(existing) => {

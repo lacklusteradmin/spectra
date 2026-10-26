@@ -847,7 +847,7 @@ async fn wallet_identity_revision_ignores_balances_and_other_state() {
             symbol: "ETH".into(),
             coingecko_id: "ethereum".into(),
             chain_id: crate::registry::Chain::Ethereum,
-            token_standard: "Native".into(),
+            token_standard: None,
             contract_address: None,
             amount: amount.into(),
         }];

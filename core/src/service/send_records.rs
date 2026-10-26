@@ -47,14 +47,15 @@ impl WalletService {
             send_asset_names(&state, chain, request.contract_address.as_deref());
         let deployment_id = match request.contract_address.as_deref() {
             None => crate::catalog::tokens::deployment_id_for(chain, None),
-            Some(identifier) => crate::catalog::tokens::protocol_deployment_id(
+            Some(identifier) => crate::catalog::tokens::resolve_token_standard(
                 chain,
-                request
-                    .token_standard
-                    .as_deref()
-                    .unwrap_or_else(|| chain.token_standard_for_identifier(identifier)),
+                request.token_standard,
                 identifier,
-            ),
+            )
+            .ok()
+            .and_then(|standard| {
+                crate::catalog::tokens::protocol_deployment_id(chain, standard, identifier)
+            }),
         }
         .ok_or_else(|| SpectraBridgeError::failure("token identifier missing"))?;
         let record: TransactionRecord = serde_json::from_value(json!({

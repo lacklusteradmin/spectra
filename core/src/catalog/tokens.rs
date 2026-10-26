@@ -81,12 +81,12 @@ struct TomlToken {
 struct TomlDeployment {
     token_id: String,
     chain_id: crate::registry::Chain,
-    kind: String,
+    /// The protocol a token is; absent for the network's own coin.
+    #[serde(default)]
+    standard: Option<crate::registry::TokenStandard>,
     #[serde(default)]
     contract: String,
     decimals: u32,
-    #[serde(default)]
-    standard: String,
 }
 
 /// What kind of coin a token is, from a closed list.
@@ -120,26 +120,17 @@ pub fn list_token_tags() -> Vec<TokenTag> {
     TokenTag::ALL.to_vec()
 }
 
-/// Protocol identity is explicit; a missing contract never implies native.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Enum)]
-pub enum TokenKind {
-    Native,
-    Protocol {
-        standard: String,
-        identifier: String,
-    },
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenDeploymentEntry {
     pub deployment_id: String,
     pub token_id: String,
-    pub kind: TokenKind,
     pub chain_id: crate::registry::Chain,
     pub name: String,
     pub symbol: String,
-    pub token_standard: String,
+    /// The protocol a token is; `None` for the network's own coin, which has
+    /// no `contract` either.
+    pub token_standard: Option<crate::registry::TokenStandard>,
     pub contract: String,
     pub coingecko_id: String,
     pub coinpaprika_id: String,
@@ -159,7 +150,7 @@ impl TokenDeploymentEntry {
             symbol: self.symbol.clone(),
             coingecko_id: self.coingecko_id.clone(),
             chain_id: self.chain_id,
-            token_standard: self.token_standard.clone(),
+            token_standard: self.token_standard,
             contract_address: (!self.contract.is_empty()).then(|| self.contract.clone()),
             amount: "0".to_string(),
         }
@@ -167,7 +158,7 @@ impl TokenDeploymentEntry {
     }
 
     pub fn is_native(&self) -> bool {
-        matches!(self.kind, TokenKind::Native)
+        self.token_standard.is_none()
     }
     pub fn matches_holding(&self, holding: &crate::store::wallet_domain::AssetHolding) -> bool {
         (self.is_native() || !self.contract.trim().is_empty())
@@ -211,20 +202,22 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
         .map(|(environment, d)| {
             let t = tokens_by_id[d.token_id.as_str()];
             let network = crate::catalog::chains::declared(d.chain_id);
-            let contract = if d.kind == "native" {
-                String::new()
-            } else {
-                validate_protocol_identifier(d.chain_id, &d.standard, &d.contract)
-                    .unwrap_or_else(|e| panic!("invalid deployment {}: {e}", d.token_id))
+            let contract = match d.standard {
+                None => {
+                    assert!(
+                        d.contract.is_empty(),
+                        "native deployment {} has a contract",
+                        d.token_id
+                    );
+                    String::new()
+                }
+                Some(standard) => validate_protocol_identifier(d.chain_id, standard, &d.contract)
+                    .unwrap_or_else(|e| panic!("invalid deployment {}: {e}", d.token_id)),
             };
             // Derived, not declared: an id written beside the facts it
             // restates can disagree with them, and the file spelled 268 of
             // them for the build to check character by character.
-            let id = if d.kind == "native" {
-                format!("{}:native", d.chain_id)
-            } else {
-                format!("{}:{}:{}", d.chain_id, d.standard.to_lowercase(), contract)
-            };
+            let id = deployment_id(d.chain_id, d.standard, &contract);
             assert!(
                 identities.insert(id.clone()),
                 "duplicate deployment id {id}"
@@ -251,9 +244,7 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
                 "testnet token {} is not named as a test coin",
                 t.id
             );
-            if d.kind != "native" {
-                validate_protocol_identifier(d.chain_id, &d.standard, &d.contract)
-                    .unwrap_or_else(|e| panic!("invalid deployment {id}: {e}"));
+            if d.standard.is_some() {
                 assert!(
                     protocol_identifiers.insert((
                         d.chain_id,
@@ -267,34 +258,10 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
             TokenDeploymentEntry {
                 deployment_id: id,
                 token_id: t.id.clone(),
-                kind: match d.kind.as_str() {
-                    "native" => {
-                        assert!(
-                            d.contract.is_empty() && d.standard.is_empty(),
-                            "native deployment has protocol fields"
-                        );
-                        TokenKind::Native
-                    }
-                    "token" => {
-                        assert!(
-                            !d.contract.is_empty() && !d.standard.is_empty(),
-                            "token requires protocol identity"
-                        );
-                        TokenKind::Protocol {
-                            standard: d.standard.clone(),
-                            identifier: contract.clone(),
-                        }
-                    }
-                    other => panic!("unknown deployment kind {other}"),
-                },
                 chain_id: d.chain_id,
                 name: t.name.clone(),
                 symbol: t.symbol.clone(),
-                token_standard: if d.kind == "native" {
-                    "Native".into()
-                } else {
-                    d.standard.clone()
-                },
+                token_standard: d.standard,
                 contract,
                 coingecko_id: t.coingecko_id.clone(),
                 coinpaprika_id: t.coinpaprika_id.clone(),
@@ -449,30 +416,31 @@ pub(crate) fn normalize_sui_token_identifier(value: String) -> String {
 /// protocol set is a capability, never a replacement for protocol identity.
 pub fn validate_protocol_identifier(
     chain: crate::registry::Chain,
-    standard: &str,
+    standard: crate::registry::TokenStandard,
     identifier: &str,
 ) -> Result<String, crate::error::SpectraBridgeError> {
     use crate::error::SpectraBridgeError as E;
+    use crate::registry::TokenStandard as S;
     if !chain.allows_token_standard(standard) {
         return Err(E::invalid("token protocol does not belong to network"));
     }
     let identifier = normalize_token_identifier(Some(identifier.into()), chain)
         .ok_or_else(|| E::invalid("protocol token requires an identifier"))?;
     let result = match standard {
-        "Trust Line Token" => {
+        S::TrustLineToken => {
             return Ok(crate::api::xrpl_amount::XrplIssue::parse(&identifier)?.identifier());
         }
-        "Stellar Asset" => {
+        S::StellarAsset => {
             return Ok(crate::api::stellar_asset::StellarAsset::parse(&identifier)?.identifier());
         }
-        "Cardano Native Token" => {
+        S::CardanoNativeToken => {
             return Ok(crate::api::cardano_asset::CardanoAssetId::parse(&identifier)?.identifier());
         }
         // A contract, mint or account: an address on the token's own network.
-        "ERC-20" | "BEP-20" | "ARC-20" | "SPL" | "TRC-20" | "TEP-74" | "NEP-141" | "AIP-21" => {
+        S::Erc20 | S::Bep20 | S::Arc20 | S::Spl | S::Trc20 | S::Tep74 | S::Nep141 | S::Aip21 => {
             crate::validation::address::validate_address(chain, &identifier)
         }
-        "TRC-10" => {
+        S::Trc10 => {
             let id = identifier
                 .parse::<i64>()
                 .ok()
@@ -480,8 +448,8 @@ pub fn validate_protocol_identifier(
                 .ok_or_else(|| E::invalid("invalid TRC-10 token ID"))?;
             return Ok(id.to_string());
         }
-        "Sui Coin" => crate::validation::address::validate_sui_coin_type(&identifier),
-        "Aptos Coin" => {
+        S::SuiCoin => crate::validation::address::validate_sui_coin_type(&identifier),
+        S::AptosCoin => {
             let components = identifier.split("::").collect::<Vec<_>>();
             let move_name = |s: &str| {
                 !s.is_empty()
@@ -495,33 +463,56 @@ pub fn validate_protocol_identifier(
             }
             crate::validation::address::validate_aptos_token_type(&identifier)
         }
-        _ => return Err(E::invalid("invalid token identifier for protocol")),
     };
     if !result.is_valid {
         return Err(E::invalid("invalid token identifier for protocol"));
     }
     // Move type names and base58 identifiers are case-significant. Their
     // validator may case-fold only for checking; identity keeps their case.
-    if standard == "AIP-21" {
+    if standard == S::Aip21 {
         return normalize_token_identifier(result.normalized_value, chain)
             .ok_or_else(|| E::invalid("invalid token identifier for protocol"));
     }
     Ok(identifier)
 }
 
+/// The protocol a token named by `identifier` on `chain` is: the one the
+/// caller named, or the one the identifier's shape says.
+pub(crate) fn resolve_token_standard(
+    chain: crate::registry::Chain,
+    named: Option<crate::registry::TokenStandard>,
+    identifier: &str,
+) -> Result<crate::registry::TokenStandard, crate::error::SpectraBridgeError> {
+    named
+        .or_else(|| chain.token_standard_for_identifier(identifier))
+        .ok_or_else(|| {
+            crate::error::SpectraBridgeError::invalid("token protocol does not belong to network")
+        })
+}
+
 /// Identity of a protocol deployment, with its actual standard validated.
 pub fn protocol_deployment_id(
     chain: crate::registry::Chain,
-    standard: &str,
+    standard: crate::registry::TokenStandard,
     identifier: &str,
 ) -> Option<String> {
     let identifier = validate_protocol_identifier(chain, standard, identifier).ok()?;
-    Some(format!(
-        "{}:{}:{}",
-        chain.str_id(),
-        standard.to_lowercase(),
-        identifier
-    ))
+    Some(deployment_id(chain, Some(standard), &identifier))
+}
+
+/// A deployment's id: `ethereum:native` for a network's own coin, and
+/// `ethereum:erc-20:0xa0b8…` for a token — its network, its protocol and its
+/// normalized identifier. The one place the format is spelled; `contract` is
+/// already normalized, and ignored for the coin.
+pub fn deployment_id(
+    chain: crate::registry::Chain,
+    standard: Option<crate::registry::TokenStandard>,
+    contract: &str,
+) -> String {
+    match standard {
+        None => format!("{chain}:native"),
+        Some(standard) => format!("{chain}:{}:{contract}", standard.as_str().to_lowercase()),
+    }
 }
 
 /// The deployment an NFT's history rows carry: chain, standard, collection
@@ -612,18 +603,6 @@ pub fn normalize_token_identifier(
                 .unwrap_or_else(|_| trimmed.to_lowercase()),
         ),
         _ => Some(trimmed.to_lowercase()),
-    }
-}
-
-/// The places a standard's amounts always have, when the standard fixes
-/// them rather than each token: seven for Stellar assets (stroops), and the
-/// fifteen Spectra keeps of an XRP Ledger issued currency, whose values are
-/// sixteen significant digits at a floating exponent.
-pub fn fixed_token_decimals(standard: &str) -> Option<u32> {
-    match standard {
-        "Stellar Asset" => Some(7),
-        "Trust Line Token" => Some(15),
-        _ => None,
     }
 }
 
@@ -790,14 +769,21 @@ mod tokens_and_deployments {
             base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
         };
         let raw = format!("0:{}", "22".repeat(32));
-        let id = protocol_deployment_id(Chain::Ton, "TEP-74", &raw).unwrap();
+        let id = protocol_deployment_id(Chain::Ton, crate::registry::TokenStandard::Tep74, &raw)
+            .unwrap();
         for alias in [raw.clone(), friendly(0x11), friendly(0x51)] {
             assert_eq!(
-                validate_protocol_identifier(Chain::Ton, "TEP-74", &alias).unwrap(),
+                validate_protocol_identifier(
+                    Chain::Ton,
+                    crate::registry::TokenStandard::Tep74,
+                    &alias
+                )
+                .unwrap(),
                 raw
             );
             assert_eq!(
-                protocol_deployment_id(Chain::Ton, "TEP-74", &alias).unwrap(),
+                protocol_deployment_id(Chain::Ton, crate::registry::TokenStandard::Tep74, &alias)
+                    .unwrap(),
                 id
             );
             let mut holding = crate::store::wallet_domain::AssetHolding {
@@ -806,7 +792,7 @@ mod tokens_and_deployments {
                 symbol: "J".into(),
                 coingecko_id: String::new(),
                 chain_id: Chain::Ton,
-                token_standard: "TEP-74".into(),
+                token_standard: Some(crate::registry::TokenStandard::Tep74),
                 contract_address: Some(alias),
                 amount: "1".into(),
             };
@@ -814,9 +800,21 @@ mod tokens_and_deployments {
             assert_eq!(holding.contract_address, Some(raw.clone()));
             assert_eq!(holding.deployment_id(), id);
         }
-        assert!(validate_protocol_identifier(Chain::Ton, "TEP-74", &friendly(0x91)).is_err());
+        assert!(
+            validate_protocol_identifier(
+                Chain::Ton,
+                crate::registry::TokenStandard::Tep74,
+                &friendly(0x91)
+            )
+            .is_err()
+        );
         assert_eq!(
-            validate_protocol_identifier(Chain::TonTestnet, "TEP-74", &friendly(0x91)).unwrap(),
+            validate_protocol_identifier(
+                Chain::TonTestnet,
+                crate::registry::TokenStandard::Tep74,
+                &friendly(0x91)
+            )
+            .unwrap(),
             raw
         );
     }
@@ -826,13 +824,11 @@ mod tokens_and_deployments {
 [[deployments]]
 token_id = "ether"
 chain_id = "ethereum"
-kind = "native"
 decimals = 18
 
 [[deployments]]
 token_id = "usdc"
 chain_id = "ethereum"
-kind = "token"
 contract = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 standard = "ERC-20"
 decimals = 6
@@ -867,16 +863,31 @@ tags = []
         use crate::registry::Chain;
         let mut file = parse_token_file(SAMPLE).unwrap();
         file.deployments[1].chain_id = Chain::Tron;
-        file.deployments[1].standard = "TRC-20".into();
+        file.deployments[1].standard = Some(crate::registry::TokenStandard::Trc20);
         file.deployments[1].contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".into();
         let entries = load_catalog(file, empty_file());
-        assert_eq!(entries[1].token_standard, "TRC-20");
-        assert!(Chain::Tron.allows_token_standard("TRC-10"));
         assert_eq!(
-            validate_protocol_identifier(Chain::Tron, "TRC-10", "1002000").unwrap(),
+            entries[1].token_standard,
+            Some(crate::registry::TokenStandard::Trc20)
+        );
+        assert!(Chain::Tron.allows_token_standard(crate::registry::TokenStandard::Trc10));
+        assert_eq!(
+            validate_protocol_identifier(
+                Chain::Tron,
+                crate::registry::TokenStandard::Trc10,
+                "1002000"
+            )
+            .unwrap(),
             "1002000"
         );
-        assert!(validate_protocol_identifier(Chain::Tron, "TRC-20", "1002000").is_err());
+        assert!(
+            validate_protocol_identifier(
+                Chain::Tron,
+                crate::registry::TokenStandard::Trc20,
+                "1002000"
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -887,10 +898,13 @@ tags = []
             .find(|token| token.token_id == "bittorrent")
             .unwrap();
         assert_eq!(old.token_id, "bittorrent-old");
-        assert_eq!((old.token_standard.as_str(), old.decimals), ("TRC-10", 6));
         assert_eq!(
-            (current.token_standard.as_str(), current.decimals),
-            ("TRC-20", 18)
+            (old.token_standard, old.decimals),
+            (Some(crate::registry::TokenStandard::Trc10), 6)
+        );
+        assert_eq!(
+            (current.token_standard, current.decimals),
+            (Some(crate::registry::TokenStandard::Trc20), 18)
         );
         assert_ne!(old.token_id, current.token_id);
         assert!(old.coingecko_id.is_empty() && old.coinpaprika_id.is_empty());
@@ -902,12 +916,21 @@ tags = []
         for valid in ["1", "1002000", "9223372036854775807"] {
             for chain in [Chain::Tron, Chain::TronNile] {
                 assert_eq!(
-                    validate_protocol_identifier(chain, "TRC-10", valid).unwrap(),
+                    validate_protocol_identifier(
+                        chain,
+                        crate::registry::TokenStandard::Trc10,
+                        valid
+                    )
+                    .unwrap(),
                     valid
                 );
-                assert_eq!(chain.token_standard_for_identifier(valid), "TRC-10");
                 assert_eq!(
-                    protocol_deployment_id(chain, "TRC-10", valid).unwrap(),
+                    chain.token_standard_for_identifier(valid),
+                    Some(crate::registry::TokenStandard::Trc10)
+                );
+                assert_eq!(
+                    protocol_deployment_id(chain, crate::registry::TokenStandard::Trc10, valid)
+                        .unwrap(),
                     format!("{}:trc-10:{valid}", chain.str_id())
                 );
             }
@@ -923,11 +946,23 @@ tags = []
             "9223372036854775808",
         ] {
             assert!(
-                validate_protocol_identifier(Chain::Tron, "TRC-10", invalid).is_err(),
+                validate_protocol_identifier(
+                    Chain::Tron,
+                    crate::registry::TokenStandard::Trc10,
+                    invalid
+                )
+                .is_err(),
                 "{invalid}"
             );
         }
-        assert!(validate_protocol_identifier(Chain::Ethereum, "TRC-10", "1002000").is_err());
+        assert!(
+            validate_protocol_identifier(
+                Chain::Ethereum,
+                crate::registry::TokenStandard::Trc10,
+                "1002000"
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -937,13 +972,25 @@ tags = []
         file.deployments[1].chain_id = Chain::BnbChain;
         let entries = load_catalog(file, empty_file());
         let token = &entries[1];
-        assert_eq!(Chain::BnbChain.token_standards(), ["ERC-20", "BEP-20"]);
-        assert_eq!(token.token_standard, "ERC-20");
+        assert_eq!(
+            Chain::BnbChain.token_standards(),
+            [
+                crate::registry::TokenStandard::Erc20,
+                crate::registry::TokenStandard::Bep20
+            ]
+        );
+        assert_eq!(
+            token.token_standard,
+            Some(crate::registry::TokenStandard::Erc20)
+        );
         let mut holding = token.holding_template();
         holding.canonicalize().unwrap();
-        assert_eq!(holding.token_standard, "ERC-20");
+        assert_eq!(
+            holding.token_standard,
+            Some(crate::registry::TokenStandard::Erc20)
+        );
         assert!(token.matches_holding(&holding));
-        holding.token_standard = "BEP-20".into();
+        holding.token_standard = Some(crate::registry::TokenStandard::Bep20);
         assert!(!token.matches_holding(&holding));
     }
 
@@ -956,8 +1003,7 @@ tags = []
         file.deployments.push(TomlDeployment {
             token_id: "usdc".into(),
             chain_id: Chain::BnbChain,
-            kind: "token".into(),
-            standard: "BEP-20".into(),
+            standard: Some(crate::registry::TokenStandard::Bep20),
             contract: file.deployments[1].contract.clone(),
             decimals: 6,
         });
@@ -971,7 +1017,6 @@ tags = []
         for (chain, standard, identifier) in [
             (Chain::Solana, "ERC-20", address),
             (Chain::Ethereum, "SPL", "11111111111111111111111111111111"),
-            (Chain::Tron, "unknown", "1002000"),
             (Chain::Tron, "TRC-20", "1002000"),
             (Chain::Tron, "TRC-10", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"),
             (Chain::Tron, "TRC-10", "001002000"),
@@ -980,25 +1025,41 @@ tags = []
             (Chain::Aptos, "Aptos Coin", "0x1"),
             (Chain::Aptos, "Aptos Coin", "0x1::coin"),
         ] {
+            let standard = crate::registry::TokenStandard::parse(standard).unwrap();
             assert!(
                 validate_protocol_identifier(chain, standard, identifier).is_err(),
                 "{chain} {standard} {identifier}"
             );
         }
         assert_eq!(
-            validate_protocol_identifier(Chain::Aptos, "Aptos Coin", "0x001::coin::T").unwrap(),
+            validate_protocol_identifier(
+                Chain::Aptos,
+                crate::registry::TokenStandard::AptosCoin,
+                "0x001::coin::T"
+            )
+            .unwrap(),
             "0x1::coin::T"
         );
         assert_eq!(
             Chain::Aptos.token_standard_for_identifier("0x1::coin::T"),
-            "Aptos Coin"
+            Some(crate::registry::TokenStandard::AptosCoin)
         );
         assert_eq!(
-            validate_protocol_identifier(Chain::Aptos, "Aptos Coin", "0X001::coin::T").unwrap(),
+            validate_protocol_identifier(
+                Chain::Aptos,
+                crate::registry::TokenStandard::AptosCoin,
+                "0X001::coin::T"
+            )
+            .unwrap(),
             "0x1::coin::T"
         );
         assert_eq!(
-            validate_protocol_identifier(Chain::Aptos, "Aptos Coin", "ABC::coin::T").unwrap(),
+            validate_protocol_identifier(
+                Chain::Aptos,
+                crate::registry::TokenStandard::AptosCoin,
+                "ABC::coin::T"
+            )
+            .unwrap(),
             "0xabc::coin::T"
         );
     }
@@ -1193,7 +1254,7 @@ pub(crate) fn token_display_decimals(
 /// `protocol_deployment_id` and never lose their own protocol.
 pub fn deployment_id_for(chain: crate::registry::Chain, contract: Option<&str>) -> Option<String> {
     let Some(contract) = contract else {
-        return Some(format!("{}:native", chain.str_id()));
+        return Some(deployment_id(chain, None, ""));
     };
     let normalized = normalize_token_identifier(Some(contract.into()), chain)?;
     if let Some(token) = catalog()
@@ -1204,7 +1265,7 @@ pub fn deployment_id_for(chain: crate::registry::Chain, contract: Option<&str>) 
     }
     protocol_deployment_id(
         chain,
-        chain.token_standard_for_identifier(&normalized),
+        chain.token_standard_for_identifier(&normalized)?,
         &normalized,
     )
 }
@@ -1310,17 +1371,26 @@ mod pending_catalog_tests {
                 "removed_at_user_request" => (0, 0),
                 decision => panic!("unknown catalog decision: {decision}"),
             };
+            // The catalog has since dropped the audit's `kind` column: a
+            // deployment is a token exactly when it names a standard.
+            let mut row = record.clone();
+            let kind = row.as_object_mut().unwrap().remove("kind");
+            assert_eq!(
+                kind.as_ref().and_then(|kind| kind.as_str()) == Some("token"),
+                row.get("standard").is_some(),
+                "{record}"
+            );
             let active_count = active_deployments
                 .as_array()
                 .unwrap()
                 .iter()
-                .filter(|row| *row == record)
+                .filter(|catalog_row| **catalog_row == row)
                 .count();
             let pending_count = pending_deployments
                 .as_array()
                 .unwrap()
                 .iter()
-                .filter(|row| *row == record)
+                .filter(|catalog_row| **catalog_row == row)
                 .count();
             assert_eq!(
                 (active_count, pending_count),

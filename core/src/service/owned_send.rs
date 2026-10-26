@@ -375,7 +375,7 @@ impl WalletService {
                     chain,
                     address.clone(),
                     vec![TokenDescriptor {
-                        standard: chain.token_standard_for_identifier(&token.contract).into(),
+                        standard: chain.token_standard_for_identifier(&token.contract),
                         contract: token.contract.clone(),
                         symbol: holding.symbol.clone(),
                         decimals: token.decimals,
@@ -617,7 +617,7 @@ impl WalletService {
         use crate::registry::SendFeeField;
         Ok(OwnedSendQuote {
             request: crate::send::SendExecutionRequest {
-                token_standard: (!holding.is_native()).then(|| holding.token_standard.clone()),
+                token_standard: holding.token_standard,
                 chain_id: chain,
                 wallet_id,
                 password: None,

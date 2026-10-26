@@ -296,7 +296,8 @@ impl WalletService {
         let trx =
             |sun: u128| crate::amount::decimal::from_units(sun, u32::from(chain.native_decimals()));
         if !contract_address.is_empty() {
-            let standard = chain.token_standard_for_identifier(&contract_address);
+            let standard =
+                crate::catalog::tokens::resolve_token_standard(chain, None, &contract_address)?;
             crate::catalog::tokens::validate_protocol_identifier(
                 chain,
                 standard,
@@ -321,7 +322,8 @@ impl WalletService {
         let client = TronHttpClient::new(eps);
 
         if !contract_address.is_empty()
-            && chain.token_standard_for_identifier(&contract_address) == "TRC-10"
+            && chain.token_standard_for_identifier(&contract_address)
+                == Some(crate::registry::TokenStandard::Trc10)
         {
             // The preview has no recipient. Reserve both activation fees and
             // all paid bandwidth; actual execution may use free or issuer bandwidth.

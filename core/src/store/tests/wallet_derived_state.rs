@@ -10,9 +10,9 @@ fn coin(symbol: &str, chain: crate::registry::Chain, amount: f64) -> AssetHoldin
         coingecko_id: symbol.to_lowercase(),
         chain_id: chain,
         token_standard: if chain.coin_symbol() == symbol {
-            "Native".into()
+            None
         } else {
-            "ERC-20".into()
+            Some(crate::registry::TokenStandard::Erc20)
         },
         contract_address: if symbol == "SHIB" {
             Some("0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce".into())
