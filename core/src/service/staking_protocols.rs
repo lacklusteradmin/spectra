@@ -50,12 +50,7 @@ fn require_balance(balance: u128, amount: u128, fee: u128) -> Result<(), Spectra
     Ok(())
 }
 fn require_supported_action(request: &StakingRequest) -> Result<(), SpectraBridgeError> {
-    if request.chain_id.is_testnet()
-        || !matches!(
-            request.chain_id,
-            Chain::Solana | Chain::Sui | Chain::Aptos | Chain::Near
-        )
-    {
+    if request.chain_id.staking_model() != Some(crate::registry::StakingModel::Delegation) {
         return Err(SpectraBridgeError::invalid("Unsupported staking network"));
     }
     if request.action == StakingAction::ClaimRewards {
@@ -76,20 +71,7 @@ impl WalletService {
         &self,
         chain: Chain,
     ) -> Result<Arc<Vec<String>>, SpectraBridgeError> {
-        let api = chain
-            .endpoint_apis()
-            .first()
-            .copied()
-            .ok_or_else(|| SpectraBridgeError::invalid("Missing staking API"))?;
-        let endpoints = self
-            .api_endpoints(chain, api, &[EndpointCapability::Staking])
-            .await?;
-        if endpoints.is_empty() {
-            return Err(SpectraBridgeError::invalid(
-                "No staking RPC endpoints configured",
-            ));
-        }
-        Ok(Arc::new(endpoints))
+        Ok(Arc::new(self.staking_endpoints(chain).await?.endpoints))
     }
 
     pub(super) async fn prepare_account_staking(
@@ -190,7 +172,6 @@ impl WalletService {
         &self,
         chain: Chain,
         owner: &str,
-        _public_key_hex: Option<&str>,
         known_targets: &[String],
     ) -> Result<Vec<StakingPosition>, SpectraBridgeError> {
         let owner = owner.to_string();

@@ -25,16 +25,6 @@ symptom, and delete the item with the change.
 
 ### Core
 
-- [ ] **One fact, two readers.** Token decimals are read by
-  `send_execution::token_contract_decimals` and
-  `network_tokens::token_decimals`, which disagree on caching and coverage;
-  `transaction_recheck.rs` re-implements the UTXO branch of
-  `pending_status.rs` with different confirmation semantics;
-  `MultisigScheme::of` restates `Chain::multisig_policy_format`; wallet
-  actions are gated by name in `wallet_actions.rs` and again in five
-  `*_owner` helpers; staking branches on ICP/Polkadot/other about twelve
-  times in `service/staking.rs`, beside a `StakingService` whose ICP arm only
-  tests reach.
 - [ ] **`api` depends on `send`** for Safe, Stellar, XRP and Tron multisig
   read models and Solana's token programs. Move those types into `api/`.
 - [ ] **Duplicated primitives.** Three BIP-32 implementations with path

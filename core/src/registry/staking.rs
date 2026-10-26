@@ -2,12 +2,39 @@
 
 use super::*;
 
+/// How a network stakes: the shape every staking read, build and check
+/// takes on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum StakingModel {
+    /// The wallet's own account delegates to a validator or pool, with a
+    /// transaction it signs as it signs a transfer: Solana, Sui, Aptos and
+    /// NEAR.
+    Delegation,
+    /// Nomination pools, joined and left by extrinsics: Polkadot.
+    NominationPool,
+    /// A neuron the wallet's principal controls in the NNS governance
+    /// canister, funded by a ledger transfer and read with the wallet's key:
+    /// ICP.
+    Neuron,
+}
+
 impl Chain {
+    /// How this network stakes; `None` where Spectra does not. Exact: a
+    /// testnet never stakes, since every staking client is built against
+    /// its mainnet's programs and pools.
+    pub(crate) fn staking_model(self) -> Option<StakingModel> {
+        match self {
+            Chain::Solana | Chain::Sui | Chain::Aptos | Chain::Near => {
+                Some(StakingModel::Delegation)
+            }
+            Chain::Polkadot => Some(StakingModel::NominationPool),
+            Chain::Icp => Some(StakingModel::Neuron),
+            _ => None,
+        }
+    }
+
     pub fn supports_staking(self) -> bool {
-        matches!(
-            self,
-            Chain::Solana | Chain::Sui | Chain::Aptos | Chain::Near | Chain::Polkadot | Chain::Icp
-        )
+        self.staking_model().is_some()
     }
 
     pub(crate) fn solana_stake_program(self) -> Result<&'static str, RegistryError> {

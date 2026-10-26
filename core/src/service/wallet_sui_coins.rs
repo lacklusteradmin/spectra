@@ -14,6 +14,7 @@ use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, Wal
 use crate::send::sui::{GasCoin, MAX_SUI_MERGE, MAX_TOKEN_MERGE, PreparedSuiMerge, owned_coins};
 
 const SUI: &str = "0x2::sui::SUI";
+const NOT_SUI: &str = "Only a Sui wallet holds coin objects.";
 
 /// One coin type the wallet holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
@@ -41,7 +42,9 @@ impl WalletService {
     ) -> Result<Vec<SuiCoinType>, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (chain, owner) = this.sui_owner(&wallet_id).await?;
+            let (_, chain, owner) = this
+                .action_wallet(&wallet_id, WalletAction::CoinObjects, NOT_SUI)
+                .await?;
             let client = this.sui_client(chain).await?;
             let state = this.app_state().await;
             let mut types = Vec::new();
@@ -91,7 +94,9 @@ impl WalletService {
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (chain, owner) = this.sui_owner(&wallet_id).await?;
+            let (_, chain, owner) = this
+                .action_wallet(&wallet_id, WalletAction::CoinObjects, NOT_SUI)
+                .await?;
             if this.stored_wallet(&wallet_id).await?.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
                     "a watch-only wallet cannot send",
@@ -208,22 +213,6 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// A Sui wallet's network and address, or a refusal.
-    async fn sui_owner(&self, wallet_id: &str) -> Result<(Chain, String), SpectraBridgeError> {
-        let wallet = self.stored_wallet(wallet_id).await?;
-        let chain = wallet.chain_id;
-        if chain.mainnet_counterpart() != Chain::Sui {
-            return Err(SpectraBridgeError::invalid(
-                "Only a Sui wallet holds coin objects.",
-            ));
-        }
-        let owner = wallet
-            .address_on(chain)
-            .ok_or_else(|| SpectraBridgeError::failure("Wallet has no address on this network"))?
-            .to_string();
-        Ok((chain, owner))
-    }
-
     async fn sui_client(&self, chain: Chain) -> Result<SuiClient, SpectraBridgeError> {
         let client = SuiClient::new(
             self.endpoints_for(chain, &[EndpointCapability::Verification])

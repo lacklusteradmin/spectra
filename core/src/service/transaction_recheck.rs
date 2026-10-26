@@ -2,8 +2,8 @@
 use crate::error::SpectraBridgeError;
 use crate::registry::{Chain, PendingStatusPoll};
 use crate::service::WalletService;
+use crate::store::TransactionStatusChange;
 use crate::store::persistence_models::TransactionRecord;
-use crate::store::{TransactionStatusChange, TransactionStatusPollConfig};
 
 pub(super) fn recheck_chain(record: &TransactionRecord) -> Result<Chain, SpectraBridgeError> {
     let chain = record.chain_id;
@@ -59,11 +59,12 @@ impl WalletService {
 }
 
 impl WalletService {
+    /// The poll's own reading and write, for one transaction the poll may
+    /// have stopped watching: a pending answer resumes polling.
     async fn recheck_stored_status(
         &self,
         transaction_id: String,
     ) -> Result<TransactionStatusChange, SpectraBridgeError> {
-        let database = self.bound_database().await?;
         let expected = self
             .transactions()
             .await?
@@ -73,112 +74,17 @@ impl WalletService {
                 message: "Transaction not found.".into(),
             })?;
         let chain = recheck_chain(&expected)?;
-        let status = self
-            .fetch_utxo_tx_status(chain, expected.transaction_hash.clone().unwrap())
-            .await?;
-        if !status
-            .txid
-            .eq_ignore_ascii_case(expected.transaction_hash.as_deref().unwrap())
-        {
-            return Err(SpectraBridgeError::failure(
-                "Provider returned a different transaction hash.",
-            ));
-        }
-        let confirmations = if status.confirmed {
-            status
-                .confirmations
-                .map(u32::try_from)
-                .transpose()
-                .map_err(|_| SpectraBridgeError::failure("Confirmation count is out of range."))?
-        } else {
-            Some(0)
-        };
-        let block = if status.confirmed {
-            status
-                .block_height
-                .map(i64::try_from)
-                .transpose()
-                .map_err(|_| SpectraBridgeError::failure("Block height is out of range."))?
-        } else {
-            None
-        };
-        let confirmed = status.confirmed;
-        let (mut change, tracker) = tokio::task::spawn_blocking(move || {
-            crate::wallet_db::history_update_chain(&database, chain, |rows| {
-                let mut row = rows
-                    .into_iter()
-                    .find(|row| row.payload.id.eq_ignore_ascii_case(&expected.id))
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure(
-                            "Transaction was deleted during status recheck.",
-                        )
-                    })?;
-                let current = &mut row.payload;
-                if current.transaction_hash != expected.transaction_hash
-                    || current.wallet_id != expected.wallet_id
-                    || current.kind != expected.kind
-                    || current.chain_id != expected.chain_id
-                {
-                    return Err(SpectraBridgeError::failure(
-                        "Transaction changed during status recheck; check it again.",
-                    ));
-                }
-                recheck_chain(current)?;
-                let now = crate::wallet_db::now_secs() as f64;
-                let config = TransactionStatusPollConfig::default();
-                let mut trackers = std::collections::HashMap::from([(
-                    current.id.clone(),
-                    crate::store::transaction_status_after_successful_poll(
-                        None, confirmed, now, config,
-                    ),
-                )]);
-                let current_status = current.status;
-                let new_status = if confirmed {
-                    crate::store::wallet_domain::TransactionStatus::Confirmed
-                } else {
-                    crate::store::wallet_domain::TransactionStatus::Pending
-                };
-                let decision = crate::store::apply_resolved_pending_transaction_statuses(
-                    vec![crate::store::ResolvedPendingTransactionInput {
-                        id: current.id.clone(),
-                        old_status: current_status,
-                        new_status,
-                    }],
-                    &mut trackers,
-                    now,
-                    config,
+        let hash = expected.transaction_hash.clone().unwrap_or_default();
+        let status = self.fetch_utxo_tx_status(chain, hash).await?;
+        let resolution = super::pending_status::utxo_resolution(&expected, status)?;
+        self.apply_polled_pending_statuses(chain, vec![resolution], Some(vec![expected]))
+            .await?
+            .pop()
+            .ok_or_else(|| {
+                SpectraBridgeError::failure(
+                    "Transaction changed during status recheck; check it again.",
                 )
-                .remove(0);
-                current.status = new_status;
-                current.failure_reason = None;
-                current.receipt_block_number = block;
-                current.confirmation_count = confirmations.map(i64::from);
-                if !confirmed {
-                    current.confirmed_network_fee = None;
-                }
-                let change = TransactionStatusChange {
-                    id: current.id.clone(),
-                    chain_id: current.chain_id,
-                    transaction_hash: current.transaction_hash.clone(),
-                    old_status: current_status,
-                    new_status,
-                    status_changed: decision.status_changed,
-                    notify: false,
-                };
-                let tracker = trackers.remove(&current.id).unwrap();
-                // Keep the indexed timestamp and unrelated metadata from the latest row.
-                Ok((vec![row], (change, tracker)))
             })
-        })
-        .await
-        .map_err(|e| SpectraBridgeError::failure(format!("status recheck task: {e}")))??;
-        self.status_trackers
-            .write()
-            .await
-            .insert(change.id.clone(), tracker);
-        self.record_status_changes(std::slice::from_mut(&mut change))
-            .await;
-        Ok(change)
     }
 }
 

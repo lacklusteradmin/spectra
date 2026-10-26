@@ -15,6 +15,7 @@ mod keys;
 mod networks;
 mod send;
 mod staking;
+pub(crate) use staking::StakingModel;
 #[cfg(test)]
 mod tests;
 mod tokens;

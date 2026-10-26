@@ -362,10 +362,9 @@ impl WalletService {
             && chain.mainnet_counterpart() != Chain::Tron
         {
             let real_decimals = self
-                .token_contract_decimals(chain, &token.contract)
-                .await?
-                .ok_or_else(|| SpectraBridgeError::failure("Token precision unavailable"))?;
-            if real_decimals != u32::from(token.decimals) {
+                .token_decimals(chain, &token.contract, MetadataRead::Fresh)
+                .await?;
+            if real_decimals != token.decimals {
                 return Err(SpectraBridgeError::invalid(
                     "Token precision differs from the stored deployment",
                 ));
@@ -387,7 +386,7 @@ impl WalletService {
                 .into_iter()
                 .next()
                 .ok_or_else(|| SpectraBridgeError::failure("Token balance unavailable"))?;
-            if u32::from(balance.decimals) != real_decimals {
+            if balance.decimals != real_decimals {
                 return Err(SpectraBridgeError::invalid(
                     "Token balance precision changed",
                 ));
@@ -397,7 +396,7 @@ impl WalletService {
                     chain,
                     &address,
                     &destination,
-                    crate::amount::input::parse_raw_amount(&amount, real_decimals)?,
+                    crate::amount::input::parse_raw_amount(&amount, u32::from(real_decimals))?,
                     Some(&token.contract),
                 )
                 .await?

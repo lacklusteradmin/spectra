@@ -62,15 +62,16 @@ impl MultisigScheme {
     /// one key's alone.
     pub(crate) fn of(wallet: &WalletState) -> Option<Self> {
         let chain = wallet.chain_id;
+        // An account whose address derives from a policy spends through the
+        // scheme of the policy's form, which the registry names per chain.
         if wallet.multisig_policy.is_some() {
-            if chain.utxo_multisig_script().is_some() {
-                return Some(Self::SortedMulti);
-            }
-            return match chain.mainnet_counterpart() {
-                Chain::Sui => Some(Self::SuiMultisig),
-                Chain::Aptos => Some(Self::AptosMultiKey),
-                Chain::Cardano => Some(Self::CardanoNativeScript),
-                Chain::Polkadot | Chain::Bittensor => Some(Self::SubstrateMultisig),
+            use crate::derivation::setup::WalletSecretFormat as Format;
+            return match chain.multisig_policy_format()? {
+                Format::MultisigDescriptor => Some(Self::SortedMulti),
+                Format::SuiMultisigPublicKey => Some(Self::SuiMultisig),
+                Format::AptosMultiKey => Some(Self::AptosMultiKey),
+                Format::CardanoNativeScript => Some(Self::CardanoNativeScript),
+                Format::SubstrateMultisig => Some(Self::SubstrateMultisig),
                 _ => None,
             };
         }

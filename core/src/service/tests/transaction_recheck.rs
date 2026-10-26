@@ -150,7 +150,7 @@ async fn explicit_recheck_restores_pending_polling_and_clears_reorg_metadata() {
     );
     let row = service.transactions().await.unwrap().remove(0);
     assert_eq!(row.receipt_block_number, None);
-    assert_eq!(row.confirmation_count, Some(0));
+    assert_eq!(row.confirmation_count, None);
     assert_eq!(row.confirmed_network_fee, None);
     assert!(!service.status_trackers.read().await["target"].polling_complete);
     assert_eq!(

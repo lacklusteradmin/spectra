@@ -115,7 +115,9 @@ impl WalletService {
     ) -> Result<NearStorageDeposits, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
+            let (wallet, chain, account) = this
+                .action_wallet(&wallet_id, WalletAction::TokenStorage, NOT_NEAR)
+                .await?;
             let contracts = this.near_token_contracts(&wallet, chain, &account).await?;
             let endpoints = this.near_nodes(chain).await?;
             let found = crate::api::http::race(&endpoints, |endpoint| {
@@ -173,7 +175,9 @@ impl WalletService {
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
+            let (wallet, chain, account) = this
+                .action_wallet(&wallet_id, WalletAction::TokenStorage, NOT_NEAR)
+                .await?;
             if wallet.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
                     "a watch-only wallet cannot send",

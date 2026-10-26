@@ -155,12 +155,14 @@ pub use litecoin_mweb::LitecoinMwebStatus;
 
 pub(crate) use helpers::*;
 use keypool::keypool_key;
+pub(crate) use network_tokens::MetadataRead;
 #[cfg(test)]
 use send_destination::{resolve_destination, verify_reviewed_destination};
 pub use standalone::*;
 /// The confirmation-poll outcome, which lives with the trackers it updates.
 pub use transactions::StatusPollOutcome;
 pub use types::*;
+pub(crate) use wallet_actions::WalletAction;
 
 // ── Endpoint index (internal — pre-indexed for O(1) chain_id lookup) ──────
 

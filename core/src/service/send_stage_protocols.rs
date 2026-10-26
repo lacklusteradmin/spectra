@@ -106,44 +106,10 @@ impl WalletService {
             .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
         let decimals = if let Some(contract) = &request.contract_address {
-            let decimals = match chain.mainnet_counterpart() {
-                Chain::Solana => u32::from(
-                    SolanaClient::new(
-                        self.endpoints_for(chain, &[EndpointCapability::TokenBalance])
-                            .await,
-                    )
-                    .fetch_transfer_mint(contract)
-                    .await?
-                    .decimals,
-                ),
-                Chain::Near => self
-                    .token_contract_decimals(chain, contract)
-                    .await?
-                    .or(request.token_decimals)
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("NEAR token precision unavailable")
-                    })?,
-                Chain::Tron => self
-                    .token_contract_decimals(chain, contract)
-                    .await?
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure("TRON token precision unavailable")
-                    })?,
-                Chain::Sui
-                | Chain::Aptos
-                | Chain::Ton
-                | Chain::Xrp
-                | Chain::Stellar
-                | Chain::Cardano => self
-                    .token_contract_decimals(chain, contract)
-                    .await?
-                    .ok_or_else(|| SpectraBridgeError::failure("Token precision unavailable"))?,
-                _ => {
-                    return Err(SpectraBridgeError::failure(
-                        "Token transfer unavailable on this protocol",
-                    ));
-                }
-            };
+            let decimals = u32::from(
+                self.token_decimals(chain, contract, MetadataRead::Fresh)
+                    .await?,
+            );
             if request.token_decimals.is_some_and(|d| d != decimals) {
                 return Err(SpectraBridgeError::failure(
                     "Token decimals changed; review again",

@@ -9,9 +9,7 @@ use crate::send::icp_staking::{
 };
 use crate::send::keys::Secp256k1Key;
 use crate::send::stages::{PreparedPayload, StoredSend};
-use crate::staking::{
-    StakingAction, StakingPosition, StakingPositionStatus, StakingRequest, StakingValidator,
-};
+use crate::staking::{StakingAction, StakingPosition, StakingPositionStatus, StakingRequest};
 
 fn key(identity: &ResolvedSendIdentity) -> Result<Secp256k1Key, SpectraBridgeError> {
     Ok(Secp256k1Key::from_hex(&identity.private_key_hex)?)
@@ -491,25 +489,6 @@ impl WalletService {
             .map(|n| position(n, &identity.from_address, now))
             .collect()
     }
-    pub(super) async fn fetch_icp_staking_validators(
-        &self,
-    ) -> Result<Vec<StakingValidator>, SpectraBridgeError> {
-        crate::staking::icp::IcpStakingClient::new(
-            self.api_endpoints(
-                Chain::Icp,
-                EndpointApi::IcpReplica,
-                &[EndpointCapability::Staking],
-            )
-            .await?,
-        )
-        .fetch_validators()
-        .await
-        .map_err(|error| match error {
-            crate::staking::StakingError::Api(error) => error.into(),
-            crate::staking::StakingError::NotYetImplemented => SpectraBridgeError::invalid(error),
-        })
-    }
-
     pub(super) async fn prepare_icp_staking(
         &self,
         request: &StakingRequest,
@@ -549,7 +528,7 @@ impl WalletService {
                 .filter(|id| *id > 0 && id.to_string() == follow)
                 .ok_or_else(|| fail("Invalid neuron follow ID"))?;
             if !self
-                .fetch_icp_staking_validators()
+                .staking_validators(Chain::Icp)
                 .await?
                 .iter()
                 .any(|n| n.identifier == follow)

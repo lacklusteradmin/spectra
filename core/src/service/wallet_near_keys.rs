@@ -76,7 +76,9 @@ impl WalletService {
     ) -> Result<NearAccessKeys, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
+            let (wallet, chain, account) = this
+                .action_wallet(&wallet_id, WalletAction::AccessKeys, NOT_NEAR)
+                .await?;
             let signing = near_signing_key(&wallet, &account)
                 .ok()
                 .map(|key| ed25519_text(&key));
@@ -136,7 +138,9 @@ impl WalletService {
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
+            let (wallet, chain, account) = this
+                .action_wallet(&wallet_id, WalletAction::AccessKeys, NOT_NEAR)
+                .await?;
             if wallet.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
                     "a watch-only wallet cannot send",
@@ -228,27 +232,6 @@ impl WalletService {
             .await
         })
         .await
-    }
-}
-
-impl WalletService {
-    /// A NEAR wallet, its network and its account, or `refusal` for a wallet
-    /// on another network.
-    pub(super) async fn near_account(
-        &self,
-        wallet_id: &str,
-        refusal: &'static str,
-    ) -> Result<(crate::store::state::WalletState, Chain, String), SpectraBridgeError> {
-        let wallet = self.stored_wallet(wallet_id).await?;
-        let chain = wallet.chain_id;
-        if chain.mainnet_counterpart() != Chain::Near {
-            return Err(SpectraBridgeError::invalid(refusal));
-        }
-        let account = wallet
-            .address_on(chain)
-            .ok_or_else(|| SpectraBridgeError::failure("Wallet has no address on this network"))?
-            .to_string();
-        Ok((wallet, chain, account))
     }
 }
 

@@ -4,11 +4,84 @@
 mod types;
 pub use types::*;
 
-pub mod service;
-
 pub mod aptos;
 pub mod icp;
 pub mod near;
 pub mod polkadot;
 pub mod solana;
 pub mod sui;
+
+use crate::registry::Chain;
+
+/// The validators, pools or known neurons `chain` stakes with, read from
+/// `endpoints`. A chain the registry does not stake on is refused here
+/// rather than falling through an arm nobody wrote down.
+pub(crate) async fn fetch_validators(
+    chain: Chain,
+    endpoints: Vec<String>,
+) -> Result<Vec<StakingValidator>, StakingError> {
+    match chain {
+        Chain::Solana => {
+            solana::SolanaStakingClient::new(endpoints)
+                .fetch_validators()
+                .await
+        }
+        Chain::Sui => {
+            sui::SuiStakingClient::new(endpoints)
+                .fetch_validators()
+                .await
+        }
+        Chain::Aptos => {
+            aptos::AptosStakingClient::new(endpoints)
+                .fetch_validators()
+                .await
+        }
+        Chain::Near => {
+            near::NearStakingClient::new(endpoints)
+                .fetch_validators()
+                .await
+        }
+        Chain::Polkadot => {
+            polkadot::PolkadotStakingClient::new(endpoints)
+                .fetch_validators()
+                .await
+        }
+        Chain::Icp => {
+            icp::IcpStakingClient::new(endpoints)
+                .fetch_validators()
+                .await
+        }
+        _ => Err(StakingError::NotYetImplemented),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The registry's staking chains and the validator dispatch are one
+    /// answer. Offline: a client refuses missing endpoints, so a routed call
+    /// and a refused one differ without a network.
+    #[tokio::test]
+    async fn the_registry_flag_and_the_dispatch_agree_on_every_chain() {
+        for chain in Chain::all() {
+            let routed = !matches!(
+                fetch_validators(chain, Vec::new()).await,
+                Err(StakingError::NotYetImplemented)
+            );
+            assert_eq!(routed, chain.supports_staking(), "{}", chain.str_id());
+        }
+    }
+
+    /// A testnet never stakes, even where its mainnet does: the clients are
+    /// built against mainnet programs and pools, so routing Solana Devnet to
+    /// the Solana client would report mainnet validators for a devnet wallet.
+    #[test]
+    fn staking_is_a_mainnet_answer() {
+        for chain in Chain::all().filter(|c| c.is_testnet()) {
+            assert!(!chain.supports_staking(), "{}", chain.str_id());
+        }
+        assert!(Chain::Solana.supports_staking());
+        assert!(!Chain::SolanaDevnet.supports_staking());
+    }
+}
