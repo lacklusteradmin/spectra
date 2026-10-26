@@ -759,7 +759,7 @@ mod explicit_network_catalog {
     /// registry also models agree with it.
     #[test]
     fn tags_agree_with_the_registry() {
-        use crate::fetch::transactions::TransactionMergeStrategy as Merge;
+        use crate::store::transaction_merge::TransactionMergeStrategy as Merge;
         for chain in Chain::all() {
             let e = entry(chain.str_id());
             let has = |tag| e.tags.contains(&tag);

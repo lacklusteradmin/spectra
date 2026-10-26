@@ -26,6 +26,22 @@ pub struct IcpHistoryEntry {
     pub is_incoming: bool,
 }
 
+impl IcpHistoryEntry {
+    /// The ledger names a transfer by its block index, not a hash.
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.block_index.to_string(),
+            contract: None,
+            amount: crate::api::history_page::HistoryAmount::Units(self.amount_e8s.into()),
+            incoming: self.is_incoming,
+            outcome: crate::api::history_page::HistoryOutcome::Confirmed,
+            block_height: None,
+            timestamp: Some(self.timestamp_ns as f64 / 1e9),
+            counterparty: if self.is_incoming { self.from } else { self.to },
+        })
+    }
+}
+
 // ── Client (Rosetta-based for read, direct for write)
 
 pub struct IcpClient {

@@ -631,8 +631,8 @@ async fn raw_mnemonic_is_canonical_before_derivation_and_storage() {
 
 #[tokio::test]
 async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
-    use crate::fetch::refresh_policy::DeviceConditions;
     use crate::service::app_refresh::AppRefreshIntent;
+    use crate::service::refresh_policy::DeviceConditions;
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(vec![]).unwrap();

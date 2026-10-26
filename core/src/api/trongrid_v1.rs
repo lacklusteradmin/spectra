@@ -22,6 +22,23 @@ pub struct TronTransfer {
     pub is_incoming: bool,
 }
 
+impl TronTransfer {
+    /// TRC-10 and TRC-20 transfers ride the same feed as TRX, with an
+    /// amount already in display units.
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.txid,
+            contract: self.contract,
+            amount: crate::api::history_page::HistoryAmount::Decimal(self.amount_display),
+            incoming: self.is_incoming,
+            outcome: crate::api::history_page::HistoryOutcome::Confirmed,
+            block_height: None,
+            timestamp: Some(self.timestamp_ms as f64 / 1e3),
+            counterparty: if self.is_incoming { self.from } else { self.to },
+        })
+    }
+}
+
 /// One or more `…/v1/accounts` bases.
 pub struct TrongridClient {
     pub(crate) endpoints: std::sync::Arc<Vec<String>>,

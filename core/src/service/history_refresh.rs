@@ -121,7 +121,7 @@ fn token_names(state: &ResidentState) -> HashMap<String, (String, String)> {
 pub(super) fn record_for(
     target: &Target,
     names: &HashMap<String, (String, String)>,
-    entry: crate::fetch::history::NormalizedHistoryItem,
+    entry: crate::service::network_history::NormalizedHistoryItem,
 ) -> crate::store::persistence_models::TransactionRecord {
     // A token the user lists is called what the list calls it; the feed's
     // own name for an unknown contract is the contract itself.
@@ -439,8 +439,8 @@ impl WalletService {
                 });
             }
 
-            let records = crate::fetch::history_decode::build_evm_transaction_records(
-                crate::fetch::history_decode::EvmTransactionRecordRequest {
+            let records = crate::service::history_decode::build_evm_transaction_records(
+                crate::service::history_decode::EvmTransactionRecordRequest {
                     decoded_page: decoded,
                     normalized_address: normalized_address.clone(),
                     chain_id: network,
@@ -448,7 +448,7 @@ impl WalletService {
                     wallets: group_wallet_ids
                         .iter()
                         .map(|wallet_id| {
-                            crate::fetch::history_decode::EvmTransactionRecordWalletInput {
+                            crate::service::history_decode::EvmTransactionRecordWalletInput {
                                 wallet_id: wallet_id.clone(),
                                 wallet_name: wallet_names
                                     .get(wallet_id)
@@ -529,7 +529,7 @@ impl WalletService {
                 }
                 let reader = AccountHistoryReader::new(self, target.network).await;
                 Ok::<_, SpectraBridgeError>(
-                    crate::fetch::bitcoin_history::page(
+                    crate::service::bitcoin_history::page(
                         target.network,
                         &addresses,
                         previous.as_deref(),
@@ -560,7 +560,7 @@ impl WalletService {
                         record_for(
                             &target,
                             &HashMap::new(),
-                            crate::fetch::history::NormalizedHistoryItem {
+                            crate::service::network_history::NormalizedHistoryItem {
                                 deployment_id: crate::catalog::tokens::deployment_id_for(
                                     target.network,
                                     None,

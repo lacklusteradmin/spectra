@@ -85,7 +85,7 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
     let record = record_for(
         target,
         &Default::default(),
-        crate::fetch::history::NormalizedHistoryItem {
+        crate::service::network_history::NormalizedHistoryItem {
             deployment_id: Some("bitcoin-testnet-4:native".to_string()),
             kind: crate::store::wallet_domain::TransactionKind::Receive,
             status: crate::store::wallet_domain::TransactionStatus::Confirmed,
@@ -123,7 +123,7 @@ fn an_undated_entry_is_stored_as_unknown() {
         ..Default::default()
     };
     let target = &targets(&state, Chain::Litecoin, &[])[0];
-    let entry = |timestamp| crate::fetch::history::NormalizedHistoryItem {
+    let entry = |timestamp| crate::service::network_history::NormalizedHistoryItem {
         deployment_id: Some("litecoin:native".to_string()),
         kind: crate::store::wallet_domain::TransactionKind::Receive,
         status: crate::store::wallet_domain::TransactionStatus::Pending,
@@ -179,7 +179,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
     let record = record_for(
         &target,
         &Default::default(),
-        crate::fetch::history::NormalizedHistoryItem {
+        crate::service::network_history::NormalizedHistoryItem {
             deployment_id: None,
             kind: crate::store::wallet_domain::TransactionKind::Receive,
             status: crate::store::wallet_domain::TransactionStatus::Confirmed,
@@ -209,7 +209,7 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
     assert_eq!(&record.id[14..15], "4", "version nibble: {}", record.id);
 
     // An empty hash is no hash, not an empty one.
-    let mut entry = crate::fetch::history::NormalizedHistoryItem {
+    let mut entry = crate::service::network_history::NormalizedHistoryItem {
         deployment_id: None,
         kind: crate::store::wallet_domain::TransactionKind::Send,
         status: crate::store::wallet_domain::TransactionStatus::Confirmed,
@@ -246,7 +246,7 @@ fn a_listed_token_is_named_as_the_list_names_it() {
         network: Chain::Xrp,
     };
     let id = "xrp:trust line token:USD.rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq";
-    let entry = crate::fetch::history::NormalizedHistoryItem {
+    let entry = crate::service::network_history::NormalizedHistoryItem {
         deployment_id: Some(id.into()),
         kind: crate::store::wallet_domain::TransactionKind::Receive,
         status: crate::store::wallet_domain::TransactionStatus::Confirmed,
@@ -638,8 +638,8 @@ fn evm_groups_share_only_the_same_network_and_address() {
 
 #[tokio::test]
 async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
-    use crate::fetch::refresh_policy::HistoryRefreshKey;
     use crate::service::HistoryRefreshScope;
+    use crate::service::refresh_policy::HistoryRefreshKey;
     let service = WalletService::new(vec![]).unwrap();
     let path = std::env::temp_dir().join(format!(
         "history-clock-{}.sqlite",
@@ -683,8 +683,8 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
 
 #[tokio::test]
 async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_wallets() {
-    use crate::fetch::history_decode::*;
     use crate::service::TransactionCommand;
+    use crate::service::history_decode::*;
     let service = WalletService::new(vec![]).unwrap();
     let path = std::env::temp_dir().join(format!(
         "history-identity-{}.sqlite",
@@ -804,7 +804,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
         Some("ethereum-sepolia:erc-20:0x1111111111111111111111111111111111111111")
     );
 
-    use crate::fetch::history_decode::*;
+    use crate::service::history_decode::*;
     let tokens = [
         "0x1111111111111111111111111111111111111111",
         "0x2222222222222222222222222222222222222222",
@@ -837,11 +837,11 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
         }],
         unknown_timestamp_sentinel_unix: 0.0,
     });
-    let merged = crate::fetch::transactions::merge_transactions(
-        crate::fetch::transactions::TransactionMergeRequest {
+    let merged = crate::store::transaction_merge::merge_transactions(
+        crate::store::transaction_merge::TransactionMergeRequest {
             existing_transactions: vec![],
             incoming_transactions: rows,
-            strategy: crate::fetch::transactions::TransactionMergeStrategy::Evm,
+            strategy: crate::store::transaction_merge::TransactionMergeStrategy::Evm,
             chain_id: crate::registry::Chain::Ethereum,
             preserve_created_at_sentinel_unix: None,
         },

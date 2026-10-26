@@ -1,6 +1,6 @@
 //! Core owns history protocol selection, scope, and successful refresh clocks.
 use super::{HistoryRefreshOutcome, WalletService};
-use crate::fetch::refresh_policy::HistoryRefreshKey;
+use crate::service::refresh_policy::HistoryRefreshKey;
 use crate::{error::SpectraBridgeError, registry::Chain};
 
 #[derive(Debug, Clone, uniffi::Enum)]

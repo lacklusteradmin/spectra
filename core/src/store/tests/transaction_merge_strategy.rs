@@ -1,5 +1,5 @@
-use crate::fetch::transactions::TransactionMergeStrategy as S;
 use crate::registry::Chain;
+use crate::store::transaction_merge::TransactionMergeStrategy as S;
 
 fn strategy(chain_id: crate::registry::Chain) -> S {
     chain_id.transaction_merge_strategy()

@@ -1362,13 +1362,13 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
                 "historySource": record
                     .transaction_history_source
                     .clone()
-                    .and_then(spectra_core::fetch::transactions::history_source)
+                    .and_then(spectra_core::store::transaction_merge::history_source)
                     .map(|source| match source {
-                        spectra_core::fetch::transactions::HistorySource::Provider { name } =>
+                        spectra_core::store::transaction_merge::HistorySource::Provider { name } =>
                             serde_json::json!({"provider": name}),
-                        spectra_core::fetch::transactions::HistorySource::ChainProviders { chain_id } =>
+                        spectra_core::store::transaction_merge::HistorySource::ChainProviders { chain_id } =>
                             serde_json::json!({"chainProviders": chain_id}),
-                        spectra_core::fetch::transactions::HistorySource::Internal =>
+                        spectra_core::store::transaction_merge::HistorySource::Internal =>
                             serde_json::json!("internal"),
                     }),
             }))

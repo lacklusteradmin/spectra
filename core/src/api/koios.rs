@@ -47,6 +47,24 @@ pub struct CardanoHistoryEntry {
     pub amount_display: Option<String>,
 }
 
+impl CardanoHistoryEntry {
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.txid,
+            amount: match self.amount_display {
+                Some(amount) => crate::api::history_page::HistoryAmount::Decimal(amount),
+                None => crate::api::history_page::HistoryAmount::signed_units(self.amount_lovelace),
+            },
+            contract: self.contract,
+            incoming: self.is_incoming,
+            outcome: crate::api::history_page::HistoryOutcome::Confirmed,
+            block_height: None,
+            timestamp: Some(self.block_time as f64),
+            counterparty: String::new(),
+        })
+    }
+}
+
 /// What a transaction's fee and outputs depend on, from the current epoch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct CardanoProtocolParams {

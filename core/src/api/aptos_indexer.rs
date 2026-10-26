@@ -1,6 +1,7 @@
 //! Aptos address history and fungible holdings from the public Indexer API.
 //! Account versions include incoming and orderless transactions; account REST
 //! sequence-number history cannot serve this contract.
+use crate::api::history_page::{HistoryAmount, HistoryEntry, HistoryOutcome};
 use crate::api::{
     HeldToken, HistoryPage,
     aptos_rest::AptosClient,
@@ -161,7 +162,7 @@ impl AptosIndexerClient {
         address: &str,
         cursor: Option<&str>,
         node: &AptosClient,
-    ) -> Result<HistoryPage<Value>, ApiError> {
+    ) -> Result<HistoryPage<HistoryEntry>, ApiError> {
         let address = padded_address(address)?;
         let before = cursor
             .map(|value| {
@@ -278,7 +279,7 @@ fn decode_transaction(
     activities: Vec<Value>,
     tx: &Value,
     address: &str,
-) -> Result<Vec<Value>, ApiError> {
+) -> Result<Vec<HistoryEntry>, ApiError> {
     if units(&tx["version"])? != u128::from(version) {
         return Err(ApiError::Decode(
             "Aptos transaction version mismatch".into(),
@@ -350,10 +351,32 @@ fn decode_transaction(
             .checked_add(amount)
             .or_decode("Aptos history amount overflow")?;
     }
-    Ok(totals.into_iter().filter(|(_, (received,spent,_))|received!=spent).map(|(asset,(received,spent,decimals))|{
-        let incoming=received>spent;let amount=received.abs_diff(spent);
-        json!({"txid":hash,"version":version,"timestamp_us":timestamp,"from":if incoming&&sender!=address{sender.as_str()}else{""},"to":"","amount_octas":amount.to_string(),"amount_display":crate::amount::decimal::from_units(amount,u32::from(decimals)),"contract":if native_asset(&asset){None}else{Some(asset)},"is_incoming":incoming})
-    }).collect())
+    Ok(totals
+        .into_iter()
+        .filter(|(_, (received, spent, _))| received != spent)
+        .map(|(asset, (received, spent, decimals))| {
+            let incoming = received > spent;
+            HistoryEntry {
+                txid: hash.to_string(),
+                amount: HistoryAmount::Decimal(crate::amount::decimal::from_units(
+                    received.abs_diff(spent),
+                    u32::from(decimals),
+                )),
+                contract: (!native_asset(&asset)).then_some(asset),
+                incoming,
+                outcome: HistoryOutcome::Confirmed,
+                block_height: None,
+                // Microseconds.
+                timestamp: Some(timestamp as f64 / 1e6),
+                // The sender names the other party only of what came in.
+                counterparty: if incoming && sender != address {
+                    sender.clone()
+                } else {
+                    String::new()
+                },
+            }
+        })
+        .collect())
 }
 #[cfg(test)]
 mod tests {
@@ -368,9 +391,12 @@ mod tests {
         ];
         let entries = decode_transaction(7, activities, &tx, &address).unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0]["amount_display"], "1.2");
-        assert_eq!(entries[0]["is_incoming"], true);
-        assert_eq!(entries[0]["contract"], padded_address("0xbeef").unwrap());
+        assert_eq!(entries[0].amount, HistoryAmount::Decimal("1.2".into()));
+        assert!(entries[0].incoming);
+        assert_eq!(
+            entries[0].contract.as_deref(),
+            Some(padded_address("0xbeef").unwrap().as_str())
+        );
     }
     /// Holdings of a thousand storage objects to a page, the first all APT
     /// (no token), the second the token at `decimals`.
@@ -493,9 +519,9 @@ mod paging_tests {
         let rows: Vec<_> = second
             .items
             .iter()
-            .map(|row| (row["amount_display"].clone(), row["is_incoming"].clone()))
+            .map(|row| (row.amount.clone(), row.incoming))
             .collect();
-        assert_eq!(rows, [(json!("1.25"), json!(true))]);
+        assert_eq!(rows, [(HistoryAmount::Decimal("1.25".into()), true)]);
         let asked: Vec<Value> = server
             .received_requests()
             .await

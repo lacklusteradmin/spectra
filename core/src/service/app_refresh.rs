@@ -1,6 +1,6 @@
 //! Refresh intentions are platform inputs; scope, cadence and work belong here.
 use super::*;
-use crate::fetch::refresh_policy::{DeviceConditions, RefreshKind};
+use crate::service::refresh_policy::{DeviceConditions, RefreshKind};
 
 #[derive(Debug, Clone, serde::Deserialize, uniffi::Enum)]
 #[serde(rename_all = "camelCase")]
@@ -251,7 +251,7 @@ impl WalletService {
             use futures::{StreamExt, stream};
             let entries = {
                 let state = self.wallet_state.read().await;
-                crate::fetch::refresh_engine::refresh_entries_for(&state)
+                crate::service::refresh_engine::refresh_entries_for(&state)
             };
             let entries = entries.into_iter().filter(|entry| {
                 wallets

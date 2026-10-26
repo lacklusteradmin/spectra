@@ -121,7 +121,7 @@ only string parsing left is at the edges that receive text: the CLI's
 arguments, the catalog TOML files and the database columns.
 
 Chain-specific implementations live directly in each domain directory, for
-example `derivation/bitcoin.rs`, `fetch/bitcoin_history.rs` and `send/bitcoin.rs`.
+example `derivation/bitcoin.rs`, `service/bitcoin_history.rs` and `send/bitcoin.rs`.
 Keep differences that carry protocol meaning; share cryptographic primitives
 and wrappers that differ only in a chain name. Tests over the registry should
 assert complete capability coverage, rather than only test named examples.
@@ -191,8 +191,8 @@ tokens, endpoints, explorers, donations, the wiki and restore heights);
 `amount/` holds exact decimals, typed input and optional presentation;
 `secrets/` holds the `SecretStore`, its backends, the device key, envelopes
 and password stretching. Chain names and topic prefixes identify siblings:
-`derivation/ton_cell.rs`, `api/tron_metadata_cache.rs`, `fetch/refresh_engine.rs`
-and `fetch/refresh_policy.rs`. Keep cohesive modules; flattening directories is
+`derivation/ton_cell.rs`, `api/tron_metadata_cache.rs`, `service/refresh_engine.rs`
+and `service/refresh_policy.rs`. Keep cohesive modules; flattening directories is
 not a reason to merge unrelated code or enlarge existing files.
 
 Use the domain-qualified Rust path (`crate::api::http`, `crate::store::state`,
@@ -216,7 +216,7 @@ and independent SDK generators for that data live in the repository's top-level
 
 Each layer reports failures in its own `thiserror` enum, named in its
 `error.rs`: `api::error::ApiError` (transport, status, decode, rejected, no
-endpoint, invalid input; `fetch` shares it), `derivation::error::DerivationError`,
+endpoint, invalid input), `derivation::error::DerivationError`,
 `send::error::SendError` (which wraps the first two and adds
 `InsufficientFunds`), `wallet_db::error::DbError` and `registry::RegistryError`.
 Each converts into `SpectraBridgeError` at the FFI, choosing `Network`,
@@ -238,13 +238,20 @@ panic when broken, since a broken embedded file is a build defect.
   the capabilities an adapter offers on each network; `tor` is the embedded
   Tor client every transport routes through when it is on.
   `litecoin_p2p::wire` holds MWEB's wire format, which `send::litecoin_mweb`
-  builds with. It depends on nothing above it; `fetch`, `send`, `staking` and
+  builds with. `price` reads market quotes and fiat rates from their
+  keyless providers. It depends on nothing above it; `send`, `staking` and
   `service` call it.
+- Every history adapter converts its own answer into one
+  `api::history_page::HistoryEntry` — the units it reads, its timestamp
+  scale and where it says which way a transfer went stay with the code that
+  parsed them. `service/network_history.rs` picks a chain's adapter and gives
+  each entry its asset identity as a `NormalizedHistoryItem`; nothing is
+  serialized to be read back by field name.
 - `service/network.rs` owns endpoint health and status probes. Its siblings
   `network_balance`, `network_tokens`, `network_history` and
   `network_prices` own the corresponding reads and dispatch.
 - `service/history_refresh.rs` reads an account UTXO wallet's history over
-  every address its account is known to hold. `fetch/bitcoin_history.rs`
+  every address its account is known to hold. `service/bitcoin_history.rs`
   owns provider pagination and buffered block-cohort aggregation; a display
   limit never means provider exhaustion.
 - Multisig accounts: `derivation/multisig_policy.rs` reads a policy the

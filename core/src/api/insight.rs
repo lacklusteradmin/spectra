@@ -107,6 +107,26 @@ pub struct DcrHistoryEntry {
     pub is_incoming: bool,
 }
 
+impl DcrHistoryEntry {
+    /// Insight reports height 0 (or below) until the transaction is mined.
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.txid,
+            contract: None,
+            amount: crate::api::history_page::HistoryAmount::signed_units(self.amount_atoms),
+            incoming: self.is_incoming,
+            outcome: if self.block_height > 0 {
+                crate::api::history_page::HistoryOutcome::Confirmed
+            } else {
+                crate::api::history_page::HistoryOutcome::Pending
+            },
+            block_height: Some(self.block_height),
+            timestamp: self.timestamp.map(|t| t as f64),
+            counterparty: String::new(),
+        })
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct InsightBroadcastResponse {
     txid: String,

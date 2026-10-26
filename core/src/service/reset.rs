@@ -121,7 +121,7 @@ mod tests {
         service
             .record_status_poll("orphan".into(), StatusPollOutcome::Failed)
             .await;
-        let key = crate::fetch::refresh_policy::HistoryRefreshKey::new(
+        let key = crate::service::refresh_policy::HistoryRefreshKey::new(
             "w",
             crate::registry::Chain::Ethereum,
         );

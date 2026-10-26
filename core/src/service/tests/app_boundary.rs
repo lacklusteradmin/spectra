@@ -252,7 +252,7 @@ async fn substrate_history_is_an_error_not_an_empty_list() {
         crate::registry::Chain::Bittensor,
     ] {
         let history = service
-            .fetch_history(chain, "address".into())
+            .fetch_history_entries(chain, "address", None)
             .await
             .unwrap_err()
             .to_string();

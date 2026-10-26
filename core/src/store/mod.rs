@@ -3,6 +3,7 @@ pub mod persistence_models;
 mod price_alerts;
 pub use price_alerts::PriceAlertRejection;
 pub mod state;
+pub mod transaction_merge;
 pub mod wallet_domain;
 
 pub use artwork::{chain_artwork_name, deployment_artwork_name, token_artwork_name};

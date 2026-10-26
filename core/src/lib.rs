@@ -14,7 +14,6 @@ pub mod catalog;
 pub mod derivation;
 pub mod diagnostics;
 pub mod error;
-pub mod fetch;
 pub mod registry;
 pub mod secrets;
 pub mod send;

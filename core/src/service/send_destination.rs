@@ -76,12 +76,7 @@ impl WalletService {
                         return Ok(true);
                     }
                 }
-                Ok::<_, SpectraBridgeError>(
-                    this.fetch_history_summary(chain_id, address.clone())
-                        .await?
-                        .entry_count
-                        > 0,
-                )
+                this.has_history(chain_id, &address).await
             };
             let (balance, history) = tokio::join!(balance_read, history_read);
             let balance_is_zero = balance?;

@@ -3,9 +3,9 @@
 // tells the observer what changed. The front end supplies device conditions
 // and renders; it runs no loop of its own.
 
-use crate::fetch::refresh_policy::DeviceConditions;
 use crate::service::WalletService;
 use crate::service::app_refresh::{AppRefreshIntent, AppRefreshResult};
+use crate::service::refresh_policy::DeviceConditions;
 use futures::stream::{self, StreamExt};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -766,9 +766,9 @@ mod refresh_entry_tests {
     #[tokio::test]
     async fn device_conditions_start_and_stop_the_maintenance_loop() {
         use super::{RefreshEngine, RefreshObserver};
-        use crate::fetch::refresh_policy::DeviceConditions;
         use crate::service::WalletService;
         use crate::service::app_refresh::AppRefreshResult;
+        use crate::service::refresh_policy::DeviceConditions;
         use crate::store::state::StateCommand;
         use std::sync::Arc;
         use std::sync::atomic::{AtomicU32, Ordering};
@@ -916,8 +916,8 @@ mod refresh_entry_tests {
     #[tokio::test]
     async fn a_new_display_currency_is_revalued_by_core() {
         use super::RefreshEngine;
-        use crate::fetch::refresh_policy::DeviceConditions;
         use crate::service::WalletService;
+        use crate::service::refresh_policy::DeviceConditions;
         use crate::store::state::{FiatCurrency, StateCommand};
 
         let service = WalletService::new(vec![]).unwrap();

@@ -110,14 +110,14 @@ impl WalletService {
         let price_usd = if chain.is_testnet() {
             None
         } else {
-            let request = crate::fetch::price::PriceRequestCoin {
+            let request = crate::api::price::PriceRequestCoin {
                 holding_key: key.clone(),
                 coingecko_id: chain.coingecko_id().to_string(),
                 coinpaprika_id: crate::catalog::tokens::deployment(&key)
                     .map(|token| token.coinpaprika_id.clone())
                     .unwrap_or_default(),
             };
-            crate::fetch::price::fetch_prices(&[request])
+            crate::api::price::fetch_prices(&[request])
                 .await
                 .map_err(SpectraBridgeError::from)?
                 .get(&key)
@@ -196,7 +196,7 @@ impl WalletService {
                     let key = coin.deployment_id();
                     requests.insert(
                         key.clone(),
-                        crate::fetch::price::PriceRequestCoin {
+                        crate::api::price::PriceRequestCoin {
                             holding_key: key,
                             coingecko_id: token.coingecko_id.clone(),
                             coinpaprika_id: token.coinpaprika_id.clone(),
@@ -209,7 +209,7 @@ impl WalletService {
                     .filter(|t| !t.coingecko_id.is_empty() || !t.coinpaprika_id.is_empty())
                 {
                     requests.entry(token.deployment_id.clone()).or_insert(
-                        crate::fetch::price::PriceRequestCoin {
+                        crate::api::price::PriceRequestCoin {
                             holding_key: token.deployment_id.clone(),
                             coingecko_id: token.coingecko_id.clone(),
                             coinpaprika_id: token.coinpaprika_id.clone(),
@@ -222,8 +222,7 @@ impl WalletService {
                 return Ok(state);
             }
             let result =
-                crate::fetch::price::fetch_prices(&requests.into_values().collect::<Vec<_>>())
-                    .await;
+                crate::api::price::fetch_prices(&requests.into_values().collect::<Vec<_>>()).await;
             let transition = this
                 .mutate_persisted_state(move |state| {
                     apply_price_result(&mut state.quotes, time, result);
@@ -258,7 +257,7 @@ impl WalletService {
                 return Ok(state);
             }
             let codes = crate::store::state::fiat_currency_codes();
-            let result = crate::fetch::price::fetch_fiat_rates(&codes).await;
+            let result = crate::api::price::fetch_fiat_rates(&codes).await;
             let transition = this
                 .mutate_persisted_state(move |state| {
                     state.quotes.fiat_attempt_at = Some(time);
@@ -268,13 +267,12 @@ impl WalletService {
                                 .into_iter()
                                 .filter(|(_, p)| p.is_finite() && *p > 0.0)
                                 .collect();
-                            state.fiat_rates_from_usd =
-                                crate::fetch::price::merge_fiat_rate_updates(
-                                    fetched,
-                                    state.fiat_rates_from_usd.clone(),
-                                    codes,
-                                    "USD".into(),
-                                );
+                            state.fiat_rates_from_usd = crate::api::price::merge_fiat_rate_updates(
+                                fetched,
+                                state.fiat_rates_from_usd.clone(),
+                                codes,
+                                "USD".into(),
+                            );
                             state.quotes.fiat_success_at = Some(time);
                             state.quotes.fiat_error = None;
                         }

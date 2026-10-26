@@ -1,6 +1,6 @@
 //! Refresh scheduling from core-owned clocks, settings and pending transactions.
-use crate::fetch::refresh_policy::{DeviceConditions, MaintenancePlan, RefreshKind};
 use crate::service::WalletService;
+use crate::service::refresh_policy::{DeviceConditions, MaintenancePlan, RefreshKind};
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -12,7 +12,7 @@ impl WalletService {
             let settings = this.wallet_state.read().await.settings.clone();
             let has_pending_work = this.has_pending_transaction_work().await;
             let clock = this.refresh_clock.read().await.clone();
-            crate::fetch::refresh_policy::maintenance_plan(
+            crate::service::refresh_policy::maintenance_plan(
                 &clock,
                 &settings,
                 &conditions,
@@ -47,11 +47,11 @@ impl WalletService {
 impl WalletService {
     pub(crate) async fn history_refresh_plans(
         &self,
-        keys: Vec<crate::fetch::refresh_policy::HistoryRefreshKey>,
+        keys: Vec<crate::service::refresh_policy::HistoryRefreshKey>,
         interval_secs: f64,
-    ) -> Vec<crate::fetch::refresh_policy::HistoryRefreshKey> {
+    ) -> Vec<crate::service::refresh_policy::HistoryRefreshKey> {
         let clock = self.refresh_clock.read().await;
-        crate::fetch::refresh_policy::history_plans(
+        crate::service::refresh_policy::history_plans(
             &clock,
             keys,
             interval_secs,
@@ -61,7 +61,7 @@ impl WalletService {
 
     pub(crate) async fn record_history_refresh(
         &self,
-        key: crate::fetch::refresh_policy::HistoryRefreshKey,
+        key: crate::service::refresh_policy::HistoryRefreshKey,
     ) {
         let now = crate::wallet_db::now_secs() as f64;
         self.refresh_clock.write().await.record_history(key, now);
@@ -96,11 +96,11 @@ mod boundary_tests {
                 .await
                 .refresh_live_prices
         );
-        let eth = crate::fetch::refresh_policy::HistoryRefreshKey::new(
+        let eth = crate::service::refresh_policy::HistoryRefreshKey::new(
             "w",
             crate::registry::Chain::Ethereum,
         );
-        let btc = crate::fetch::refresh_policy::HistoryRefreshKey::new(
+        let btc = crate::service::refresh_policy::HistoryRefreshKey::new(
             "w",
             crate::registry::Chain::Bitcoin,
         );

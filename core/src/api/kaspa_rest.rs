@@ -100,6 +100,22 @@ pub struct KasHistoryEntry {
     pub is_incoming: bool,
 }
 
+impl KasHistoryEntry {
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            txid: self.txid,
+            contract: None,
+            amount: crate::api::history_page::HistoryAmount::signed_units(self.amount_sompi),
+            incoming: self.is_incoming,
+            outcome: crate::api::history_page::HistoryOutcome::Confirmed,
+            block_height: None,
+            // Milliseconds.
+            timestamp: Some(self.timestamp as f64 / 1e3),
+            counterparty: String::new(),
+        })
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ApiBroadcastResponse {

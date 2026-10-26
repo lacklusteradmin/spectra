@@ -279,7 +279,8 @@ impl WalletService {
         &self,
         chain: Chain,
         address: &str,
-    ) -> Result<String, SpectraBridgeError> {
+    ) -> Result<Vec<crate::api::history_page::HistoryEntry>, SpectraBridgeError> {
+        use crate::api::history_page::{HistoryAmount, HistoryEntry, HistoryOutcome};
         let state = self.app_state().await;
         let owner = state
             .wallets
@@ -294,7 +295,20 @@ impl WalletService {
                 "Finish Monero sync before reading history",
             ));
         }
-        Ok(serde_json::to_string(&wallet.transfers)?)
+        Ok(wallet
+            .transfers
+            .iter()
+            .map(|transfer| HistoryEntry {
+                txid: transfer.txid.clone(),
+                contract: None,
+                amount: HistoryAmount::Units(transfer.amount_piconeros.into()),
+                incoming: transfer.is_incoming,
+                outcome: HistoryOutcome::Confirmed,
+                block_height: None,
+                timestamp: Some(transfer.timestamp as f64),
+                counterparty: String::new(),
+            })
+            .collect())
     }
     pub(super) async fn monero_endpoint(
         &self,

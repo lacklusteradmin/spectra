@@ -23,6 +23,28 @@ pub struct EvmHistoryEntry {
     pub is_incoming: bool,
 }
 
+impl EvmHistoryEntry {
+    /// A row carries the execution result the explorer gave; one that names
+    /// none is refused rather than guessed at.
+    pub(crate) fn history_entry(self) -> Option<crate::api::history_page::HistoryEntry> {
+        Some(crate::api::history_page::HistoryEntry {
+            outcome: match self.status.as_str() {
+                "pending" => crate::api::history_page::HistoryOutcome::Pending,
+                "confirmed" => crate::api::history_page::HistoryOutcome::Confirmed,
+                "failed" => crate::api::history_page::HistoryOutcome::Failed,
+                _ => return None,
+            },
+            txid: self.txid,
+            contract: None,
+            amount: crate::api::history_page::HistoryAmount::unit_digits(&self.value_wei)?,
+            incoming: self.is_incoming,
+            block_height: i64::try_from(self.block_number).ok(),
+            timestamp: Some(self.timestamp as f64),
+            counterparty: if self.is_incoming { self.from } else { self.to },
+        })
+    }
+}
+
 /// One ERC-20 token transfer returned by Etherscan `tokentx`. The amount is
 /// the raw integer, and the token is only its contract: the tracked token's
 /// own decimals scale it and name it, never the explorer's `tokenDecimal`,
