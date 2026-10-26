@@ -54,7 +54,7 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
         // refusal of a one-address wallet is an answer here.
         WalletAction::Coins => !matches!(
             service.wallet_coins(id).await,
-            Err(crate::SpectraBridgeError::InvalidInput { .. })
+            Err(crate::error::SpectraBridgeError::InvalidInput { .. })
         ),
         // Listing reads an indexer; a test asks only whether a wallet is
         // refused as not an EVM one.
@@ -103,9 +103,9 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
                     .await
                     .is_err_and(|error| error.to_string().contains("keeps trust lines"))
         }
-        WalletAction::GetTestCoins => {
-            crate::registry::chain_faucet_url(chain).is_some_and(|url| url.starts_with("https://"))
-        }
+        WalletAction::GetTestCoins => chain
+            .faucet_url()
+            .is_some_and(|url| url.starts_with("https://")),
         WalletAction::CoinObjects => !service
             .wallet_coin_objects(id)
             .await
@@ -137,7 +137,9 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
         ),
         WalletAction::OpenInExplorer => wallet
             .address_on(chain)
-            .and_then(|address| crate::address_explorer_link(chain, address.into()))
+            .and_then(|address| {
+                crate::catalog::explorers::address_explorer_link(chain, address.into())
+            })
             .is_some_and(|link| link.url.contains(wallet.address_on(chain).unwrap())),
         // The phrase every fixture derives from holds the watched address
         // or account; the import bound to the wallet would upgrade it.

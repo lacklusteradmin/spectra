@@ -1,5 +1,6 @@
 //! Core-owned Build → Sign → Broadcast. No stage rebuilds a reviewed transaction.
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::send::stages::*;
 use crate::store::wallet_domain::TransactionStatus;
 use zeroize::Zeroizing;
@@ -15,7 +16,7 @@ impl WalletService {
         request: crate::send::SendExecutionRequest,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.build_send_with_review(request, None).await
         })
@@ -28,7 +29,7 @@ impl WalletService {
         input: super::send_review::SendReviewInput,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let review = this.review_owned_send(input).await?;
             // This operation completes the review itself; no unused confirmation remains.
@@ -70,7 +71,7 @@ impl WalletService {
 
     pub async fn list_sends(&self) -> Result<Vec<SendArtifact>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let db = this.bound_database().await?;
             let stored =
@@ -82,7 +83,7 @@ impl WalletService {
 
     pub async fn inspect_send(&self, id: String) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             Ok(this.load_send_artifact(id).await?.view)
         })
@@ -97,14 +98,14 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let password = password.map(Zeroizing::new);
             let mut stored = this.load_send_artifact(id).await?;
             if stored.view.stage != SendStage::Prepared
                 || stored.view.review_digest != review_digest
             {
-                return Err(crate::SpectraBridgeError::failure(
+                return Err(crate::error::SpectraBridgeError::failure(
                     "Transaction already signed or review does not match; inspect it again",
                 ));
             }
@@ -187,7 +188,7 @@ impl WalletService {
         chain: crate::registry::Chain,
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             Ok(this
                 .endpoints_for(chain, &[EndpointCapability::Broadcast])
@@ -204,7 +205,7 @@ impl WalletService {
         endpoints: Vec<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let service = this.clone();
             tokio::spawn(async move { service.broadcast_send_owned(id, endpoints).await }).await?
@@ -221,6 +222,16 @@ impl WalletService {
         let db = self.bound_database().await?;
         Ok(tokio::task::spawn_blocking(move || crate::wallet_db::send_load(&db, &id)).await??)
     }
+    /// Store a newly prepared artifact and return what a front end reviews.
+    pub(super) async fn save_prepared_send(
+        &self,
+        new: crate::send::stages::NewArtifact,
+    ) -> Result<SendArtifact, SpectraBridgeError> {
+        let stored = StoredSend::prepared(new)?;
+        self.save_send_artifact(&stored, &[]).await?;
+        Ok(stored.view)
+    }
+
     pub(super) async fn save_send_artifact(
         &self,
         stored: &StoredSend,
@@ -490,10 +501,11 @@ impl WalletService {
                 collection,
                 ..
             }) => {
-                history.deployment_id = Some(crate::tokens::nft_deployment_id(
+                history.deployment_id = Some(crate::catalog::tokens::nft_deployment_id(
                     chain, *standard, contract, token_id,
                 ));
-                history.asset_display_name = crate::tokens::nft_display_name(collection, token_id);
+                history.asset_display_name =
+                    crate::catalog::tokens::nft_display_name(collection, token_id);
                 history.symbol = stored.view.symbol.clone();
             }
             Some(crate::send::stages::WalletOperation::ShieldTransparent { .. }) => {
@@ -531,9 +543,9 @@ impl WalletService {
         let mut submissions = Vec::with_capacity(endpoints.len());
         for endpoint in endpoints {
             let api = if icp_staking {
-                Some(crate::EndpointApi::IcpReplica)
+                Some(EndpointApi::IcpReplica)
             } else if shielded {
-                Some(crate::EndpointApi::Lightwalletd)
+                Some(EndpointApi::Lightwalletd)
             } else {
                 self.endpoint_api(chain, &endpoint).await
             }
@@ -651,11 +663,7 @@ impl WalletService {
     ) -> Result<SendArtifact, SpectraBridgeError> {
         request.zeroize_sensitive_fields();
         request.password = None;
-        request.sign_only = false;
         let chain = request.chain_id;
-        if let Some(reason) = chain.transparent_send_unavailable_reason() {
-            return Err(SpectraBridgeError::invalid(reason));
-        }
         request.memo = request
             .memo
             .as_ref()
@@ -665,10 +673,10 @@ impl WalletService {
         let state = self.app_state().await;
         if let Some(contract) = &request.contract_address {
             let normalized =
-                crate::tokens::normalize_token_identifier(Some(contract.clone()), chain);
+                crate::catalog::tokens::normalize_token_identifier(Some(contract.clone()), chain);
             let tracked = state.token_preferences.iter().find(|p| {
                 p.token.chain_id == chain
-                    && crate::tokens::normalize_token_identifier(
+                    && crate::catalog::tokens::normalize_token_identifier(
                         Some(p.token.contract.clone()),
                         chain,
                     ) == normalized
@@ -686,7 +694,7 @@ impl WalletService {
                     "requested token protocol differs from tracked deployment",
                 ));
             }
-            request.contract_address = Some(crate::tokens::validate_protocol_identifier(
+            request.contract_address = Some(crate::catalog::tokens::validate_protocol_identifier(
                 chain, standard, contract,
             )?);
             if !chain.sends_token_standard(standard) {
@@ -738,7 +746,7 @@ impl WalletService {
                     ));
                 }
                 request.token_decimals = Some(u32::from(metadata.decimals));
-                let amount = crate::send::amount_input::parse_raw_amount(
+                let amount = crate::amount::input::parse_raw_amount(
                     &request.amount_str,
                     u32::from(metadata.decimals),
                 )?;
@@ -750,7 +758,7 @@ impl WalletService {
             } else {
                 (
                     request.to_address.clone(),
-                    crate::send::amount_input::parse_raw_amount(
+                    crate::amount::input::parse_raw_amount(
                         &request.amount_str,
                         u32::from(chain.native_decimals()),
                     )?,
@@ -815,49 +823,26 @@ impl WalletService {
             None => self.staged_send_review(&request).await?,
         };
         review.transfer_terms = prepared.transfer_terms(request.token_decimals);
-        let mut stored = StoredSend {
-            view: SendArtifact {
-                id: crate::store::new_transaction_id(),
-                revision: 0,
-                stage: SendStage::Prepared,
-                wallet_id: request.wallet_id.clone(),
-                chain_id: request.chain_id,
-                sender,
-                recipient: request.to_address.clone(),
-                amount: request.amount_str.clone(),
-                asset: request
-                    .contract_address
-                    .clone()
-                    .unwrap_or_else(|| chain.coin_symbol().into()),
-                symbol: super::send_records::send_asset_names(
-                    &state,
-                    chain,
-                    request.contract_address.as_deref(),
-                )
-                .0,
-                staking: None,
-                operation: None,
-                created_at: crate::store::now_unix().floor(),
-                review_digest: String::new(),
-                review,
-                prepared_details: serde_json::to_string_pretty(&prepared)?,
-                signing_payload_hex,
-                signed_payload: None,
-                transaction_hash: None,
-                attempts: Vec::new(),
-                selected_endpoints: Vec::new(),
-                memo: request.memo.clone(),
-            },
+        self.save_prepared_send(crate::send::stages::NewArtifact {
+            sender,
+            asset: request
+                .contract_address
+                .clone()
+                .unwrap_or_else(|| chain.coin_symbol().into()),
+            symbol: super::send_records::send_asset_names(
+                &state,
+                chain,
+                request.contract_address.as_deref(),
+            )
+            .0,
+            staking: None,
+            operation: None,
+            review,
+            signing_payload_hex,
             request,
             prepared,
-            submission: None,
-            signed_digest: None,
-            substrate_verified_through: None,
-            icp_staking_receipts: vec![],
-        };
-        stored.view.review_digest = stored.digest()?;
-        self.save_send_artifact(&stored, &[]).await?;
-        Ok(stored.view)
+        })
+        .await
     }
 }
 

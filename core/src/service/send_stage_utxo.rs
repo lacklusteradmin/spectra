@@ -358,7 +358,7 @@ impl WalletService {
         let static_fee = || helpers::fee_or_static(chain, None);
         Ok(match chain.mainnet_counterpart() {
             Chain::Bitcoin => FeePolicy::Rate(match rate {
-                Some(rate) => crate::decimal::canonical(rate)
+                Some(rate) => crate::amount::decimal::canonical(rate)
                     .filter(|rate| rate != "0" && !rate.starts_with('-'))
                     .ok_or_else(|| SpectraBridgeError::invalid("Invalid fee rate"))?,
                 None => {
@@ -552,10 +552,8 @@ impl WalletService {
         destination: &str,
     ) -> Result<crate::send::preview_types::SendPreview, SpectraBridgeError> {
         let decimals = u32::from(chain.native_decimals());
-        let amount = u64::try_from(crate::send::amount_input::parse_raw_amount(
-            amount, decimals,
-        )?)
-        .map_err(|_| SpectraBridgeError::invalid("Amount exceeds protocol range"))?;
+        let amount = u64::try_from(crate::amount::input::parse_raw_amount(amount, decimals)?)
+            .map_err(|_| SpectraBridgeError::invalid("Amount exceeds protocol range"))?;
         let sender = self
             .stored_wallet(wallet_id)
             .await?
@@ -575,7 +573,7 @@ impl WalletService {
             .iter()
             .try_fold(0u64, |sum, input| sum.checked_add(input.utxo.value))
             .ok_or_else(|| SpectraBridgeError::invalid("input total overflow"))?;
-        let units = |raw: u64| crate::decimal::from_units(u128::from(raw), decimals);
+        let units = |raw: u64| crate::amount::decimal::from_units(u128::from(raw), decimals);
         let all = Shape {
             inputs: inputs
                 .iter()
@@ -634,7 +632,7 @@ impl WalletService {
         };
         let (rate, rate_description) = match &policy {
             FeePolicy::Rate(rate) => (
-                crate::decimal::to_f64(rate).ceil() as u64,
+                crate::amount::decimal::to_f64(rate).ceil() as u64,
                 Some(format!("{rate} sat/vB")),
             ),
             _ => (0, None),

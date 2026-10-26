@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::api::error::{ApiError, OrDecode};
 use crate::send::payload::{PreparedSubmission, SignedPayload};
 use crate::send::payment_memo::PaymentMemo;
@@ -174,10 +175,8 @@ impl WalletService {
                     .request
                     .token_decimals
                     .unwrap_or(u32::from(chain.native_decimals()));
-                let amount = crate::send::amount_input::parse_raw_amount(
-                    &stored.request.amount_str,
-                    decimals,
-                )?;
+                let amount =
+                    crate::amount::input::parse_raw_amount(&stored.request.amount_str, decimals)?;
                 let native_amount = if let Some(contract) = &stored.request.contract_address {
                     if self.token_contract_decimals(chain, contract).await? != Some(decimals) {
                         return Err(SpectraBridgeError::failure(
@@ -448,7 +447,7 @@ impl WalletService {
         let decimals = request
             .token_decimals
             .ok_or_else(|| SpectraBridgeError::invalid("Missing TRC-10 precision"))?;
-        let amount = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
+        let amount = crate::amount::input::parse_raw_amount(&request.amount_str, decimals)?;
         let amount = u64::try_from(amount)
             .ok()
             .filter(|n| *n > 0 && *n <= i64::MAX as u64)
@@ -537,7 +536,7 @@ impl WalletService {
         amount: u128,
     ) -> Result<String, SpectraBridgeError> {
         let canonical = |value: &str| {
-            crate::tokens::normalize_token_identifier(Some(value.to_string()), chain)
+            crate::catalog::tokens::normalize_token_identifier(Some(value.to_string()), chain)
                 .ok_or_else(|| SpectraBridgeError::invalid("Invalid TON account identity"))
         };
         let master = canonical(master)?;
@@ -545,7 +544,7 @@ impl WalletService {
         let client = crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(
             self.api_endpoints(
                 chain,
-                crate::EndpointApi::ToncenterV3,
+                EndpointApi::ToncenterV3,
                 &[
                     EndpointCapability::Verification,
                     EndpointCapability::TokenBalance,
@@ -664,7 +663,7 @@ impl WalletService {
         } else {
             u32::from(chain.native_decimals())
         };
-        let amount = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
+        let amount = crate::amount::input::parse_raw_amount(&request.amount_str, decimals)?;
         // Where the amount is not one integer of smallest units on the wire —
         // or not a u64 one — the protocol's own arm reads it.
         let amount_u64 = if matches!(chain.mainnet_counterpart(), Chain::Near | Chain::Polkadot)
@@ -731,7 +730,7 @@ impl WalletService {
                     )
                     .await?;
                 if let Some(reviewed) = &request.fee_amount
-                    && crate::send::amount_input::parse_raw_amount(
+                    && crate::amount::input::parse_raw_amount(
                         reviewed,
                         u32::from(chain.native_decimals()),
                     )? < quote.budget
@@ -749,7 +748,7 @@ impl WalletService {
                 if quote.token_balance.is_some_and(|balance| balance < amount) {
                     return Err(SpectraBridgeError::invalid("Insufficient NEP-141 balance"));
                 }
-                request.fee_amount = Some(crate::decimal::from_units(
+                request.fee_amount = Some(crate::amount::decimal::from_units(
                     quote.budget,
                     u32::from(chain.native_decimals()),
                 ));
@@ -814,7 +813,7 @@ impl WalletService {
                         "Insufficient TON for transfer and network fee",
                     ));
                 }
-                request.fee_amount = Some(crate::decimal::from_units(
+                request.fee_amount = Some(crate::amount::decimal::from_units(
                     network_fee
                         + jetton
                             .as_ref()
@@ -942,7 +941,7 @@ impl WalletService {
                 })
                 .await?;
                 if let Some(reviewed) = &request.fee_amount {
-                    let budget = crate::send::amount_input::parse_raw_amount(
+                    let budget = crate::amount::input::parse_raw_amount(
                         reviewed,
                         u32::from(chain.native_decimals()),
                     )?;
@@ -952,7 +951,7 @@ impl WalletService {
                         ));
                     }
                 }
-                request.fee_amount = Some(crate::decimal::from_units(
+                request.fee_amount = Some(crate::amount::decimal::from_units(
                     prepared.fee,
                     u32::from(chain.native_decimals()),
                 ));
@@ -1053,7 +1052,7 @@ impl WalletService {
                     let fee = self
                         .validate_trc10_funds(chain, &prepared, request, sender)
                         .await?;
-                    request.fee_amount = Some(crate::decimal::from_units(
+                    request.fee_amount = Some(crate::amount::decimal::from_units(
                         u128::from(fee),
                         u32::from(chain.native_decimals()),
                     ));
@@ -1101,15 +1100,17 @@ impl WalletService {
                     .map_or(u128::from(amount_u64), |_| 0)
                     + u128::from(gas_budget);
                 if u128::from(balance) < required {
-                    let required =
-                        crate::decimal::from_units(required, u32::from(chain.native_decimals()));
+                    let required = crate::amount::decimal::from_units(
+                        required,
+                        u32::from(chain.native_decimals()),
+                    );
                     let symbol = chain.coin_symbol();
                     return Err(SpectraBridgeError::failed(
                         "Insufficient %@ for the amount plus the network fee (requires %@ %@).",
                         [symbol, required.as_str(), symbol],
                     ));
                 }
-                request.fee_amount = Some(crate::decimal::from_units(
+                request.fee_amount = Some(crate::amount::decimal::from_units(
                     u128::from(gas_budget),
                     u32::from(chain.native_decimals()),
                 ));
@@ -1235,7 +1236,7 @@ impl WalletService {
                         != Some(*nonce)
                     || !client.transaction_block_is_valid(chain, block_hash).await?
                 {
-                    return Err(crate::SpectraBridgeError::failure(
+                    return Err(crate::error::SpectraBridgeError::failure(
                         "NEAR signer, nonce or block reference is stale; build and review again",
                     ));
                 }
@@ -1785,11 +1786,14 @@ impl WalletService {
         endpoint: &str,
     ) -> Result<(), ApiError> {
         let wrong_network = || ApiError::invalid("Endpoint is on the wrong network");
-        let known = crate::endpoints::catalog().records.iter().any(|r| {
-            r.chain_id == chain
-                && chain.endpoint_apis().contains(&r.api)
-                && r.endpoint.trim_end_matches('/') == endpoint.trim_end_matches('/')
-        });
+        let known = crate::catalog::endpoints::catalog()
+            .records
+            .iter()
+            .any(|r| {
+                r.chain_id == chain
+                    && chain.endpoint_apis().contains(&r.api)
+                    && r.endpoint.trim_end_matches('/') == endpoint.trim_end_matches('/')
+            });
         let eps = Arc::new(vec![endpoint.to_string()]);
         if chain.is_evm() {
             let actual = EvmClient::new(eps, chain.evm_chain_id()?)
@@ -1848,7 +1852,7 @@ impl WalletService {
                 .ok_or_else(|| ApiError::invalid("Endpoint is not this network's indexer"))?;
             let client = crate::api::utxo::UtxoClient::new(
                 chain,
-                vec![crate::endpoint_api::Endpoint {
+                vec![crate::api::endpoint::Endpoint {
                     api,
                     url: endpoint.to_string(),
                 }],
@@ -1946,7 +1950,7 @@ impl WalletService {
                 let lightwalletd = self
                     .api_endpoints(
                         chain,
-                        crate::EndpointApi::Lightwalletd,
+                        EndpointApi::Lightwalletd,
                         &[EndpointCapability::History],
                     )
                     .await?;

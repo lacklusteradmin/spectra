@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::endpoint::EndpointCapability;
 #[cfg(test)]
 mod token_decimals_come_from_the_contract {
     use crate::registry::Chain;
@@ -54,45 +55,8 @@ pub(super) mod request_fixture {
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         }
-    }
-}
-
-#[cfg(test)]
-mod sign_only_tests {
-    use super::request_fixture::req;
-
-    /// "Sign and stop" is one question however it was asked: through the
-    /// request's own field or through the EVM overrides.
-    #[test]
-    fn either_route_asks_the_same_thing() {
-        let plain = req(crate::registry::Chain::Ethereum);
-        assert!(!plain.wants_sign_only(), "a send is not a dry run");
-
-        let mut by_field = req(crate::registry::Chain::Ethereum);
-        by_field.sign_only = true;
-        assert!(by_field.wants_sign_only());
-
-        let mut by_overrides = req(crate::registry::Chain::Ethereum);
-        by_overrides.evm_overrides = Some(crate::send::ethereum::EvmSendOverridesInput {
-            sign_only: Some(true),
-            ..Default::default()
-        });
-        assert!(
-            by_overrides.wants_sign_only(),
-            "the older route asks for a dry run just as much"
-        );
-
-        // Overrides that say nothing about it do not unsay the field.
-        let mut both = req(crate::registry::Chain::Ethereum);
-        both.sign_only = true;
-        both.evm_overrides = Some(crate::send::ethereum::EvmSendOverridesInput {
-            sign_only: None,
-            ..Default::default()
-        });
-        assert!(both.wants_sign_only());
     }
 }
 
@@ -278,7 +242,7 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
         .await;
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
         chain_id: Chain::Near,
-        capabilities: vec![crate::EndpointCapability::Verification],
+        capabilities: vec![EndpointCapability::Verification],
         endpoints: vec![server.uri()],
     }])
     .unwrap();

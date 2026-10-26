@@ -1,5 +1,6 @@
 //! Endpoint health, contract probes and transaction status reads.
 use super::*;
+use crate::api::endpoint::EndpointApi;
 
 #[cfg(test)]
 #[path = "tests/network_receipt.rs"]
@@ -18,7 +19,7 @@ impl WalletService {
         chain: crate::registry::Chain,
     ) -> Result<Vec<EndpointProbe>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let mut records: Vec<_> = this
                 .endpoint_directory()
@@ -33,7 +34,7 @@ impl WalletService {
                     if records.iter().any(|r| &r.endpoint == endpoint) {
                         continue;
                     }
-                    records.push(crate::endpoints::EndpointRecord {
+                    records.push(crate::catalog::endpoints::EndpointRecord {
                         id: format!("configured:{endpoint}"),
                         api,
                         chain_id: chain,
@@ -115,7 +116,7 @@ impl WalletService {
         let (api, endpoints) = self
             .fetch_endpoints(chain, &[EndpointCapability::Verification])
             .await?;
-        use crate::EndpointApi as Api;
+        use EndpointApi as Api;
         let status: UtxoTxStatus = match api {
             Api::Insight => {
                 let client = InsightClient::new(endpoints);

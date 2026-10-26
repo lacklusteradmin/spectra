@@ -16,7 +16,7 @@ impl WalletService {
         chain: crate::registry::Chain,
     ) -> Result<Vec<WalletAddressDiscovery>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let wallets: Vec<_> = {
                 let state = this.wallet_state.read().await;
@@ -66,7 +66,7 @@ impl WalletService {
         reserve: bool,
     ) -> Result<Option<String>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let (wallet_id, network, stored) = {
                 let state = this.wallet_state.read().await;
@@ -135,7 +135,7 @@ impl WalletService {
         chain: crate::registry::Chain,
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             const GAP_LIMIT: u32 = 20;
             const MAX_INDEX: u32 = 999;
@@ -712,12 +712,7 @@ impl UtxoDerivation {
 /// `address` as the chain's validator normalizes it, or `None` when it is
 /// not one of the chain's addresses.
 pub(crate) fn normalized_utxo_address(chain: Chain, address: &str) -> Option<String> {
-    let validated = crate::validation::address::validate_address(
-        crate::validation::address::AddressValidationRequest {
-            kind: chain.address_validation_kind().to_string(),
-            value: address.to_string(),
-        },
-    );
+    let validated = crate::validation::address::validate_address(chain, address);
     validated.normalized_value.filter(|_| validated.is_valid)
 }
 

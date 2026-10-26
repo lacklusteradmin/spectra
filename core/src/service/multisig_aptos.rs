@@ -233,11 +233,13 @@ impl WalletService {
                 [chain.chain_display_name(), to],
             ));
         }
-        let octas =
-            crate::decimal::to_units(spend.amount.trim(), u32::from(chain.native_decimals()))
-                .and_then(|units| u64::try_from(units).ok())
-                .filter(|units| *units > 0)
-                .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let octas = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .and_then(|units| u64::try_from(units).ok())
+        .filter(|units| *units > 0)
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         let policy = policy(wallet)?;
         let client = self.aptos_verified_client(chain).await?;
         let sequence = self.aptos_sequence(&client, &policy).await?;

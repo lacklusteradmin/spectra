@@ -6,8 +6,8 @@
 //! candidate is a wallet that page can import. Candidate generation derives
 //! addresses without network requests; the core FundsScan session reads them.
 
-use crate::SpectraBridgeError;
-use crate::chains::DerivationProfile;
+use crate::catalog::chains::DerivationProfile;
+use crate::error::SpectraBridgeError;
 use crate::registry::Chain;
 
 /// How many accounts of each profile a scan derives: 0, 1 and 2.

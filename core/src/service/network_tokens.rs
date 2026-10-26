@@ -1,6 +1,7 @@
 //! Token discovery and balances, including partial provider failures.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::api::error::{ApiError, OrDecode};
 
 /// Keep the tokens that answered; leave out the ones that did not.
@@ -35,10 +36,13 @@ fn validate_token_reads(
 ) -> Result<(), SpectraBridgeError> {
     for token in tokens {
         let standard = token.standard_on(chain).to_string();
-        token.contract =
-            crate::tokens::validate_protocol_identifier(chain, &standard, &token.contract)?;
+        token.contract = crate::catalog::tokens::validate_protocol_identifier(
+            chain,
+            &standard,
+            &token.contract,
+        )?;
         token.standard = standard.clone();
-        if !chain.reads_token_standard(&standard) {
+        if !chain.allows_token_standard(&standard) {
             return Err(SpectraBridgeError::invalid(format!(
                 "{standard} balance reads are not supported"
             )));
@@ -56,13 +60,13 @@ impl WalletService {
         &self,
         chain: Chain,
         primary: &[String],
-        required: &[EndpointCapability],
+        required: &[crate::api::endpoint::EndpointCapability],
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let accounts = if self
             .uses_catalog_endpoints
             .load(std::sync::atomic::Ordering::Relaxed)
         {
-            self.api_endpoints(chain, crate::EndpointApi::TrongridV1, required)
+            self.api_endpoints(chain, EndpointApi::TrongridV1, required)
                 .await?
         } else {
             Vec::new()
@@ -79,7 +83,7 @@ impl WalletService {
 
 /// The same canonical identity used by catalog, custom tokens and storage.
 fn holding_key(chain: Chain, contract: &str) -> Option<String> {
-    crate::tokens::normalize_token_identifier(Some(contract.to_string()), chain)
+    crate::catalog::tokens::normalize_token_identifier(Some(contract.to_string()), chain)
 }
 
 impl WalletService {
@@ -89,17 +93,18 @@ impl WalletService {
     pub(super) async fn listing_endpoints(
         &self,
         chain: Chain,
-        api: crate::EndpointApi,
+        api: EndpointApi,
     ) -> Result<Vec<String>, SpectraBridgeError> {
-        let required: &[EndpointCapability] = if api == crate::EndpointApi::ToncenterV3 {
-            &[
-                EndpointCapability::TokenDiscovery,
-                EndpointCapability::TokenBalance,
-                EndpointCapability::Verification,
-            ]
-        } else {
-            &[EndpointCapability::TokenDiscovery]
-        };
+        let required: &[crate::api::endpoint::EndpointCapability] =
+            if api == EndpointApi::ToncenterV3 {
+                &[
+                    crate::api::endpoint::EndpointCapability::TokenDiscovery,
+                    crate::api::endpoint::EndpointCapability::TokenBalance,
+                    crate::api::endpoint::EndpointCapability::Verification,
+                ]
+            } else {
+                &[crate::api::endpoint::EndpointCapability::TokenDiscovery]
+            };
         if self
             .uses_catalog_endpoints
             .load(std::sync::atomic::Ordering::Relaxed)
@@ -121,7 +126,7 @@ impl WalletService {
         chain: Chain,
         address: &str,
     ) -> Result<Option<Vec<crate::api::HeldToken>>, SpectraBridgeError> {
-        let discovery = [EndpointCapability::TokenDiscovery];
+        let discovery = [crate::api::endpoint::EndpointCapability::TokenDiscovery];
         let held = match chain {
             Chain::Solana | Chain::SolanaDevnet => {
                 let endpoints = self.endpoints_for(chain, &discovery).await;
@@ -150,7 +155,7 @@ impl WalletService {
             }
             Chain::Aptos | Chain::AptosTestnet => {
                 let endpoints = self
-                    .listing_endpoints(chain, crate::EndpointApi::AptosIndexer)
+                    .listing_endpoints(chain, EndpointApi::AptosIndexer)
                     .await?;
                 if endpoints.is_empty() {
                     return Ok(None);
@@ -164,7 +169,7 @@ impl WalletService {
             }
             Chain::Near | Chain::NearTestnet => {
                 let endpoints = self
-                    .listing_endpoints(chain, crate::EndpointApi::Nearblocks)
+                    .listing_endpoints(chain, EndpointApi::Nearblocks)
                     .await?;
                 if endpoints.is_empty() {
                     return Ok(None);
@@ -182,8 +187,8 @@ impl WalletService {
                     .endpoints_for(
                         chain,
                         &[
-                            EndpointCapability::TokenBalance,
-                            EndpointCapability::Verification,
+                            crate::api::endpoint::EndpointCapability::TokenBalance,
+                            crate::api::endpoint::EndpointCapability::Verification,
                         ],
                     )
                     .await;
@@ -209,7 +214,7 @@ impl WalletService {
             }
             Chain::Ton | Chain::TonTestnet => {
                 let v3 = self
-                    .listing_endpoints(chain, crate::EndpointApi::ToncenterV3)
+                    .listing_endpoints(chain, EndpointApi::ToncenterV3)
                     .await?;
                 if v3.is_empty() {
                     return Ok(None);
@@ -225,7 +230,7 @@ impl WalletService {
                 if endpoints.is_empty() {
                     return Ok(None);
                 }
-                let places = crate::tokens::fixed_token_decimals("Trust Line Token")
+                let places = crate::catalog::tokens::fixed_token_decimals("Trust Line Token")
                     .expect("issued currencies are kept at fixed places");
                 crate::api::xrpl_json_rpc::XrplClient::new(endpoints)
                     .fetch_trust_lines(address, None)
@@ -294,7 +299,7 @@ impl WalletService {
             }
             c if c.is_evm() => {
                 let explorers = self
-                    .listing_endpoints(chain, crate::EndpointApi::Blockscout)
+                    .listing_endpoints(chain, EndpointApi::Blockscout)
                     .await?;
                 if explorers.is_empty() {
                     return Ok(None);
@@ -315,13 +320,13 @@ impl WalletService {
     /// listing did not carry them.
     async fn token_decimals(&self, chain: Chain, contract: &str) -> Result<u8, SpectraBridgeError> {
         let standard = chain.token_standard_for_identifier(contract);
-        crate::tokens::validate_protocol_identifier(chain, standard, contract)?;
-        if !chain.reads_token_standard(standard) {
+        crate::catalog::tokens::validate_protocol_identifier(chain, standard, contract)?;
+        if !chain.allows_token_standard(standard) {
             return Err(SpectraBridgeError::invalid(format!(
                 "{standard} metadata reads are not supported"
             )));
         }
-        let balance = [EndpointCapability::TokenBalance];
+        let balance = [crate::api::endpoint::EndpointCapability::TokenBalance];
         let decimals = match chain {
             Chain::Sui | Chain::SuiTestnet => {
                 SuiClient::new(self.endpoints_for(chain, &balance).await)
@@ -345,10 +350,10 @@ impl WalletService {
                 crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(
                     self.api_endpoints(
                         chain,
-                        crate::EndpointApi::ToncenterV3,
+                        EndpointApi::ToncenterV3,
                         &[
-                            EndpointCapability::Verification,
-                            EndpointCapability::TokenBalance,
+                            crate::api::endpoint::EndpointCapability::Verification,
+                            crate::api::endpoint::EndpointCapability::TokenBalance,
                         ],
                     )
                     .await?,
@@ -413,7 +418,7 @@ impl WalletService {
                     symbol: token.symbol.clone(),
                     decimals,
                     balance_raw: raw.to_string(),
-                    balance_display: crate::decimal::from_units(raw, u32::from(decimals)),
+                    balance_display: crate::amount::decimal::from_units(raw, u32::from(decimals)),
                     is_known: true,
                 })
             }
@@ -473,7 +478,7 @@ impl WalletService {
         address: String,
     ) -> Result<Vec<TokenBalanceResult>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             // Not an empty list: a chain nothing can list is not an address
             // that holds nothing, and the difference is what a user reads as
@@ -486,8 +491,8 @@ impl WalletService {
                     chain.str_id()
                 ))
             })?;
-            let known: HashMap<String, crate::tokens::TokenDeploymentEntry> =
-                crate::tokens::list_token_deployments(Some(chain))
+            let known: HashMap<String, crate::catalog::tokens::TokenDeploymentEntry> =
+                crate::catalog::tokens::list_token_deployments(Some(chain))
                     .into_iter()
                     .filter(|t| !t.is_native())
                     .filter_map(|t| Some((holding_key(chain, &t.contract)?, t)))
@@ -513,7 +518,7 @@ impl WalletService {
                         symbol: entry.map(|e| e.symbol.clone()).unwrap_or_default(),
                         decimals,
                         balance_raw: b.balance_raw.to_string(),
-                        balance_display: crate::decimal::from_units(
+                        balance_display: crate::amount::decimal::from_units(
                             b.balance_raw,
                             u32::from(decimals),
                         ),
@@ -545,7 +550,10 @@ impl WalletService {
         }
         validate_token_reads(chain, &mut tokens)?;
         let endpoints = self
-            .endpoints_for(chain, &[EndpointCapability::TokenBalance])
+            .endpoints_for(
+                chain,
+                &[crate::api::endpoint::EndpointCapability::TokenBalance],
+            )
             .await;
 
         // A token read as two questions to one client: its balance and its
@@ -580,7 +588,7 @@ impl WalletService {
                                 symbol,
                                 decimals,
                                 balance_raw: raw.to_string(),
-                                balance_display: crate::decimal::from_units(
+                                balance_display: crate::amount::decimal::from_units(
                                     raw as u128,
                                     u32::from(decimals),
                                 ),
@@ -715,7 +723,8 @@ impl WalletService {
                             let raw = raw?;
                             let decimals =
                                 crate::api::checked_token_decimals(u128::from(meta?.decimals))?;
-                            let display = crate::decimal::from_units(raw, u32::from(decimals));
+                            let display =
+                                crate::amount::decimal::from_units(raw, u32::from(decimals));
                             Ok::<_, ApiError>(TokenBalanceResult {
                                 standard,
                                 contract_address: contract,
@@ -795,7 +804,7 @@ impl WalletService {
                                 symbol: token.symbol.clone(),
                                 decimals,
                                 balance_raw: raw.to_string(),
-                                balance_display: crate::decimal::from_units(
+                                balance_display: crate::amount::decimal::from_units(
                                     raw,
                                     u32::from(decimals),
                                 ),
@@ -931,7 +940,7 @@ mod a_listing_answers_for_every_known_token {
             .await;
         let mainnet = MockServer::start().await;
         let endpoints = |chain_id, server: &MockServer| crate::service::ChainEndpoints {
-            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            capabilities: crate::api::endpoint::EndpointCapability::ALL.to_vec(),
             chain_id,
             endpoints: vec![server.uri()],
         };
@@ -1080,7 +1089,7 @@ mod decimals_come_from_the_chain {
             .await;
 
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            capabilities: crate::api::endpoint::EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
         }])
@@ -1151,7 +1160,7 @@ mod decimals_come_from_the_chain {
         }
 
         let service = WalletService::new(vec![ChainEndpoints {
-            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            capabilities: crate::api::endpoint::EndpointCapability::ALL.to_vec(),
             chain_id: Chain::Aptos,
             endpoints: vec![server.uri()],
         }])
@@ -1196,7 +1205,7 @@ mod decimals_come_from_the_chain {
         let service = WalletService::new(vec![ChainEndpoints {
             chain_id: Chain::Tron,
             endpoints: vec![server.uri()],
-            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            capabilities: crate::api::endpoint::EndpointCapability::ALL.to_vec(),
         }])
         .unwrap();
         let token = TokenDescriptor {
@@ -1293,7 +1302,7 @@ mod decimals_come_from_the_chain {
             .await;
         let mainnet = MockServer::start().await;
         let endpoints = |chain_id, server: &MockServer| ChainEndpoints {
-            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            capabilities: crate::api::endpoint::EndpointCapability::ALL.to_vec(),
             chain_id,
             endpoints: vec![server.uri()],
         };

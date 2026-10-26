@@ -90,7 +90,7 @@ async fn an_evm_send_is_built_on_its_own_network_and_signed_only_when_funded() {
     }])
     .unwrap();
     service.set_secret_store(Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
         .open_state(
@@ -121,7 +121,6 @@ async fn an_evm_send_is_built_on_its_own_network_and_signed_only_when_funded() {
         gas_budget: None,
         fee_amount: None,
         evm_overrides: None,
-        sign_only: false,
         memo: None,
     };
 

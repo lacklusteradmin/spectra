@@ -138,19 +138,13 @@ impl WalletService {
                 zeroize::Zeroizing::new(wallet.xpub.clone().unwrap_or_default()),
             ),
             (WalletSigning::PrivateKey { .. }, _) => {
-                let key = crate::store::wallet_secrets::load_private_key(
-                    &*store()?,
-                    &wallet.id,
-                    password,
-                )?;
+                let key =
+                    crate::secrets::wallet::load_private_key(&*store()?, &wallet.id, password)?;
                 export_private_key(chain, &key)?
             }
             (WalletSigning::SeedPhrase { .. }, kind) => {
-                let phrase = crate::store::wallet_secrets::load_seed_phrase(
-                    &*store()?,
-                    &wallet.id,
-                    password,
-                )?;
+                let phrase =
+                    crate::secrets::wallet::load_seed_phrase(&*store()?, &wallet.id, password)?;
                 let overrides = &wallet.derivation_overrides;
                 match kind {
                     WalletKeyKind::MoneroSpendKey | WalletKeyKind::MoneroViewKey => {

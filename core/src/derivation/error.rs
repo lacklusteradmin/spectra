@@ -5,7 +5,7 @@
 pub enum DerivationError {
     /// The mnemonic, key, path or address supplied is not valid for the chain.
     #[error("{0}")]
-    Invalid(crate::LocalizableMessage),
+    Invalid(crate::error::LocalizableMessage),
     /// A step failed on valid input: a cryptography library refused, or a
     /// BIP-32 child landed outside the curve order (probability below 2^-127).
     #[error("{0}")]
@@ -22,7 +22,7 @@ impl DerivationError {
         template: &'static str,
         args: impl IntoIterator<Item = impl std::fmt::Display>,
     ) -> Self {
-        Self::Invalid(crate::LocalizableMessage::new(template, args))
+        Self::Invalid(crate::error::LocalizableMessage::new(template, args))
     }
 }
 
@@ -32,7 +32,7 @@ impl From<crate::registry::RegistryError> for DerivationError {
     }
 }
 
-impl From<DerivationError> for crate::SpectraBridgeError {
+impl From<DerivationError> for crate::error::SpectraBridgeError {
     fn from(error: DerivationError) -> Self {
         match error {
             DerivationError::Invalid(message) => Self::InvalidInput { message },

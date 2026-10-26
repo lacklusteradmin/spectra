@@ -416,7 +416,7 @@ impl WalletService {
         let recipient = bitcoin::ScriptBuf::from(crate::send::account_utxo::recipient_script(
             chain, to_address,
         )?);
-        let amount = crate::decimal::to_units(spend.amount.trim(), 8)
+        let amount = crate::amount::decimal::to_units(spend.amount.trim(), 8)
             .and_then(|units| u64::try_from(units).ok())
             .filter(|units| *units > 0)
             .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
@@ -565,7 +565,7 @@ impl WalletService {
             _ => return Err(SpectraBridgeError::failure("not a UTXO multisig session")),
         };
         self.psbt_inputs_unspent(wallet, &policy, &review).await?;
-        let phrase = crate::store::wallet_secrets::load_seed_phrase(
+        let phrase = crate::secrets::wallet::load_seed_phrase(
             &*self.secrets()?,
             &wallet.id,
             password.as_deref(),

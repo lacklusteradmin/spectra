@@ -185,7 +185,7 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
             for holding in wallet
                 .holdings
                 .iter()
-                .filter(|h| !spectra_core::decimal::is_zero(&h.amount))
+                .filter(|h| !spectra_core::amount::decimal::is_zero(&h.amount))
             {
                 let decimals = snapshot
                     .asset_precision
@@ -193,16 +193,18 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
                     .get(&holding.id)
                     .copied()
                     .unwrap_or(snapshot.asset_precision.unknown_decimals);
-                let amount =
-                    spectra_core::formatting::format_asset_amount(holding.amount.clone(), decimals)
-                        .map(|text| {
-                            format!(
-                                "{}{}",
-                                if text.below_threshold { "<" } else { "" },
-                                text.value
-                            )
-                        })
-                        .unwrap_or_else(|| holding.amount.clone());
+                let amount = spectra_core::amount::presentation::format_asset_amount(
+                    holding.amount.clone(),
+                    decimals,
+                )
+                .map(|text| {
+                    format!(
+                        "{}{}",
+                        if text.below_threshold { "<" } else { "" },
+                        text.value
+                    )
+                })
+                .unwrap_or_else(|| holding.amount.clone());
                 println!(
                     "  {}  {:<14}  {:>14}  {}",
                     out::wallet_dot(wallet.chain_id, wallet.signing.is_watch_only()),

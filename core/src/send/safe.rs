@@ -163,12 +163,12 @@ impl SafeState {
 
     /// What can move or block the Safe's funds beside its owners: each
     /// enabled module and a guard.
-    pub(crate) fn warnings(&self) -> Vec<crate::LocalizableMessage> {
-        let mut warnings: Vec<crate::LocalizableMessage> = self
+    pub(crate) fn warnings(&self) -> Vec<crate::error::LocalizableMessage> {
+        let mut warnings: Vec<crate::error::LocalizableMessage> = self
             .modules
             .iter()
             .map(|module| {
-                crate::LocalizableMessage::new(
+                crate::error::LocalizableMessage::new(
                     "Module %@ can move this Safe's funds without its owners' signatures.",
                     [address_text(module)],
                 )
@@ -178,7 +178,7 @@ impl SafeState {
             warnings.push("More modules are enabled than were read.".into());
         }
         if let Some(guard) = self.guard {
-            warnings.push(crate::LocalizableMessage::new(
+            warnings.push(crate::error::LocalizableMessage::new(
                 "Guard %@ checks every transaction and can block it.",
                 [address_text(&guard)],
             ));

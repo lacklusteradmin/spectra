@@ -10,11 +10,9 @@ authoritative copy, and the CLI can drive every domain operation.
 
 | Directory | Responsibility |
 |---|---|
-| `core/` | Domain logic, persistence, network, crypto and UniFFI exports |
-| `ffi/` | Binding crate; re-exports core |
+| `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the app's static library |
 | `cli/` | Argument parsing, terminal output and password prompting |
 | `swift/` | Native iOS UI and platform services |
-| `kotlin/` | Android shell, currently a skeleton |
 | `scripts/` | Build, source-check and runtime-data tools |
 | `tests/` | CLI acceptance suites, helpers and independent SDK test-data generators |
 | `tools/uniffi-bindgen/` | Binding generation binary |
@@ -23,8 +21,7 @@ authoritative copy, and the CLI can drive every domain operation.
 
 Core stays one crate. A crate per domain would add Cargo overhead without an
 external consumer that needs the isolation. There are no published library APIs
-or semver commitments between these crates. Core builds and tests without Xcode
-or an Android toolchain.
+or semver commitments between these crates. Core builds and tests without Xcode.
 
 Xcode builds the Rust core through `scripts/build-ios.sh` into its own
 DerivedData (`spectra-rust/cargo-target`), not the workspace `target/`. Keeping
@@ -88,14 +85,22 @@ and tests use the same domain operations.
 
 `registry::Chain` is the authority for chain identity and capabilities, backed
 by `core/data/chains.toml`. Adding a chain requires a catalog row and an enum
-variant in matching order. Registry tests check that relationship independently.
+variant in matching order; one list in `registry/mod.rs` declares both the enum
+and its iteration order. Registry tests check the catalog relationship
+independently. A test network names its mainnet (`mainnet = "bitcoin"`); a
+mainnet writes nothing, so a network's family cannot disagree with its own id.
+Front ends read the whole catalog once as `list_all_chains`, one `ChainEntry`
+per network carrying the `Chain` itself, its identity, the capabilities a
+screen branches on and its presentation; there is no second per-chain table.
 Network rules and presentation live on the same `chains.toml` row: search
 keywords, picker rank, tags, color, artwork and address hints have no separate
 catalog or join key. Every network requires its own presentation fields;
 testnets inherit rank and tags from their mainnet. Display classifications
-do not determine protocol capabilities. EVM membership is defined
-by `Chain::is_evm()` in Rust; the catalog projects that result for clients
-without a configurable TOML flag.
+do not determine protocol capabilities. EVM membership is having an EIP-155 id
+(`Chain::evm_chain_id`), so the EVM list is written once; the catalog projects
+`is_evm` for clients without a configurable TOML flag. Address validation
+dispatches on the `Chain` itself (`validation::address::validate_address`),
+not on a string naming a format.
 The chain picker and wiki share `ChainTag` and the catalog's resolved tags;
 `chain-wiki.toml` holds prose only and cannot restate a tag list.
 Address formats, derivation paths, address slots, EVM membership and routing
@@ -177,7 +182,15 @@ boundaries; mock-node tests exercise the stored-wallet execution route.
 ## Core module boundaries
 
 Production source files normally sit at `core/src/<domain>/<topic>.rs`, with
-no further directory nesting. Chain names and topic prefixes identify siblings:
+no further directory nesting; `lib.rs` declares the domains and `error.rs`
+holds `SpectraBridgeError` and `LocalizableMessage`, and nothing else sits at
+the root. `registry/` is `Chain` with one `impl Chain` sibling per topic
+(`keys`, `address`, `endpoints`, `tokens`, `send`, `staking`, `utxo`,
+`networks`, `evm`); `catalog/` parses the embedded `core/data/` files (chains,
+tokens, endpoints, explorers, donations, the wiki and restore heights);
+`amount/` holds exact decimals, typed input and optional presentation;
+`secrets/` holds the `SecretStore`, its backends, the device key, envelopes
+and password stretching. Chain names and topic prefixes identify siblings:
 `derivation/ton_cell.rs`, `api/tron_metadata_cache.rs`, `fetch/refresh_engine.rs`
 and `fetch/refresh_policy.rs`. Keep cohesive modules; flattening directories is
 not a reason to merge unrelated code or enlarge existing files.
@@ -185,7 +198,8 @@ not a reason to merge unrelated code or enlarge existing files.
 Use the domain-qualified Rust path (`crate::api::http`, `crate::store::state`,
 `crate::send::ethereum`). Do not add crate-root module aliases or compatibility
 re-exports for moved modules. `wallet_db` is a root module owning relational
-storage; `store` owns resident state and wallet-domain rules.
+storage; `store` owns resident state and wallet-domain rules; `secrets` owns
+what is sealed, not resident state.
 
 Out-of-line unit tests live in their domain's `tests/` directory, the one
 exception to the depth rule, named after the module they test:
@@ -210,7 +224,7 @@ Each converts into `SpectraBridgeError` at the FFI, choosing `Network`,
 end branches on a variant rather than a message. There is no conversion from a
 bare string: a new error names its category. Functions that take a caller's
 closure, such as `WalletDatabase::with_connection`, are generic over the
-caller's error type (`E: From<DbError>`). Embedded catalogs (`chains`,
+caller's error type (`E: From<DbError>`). Embedded catalogs (`catalog::chains`,
 `tokens`, `endpoints`, `explorers`, `donations`) are validated on first use and
 panic when broken, since a broken embedded file is a build defect.
 
@@ -220,9 +234,12 @@ panic when broken, since a broken embedded file is a build defect.
   and `json_rpc` transport, the `tcp` connection that the `grpc` channel
   `lightwalletd` speaks over and Litecoin's peer-to-peer protocol
   (`litecoin_p2p`) dial (under the same Tor, proxy and loopback rules as
-  `http`) and provider `time` parsing. `litecoin_p2p::wire` holds MWEB's wire
-  format, which `send::litecoin_mweb` builds with. It depends on nothing
-  above it; `fetch`, `send`, `staking` and `service` call it.
+  `http`) and provider `time` parsing. `endpoint` defines `EndpointApi` and
+  the capabilities an adapter offers on each network; `tor` is the embedded
+  Tor client every transport routes through when it is on.
+  `litecoin_p2p::wire` holds MWEB's wire format, which `send::litecoin_mweb`
+  builds with. It depends on nothing above it; `fetch`, `send`, `staking` and
+  `service` call it.
 - `service/network.rs` owns endpoint health and status probes. Its siblings
   `network_balance`, `network_tokens`, `network_history` and
   `network_prices` own the corresponding reads and dispatch.
@@ -265,7 +282,7 @@ panic when broken, since a broken embedded file is a build defect.
 
 `WalletService.build_send`, `sign_send` and `broadcast_send` own immutable
 prepared content, signed bytes, and per-endpoint submission attempts.
-`execute_send` composes these operations. SQLite stores secret-free typed
+The owned flow's confirmed send composes these operations. SQLite stores secret-free typed
 artifacts with revision checks and atomic nonce/input reservations; wallet
 removal also removes its artifacts. A signed artifact derives its reservations
 from its own prepared content (`StoredSend::reservations`), each spelled one

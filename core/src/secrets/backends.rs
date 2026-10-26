@@ -26,7 +26,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::secret_store::{SecretClass, SecretStore, SecretStoreError};
+use super::store::{SecretClass, SecretStore, SecretStoreError};
 
 // ── Key ↔ filename encoding ──────────────────────────────────────────────────
 //

@@ -4,7 +4,7 @@
 // Every function here is a pure transform with no platform dependencies.
 
 use crate::registry::Chain;
-use crate::validation::address::{AddressValidationRequest, validate_address};
+use crate::validation::address::validate_address;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EvmReceiptClassification {
@@ -14,23 +14,15 @@ pub struct EvmReceiptClassification {
     pub cost: Option<crate::store::EvmReceiptCost>,
 }
 
-/// Address-format kind for a chain *display name*.
-///
-/// Thin wrapper over [`Chain::address_validation_kind`]; the mapping itself
-/// lives in the registry.
+/// Whether `address` is one a send on `chain` can go to.
 #[uniffi::export]
 pub fn is_valid_send_address(chain: Chain, address: String) -> bool {
-    let kind = chain.address_validation_kind();
     // Normalized first, as `AddAddressBookEntry` does: on Sui a 64-hex address
     // typed without its `0x` prefix is invalid raw and valid once
     // `AddressNormalization::LowercaseHexPrefixed` has added the prefix.
     // Answering about the normalized form makes the two orders agree by
     // construction, and it is the form that gets stored and sent either way.
-    validate_address(AddressValidationRequest {
-        kind: kind.to_string(),
-        value: normalize_address(chain, &address),
-    })
-    .is_valid
+    validate_address(chain, &normalize_address(chain, &address)).is_valid
 }
 
 /// The spelling core stores and sends an address in; it normalizes wherever
@@ -47,14 +39,7 @@ pub(crate) fn normalize_address(chain: Chain, address: &str) -> String {
         AddressNormalization::None => {
             let lower = t.to_ascii_lowercase();
             let all_upper = !t.bytes().any(|b| b.is_ascii_lowercase());
-            if all_upper
-                && lower != t
-                && validate_address(AddressValidationRequest {
-                    kind: chain.address_validation_kind().to_string(),
-                    value: lower.clone(),
-                })
-                .is_valid
-            {
+            if all_upper && lower != t && validate_address(chain, &lower).is_valid {
                 lower
             } else {
                 t.to_string()
@@ -235,9 +220,9 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
     // 4. Large send percentage (≥25 % of holding balance).
     // A share shown as a whole percent: approximate on purpose, from exact
     // amounts.
-    let holding = crate::decimal::to_f64(&request.holding_amount);
+    let holding = crate::amount::decimal::to_f64(&request.holding_amount);
     if holding > 0.0 {
-        let ratio = crate::decimal::to_f64(&request.amount) / holding;
+        let ratio = crate::amount::decimal::to_f64(&request.amount) / holding;
         if ratio >= 0.25 {
             let pct = (ratio * 100.0).round() as u64;
             warnings.push(HighRiskSendWarning::LargeSend {
@@ -358,9 +343,9 @@ pub fn evm_replacement_fee_bump(
 ) -> Option<EvmReplacementFeeBump> {
     const FLOOR_WEI: u128 = 100_000_000;
     let bump = |gwei: &str| -> Option<String> {
-        let wei = crate::decimal::to_units(gwei, 9)?;
+        let wei = crate::amount::decimal::to_units(gwei, 9)?;
         let bumped = wei.checked_mul(12)?.div_ceil(10).max(FLOOR_WEI);
-        Some(crate::decimal::from_units(bumped, 9))
+        Some(crate::amount::decimal::from_units(bumped, 9))
     };
     Some(EvmReplacementFeeBump {
         max_fee_gwei: bump(max_fee_gwei)?,
@@ -378,27 +363,10 @@ mod flow_helpers_tests {
     fn every_evm_chain_accepts_an_evm_address() {
         let evm = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94";
         for chain in crate::registry::Chain::mainnets().filter(|c| c.is_evm()) {
-            assert_eq!(
-                chain.address_validation_kind(),
-                "evm",
-                "{chain} must resolve to the EVM validator"
-            );
             assert!(
                 is_valid_send_address(chain, evm.to_string()),
                 "{chain} must accept a valid EVM address"
             );
-        }
-
-        // Non-EVM chains too.
-        for (chain, kind) in [
-            (Chain::Zcash, "zcash"),
-            (Chain::BitcoinGold, "bitcoinGold"),
-            (Chain::Decred, "decred"),
-            (Chain::Kaspa, "kaspa"),
-            (Chain::Dash, "dash"),
-            (Chain::Bittensor, "bittensor"),
-        ] {
-            assert_eq!(chain.address_validation_kind(), kind, "{chain} kind");
         }
 
         // Still rejects what it should.

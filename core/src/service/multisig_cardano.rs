@@ -152,13 +152,13 @@ pub(super) fn account(wallet: &WalletState) -> Result<MultisigAccount, SpectraBr
     let mut warnings = Vec::new();
     let (after, before) = script.validity();
     if let Some(slot) = after {
-        warnings.push(crate::LocalizableMessage::new(
+        warnings.push(crate::error::LocalizableMessage::new(
             "The script spends only from slot %@ on.",
             [slot],
         ));
     }
     if let Some(slot) = before {
-        warnings.push(crate::LocalizableMessage::new(
+        warnings.push(crate::error::LocalizableMessage::new(
             "The script spends only before slot %@; after it the funds are locked for good.",
             [slot],
         ));
@@ -242,11 +242,13 @@ impl WalletService {
                 [chain.chain_display_name(), to],
             ));
         }
-        let lovelace =
-            crate::decimal::to_units(spend.amount.trim(), u32::from(chain.native_decimals()))
-                .and_then(|units| u64::try_from(units).ok())
-                .filter(|units| *units > 0)
-                .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let lovelace = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .and_then(|units| u64::try_from(units).ok())
+        .filter(|units| *units > 0)
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         let client = self.koios(chain).await?;
         let slot = client.fetch_latest_slot().await?;
         let (after, before) = script.validity();
@@ -362,7 +364,7 @@ impl WalletService {
         let (script, mut gathered, signed) = read(wallet, session)?;
         self.cardano_unchanged(wallet, &script, &session.transaction)
             .await?;
-        let phrase = crate::store::wallet_secrets::load_seed_phrase(
+        let phrase = crate::secrets::wallet::load_seed_phrase(
             &*self.secrets()?,
             &signer.id,
             password.as_deref(),

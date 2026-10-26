@@ -1,11 +1,10 @@
 //! Shared wire handling; chain clients still own methods and domain decoding.
 use std::sync::Arc;
 
+use crate::api::endpoint::EndpointApi;
 use crate::api::error::ApiError;
-use serde_json::{Value, json};
-
-use crate::EndpointApi;
 use crate::api::http::{HttpClient, RetryProfile, race};
+use serde_json::{Value, json};
 
 pub(crate) async fn call(
     api: EndpointApi,

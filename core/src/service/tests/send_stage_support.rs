@@ -87,7 +87,7 @@ impl Wallet {
         }])
         .unwrap();
         service.set_secret_store(Arc::new(
-            crate::store::secret_backends::InMemorySecretStore::new(),
+            crate::secrets::backends::InMemorySecretStore::new(),
         ));
         let database = std::env::temp_dir().join(format!(
             "staged-send-{}.sqlite",
@@ -148,7 +148,7 @@ impl Wallet {
                 chain_id: self.chain,
                 api: api.into(),
                 endpoint: url.into(),
-                capabilities: crate::endpoint_api::endpoint_capability_options(
+                capabilities: crate::api::endpoint::endpoint_capability_options(
                     self.chain, api_kind,
                 ),
             },
@@ -230,7 +230,6 @@ impl Wallet {
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         }
     }

@@ -1,3 +1,4 @@
+use crate::api::endpoint::EndpointCapability;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -625,7 +626,7 @@ pub enum AppSettingUpdate {
         value: FiatCurrency,
     },
     AddCustomEndpoint {
-        capabilities: Vec<crate::EndpointCapability>,
+        capabilities: Vec<EndpointCapability>,
         chain_id: crate::registry::Chain,
         api: String,
         endpoint: String,
@@ -647,7 +648,7 @@ pub enum AppSettingUpdate {
         endpoint: String,
         api: String,
         new_endpoint: String,
-        capabilities: Vec<crate::EndpointCapability>,
+        capabilities: Vec<EndpointCapability>,
     },
     /// Use only the user's endpoints on a network, or the catalog's too.
     CustomEndpointsOnly {
@@ -948,10 +949,11 @@ fn token_preference_row(
     hosting: crate::registry::Chain,
     contract: &str,
 ) -> Option<usize> {
-    let needle = crate::tokens::normalize_token_identifier(Some(contract.to_string()), hosting)?;
+    let needle =
+        crate::catalog::tokens::normalize_token_identifier(Some(contract.to_string()), hosting)?;
     state.token_preferences.iter().position(|entry| {
         entry.hosting_chain() == Some(hosting)
-            && crate::tokens::normalize_token_identifier(
+            && crate::catalog::tokens::normalize_token_identifier(
                 Some(entry.token.contract.clone()),
                 hosting,
             )
@@ -1349,8 +1351,9 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
         } => {
             let symbol = symbol.trim().to_uppercase();
             let name = name.trim().to_string();
-            let mut contract = crate::tokens::normalize_token_identifier(Some(contract), chain_id)
-                .unwrap_or_default();
+            let mut contract =
+                crate::catalog::tokens::normalize_token_identifier(Some(contract), chain_id)
+                    .unwrap_or_default();
             let hosting = token_hosting_chain(chain_id);
             // Named, never guessed: the network's only protocol, or the one
             // asked for among several.
@@ -1369,13 +1372,14 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
             };
             let standard = standard.unwrap_or_default();
             if let Ok(normalized) =
-                crate::tokens::validate_protocol_identifier(chain_id, &standard, &contract)
+                crate::catalog::tokens::validate_protocol_identifier(chain_id, &standard, &contract)
             {
                 contract = normalized;
             }
             // Where the protocol fixes a token's places, they are the
             // protocol's, whatever was typed.
-            let decimals = crate::tokens::fixed_token_decimals(&standard).unwrap_or(decimals);
+            let decimals =
+                crate::catalog::tokens::fixed_token_decimals(&standard).unwrap_or(decimals);
 
             let rejection = match hosting {
                 None => Some(TokenPreferenceRejection::UnknownChain),
@@ -1395,7 +1399,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                     Some(TokenPreferenceRejection::TooManyDecimals)
                 }
                 Some(hosting)
-                    if crate::tokens::validate_protocol_identifier(
+                    if crate::catalog::tokens::validate_protocol_identifier(
                         hosting, &standard, &contract,
                     )
                     .is_err() =>
@@ -1414,7 +1418,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                     state.token_preferences.push(
                         crate::store::wallet_domain::TokenPreferenceEntry {
                             is_built_in: false,
-                            token: crate::tokens::TokenDeploymentEntry {
+                            token: crate::catalog::tokens::TokenDeploymentEntry {
                                 deployment_id: format!(
                                     "{}:{}:{}",
                                     hosting.str_id(),
@@ -1427,7 +1431,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                                     standard.to_lowercase(),
                                     contract
                                 ),
-                                kind: crate::tokens::TokenKind::Protocol {
+                                kind: crate::catalog::tokens::TokenKind::Protocol {
                                     standard: standard.clone(),
                                     identifier: contract.clone(),
                                 },
@@ -1492,7 +1496,8 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                 token.coingecko_id = coingecko_id.trim().to_lowercase();
                 token.coinpaprika_id = coinpaprika_id.trim().to_lowercase();
                 token.decimals =
-                    crate::tokens::fixed_token_decimals(&token.token_standard).unwrap_or(decimals);
+                    crate::catalog::tokens::fixed_token_decimals(&token.token_standard)
+                        .unwrap_or(decimals);
                 state.quotes.prices.remove(&token.deployment_id);
                 state.quotes.prices_attempt_at = None;
                 crate::store::sort_token_preferences(&mut state.token_preferences);

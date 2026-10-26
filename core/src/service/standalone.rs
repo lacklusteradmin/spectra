@@ -3,7 +3,7 @@
 //!
 //! Synchronous and free of I/O, so Swift can call them from a `static let`.
 
-use crate::SpectraBridgeError;
+use crate::error::SpectraBridgeError;
 
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -55,7 +55,7 @@ pub(crate) fn evaluate_large_movement(
     }
 }
 
-use crate::tokens;
+use crate::catalog::tokens;
 
 /// Return the entire built-in token catalog across every registered chain.
 ///

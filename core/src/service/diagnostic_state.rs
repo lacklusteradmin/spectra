@@ -117,7 +117,7 @@ impl DiagnosticState {
 impl WalletService {
     pub async fn diagnostic_state(&self) -> DiagnosticState {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.wallet_state.read().await.diagnostics.clone()
         })
@@ -128,7 +128,7 @@ impl WalletService {
         command: DiagnosticCommand,
     ) -> Result<DiagnosticState, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let chain_id = match &command {
                 DiagnosticCommand::Healthy { chain_id }
@@ -228,7 +228,7 @@ impl WalletService {
         platform: DiagnosticsPlatformInfo,
     ) -> Result<String, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let state = this.app_state().await;
             let transaction_count = this.transaction_snapshot().await?.total_count;
             let environment = crate::diagnostics::DiagnosticsEnvironmentMetadata {
@@ -349,7 +349,7 @@ mod tests {
         diagnostics_record(crate::registry::Chain::Litecoin, row("w3", " "));
         diagnostics_record_history_run(crate::registry::Chain::Litecoin);
         let probe = |endpoint: &str| EndpointProbe {
-            api: crate::EndpointApi::Esplora,
+            api: crate::api::endpoint::EndpointApi::Esplora,
             chain_id: crate::registry::Chain::Bitcoin,
             endpoint: endpoint.into(),
             capabilities: Vec::new(),
@@ -498,7 +498,7 @@ impl WalletService {
         chain: crate::registry::Chain,
     ) -> Result<ConfiguredSelfTestReport, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             use crate::diagnostics::self_tests::{self_tests_run_chain, self_tests_run_evm_rpc};
             let mut results = self_tests_run_chain(chain);

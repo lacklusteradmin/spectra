@@ -32,7 +32,7 @@ impl WalletService {
         destination_input: String,
     ) -> Result<SendDestinationRisk, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let (chain, token) = this
                 .destination_probe_target(&wallet_id, &holding_key)
@@ -111,7 +111,7 @@ impl WalletService {
         input: String,
     ) -> Result<SendDestinationResolution, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             resolve_destination(chain_id, input, |name| this.resolve_ens_name(name)).await
         })
@@ -131,7 +131,7 @@ impl WalletService {
         expected_address: String,
     ) -> Result<SendDestinationResolution, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let resolved = this.resolve_send_destination(chain, input).await?;
             verify_reviewed_destination(chain, resolved, &expected_address)

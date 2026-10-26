@@ -10,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 // Embedded at compile time — no bundle dependency at runtime.
-static TOKENS_TOML: &str = include_str!("../data/tokens.toml");
-static TESTNET_TOKENS_TOML: &str = include_str!("../data/testnet-tokens.toml");
+static TOKENS_TOML: &str = include_str!("../../data/tokens.toml");
+static TESTNET_TOKENS_TOML: &str = include_str!("../../data/testnet-tokens.toml");
 
 /// Parse both tables and refuse dangling or ambiguous token references.
 fn parse_token_file(file: &str) -> Result<TomlFile, String> {
@@ -69,7 +69,7 @@ struct TomlToken {
     name: String,
     coingecko_id: String,
     coinpaprika_id: String,
-    color: crate::chains::CatalogColor,
+    color: crate::catalog::chains::CatalogColor,
     artwork_name: String,
     tags: Vec<TokenTag>,
 }
@@ -146,7 +146,7 @@ pub struct TokenDeploymentEntry {
     pub decimals: u32,
     pub tags: Vec<TokenTag>,
     /// `None` for a token the user added: the catalog has no colour for it.
-    pub color: Option<crate::chains::CatalogColor>,
+    pub color: Option<crate::catalog::chains::CatalogColor>,
     pub artwork_name: String,
 }
 
@@ -210,7 +210,7 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
         .flat_map(|(file, environment)| file.deployments.iter().map(move |d| (*environment, d)))
         .map(|(environment, d)| {
             let t = tokens_by_id[d.token_id.as_str()];
-            let network = crate::chains::declared(d.chain_id);
+            let network = crate::catalog::chains::declared(d.chain_id);
             let contract = if d.kind == "native" {
                 String::new()
             } else {
@@ -232,8 +232,13 @@ fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntr
             assert!(d.decimals <= 38, "unsupported deployment precision");
             // Which file a token is in is a claim about its networks, so the
             // networks are what settles it.
+            let network_environment = if network.mainnet.is_some() {
+                "testnet"
+            } else {
+                "mainnet"
+            };
             assert_eq!(
-                network.environment, environment,
+                network_environment, environment,
                 "{id} is in the wrong token file"
             );
             assert!(
@@ -446,14 +451,14 @@ pub fn validate_protocol_identifier(
     chain: crate::registry::Chain,
     standard: &str,
     identifier: &str,
-) -> Result<String, crate::SpectraBridgeError> {
-    use crate::SpectraBridgeError as E;
+) -> Result<String, crate::error::SpectraBridgeError> {
+    use crate::error::SpectraBridgeError as E;
     if !chain.allows_token_standard(standard) {
         return Err(E::invalid("token protocol does not belong to network"));
     }
     let identifier = normalize_token_identifier(Some(identifier.into()), chain)
         .ok_or_else(|| E::invalid("protocol token requires an identifier"))?;
-    let kind = match standard {
+    let result = match standard {
         "Trust Line Token" => {
             return Ok(crate::api::xrpl_amount::XrplIssue::parse(&identifier)?.identifier());
         }
@@ -463,8 +468,10 @@ pub fn validate_protocol_identifier(
         "Cardano Native Token" => {
             return Ok(crate::api::cardano_asset::CardanoAssetId::parse(&identifier)?.identifier());
         }
-        "ERC-20" | "BEP-20" | "ARC-20" => "evm",
-        "SPL" => "solana",
+        // A contract, mint or account: an address on the token's own network.
+        "ERC-20" | "BEP-20" | "ARC-20" | "SPL" | "TRC-20" | "TEP-74" | "NEP-141" | "AIP-21" => {
+            crate::validation::address::validate_address(chain, &identifier)
+        }
         "TRC-10" => {
             let id = identifier
                 .parse::<i64>()
@@ -473,11 +480,7 @@ pub fn validate_protocol_identifier(
                 .ok_or_else(|| E::invalid("invalid TRC-10 token ID"))?;
             return Ok(id.to_string());
         }
-        "TRC-20" => "tron",
-        "TEP-74" => chain.address_validation_kind(),
-        "NEP-141" => "near",
-        "Sui Coin" => "suiCoinType",
-        "AIP-21" => "aptos",
+        "Sui Coin" => crate::validation::address::validate_sui_coin_type(&identifier),
         "Aptos Coin" => {
             let components = identifier.split("::").collect::<Vec<_>>();
             let move_name = |s: &str| {
@@ -490,16 +493,10 @@ pub fn validate_protocol_identifier(
             if components.len() != 3 || !move_name(components[1]) || !move_name(components[2]) {
                 return Err(E::invalid("invalid Aptos coin type"));
             }
-            "aptosTokenType"
+            crate::validation::address::validate_aptos_token_type(&identifier)
         }
         _ => return Err(E::invalid("invalid token identifier for protocol")),
     };
-    let result = crate::validation::address::validate_address(
-        crate::validation::address::AddressValidationRequest {
-            kind: kind.into(),
-            value: identifier.clone(),
-        },
-    );
     if !result.is_valid {
         return Err(E::invalid("invalid token identifier for protocol"));
     }
@@ -1277,11 +1274,11 @@ mod pending_catalog_tests {
     #[test]
     fn researched_deployments_follow_recorded_catalog_decisions() {
         let archive: serde_json::Value = serde_json::from_str(include_str!(
-            "../../docs/audits/chain-support-2026-10-04/removed-token-deployments.json"
+            "../../../docs/audits/chain-support-2026-10-04/removed-token-deployments.json"
         ))
         .unwrap();
         let audit: serde_json::Value = serde_json::from_str(include_str!(
-            "../../docs/audits/token-verification-2026-10-04/verification.json"
+            "../../../docs/audits/token-verification-2026-10-04/verification.json"
         ))
         .unwrap();
         let decisions = audit["deployments"].as_array().unwrap();
@@ -1345,7 +1342,7 @@ mod pending_catalog_tests {
                 .iter()
                 .all(|token| !pending_ids.contains(token.id.as_str()))
         );
-        let wiki = pending_records(include_str!("../data/crypto-wiki.toml"));
+        let wiki = pending_records(include_str!("../../data/crypto-wiki.toml"));
         let wiki_ids: HashSet<_> = wiki
             .get("assets")
             .and_then(toml::Value::as_array)

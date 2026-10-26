@@ -12,7 +12,7 @@
 
 use std::sync::OnceLock;
 
-use crate::SpectraBridgeError;
+use crate::error::SpectraBridgeError;
 use crate::registry::Chain;
 
 /// Monero's block time since its v2 hard fork.
@@ -72,7 +72,7 @@ fn checkpoints(chain: Chain) -> &'static [Checkpoint] {
     static TABLE: OnceLock<(Vec<Checkpoint>, Vec<Checkpoint>)> = OnceLock::new();
     let (mainnet, stagenet) = TABLE.get_or_init(|| {
         let raw: serde_json::Value =
-            serde_json::from_str(include_str!("../data/monero-checkpoints.json"))
+            serde_json::from_str(include_str!("../../data/monero-checkpoints.json"))
                 .expect("monero-checkpoints.json is valid JSON");
         let read = |key: &str| {
             raw[key]

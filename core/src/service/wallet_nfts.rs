@@ -10,9 +10,10 @@
 //! [`WalletOperation::TransferNft`]. Ownership is read again before signing.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::api::evm_nft::NftStandard;
 use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
+    PreparedPayload, SendArtifact, SendArtifactReview, StoredSend, WalletOperation,
 };
 
 const NFT_REFUSAL: &str = "Only an EVM wallet holds ERC-721 and ERC-1155 tokens.";
@@ -53,12 +54,12 @@ impl WalletService {
     /// answered with an empty list, which would read as "none".
     pub async fn wallet_nfts(&self, wallet_id: String) -> Result<WalletNfts, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this.evm_owner(&wallet_id, NFT_REFUSAL).await?;
             let explorers: Vec<String> = this
                 .api_endpoints(
                     chain,
-                    crate::EndpointApi::Blockscout,
+                    EndpointApi::Blockscout,
                     &[EndpointCapability::TokenDiscovery],
                 )
                 .await?
@@ -88,7 +89,7 @@ impl WalletService {
                         token_id: holding.token_id,
                         quantity: holding.quantity,
                         collection: holding.collection,
-                        symbol: crate::tokens::nft_symbol(&holding.symbol),
+                        symbol: crate::catalog::tokens::nft_symbol(&holding.symbol),
                         name: holding.name,
                     })
                     .collect(),
@@ -113,7 +114,7 @@ impl WalletService {
         recipient: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this.evm_owner(&wallet_id, NFT_REFUSAL).await?;
             if this.stored_wallet(&wallet_id).await?.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
@@ -191,7 +192,7 @@ impl WalletService {
                 .fetch_collection_label(&contract)
                 .await
                 .unwrap_or_default();
-            let network_fee = crate::decimal::from_units(
+            let network_fee = crate::amount::decimal::from_units(
                 prepared.maximum_fee_wei()?,
                 u32::from(chain.native_decimals()),
             );
@@ -210,52 +211,28 @@ impl WalletService {
                 gas_budget: None,
                 fee_amount: None,
                 evm_overrides: None,
-                sign_only: false,
                 memo: None,
             };
             let prepared = PreparedPayload::Evm(prepared);
-            let mut stored = StoredSend {
-                view: SendArtifact {
-                    id: crate::store::new_transaction_id(),
-                    revision: 0,
-                    stage: SendStage::Prepared,
-                    wallet_id,
-                    chain_id: chain,
-                    sender: owner,
-                    recipient,
-                    amount: quantity.clone(),
-                    asset: contract.clone(),
-                    symbol: crate::tokens::nft_symbol(&symbol),
-                    staking: None,
-                    operation: Some(WalletOperation::TransferNft {
-                        contract,
-                        standard,
-                        token_id,
-                        quantity,
-                        collection,
-                        network_fee,
-                    }),
-                    created_at: crate::store::now_unix().floor(),
-                    review_digest: String::new(),
-                    review: SendArtifactReview::default(),
-                    prepared_details: serde_json::to_string_pretty(&prepared)?,
-                    signing_payload_hex,
-                    signed_payload: None,
-                    transaction_hash: None,
-                    attempts: Vec::new(),
-                    selected_endpoints: Vec::new(),
-                    memo: None,
-                },
+            this.save_prepared_send(crate::send::stages::NewArtifact {
+                sender: owner,
+                asset: contract.clone(),
+                symbol: crate::catalog::tokens::nft_symbol(&symbol),
+                staking: None,
+                operation: Some(WalletOperation::TransferNft {
+                    contract,
+                    standard,
+                    token_id,
+                    quantity,
+                    collection,
+                    network_fee,
+                }),
+                review: SendArtifactReview::default(),
+                signing_payload_hex,
                 request,
                 prepared,
-                submission: None,
-                signed_digest: None,
-                substrate_verified_through: None,
-                icp_staking_receipts: vec![],
-            };
-            stored.view.review_digest = stored.digest()?;
-            this.save_send_artifact(&stored, &[]).await?;
-            Ok(stored.view)
+            })
+            .await
         })
         .await
     }

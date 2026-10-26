@@ -104,6 +104,14 @@ including `ethereumTestNetworksExposeExpectedContextsAndEndpoints`.
   the preceding line explains why the task must keep the state alive.
 - Pure transformations belong in core or free functions; `AppState` methods
   are thin adapters. Constructing `AppState` pulls in SQLite, Keychain and Rust.
+- `swift/app/` holds every app source, grouped by feature: `App/` (the
+  `AppState` core, lifecycle and platform services), `Models/` (extensions of
+  core records and the catalogs built from them), `Components/` (shared views
+  and design tokens), then one folder per feature — `Dashboard/`, `Wallets/`
+  (with `Tools/`), `Send/`, `Receive/`, `History/`, `Staking/`, `Settings/`,
+  `Diagnostics/`, `Wiki/` — with a feature's state beside its views. The
+  folder is an Xcode synchronized group: adding or moving a file under it needs
+  no project edit, and file names stay unique across the module.
 - Name flow extensions `AppState+<Domain>.swift`, topic extensions/free functions
   `Store+<Topic>.swift`, and other files after their type. Split growing topics
   into siblings rather than moving code into unrelated files.

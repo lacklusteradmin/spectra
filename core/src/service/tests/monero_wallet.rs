@@ -4,7 +4,7 @@
 //! what a view key alone can do until its phrase is given.
 use super::*;
 use crate::derivation::import::{WalletImportCommit, WalletImportKind, WalletImportRequest};
-use crate::store::secret_backends::InMemorySecretStore;
+use crate::secrets::backends::InMemorySecretStore;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
 
 const PASSWORD: &str = "monero-password";

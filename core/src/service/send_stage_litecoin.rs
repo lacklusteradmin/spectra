@@ -308,7 +308,7 @@ fn sign_inputs(
 /// Exact decimal sat/vB multiplication, rounded up once to whole satoshis.
 pub(super) fn fee_for_vsize(rate: &str, vsize: u64) -> Result<u64, SpectraBridgeError> {
     let invalid = || SpectraBridgeError::invalid("Invalid fee rate");
-    let rate = crate::decimal::canonical(rate)
+    let rate = crate::amount::decimal::canonical(rate)
         .filter(|rate| rate != "0")
         .ok_or_else(invalid)?;
     let (whole, fraction) = rate.split_once('.').unwrap_or((&rate, ""));

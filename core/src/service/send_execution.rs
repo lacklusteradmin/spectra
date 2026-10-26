@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use zeroize::Zeroizing;
 
 /// Validate before keys or network reads; token precision is checked again
@@ -13,7 +14,7 @@ pub(super) fn validate_execution_amount(
                 .token_standard
                 .as_deref()
                 .unwrap_or_else(|| chain.token_standard_for_identifier(identifier));
-            crate::tokens::validate_protocol_identifier(chain, standard, identifier)?;
+            crate::catalog::tokens::validate_protocol_identifier(chain, standard, identifier)?;
             if !chain.sends_token_standard(standard) {
                 return Err(SpectraBridgeError::invalid(format!(
                     "{standard} transfers are not supported"
@@ -60,7 +61,7 @@ pub(super) fn validate_execution_amount(
             .split_once('.')
             .map_or(0, |(_, f)| f.len() as u32)
     };
-    let raw = crate::send::amount_input::parse_raw_amount(&request.amount_str, decimals)?;
+    let raw = crate::amount::input::parse_raw_amount(&request.amount_str, decimals)?;
     if chain.mainnet_counterpart() == Chain::Peercoin {
         if raw < u128::from(chain.peercoin_min_output_units()?)
             || raw > u128::from(chain.peercoin_max_money()?)
@@ -94,29 +95,20 @@ pub(super) fn validate_execution_amount(
     Ok(())
 }
 
-#[uniffi::export(async_runtime = "tokio")]
+#[cfg(test)]
 impl WalletService {
-    /// Derive key material, build the chain-specific payload, sign, and
-    /// broadcast in a single call.
-    ///
-    /// The caller selects a stored wallet. Core resolves and validates its
-    /// signing identity; callers cannot supply a competing chain name or key.
-    pub async fn execute_send(
+    /// Build, sign and broadcast a request in one call, as the owned flow's
+    /// confirmed send does, without its review: the tests' route through the
+    /// whole stored-wallet pipeline. Front ends send through the owned flow or
+    /// the separate stages.
+    pub(crate) async fn execute_send(
         &self,
         request: crate::send::SendExecutionRequest,
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
-        let this = self.clone();
-        crate::worker::run(async move {
-            let this = &this;
-            let service = this.clone();
-            // The submission and its record finish even if the UI task is cancelled.
-            tokio::spawn(async move { service.execute_send_owned(request, None).await })
-                .await
-                .map_err(SpectraBridgeError::failure)?
-        })
-        .await
+        self.execute_send_owned(request, None).await
     }
 }
+
 impl WalletService {
     pub(super) async fn execute_confirmed_send(
         &self,
@@ -141,7 +133,6 @@ impl WalletService {
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
         // Compose the very same durable operations exposed to CLI and Swift.
         let _execution = self.send_execute_lock.lock().await;
-        let sign_only = request.wants_sign_only();
         let password = request.password.take().map(Zeroizing::new);
         let chain = request.chain_id;
         validate_execution_amount(chain, &request)?;
@@ -189,23 +180,18 @@ impl WalletService {
         let submission = stored
             .submission
             .ok_or_else(|| SpectraBridgeError::failure("Signed content missing"))?;
-        let completed = if sign_only {
-            signed
-        } else {
-            let endpoints = self.send_endpoints(chain).await?;
-            let completed = self.broadcast_send(signed.id, endpoints).await?;
-            if !completed
-                .attempts
-                .iter()
-                .any(|a| a.outcome == crate::send::stages::SubmissionOutcome::Accepted)
-            {
-                return Err(SpectraBridgeError::failed(
-                    "Submission not accepted or uncertain; inspect transaction %@ before retrying.",
-                    [&completed.id],
-                ));
-            }
-            completed
-        };
+        let endpoints = self.send_endpoints(chain).await?;
+        let completed = self.broadcast_send(signed.id, endpoints).await?;
+        if !completed
+            .attempts
+            .iter()
+            .any(|a| a.outcome == crate::send::stages::SubmissionOutcome::Accepted)
+        {
+            return Err(SpectraBridgeError::failed(
+                "Submission not accepted or uncertain; inspect transaction %@ before retrying.",
+                [&completed.id],
+            ));
+        }
         let hash = completed
             .attempts
             .iter()
@@ -229,7 +215,6 @@ impl WalletService {
         };
         Ok(crate::send::SendExecutionResult {
             transaction_hash: hash,
-            signed_payload: sign_only.then(|| submission.payload.to_string()),
             evm,
         })
     }
@@ -255,7 +240,7 @@ pub(crate) fn send_chain_for(
         })?;
     let selected = wallet.chain_id;
     if selected.mainnet_counterpart() == requested.mainnet_counterpart() && selected != requested {
-        return Err(crate::SpectraBridgeError::failure(
+        return Err(crate::error::SpectraBridgeError::failure(
             "selected asset network differs from wallet network; select an asset on that network",
         ));
     }
@@ -270,14 +255,14 @@ impl WalletService {
         contract: &str,
     ) -> Result<Option<u32>, SpectraBridgeError> {
         let standard = chain.token_standard_for_identifier(contract);
-        crate::tokens::validate_protocol_identifier(chain, standard, contract)?;
-        if !chain.reads_token_standard(standard) {
+        crate::catalog::tokens::validate_protocol_identifier(chain, standard, contract)?;
+        if !chain.allows_token_standard(standard) {
             return Err(SpectraBridgeError::invalid(format!(
                 "{standard} metadata reads are not supported"
             )));
         }
         // A protocol that fixes every token's places has nothing to read.
-        if let Some(places) = crate::tokens::fixed_token_decimals(standard) {
+        if let Some(places) = crate::catalog::tokens::fixed_token_decimals(standard) {
             return Ok(Some(places));
         }
         let endpoints = self
@@ -332,7 +317,7 @@ impl WalletService {
             let endpoints = self
                 .api_endpoints(
                     chain,
-                    crate::EndpointApi::ToncenterV3,
+                    EndpointApi::ToncenterV3,
                     &[
                         EndpointCapability::Verification,
                         EndpointCapability::TokenBalance,

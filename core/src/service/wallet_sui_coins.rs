@@ -10,9 +10,7 @@
 //! [`WalletOperation::MergeCoins`].
 
 use super::*;
-use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
-};
+use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, WalletOperation};
 use crate::send::sui::{GasCoin, MAX_SUI_MERGE, MAX_TOKEN_MERGE, PreparedSuiMerge, owned_coins};
 
 const SUI: &str = "0x2::sui::SUI";
@@ -42,7 +40,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<Vec<SuiCoinType>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this.sui_owner(&wallet_id).await?;
             let client = this.sui_client(chain).await?;
             let state = this.app_state().await;
@@ -61,7 +59,9 @@ impl WalletService {
                         super::send_records::send_asset_names(&state, chain, Some(&coin_type)).0
                     },
                     balance: match decimals {
-                        Some(decimals) => crate::decimal::from_units(total, u32::from(decimals)),
+                        Some(decimals) => {
+                            crate::amount::decimal::from_units(total, u32::from(decimals))
+                        }
                         None => total.to_string(),
                     },
                     mergeable: objects > 1,
@@ -90,7 +90,7 @@ impl WalletService {
         coin_type: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this.sui_owner(&wallet_id).await?;
             if this.stored_wallet(&wallet_id).await?.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
@@ -153,8 +153,10 @@ impl WalletService {
                 .div_ceil(5)
                 .max(gas_price.saturating_mul(2_000));
             let prepared = prepare(budget, gas_for(budget).await?)?;
-            let network_fee =
-                crate::decimal::from_units(u128::from(budget), u32::from(chain.native_decimals()));
+            let network_fee = crate::amount::decimal::from_units(
+                u128::from(budget),
+                u32::from(chain.native_decimals()),
+            );
             let count = prepared.object_count() as u64;
             let signing_payload_hex = hex::encode(&prepared.transaction.bytes);
             let symbol = if native {
@@ -181,49 +183,25 @@ impl WalletService {
                 gas_budget: Some(network_fee.clone()),
                 fee_amount: Some(network_fee.clone()),
                 evm_overrides: None,
-                sign_only: false,
                 memo: None,
             };
             let prepared = PreparedPayload::SuiMerge(prepared);
-            let mut stored = StoredSend {
-                view: SendArtifact {
-                    id: crate::store::new_transaction_id(),
-                    revision: 0,
-                    stage: SendStage::Prepared,
-                    wallet_id,
-                    chain_id: chain,
-                    sender: owner.clone(),
-                    recipient: owner,
-                    amount: "0".into(),
-                    asset: coin_type.clone(),
-                    symbol,
-                    staking: None,
-                    operation: Some(WalletOperation::MergeCoins {
-                        coin_type,
-                        objects: count,
-                        network_fee,
-                    }),
-                    created_at: crate::store::now_unix().floor(),
-                    review_digest: String::new(),
-                    review: SendArtifactReview::default(),
-                    prepared_details: serde_json::to_string_pretty(&prepared)?,
-                    signing_payload_hex,
-                    signed_payload: None,
-                    transaction_hash: None,
-                    attempts: Vec::new(),
-                    selected_endpoints: Vec::new(),
-                    memo: None,
-                },
+            this.save_prepared_send(crate::send::stages::NewArtifact {
+                sender: owner.clone(),
+                asset: coin_type.clone(),
+                symbol,
+                staking: None,
+                operation: Some(WalletOperation::MergeCoins {
+                    coin_type,
+                    objects: count,
+                    network_fee,
+                }),
+                review: SendArtifactReview::default(),
+                signing_payload_hex,
                 request,
                 prepared,
-                submission: None,
-                signed_digest: None,
-                substrate_verified_through: None,
-                icp_staking_receipts: vec![],
-            };
-            stored.view.review_digest = stored.digest()?;
-            this.save_send_artifact(&stored, &[]).await?;
-            Ok(stored.view)
+            })
+            .await
         })
         .await
     }

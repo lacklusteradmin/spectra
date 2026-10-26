@@ -3,8 +3,9 @@
 //! loopback nodes a test names.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::derivation::import::WalletImportCommit;
-use crate::store::secret_backends::InMemorySecretStore;
+use crate::secrets::backends::InMemorySecretStore;
 
 /// The service and the directory its database lives in, removed on drop.
 pub(crate) struct OpenService {
@@ -64,7 +65,7 @@ impl OpenService {
     pub(crate) async fn use_endpoint(
         &self,
         chain: Chain,
-        api: crate::EndpointApi,
+        api: EndpointApi,
         capabilities: &[EndpointCapability],
         url: &str,
     ) {

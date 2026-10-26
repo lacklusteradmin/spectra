@@ -252,7 +252,7 @@ impl ToncenterV3Client {
                 .filter(|value| value.parse::<u64>().is_ok())
                 .or_decode("Jetton transfer: missing logical time")?;
             let event_id = format!("ton:jetton:{txid}:{lt}");
-            items.push(serde_json::json!({"event_id":event_id,"txid":txid,"timestamp":timestamp,"amount_display":crate::decimal::from_units(amount,u32::from(decimals)),"contract":contract,"from":source,"to":destination,"is_incoming":destination==owner}));
+            items.push(serde_json::json!({"event_id":event_id,"txid":txid,"timestamp":timestamp,"amount_display":crate::amount::decimal::from_units(amount,u32::from(decimals)),"contract":contract,"from":source,"to":destination,"is_incoming":destination==owner}));
         }
         Ok(crate::api::HistoryPage {
             items,

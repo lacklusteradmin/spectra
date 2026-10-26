@@ -153,14 +153,16 @@ impl EndpointCapability {
 }
 
 impl std::str::FromStr for EndpointCapability {
-    type Err = crate::SpectraBridgeError;
+    type Err = crate::error::SpectraBridgeError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         Self::ALL
             .into_iter()
             .find(|capability| capability.as_str() == value)
             .ok_or_else(|| {
-                crate::SpectraBridgeError::invalid(format!("unknown endpoint capability {value:?}"))
+                crate::error::SpectraBridgeError::invalid(format!(
+                    "unknown endpoint capability {value:?}"
+                ))
             })
     }
 }
@@ -176,12 +178,12 @@ pub fn endpoint_capability_id(capability: EndpointCapability) -> String {
 pub(crate) fn validate_configured_endpoint(
     chain: crate::registry::Chain,
     url: &str,
-) -> Result<(), crate::SpectraBridgeError> {
+) -> Result<(), crate::error::SpectraBridgeError> {
     if url.is_empty() {
         return Ok(());
     }
     let expected = chain.endpoint_apis();
-    let catalog = crate::endpoints::catalog();
+    let catalog = crate::catalog::endpoints::catalog();
     let matching: Vec<_> = catalog
         .records
         .iter()
@@ -194,7 +196,7 @@ pub(crate) fn validate_configured_endpoint(
         })
     {
         let names: Vec<_> = expected.iter().map(|api| api.as_str()).collect();
-        return Err(crate::SpectraBridgeError::invalid(format!(
+        return Err(crate::error::SpectraBridgeError::invalid(format!(
             "{} requires {} endpoints; {url} uses a different API",
             chain.str_id(),
             if names.is_empty() {
@@ -375,6 +377,6 @@ pub fn endpoint_capability_options(
     values
         .iter()
         .copied()
-        .filter(|value| *value != Staking || chain.staking_uses_endpoint())
+        .filter(|value| *value != Staking || chain.supports_staking())
         .collect()
 }

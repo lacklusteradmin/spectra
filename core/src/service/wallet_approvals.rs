@@ -10,9 +10,8 @@
 //! its own operation ([`WalletOperation::RevokeApproval`]).
 
 use super::*;
-use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
-};
+use crate::api::endpoint::EndpointApi;
+use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, WalletOperation};
 
 /// One allowance the wallet has granted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
@@ -50,10 +49,10 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<TokenApprovals, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this.evm_owner(&wallet_id, APPROVALS_REFUSAL).await?;
             let indexers = this
-                .api_endpoints(chain, crate::EndpointApi::Blockscout, &[EndpointCapability::History])
+                .api_endpoints(chain, EndpointApi::Blockscout, &[EndpointCapability::History])
                 .await?;
             if indexers.is_empty() {
                 return Err(SpectraBridgeError::refused(
@@ -110,7 +109,7 @@ impl WalletService {
                     let meta = metadata.get(&token).cloned().flatten();
                     TokenApproval {
                         allowance: match &meta {
-                            Some(meta) => crate::decimal::from_unit_digits(
+                            Some(meta) => crate::amount::decimal::from_unit_digits(
                                 &allowance.to_string(),
                                 u32::from(meta.decimals),
                             )
@@ -144,7 +143,7 @@ impl WalletService {
         spender: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this.evm_owner(&wallet_id, APPROVALS_REFUSAL).await?;
             let state = this.app_state().await;
             if state
@@ -196,7 +195,6 @@ impl WalletService {
                 gas_budget: None,
                 fee_amount: None,
                 evm_overrides: None,
-                sign_only: false,
                 memo: None,
             };
             let data = crate::send::evm::encode_erc20_approve(&spender, 0)?;
@@ -235,7 +233,7 @@ impl WalletService {
                 .unwrap_or_else(|| {
                     super::send_records::send_asset_names(&state, chain, Some(&token)).0
                 });
-            let network_fee = crate::decimal::from_units(
+            let network_fee = crate::amount::decimal::from_units(
                 prepared.maximum_fee_wei()?,
                 u32::from(chain.native_decimals()),
             );
@@ -244,45 +242,22 @@ impl WalletService {
                 PreparedPayload::Evm(p) => hex::encode(p.signing_payload()?),
                 _ => unreachable!("the revocation was prepared as an EVM call"),
             };
-            let mut stored = StoredSend {
-                view: SendArtifact {
-                    id: crate::store::new_transaction_id(),
-                    revision: 0,
-                    stage: SendStage::Prepared,
-                    wallet_id,
-                    chain_id: chain,
-                    sender: owner,
-                    recipient: token.clone(),
-                    amount: "0".into(),
-                    asset: token.clone(),
-                    symbol,
-                    staking: None,
-                    operation: Some(WalletOperation::RevokeApproval {
-                        token,
-                        spender,
-                        network_fee,
-                    }),
-                    created_at: crate::store::now_unix().floor(),
-                    review_digest: String::new(),
-                    review: SendArtifactReview::default(),
-                    prepared_details: serde_json::to_string_pretty(&prepared)?,
-                    signing_payload_hex,
-                    signed_payload: None,
-                    transaction_hash: None,
-                    attempts: Vec::new(),
-                    selected_endpoints: Vec::new(),
-                    memo: None,
-                },
+            this.save_prepared_send(crate::send::stages::NewArtifact {
+                sender: owner,
+                asset: token.clone(),
+                symbol,
+                staking: None,
+                operation: Some(WalletOperation::RevokeApproval {
+                    token,
+                    spender,
+                    network_fee,
+                }),
+                review: SendArtifactReview::default(),
+                signing_payload_hex,
                 request,
                 prepared,
-                submission: None,
-                signed_digest: None,
-                substrate_verified_through: None,
-                icp_staking_receipts: vec![],
-            };
-            stored.view.review_digest = stored.digest()?;
-            this.save_send_artifact(&stored, &[]).await?;
-            Ok(stored.view)
+            })
+            .await
         })
         .await
     }
@@ -294,7 +269,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<Option<String>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this
                 .evm_owner(&wallet_id, "Only an EVM wallet has an ENS name.")
                 .await?;

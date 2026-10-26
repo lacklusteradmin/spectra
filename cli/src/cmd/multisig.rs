@@ -114,7 +114,6 @@ fn signer_line(signer: &MultisigSigner) -> String {
 
 pub fn run(ctx: &Ctx, out: Out, command: MultisigCommand) -> CliResult<()> {
     let service = ctx.service()?;
-    service.set_secret_store(ctx.secrets.clone());
     let session = match command {
         MultisigCommand::Account { wallet } => {
             let wallet = ctx.find_wallet(&wallet)?;

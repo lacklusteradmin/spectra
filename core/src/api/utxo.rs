@@ -12,13 +12,13 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use crate::api::endpoint::{Endpoint, EndpointApi};
 use crate::api::http::{HttpClient, first_success};
 use crate::api::{
     bch_rest_v2::BchRestClient, blockbook::BlockbookClient, blockcypher::BlockcypherClient,
     esplora::EsploraClient, whatsonchain::WhatsonchainClient,
 };
 use crate::registry::Chain;
-use crate::{Endpoint, EndpointApi};
 
 /// A transaction id: 32 bytes in the order explorers display them, always
 /// spelled in lowercase hex. Parsing accepts either case, so two spellings of

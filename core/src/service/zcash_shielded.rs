@@ -11,9 +11,10 @@
 //! restore height — and none after it does; spending needs it again.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::api::lightwalletd::{LightwalletdClient, LightwalletdSession, ShieldedProtocol};
 use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
+    PreparedPayload, SendArtifact, SendArtifactReview, StoredSend, WalletOperation,
 };
 use crate::send::zcash_shielded::PreparedZcashShielded;
 use crate::store::state::{WalletSigning, WalletState};
@@ -176,7 +177,7 @@ fn unified_address(db: &ZcashDb, network: &Network) -> Result<Option<String>, Sp
 }
 
 fn decimal(zatoshis: zcash_protocol::value::Zatoshis) -> String {
-    crate::decimal::from_units(u128::from(u64::from(zatoshis)), 8)
+    crate::amount::decimal::from_units(u128::from(u64::from(zatoshis)), 8)
 }
 
 /// The account's shielded activity as history rows: what it received into
@@ -245,13 +246,16 @@ fn shielded_history(
         };
         let item = |kind, zatoshis: i64, counterparty: String| {
             crate::fetch::history::NormalizedHistoryItem {
-                deployment_id: crate::tokens::deployment_id_for(chain, None),
+                deployment_id: crate::catalog::tokens::deployment_id_for(chain, None),
                 kind,
                 status,
                 asset_display_name: chain.coin_name().into(),
                 symbol: chain.coin_symbol().into(),
                 chain_id: chain,
-                amount: crate::decimal::from_units(u128::try_from(zatoshis).unwrap_or(0), 8),
+                amount: crate::amount::decimal::from_units(
+                    u128::try_from(zatoshis).unwrap_or(0),
+                    8,
+                ),
                 counterparty,
                 tx_hash: txid.clone(),
                 block_height: mined,
@@ -348,8 +352,8 @@ fn status_of(
         let pending = sum(|pool| pool.change_pending_confirmation())
             + sum(|pool| pool.value_pending_spendability())
             + sum(|pool| pool.locked_value());
-        status.spendable = crate::decimal::from_units(u128::from(spendable), 8);
-        status.pending = crate::decimal::from_units(u128::from(pending), 8);
+        status.spendable = crate::amount::decimal::from_units(u128::from(spendable), 8);
+        status.pending = crate::amount::decimal::from_units(u128::from(pending), 8);
         status.shieldable = decimal(balance.unshielded_balance().spendable_value());
     }
     Ok(status)
@@ -364,7 +368,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<ZcashShieldedStatus, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (wallet, network, path) = this.zcash_shielded_wallet(&wallet_id).await?;
             let restore_height = wallet.restore_height.unwrap_or_default();
             tokio::task::spawn_blocking(move || {
@@ -386,7 +390,7 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<ZcashShieldedStatus, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let password = password.map(Zeroizing::new);
             this.zcash_sync_batch(&wallet_id, password.as_ref().map(|p| p.as_str()))
                 .await
@@ -405,9 +409,9 @@ impl WalletService {
         memo: Option<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (wallet, network, path) = this.zcash_shielded_wallet(&wallet_id).await?;
-            let zatoshis = crate::send::amount_input::parse_raw_amount(&amount, 8)?;
+            let zatoshis = crate::amount::input::parse_raw_amount(&amount, 8)?;
             let zatoshis = u64::try_from(zatoshis)
                 .map_err(|_| SpectraBridgeError::invalid("Invalid Zcash amount"))?;
             let to = recipient.trim().to_string();
@@ -423,13 +427,13 @@ impl WalletService {
                     )?)
                 })
                 .await?;
-            let amount = crate::decimal::from_units(u128::from(zatoshis), 8);
+            let amount = crate::amount::decimal::from_units(u128::from(zatoshis), 8);
             let operation = WalletOperation::ShieldedPayment {
                 memo: prepared
                     .payments
                     .first()
                     .and_then(|payment| payment.memo.clone()),
-                network_fee: crate::decimal::from_units(u128::from(prepared.fee_zat), 8),
+                network_fee: crate::amount::decimal::from_units(u128::from(prepared.fee_zat), 8),
             };
             this.store_zcash_shielded(&wallet, recipient.trim(), &amount, prepared, operation)
                 .await
@@ -444,7 +448,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (wallet, network, path) = this.zcash_shielded_wallet(&wallet_id).await?;
             let prepared = this
                 .with_locked_zcash_db(&wallet, network, path.clone(), move |db| {
@@ -459,10 +463,10 @@ impl WalletService {
             })
             .await??
             .ok_or_else(|| internal("The shielded account has no address"))?;
-            let amount = crate::decimal::from_units(u128::from(prepared.change_zat), 8);
+            let amount = crate::amount::decimal::from_units(u128::from(prepared.change_zat), 8);
             let operation = WalletOperation::ShieldTransparent {
                 amount: amount.clone(),
-                network_fee: crate::decimal::from_units(u128::from(prepared.fee_zat), 8),
+                network_fee: crate::amount::decimal::from_units(u128::from(prepared.fee_zat), 8),
             };
             this.store_zcash_shielded(&wallet, &address, &amount, prepared, operation)
                 .await
@@ -498,7 +502,10 @@ impl WalletService {
         if !status.ready {
             return Ok(None);
         }
-        Ok(crate::decimal::add(&status.spendable, &status.pending))
+        Ok(crate::amount::decimal::add(
+            &status.spendable,
+            &status.pending,
+        ))
     }
 
     /// The stored Zcash wallet with a shielded account, its network and its
@@ -542,11 +549,11 @@ impl WalletService {
         let chain = wallet.chain_id;
         let restore_height = wallet
             .restore_height
-            .unwrap_or_else(|| crate::restore_heights::default_restore_height(chain));
+            .unwrap_or_else(|| crate::catalog::restore_heights::default_restore_height(chain));
         let endpoints = self
             .api_endpoints(
                 chain,
-                crate::EndpointApi::Lightwalletd,
+                EndpointApi::Lightwalletd,
                 &[EndpointCapability::History],
             )
             .await?;
@@ -937,9 +944,11 @@ impl WalletService {
             fee_rate_svb: None,
             fee_sat: None,
             gas_budget: None,
-            fee_amount: Some(crate::decimal::from_units(u128::from(prepared.fee_zat), 8)),
+            fee_amount: Some(crate::amount::decimal::from_units(
+                u128::from(prepared.fee_zat),
+                8,
+            )),
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         };
         // A payment is reviewed as any send is; shielding moves the
@@ -949,41 +958,18 @@ impl WalletService {
             _ => SendArtifactReview::default(),
         };
         let prepared = PreparedPayload::ZcashShielded(prepared);
-        let mut stored = StoredSend {
-            view: SendArtifact {
-                id: crate::store::new_transaction_id(),
-                revision: 0,
-                stage: SendStage::Prepared,
-                wallet_id: wallet.id.clone(),
-                chain_id: chain,
-                sender,
-                recipient: recipient.to_string(),
-                amount: amount.to_string(),
-                asset: chain.coin_symbol().into(),
-                symbol: chain.coin_symbol().into(),
-                staking: None,
-                operation: Some(operation),
-                created_at: crate::store::now_unix().floor(),
-                review_digest: String::new(),
-                review,
-                prepared_details: serde_json::to_string_pretty(&prepared)?,
-                signing_payload_hex: String::new(),
-                signed_payload: None,
-                transaction_hash: None,
-                attempts: Vec::new(),
-                selected_endpoints: Vec::new(),
-                memo: None,
-            },
+        self.save_prepared_send(crate::send::stages::NewArtifact {
+            sender,
+            asset: chain.coin_symbol().into(),
+            symbol: chain.coin_symbol().into(),
+            staking: None,
+            operation: Some(operation),
+            review,
+            signing_payload_hex: String::new(),
             request,
             prepared,
-            submission: None,
-            signed_digest: None,
-            substrate_verified_through: None,
-            icp_staking_receipts: vec![],
-        };
-        stored.view.review_digest = stored.digest()?;
-        self.save_send_artifact(&stored, &[]).await?;
-        Ok(stored.view)
+        })
+        .await
     }
 }
 
@@ -996,10 +982,10 @@ impl WalletService {
         chain: Chain,
     ) -> Result<Vec<String>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             this.api_endpoints(
                 chain,
-                crate::EndpointApi::Lightwalletd,
+                EndpointApi::Lightwalletd,
                 &[EndpointCapability::Broadcast],
             )
             .await
@@ -1024,7 +1010,7 @@ impl WalletService {
         let endpoints = self
             .api_endpoints(
                 chain,
-                crate::EndpointApi::Lightwalletd,
+                EndpointApi::Lightwalletd,
                 &[EndpointCapability::History],
             )
             .await?;

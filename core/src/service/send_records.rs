@@ -14,14 +14,16 @@ pub(super) fn send_asset_names(
     let Some(contract) = contract else {
         return (chain.coin_symbol().into(), chain.coin_symbol().into());
     };
-    let wanted = crate::tokens::normalize_token_identifier(Some(contract.into()), chain);
+    let wanted = crate::catalog::tokens::normalize_token_identifier(Some(contract.into()), chain);
     state
         .token_preferences
         .iter()
         .find(|p| {
             p.hosting_chain() == Some(chain)
-                && crate::tokens::normalize_token_identifier(Some(p.token.contract.clone()), chain)
-                    == wanted
+                && crate::catalog::tokens::normalize_token_identifier(
+                    Some(p.token.contract.clone()),
+                    chain,
+                ) == wanted
         })
         .map(|p| (p.token.symbol.clone(), p.token.name.clone()))
         .unwrap_or_else(|| (contract.into(), contract.into()))
@@ -44,8 +46,8 @@ impl WalletService {
         let (symbol, display_name) =
             send_asset_names(&state, chain, request.contract_address.as_deref());
         let deployment_id = match request.contract_address.as_deref() {
-            None => crate::tokens::deployment_id_for(chain, None),
-            Some(identifier) => crate::tokens::protocol_deployment_id(
+            None => crate::catalog::tokens::deployment_id_for(chain, None),
+            Some(identifier) => crate::catalog::tokens::protocol_deployment_id(
                 chain,
                 request
                     .token_standard
@@ -59,7 +61,7 @@ impl WalletService {
             "deploymentId": deployment_id,
             "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
             "walletName": wallet.name, "assetDisplayName": display_name, "symbol": symbol,
-            "chainId": chain.str_id(), "amount": crate::decimal::canonical(&request.amount_str).ok_or_else(|| SpectraBridgeError::failure("invalid amount"))?,
+            "chainId": chain.str_id(), "amount": crate::amount::decimal::canonical(&request.amount_str).ok_or_else(|| SpectraBridgeError::failure("invalid amount"))?,
             "address": request.to_address, "sourceAddress": source,
             "failureReason": {"kind": "submissionOutcomeUnknown"},
             "createdAtUnix": crate::store::now_unix()
@@ -110,7 +112,7 @@ impl WalletService {
         transaction_id: String,
     ) -> Result<String, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let service = this.clone();
             tokio::spawn(async move { service.rebroadcast_stored(transaction_id).await })
@@ -130,7 +132,7 @@ impl WalletService {
         if tokio::task::spawn_blocking(move || crate::wallet_db::send_exists(&db, &id)).await?? {
             let stored = self.load_send_artifact(transaction_id.clone()).await?;
             if stored.view.selected_endpoints.is_empty() {
-                return Err(crate::SpectraBridgeError::failure(
+                return Err(crate::error::SpectraBridgeError::failure(
                     "Select broadcast endpoints before submitting a signed transaction",
                 ));
             }

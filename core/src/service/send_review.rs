@@ -51,13 +51,10 @@ impl WalletService {
         input: SendReviewInput,
     ) -> Result<OwnedSendReview, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             if input.overrides.as_ref().is_some_and(|o| {
-                o.gas_limit.is_some()
-                    || o.calldata_hex.is_some()
-                    || o.access_list_json.is_some()
-                    || o.sign_only.is_some()
+                o.gas_limit.is_some() || o.calldata_hex.is_some() || o.access_list_json.is_some()
             }) {
                 return Err(SpectraBridgeError::failure(
                     "Owned send review supports fee and nonce edits only",
@@ -103,7 +100,7 @@ impl WalletService {
                     quote.request.to_address.clone(),
                 )
                 .await?;
-            let amount = crate::decimal::canonical(&input.amount)
+            let amount = crate::amount::decimal::canonical(&input.amount)
                 .ok_or_else(|| SpectraBridgeError::failure("Invalid amount"))?;
             let warnings = this
                 .high_risk_send_reasons(
@@ -177,7 +174,7 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<crate::send::SendExecutionResult, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let mut reviewed = this
                 .send_reviews
@@ -270,7 +267,6 @@ mod tests {
                 gas_budget: None,
                 fee_amount: None,
                 evm_overrides: None,
-                sign_only: false,
                 memo: None,
             },
         }
@@ -353,10 +349,8 @@ mod tests {
     #[tokio::test]
     async fn reviewed_quote_signs_once_and_stale_nonce_never_broadcasts() {
         for password in [None, Some("sealed-test-password")] {
-            use crate::store::{
-                secret_backends::InMemorySecretStore, state::WalletState,
-                wallet_secrets::store_seed_phrase,
-            };
+            use crate::secrets::{backends::InMemorySecretStore, wallet::store_seed_phrase};
+            use crate::store::state::WalletState;
             use serde_json::{Value, json};
             use sha3::Digest;
             use std::sync::atomic::{AtomicU64, Ordering};

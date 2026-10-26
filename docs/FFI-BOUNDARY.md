@@ -16,7 +16,7 @@ Integration rules for **UniFFI 0.31.2 + Swift 6**. See
 | `#[uniffi::export(with_foreign)]` trait | Shell callbacks implemented by Swift and called by Rust |
 
 Name an exported type for what it is, once, in Rust: the binding carries that
-name to Swift and Kotlin, and front ends use it with no `typealias` or prefix.
+name to Swift, and the app uses it with no `typealias` or prefix.
 `TransactionRecord`, not `CoreTransactionRecord` — where a type is defined is
 not what it is.
 

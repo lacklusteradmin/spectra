@@ -6,9 +6,9 @@
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::chains::ChainTag;
+use spectra_core::catalog::chains::ChainTag;
 use spectra_core::registry::Chain;
-use spectra_core::service::{ChainEndpoints, WalletService};
+use spectra_core::service::WalletService;
 use std::sync::Arc;
 
 use super::resolve_chain;
@@ -16,7 +16,7 @@ use crate::ctx::{Ctx, wallet_address};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out};
 
-pub use spectra_core::EndpointCapability;
+pub use spectra_core::api::endpoint::EndpointCapability;
 
 #[derive(Args)]
 pub struct ChainsArgs {
@@ -75,7 +75,7 @@ pub fn service_for_chain(
     any_of: &[EndpointCapability],
 ) -> CliResult<Arc<WalletService>> {
     let service = ctx.service()?;
-    let records = spectra_core::endpoints::records_for_chain(chain, any_of);
+    let records = spectra_core::catalog::endpoints::records_for_chain(chain, any_of);
     if !records
         .iter()
         .any(|row| chain.endpoint_apis().contains(&row.api))
@@ -106,7 +106,7 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
     listed.sort_by_key(|chain| chain.entry().popular_rank);
 
     if args.wiki {
-        let wiki: Vec<_> = spectra_core::chains::list_chain_wiki()
+        let wiki: Vec<_> = spectra_core::catalog::chains::list_chain_wiki()
             .into_iter()
             .filter(|row| listed.iter().any(|chain| chain.str_id() == row.id))
             .collect();
@@ -148,7 +148,7 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 "name": chain.chain_display_name(),
                 "nativeSymbol": chain.coin_symbol(),
                 "nativeDeploymentId": chain.entry().native_deployment_id,
-                "family": chain.entry().family,
+                "mainnet": chain.mainnet_counterpart(),
                 "isTestnet": chain.is_testnet(),
                 "faucet": chain.faucet_url(),
                 "isEvm": chain.is_evm(),
@@ -163,7 +163,6 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
                 // Whether the staking tab offers this chain.
                 "staking": chain.supports_staking(),
                 "supportsSeparateSigning": chain.supports_sign_only(),
-                "sendUnavailableReason": chain.transparent_send_unavailable_reason(),
                 // The picker's popular order and filters.
                 "popularRank": chain.entry().popular_rank,
                 "tags": chain.entry().tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
@@ -253,7 +252,9 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             .iter()
             .map(|name| {
                 name.parse()
-                    .map_err(|e: spectra_core::SpectraBridgeError| CliError::usage(e.to_string()))
+                    .map_err(|e: spectra_core::error::SpectraBridgeError| {
+                        CliError::usage(e.to_string())
+                    })
             })
             .collect::<CliResult<_>>()?;
         let update = match args.replace {
@@ -285,8 +286,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         return Ok(());
     }
     if args.catalog {
-        let service = WalletService::new_catalog()?;
-        ctx.rt.block_on(service.open_state(ctx.db_path()))?;
+        let service = ctx.offline_service()?;
         let entries = ctx.rt.block_on(service.endpoint_directory())?;
         let records: Vec<_> = entries
             .into_iter()
@@ -325,7 +325,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         });
         out.emit(serde_json::json!({
             "catalog": true,
-            "settingsGroups": spectra_core::endpoints::endpoint_settings().into_iter()
+            "settingsGroups": spectra_core::catalog::endpoints::endpoint_settings().into_iter()
                 .filter(|row| chains.contains(&row.chain_id))
                 .flat_map(|row| row.groups)
                 .filter(|group| chains.contains(&group.chain_id))
@@ -340,7 +340,7 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
             "endpoints": records.iter().map(|r| serde_json::json!({
                 "chainId": r.record.chain_id, "endpoint": r.record.endpoint,
                 "api": r.record.api, "capabilities": r.record.capabilities, "isBuiltIn": r.is_built_in,
-                "supportedCapabilities": spectra_core::endpoint_capability_options(r.record.chain_id, r.record.api),
+                "supportedCapabilities": spectra_core::api::endpoint::endpoint_capability_options(r.record.chain_id, r.record.api),
             })).collect::<Vec<_>>(),
         }));
         return Ok(());
@@ -438,8 +438,10 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
             )));
         };
         let url = match (args.tx, args.address) {
-            (Some(hash), _) => spectra_core::transaction_explorer_link(chain, hash)
-                .ok_or_else(|| CliError::usage("--tx needs a transaction hash"))?,
+            (Some(hash), _) => {
+                spectra_core::catalog::explorers::transaction_explorer_link(chain, hash)
+                    .ok_or_else(|| CliError::usage("--tx needs a transaction hash"))?
+            }
             (_, Some(address)) => {
                 if explorer.address_url.is_none() {
                     return Err(CliError::failure(format!(
@@ -447,7 +449,7 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
                         chain.chain_display_name()
                     )));
                 }
-                spectra_core::address_explorer_link(chain, address)
+                spectra_core::catalog::explorers::address_explorer_link(chain, address)
                     .ok_or_else(|| CliError::usage("--address needs an address"))?
             }
             (None, None) => unreachable!("one of --tx and --address is given"),
@@ -457,7 +459,7 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
         out.emit(serde_json::json!({"ok": true, "chainId": chain.str_id(), "url": url}));
         return Ok(());
     }
-    let explorers: Vec<_> = spectra_core::explorers()
+    let explorers: Vec<_> = spectra_core::catalog::explorers::explorers()
         .into_iter()
         .filter(|e| chain.is_none_or(|chain| chain == e.chain_id))
         .collect();
@@ -485,7 +487,7 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
 
 /// The Donate screen's addresses, as core validated them.
 pub fn donations(out: Out) -> CliResult<()> {
-    let donations = spectra_core::donation_destinations();
+    let donations = spectra_core::catalog::donations::donation_destinations();
     out.text(|| {
         println!();
         for d in &donations {
@@ -518,7 +520,7 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
             .ok_or_else(|| CliError::failure("wallet has no native balance"))?;
         spectra_core::service::NativeBalanceSummary {
             amount_display: native.amount.clone(),
-            smallest_unit: spectra_core::decimal::to_units(
+            smallest_unit: spectra_core::amount::decimal::to_units(
                 &native.amount,
                 u32::from(chain.native_decimals()),
             )
@@ -547,7 +549,7 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
         "chain": chain.str_id(),
         "nativeSymbol": chain.coin_symbol(),
                 "nativeDeploymentId": chain.entry().native_deployment_id,
-                "family": chain.entry().family,
+                "mainnet": chain.mainnet_counterpart(),
                 "isTestnet": chain.is_testnet(),
         "amount": summary.amount_display,
         "smallestUnit": summary.smallest_unit,
@@ -566,13 +568,9 @@ fn save_history(
     wallet_id: &str,
     args: &HistoryArgs,
 ) -> CliResult<()> {
-    ctx.rt
-        .block_on(service.open_state(ctx.db_path()))
-        .map_err(CliError::from)?;
-    service.set_secret_store(ctx.secrets.clone());
     let fetch = |load_more| -> Result<
         spectra_core::service::HistoryRefreshOutcome,
-        spectra_core::SpectraBridgeError,
+        spectra_core::error::SpectraBridgeError,
     > {
         let mut results = ctx.rt.block_on(service.refresh_history(
             spectra_core::service::HistoryRefreshScope::Wallets {
@@ -582,13 +580,15 @@ fn save_history(
             Some(args.limit.min(100) as u32),
             0.0,
         ))?;
-        let row = results
-            .pop()
-            .ok_or_else(|| spectra_core::SpectraBridgeError::InvalidInput {
-                message: "No history wallet found".into(),
-            })?;
-        row.outcome
-            .ok_or_else(|| spectra_core::SpectraBridgeError::failure(row.error.unwrap_or_default()))
+        let row =
+            results
+                .pop()
+                .ok_or_else(|| spectra_core::error::SpectraBridgeError::InvalidInput {
+                    message: "No history wallet found".into(),
+                })?;
+        row.outcome.ok_or_else(|| {
+            spectra_core::error::SpectraBridgeError::failure(row.error.unwrap_or_default())
+        })
     };
     let mut outcome = fetch(args.load_more).map_err(CliError::from)?;
     let mut fetched_pages = 1;
@@ -631,12 +631,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let chain = wallet.chain_id.mainnet_counterpart();
     let network = wallet.chain_id;
     let service = if let Some(endpoint) = &args.endpoint {
-        WalletService::new(vec![ChainEndpoints {
-            capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
-            chain_id: network,
-            endpoints: vec![endpoint.clone()],
-        }])
-        .map_err(CliError::from)?
+        ctx.service_with_endpoints(network, vec![endpoint.clone()])?
     } else {
         service_for_chain(
             ctx,
@@ -644,7 +639,6 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
             &[EndpointCapability::History, EndpointCapability::Balance],
         )?
     };
-    ctx.prepare_transport(&service)?;
     if args.save {
         return save_history(ctx, out, &service, chain, &wallet.id, &args);
     }

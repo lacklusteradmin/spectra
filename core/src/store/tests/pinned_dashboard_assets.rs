@@ -237,7 +237,7 @@ async fn a_ticker_or_a_testnet_coin_is_not_pinned_and_the_saved_pins_stay() {
     use crate::registry::Chain;
     let service = WalletService::new(Vec::new()).expect("service");
     let before = service.app_state().await.settings.pinned_dashboard_assets();
-    let testnet = crate::tokens::list_token_deployments(Some(Chain::EthereumSepolia))
+    let testnet = crate::catalog::tokens::list_token_deployments(Some(Chain::EthereumSepolia))
         .into_iter()
         .find(|token| token.is_native())
         .expect("Sepolia's coin")
@@ -250,7 +250,7 @@ async fn a_ticker_or_a_testnet_coin_is_not_pinned_and_the_saved_pins_stay() {
             .await
             .expect_err("not a pinnable token id");
         assert!(
-            matches!(error, crate::SpectraBridgeError::InvalidInput { .. }),
+            matches!(error, crate::error::SpectraBridgeError::InvalidInput { .. }),
             "{error:?}"
         );
         assert_eq!(

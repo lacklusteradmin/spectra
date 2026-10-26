@@ -93,7 +93,7 @@ impl IouValue {
     /// A positive exact decimal a person typed, or `None` when the ledger
     /// cannot hold it exactly.
     pub fn from_decimal(text: &str) -> Option<Self> {
-        let exact = crate::decimal::canonical(text)?;
+        let exact = crate::amount::decimal::canonical(text)?;
         Self::parse(&exact).filter(|value| !value.negative)
     }
 
@@ -115,7 +115,7 @@ impl IouValue {
                 format!("{whole}.{fraction}")
             }
         };
-        let canonical = crate::decimal::canonical(&text).expect("digits are a decimal");
+        let canonical = crate::amount::decimal::canonical(&text).expect("digits are a decimal");
         format!("{sign}{canonical}")
     }
 
@@ -175,9 +175,9 @@ impl IouValue {
         let negative = difference.sign() == num_bigint::Sign::Minus;
         let digits = difference.magnitude().to_string();
         let decimal = if base >= 0 {
-            crate::decimal::canonical(&format!("{digits}{}", "0".repeat(base as usize)))
+            crate::amount::decimal::canonical(&format!("{digits}{}", "0".repeat(base as usize)))
         } else {
-            crate::decimal::from_unit_digits(&digits, base.unsigned_abs())
+            crate::amount::decimal::from_unit_digits(&digits, base.unsigned_abs())
         };
         (negative, decimal.expect("digits are a decimal"))
     }

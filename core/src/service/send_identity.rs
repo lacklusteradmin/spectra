@@ -1,7 +1,7 @@
 //! Resolve a stored wallet into one signing identity before any provider reads.
 use super::*;
+use crate::secrets::wallet::{SigningMaterial, load_signing_material};
 use crate::store::wallet_domain::SensitiveOverrides;
-use crate::store::wallet_secrets::{SigningMaterial, load_signing_material};
 use zeroize::Zeroizing;
 
 pub(super) struct ResolvedSendIdentity {
@@ -18,7 +18,7 @@ fn invalid(message: &str) -> SpectraBridgeError {
 }
 
 impl WalletService {
-    /// Offline CLI inspection of the same identity that execute_send resolves.
+    /// Offline CLI inspection of the same identity that `build_send` resolves.
     /// No signing material is returned. NEAR named-account access is checked by
     /// its protocol client before signing, because it needs an on-chain lookup.
     pub async fn send_identity_address(

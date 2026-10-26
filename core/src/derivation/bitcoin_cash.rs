@@ -10,9 +10,9 @@ pub(crate) fn normalize_bch_address(address: &str) -> String {
         .to_string()
 }
 
-use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::DerivationResult;
+use crate::error::SpectraBridgeError;
 
 pub(crate) const BCH_MAINNET_VERSION: u8 = 0x00;
 pub(crate) const BCH_TESTNET_VERSION: u8 = 0x6f;

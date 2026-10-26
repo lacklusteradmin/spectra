@@ -7,6 +7,7 @@ use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::endpoint::EndpointApi;
 use crate::api::evm_nft::NftStandard;
 use crate::api::http::{HttpClient, RetryProfile, race};
 
@@ -149,7 +150,7 @@ impl EvmClient {
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
-            crate::EndpointApi::EvmJsonRpc,
+            EndpointApi::EvmJsonRpc,
             &self.client,
             &self.endpoints,
             method,

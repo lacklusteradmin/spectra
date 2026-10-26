@@ -7,9 +7,9 @@
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
-static CHAINS_TOML: &str = include_str!("../data/chains.toml");
-static CHAIN_WIKI_TOML: &str = include_str!("../data/chain-wiki.toml");
-static STAKING_TOML: &str = include_str!("../data/staking.toml");
+static CHAINS_TOML: &str = include_str!("../../data/chains.toml");
+static CHAIN_WIKI_TOML: &str = include_str!("../../data/chain-wiki.toml");
+static STAKING_TOML: &str = include_str!("../../data/staking.toml");
 
 /// A shared classification for the chain picker and wiki. Presentation only:
 /// it never decides a protocol capability.
@@ -114,8 +114,9 @@ struct TomlFile {
 pub(crate) struct TomlChain {
     id: String,
     name: String,
-    family: String,
-    pub(crate) environment: String,
+    /// The mainnet a test network tests. Written on testnets only.
+    #[serde(default)]
+    pub(crate) mainnet: Option<String>,
     pub(crate) token_standards: Vec<String>,
     derivation_path: Vec<TomlDerivationPathEntry>,
     search_keywords: Vec<String>,
@@ -212,7 +213,7 @@ impl TokenStandardEntry {
         Self {
             standard: standard.to_string(),
             identifier_prompt: identifier_prompt_for(standard).to_string(),
-            fixed_decimals: crate::tokens::fixed_token_decimals(standard),
+            fixed_decimals: crate::catalog::tokens::fixed_token_decimals(standard),
         }
     }
 }
@@ -246,12 +247,41 @@ pub struct ChainDerivationPathEntry {
     pub is_default: bool,
 }
 
+/// One network: its identity, the capabilities a front end branches on, and
+/// its presentation. The whole catalog crosses the FFI once, from
+/// [`list_all_chains`], and a front end reads it locally after that.
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct ChainEntry {
-    pub family: String,
-    pub is_testnet: bool,
+    pub chain: crate::registry::Chain,
+    /// The catalog's `id` — what endpoint tables and stored rows key on.
     pub id: String,
+    /// The catalog's `name` — the one spelling of this chain.
     pub name: String,
+    /// The mainnet this network tests, or itself.
+    pub mainnet: crate::registry::Chain,
+    pub is_testnet: bool,
+    pub is_evm: bool,
+    /// A test network's faucet page, where its coins are free; `None` on
+    /// mainnets and on test networks without a working one.
+    pub faucet_url: Option<String>,
+    /// Which chain's slot this chain's address is stored under. The EVM family
+    /// shares Ethereum's.
+    pub address_slot: String,
+    /// A wallet on this chain is an account of many addresses
+    /// (`Chain::uses_account_utxo`), which a rescan can walk.
+    pub uses_account_utxo: bool,
+    /// The prefixes a watched account public key starts with here
+    /// (`Chain::account_key_prefixes`); empty where none is taken.
+    pub account_key_prefixes: Vec<String>,
+    /// The staking tab can query this chain's live validator directory.
+    pub supports_staking: bool,
+    /// The send screen has a network card to show for this chain — a fee, a
+    /// preview, or both. False only where core routes no send at all.
+    pub has_send_preview: bool,
+    /// The chain can hold tracked tokens.
+    pub hosts_tokens: bool,
+    /// The ledger creates an account only once it holds the network's reserve.
+    pub requires_account_reserve: bool,
     pub native_deployment_id: String,
     /// A terse example of what an address on this chain looks like, or empty.
     ///
@@ -271,7 +301,6 @@ pub struct ChainEntry {
     /// The shared picker/wiki tags, in [`ChainTag::ALL`] order.
     /// A testnet carries its mainnet's tags and `Testnet`.
     pub tags: Vec<ChainTag>,
-    pub is_evm: bool,
     pub color: CatalogColor,
     pub artwork_name: String,
     /// Every protocol the network supports, in the catalog's order; each
@@ -287,7 +316,7 @@ pub struct ChainEntry {
 ///
 /// Ten chains share ETH, so "Base is an optimistic rollup" cannot live on an
 /// asset page; that is what this is for. What a *coin* is lives on
-/// [`crate::wiki::AssetWikiEntry`], which is the wiki's index — a holder thinks
+/// [`crate::catalog::wiki::AssetWikiEntry`], which is the wiki's index — a holder thinks
 /// in coins, and this is one level down from there.
 ///
 /// Kept out of [`ChainEntry`] so that nothing in the send, derive or fetch
@@ -394,20 +423,19 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
     let mut ids = std::collections::HashSet::new();
     for c in &parsed.chains {
         assert!(ids.insert(&c.id), "duplicate network id {}", c.id);
-        assert!(
-            matches!(c.environment.as_str(), "mainnet" | "testnet"),
-            "invalid environment"
-        );
-        assert!(
-            parsed
-                .chains
-                .iter()
-                .any(|n| n.id == c.family && n.environment == "mainnet"),
-            "unknown network family"
-        );
+        if let Some(mainnet) = &c.mainnet {
+            assert!(
+                parsed
+                    .chains
+                    .iter()
+                    .any(|n| &n.id == mainnet && n.mainnet.is_none()),
+                "{} tests {mainnet}, which is not a mainnet",
+                c.id
+            );
+        }
         assert!(
             c.faucet.is_none()
-                || c.environment == "testnet"
+                || c.mainnet.is_some()
                     && c.faucet
                         .as_deref()
                         .is_some_and(|url| url.starts_with("https://")),
@@ -444,7 +472,7 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
     let placement: std::collections::HashMap<&str, (u16, Vec<ChainTag>)> = parsed
         .chains
         .iter()
-        .filter(|c| c.environment == "mainnet")
+        .filter(|c| c.mainnet.is_none())
         .map(|c| {
             let id = c.id.as_str();
             let rank = c
@@ -467,13 +495,13 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
         .iter()
         .zip(crate::registry::Chain::all())
         .map(|(c, chain)| {
-            let native = crate::tokens::deployment(&format!("{}:native", c.id))
+            let native = crate::catalog::tokens::deployment(&format!("{}:native", c.id))
                 .expect("unknown native token deployment");
             assert!(
                 native.is_native() && native.chain_id == chain,
                 "native deployment belongs to another network"
             );
-            let is_testnet = c.environment == "testnet";
+            let is_testnet = c.mainnet.is_some();
             assert!(
                 !is_testnet || native.coingecko_id.is_empty(),
                 "testnet token must be unpriced"
@@ -484,9 +512,9 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 c.id
             );
             let (popular_rank, mut tags) = placement
-                .get(c.family.as_str())
+                .get(c.mainnet.as_deref().unwrap_or(&c.id))
                 .cloned()
-                .expect("every network family has a mainnet placement");
+                .expect("every network has a mainnet placement");
             if !tags.contains(&ChainTag::Layer2) {
                 tags.push(ChainTag::Layer1);
             }
@@ -498,17 +526,30 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
             }
             tags.sort_unstable();
             ChainEntry {
+                chain,
                 id: c.id.clone(),
                 name: c.name.clone(),
-                family: c.family.clone(),
+                mainnet: chain.mainnet_counterpart(),
                 is_testnet,
+                is_evm: chain.is_evm(),
+                faucet_url: c.faucet.clone(),
+                address_slot: chain.address_slot().to_string(),
+                uses_account_utxo: chain.uses_account_utxo(),
+                account_key_prefixes: chain
+                    .account_key_prefixes()
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                supports_staking: chain.supports_staking(),
+                has_send_preview: chain.has_send_preview(),
+                hosts_tokens: chain.hosts_tokens(),
+                requires_account_reserve: chain.requires_account_reserve(),
                 native_deployment_id: native.deployment_id.clone(),
                 address_prefix_hint: c.address_prefix_hint.clone(),
                 gas_token_symbol: native.symbol.clone(),
                 search_keywords: c.search_keywords.clone(),
                 popular_rank,
                 tags,
-                is_evm: chain.is_evm(),
                 color: c.color,
                 artwork_name: c.artwork_name.clone(),
                 token_standards: c
@@ -768,9 +809,23 @@ mod explicit_network_catalog {
     }
 
     #[test]
-    #[should_panic(expected = "unknown network family")]
-    fn unknown_network_families_are_rejected() {
-        load_catalog_text(&CHAINS_TOML.replacen("family = \"bitcoin\"", "family = \"unknown\"", 1));
+    #[should_panic(expected = "which is not a mainnet")]
+    fn a_testnet_names_a_mainnet() {
+        load_catalog_text(&CHAINS_TOML.replacen(
+            "mainnet = \"bitcoin\"",
+            "mainnet = \"unknown\"",
+            1,
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "which is not a mainnet")]
+    fn a_testnet_does_not_test_a_testnet() {
+        load_catalog_text(&CHAINS_TOML.replacen(
+            "mainnet = \"bitcoin\"",
+            "mainnet = \"bitcoin-signet\"",
+            1,
+        ));
     }
 
     /// Every test network's faucet is the one the audit checked live, and
@@ -778,7 +833,7 @@ mod explicit_network_catalog {
     #[test]
     fn faucets_are_the_audited_ones() {
         let audit: serde_json::Value = serde_json::from_str(include_str!(
-            "../../docs/audits/testnet-faucets-2026-10-07.json"
+            "../../../docs/audits/testnet-faucets-2026-10-07.json"
         ))
         .unwrap();
         let audited: std::collections::HashMap<&str, Option<&str>> = audit["faucets"]
@@ -806,8 +861,8 @@ mod explicit_network_catalog {
     #[should_panic(expected = "faucet must be an https page on a testnet")]
     fn a_mainnet_has_no_faucet() {
         load_catalog_text(&CHAINS_TOML.replacen(
-            "environment = \"mainnet\"",
-            "environment = \"mainnet\"\nfaucet = \"https://example.com\"",
+            "name = \"Bitcoin\"",
+            "name = \"Bitcoin\"\nfaucet = \"https://example.com\"",
             1,
         ));
     }
@@ -828,8 +883,11 @@ mod explicit_network_catalog {
         assert_eq!(CATALOG.len(), parsed.chains.len());
         for n in &parsed.chains {
             let chain = Chain::from_str_id(&n.id).unwrap();
-            assert_eq!(chain.is_testnet(), n.environment == "testnet");
-            assert_eq!(chain.mainnet_counterpart().str_id(), n.family);
+            assert_eq!(chain.is_testnet(), n.mainnet.is_some());
+            assert_eq!(
+                chain.mainnet_counterpart().str_id(),
+                n.mainnet.as_deref().unwrap_or(&n.id)
+            );
         }
     }
 

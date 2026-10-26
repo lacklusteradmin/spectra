@@ -272,7 +272,9 @@ impl WalletService {
         let token_balance = token_res
             .map(|token| {
                 token
-                    .map(|(raw, decimals)| crate::decimal::from_units(raw, u32::from(decimals)))
+                    .map(|(raw, decimals)| {
+                        crate::amount::decimal::from_units(raw, u32::from(decimals))
+                    })
                     .map_err(SpectraBridgeError::from)
             })
             .transpose()?;
@@ -291,10 +293,15 @@ impl WalletService {
         symbol: String,
         contract_address: String,
     ) -> Result<SendPreview, SpectraBridgeError> {
-        let trx = |sun: u128| crate::decimal::from_units(sun, u32::from(chain.native_decimals()));
+        let trx =
+            |sun: u128| crate::amount::decimal::from_units(sun, u32::from(chain.native_decimals()));
         if !contract_address.is_empty() {
             let standard = chain.token_standard_for_identifier(&contract_address);
-            crate::tokens::validate_protocol_identifier(chain, standard, &contract_address)?;
+            crate::catalog::tokens::validate_protocol_identifier(
+                chain,
+                standard,
+                &contract_address,
+            )?;
             if !chain.sends_token_standard(standard) {
                 return Err(SpectraBridgeError::invalid(format!(
                     "{standard} transfers are not supported"
@@ -374,7 +381,7 @@ impl WalletService {
             .balance_raw
             .parse()
             .map_err(|_| SpectraBridgeError::failure("invalid TRC-20 balance"))?;
-        let token_balance = crate::decimal::from_units(raw, u32::from(token.decimals));
+        let token_balance = crate::amount::decimal::from_units(raw, u32::from(token.decimals));
 
         // The estimate is what a transfer usually burns; the signed
         // transaction's fee limit is the most it lets it burn.
@@ -404,7 +411,7 @@ impl WalletService {
             });
         }
         let decimals = u32::from(chain.native_decimals());
-        let units = |amount: u128| crate::decimal::from_units(amount, decimals);
+        let units = |amount: u128| crate::amount::decimal::from_units(amount, decimals);
         match chain.mainnet_counterpart() {
             Chain::Near => return self.preview_near_send(chain, &address, "", 0, None).await,
             Chain::Polkadot | Chain::Bittensor => {
@@ -466,14 +473,14 @@ impl WalletService {
             self.fetch_native_balance_summary(chain, address),
         )?;
         let fee_display = units(fee.units);
-        let balance_display =
-            crate::decimal::canonical(&balance.amount_display).ok_or_else(|| {
+        let balance_display = crate::amount::decimal::canonical(&balance.amount_display)
+            .ok_or_else(|| {
                 SpectraBridgeError::failure(format!(
                     "{chain} balance: not a number: {:?}",
                     balance.amount_display
                 ))
             })?;
-        let max_sendable = crate::decimal::sub_or_zero(&balance_display, &fee_display)
+        let max_sendable = crate::amount::decimal::sub_or_zero(&balance_display, &fee_display)
             .ok_or_else(|| SpectraBridgeError::failure(format!("{chain} balance unreadable")))?;
         let fee_rate_description = match fee.gas_unit_price_octas {
             Some(price) => format!("{price} octas/unit"),
@@ -513,7 +520,7 @@ impl WalletService {
         destination: &str,
         fee_rate: u64,
     ) -> Result<Option<SendPreview>, SpectraBridgeError> {
-        let amount = u64::try_from(crate::send::amount_input::parse_raw_amount(amount, 8)?)
+        let amount = u64::try_from(crate::amount::input::parse_raw_amount(amount, 8)?)
             .map_err(|_| SpectraBridgeError::invalid("Amount exceeds protocol range"))?;
         if amount > chain.litecoin_max_money()? {
             return Err(SpectraBridgeError::invalid(

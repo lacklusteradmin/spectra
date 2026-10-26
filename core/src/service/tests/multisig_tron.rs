@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::derivation::import::{WalletImportCommit, WalletImportKind, WalletImportRequest};
-use crate::store::secret_backends::InMemorySecretStore;
+use crate::secrets::backends::InMemorySecretStore;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
 fn fixture() -> serde_json::Value {
@@ -214,7 +214,6 @@ async fn an_ordinary_send_the_accounts_key_cannot_make_alone_is_refused_when_bui
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         })
         .await

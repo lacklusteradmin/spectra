@@ -52,7 +52,7 @@ impl WalletService {
         database_path: String,
     ) -> Result<ResidentState, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.write_persisted(move |service| async move {
                 // Opening is idempotent. A second call with the same database returns
@@ -160,7 +160,7 @@ impl WalletService {
     ) -> Result<ResidentState, SpectraBridgeError> {
         let this = self.clone();
         let path = database_path.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             if this.state_binding.is_bound_to(&path).await {
                 return Err(SpectraBridgeError::failure(
                     "the store is open and readable: reset it with reset_data",
@@ -174,7 +174,7 @@ impl WalletService {
                     .map_err(SpectraBridgeError::failure)??;
             let database = crate::wallet_db::WalletDatabase::new(&path);
             for id in &wallet_ids {
-                crate::store::wallet_secrets::delete(&*store, id)?;
+                crate::secrets::wallet::delete(&*store, id)?;
                 if let Ok(shielded) = crate::wallet_db::zcash::zcash_db_path(&database, id) {
                     crate::wallet_db::delete_sqlite_files(&shielded)?;
                 }
@@ -201,7 +201,7 @@ impl WalletService {
         mut command: StateCommand,
     ) -> Result<StateTransition, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let validate =
                 |wallet: &mut crate::store::state::WalletState| -> Result<(), SpectraBridgeError> {
@@ -259,7 +259,7 @@ impl WalletService {
         &self,
     ) -> Result<Vec<crate::store::wallet_domain::DashboardPinOption>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             dashboard_pin_options_from(&this.app_state().await)
         })
@@ -271,7 +271,7 @@ impl WalletService {
         &self,
     ) -> Result<Vec<crate::store::PriceAlertNotification>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let notifications = Arc::new(std::sync::Mutex::new(Vec::new()));
             let output = notifications.clone();
@@ -294,7 +294,7 @@ impl WalletService {
                         .price_alerts
                         .iter()
                         .filter(|alert| {
-                            crate::tokens::deployment(&alert.holding_key)
+                            crate::catalog::tokens::deployment(&alert.holding_key)
                                 .is_some_and(|t| !t.coingecko_id.is_empty())
                         })
                         .cloned()
@@ -361,7 +361,7 @@ impl WalletService {
     /// Signing availability is read through the registered SecretStore.
     pub async fn wallet_derived_state(&self) -> Result<WalletDerivedState, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let state = this.app_state().await;
             this.derive_wallet_projection(&state)
@@ -372,7 +372,7 @@ impl WalletService {
     /// Current snapshot of the owned state.
     pub async fn app_state(&self) -> ResidentState {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.wallet_state.read().await.clone()
         })
@@ -468,7 +468,7 @@ impl WalletService {
                         .iter()
                         .any(|w| removed.contains(&w.id) && !w.is_watch_only())
                 {
-                    return Err(crate::SpectraBridgeError::failure(
+                    return Err(crate::error::SpectraBridgeError::failure(
                         "secret store must be registered before deleting a signing wallet",
                     ));
                 }
@@ -596,7 +596,7 @@ impl WalletService {
         }
         let store = self.secrets()?;
         for id in pending {
-            crate::store::wallet_secrets::delete(&*store, &id).map_err(|error| {
+            crate::secrets::wallet::delete(&*store, &id).map_err(|error| {
                 SpectraBridgeError::failure(format!(
                     "wallet {id} was removed; secret cleanup is pending and will be retried: {error}"
                 ))
@@ -830,7 +830,7 @@ fn derive_wallet_state(
                 let total = grouped_totals
                     .entry(identity_key)
                     .or_insert_with(|| "0".to_string());
-                *total = crate::decimal::add(total, &holding.amount)
+                *total = crate::amount::decimal::add(total, &holding.amount)
                     .ok_or_else(|| SpectraBridgeError::failure("portfolio total out of range"))?;
             }
 
@@ -889,7 +889,7 @@ fn dashboard_pin_options_from(
 ) -> Result<Vec<crate::store::wallet_domain::DashboardPinOption>, SpectraBridgeError> {
     use crate::store::wallet_domain::DashboardPinOption;
     let pinned = state.settings.pinned_dashboard_assets();
-    let catalog = crate::tokens::list_token_deployments(None);
+    let catalog = crate::catalog::tokens::list_token_deployments(None);
     let coins = catalog
         .iter()
         .chain(state.token_preferences.iter().map(|e| &e.token))
@@ -960,7 +960,7 @@ fn dashboard_groups_from(
     for held in derived
         .included_portfolio_holdings
         .iter()
-        .filter(|h| !crate::decimal::is_zero(&h.coin.amount))
+        .filter(|h| !crate::amount::decimal::is_zero(&h.coin.amount))
     {
         let key = held.coin.token_identity();
         if !grouped.contains_key(&key) {
@@ -980,7 +980,7 @@ fn dashboard_groups_from(
         let mut by_place: HashMap<String, crate::store::wallet_domain::AssetHolding> =
             HashMap::new();
         for coin in held.iter().map(|h| &h.coin) {
-            let contract = crate::tokens::normalize_token_identifier(
+            let contract = crate::catalog::tokens::normalize_token_identifier(
                 coin.contract_address.clone(),
                 coin.chain_id,
             )
@@ -992,8 +992,10 @@ fn dashboard_groups_from(
             );
             match by_place.get_mut(&place) {
                 Some(existing) => {
-                    existing.amount = crate::decimal::add(&existing.amount, &coin.amount)
-                        .ok_or_else(|| SpectraBridgeError::failure("asset total out of range"))?;
+                    existing.amount = crate::amount::decimal::add(&existing.amount, &coin.amount)
+                        .ok_or_else(|| {
+                        SpectraBridgeError::failure("asset total out of range")
+                    })?;
                 }
                 None => {
                     place_order.push(place.clone());
@@ -1033,7 +1035,7 @@ fn dashboard_groups_from(
         let total_amount = holdings
             .iter()
             .try_fold("0".to_string(), |sum, h| {
-                crate::decimal::add(&sum, &h.coin.amount)
+                crate::amount::decimal::add(&sum, &h.coin.amount)
             })
             .ok_or_else(|| SpectraBridgeError::failure("asset total out of range"))?;
         // And one entry per wallet: everything it holds of the asset, on
@@ -1044,7 +1046,7 @@ fn dashboard_groups_from(
             let usd = usd_of(&h.coin);
             match wallets.iter_mut().find(|(w, _)| w.wallet_id == h.wallet_id) {
                 Some((wallet, total)) => {
-                    wallet.amount = crate::decimal::add(&wallet.amount, &h.coin.amount)
+                    wallet.amount = crate::amount::decimal::add(&wallet.amount, &h.coin.amount)
                         .ok_or_else(|| SpectraBridgeError::failure("asset total out of range"))?;
                     *total = total.zip(usd).map(|(sum, value)| sum + value);
                 }
@@ -1156,14 +1158,14 @@ pub struct PortfolioSnapshot {
     pub groups: Vec<crate::store::wallet_domain::DashboardAssetGroup>,
     pub pin_options: Vec<crate::store::wallet_domain::DashboardPinOption>,
     pub valuation: super::valuation::PortfolioValuation,
-    pub asset_precision: crate::formatting::AssetPrecisionCatalog,
+    pub asset_precision: crate::amount::presentation::AssetPrecisionCatalog,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     pub async fn portfolio_snapshot(&self) -> Result<PortfolioSnapshot, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let _guard = this.state_writer.lock().await;
             let state = this.wallet_state.read().await.clone();
@@ -1181,7 +1183,7 @@ impl WalletService {
                 groups: dashboard_groups_from(&state, &derived)?,
                 pin_options: dashboard_pin_options_from(&state)?,
                 valuation: valuation::portfolio_valuation(&state),
-                asset_precision: crate::formatting::asset_precision_catalog(&state),
+                asset_precision: crate::amount::presentation::asset_precision_catalog(&state),
                 derived,
                 state,
             })

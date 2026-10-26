@@ -282,11 +282,13 @@ impl WalletService {
                     [chain.chain_display_name(), to],
                 )
             })?;
-        let nanotons =
-            crate::decimal::to_units(spend.amount.trim(), u32::from(chain.native_decimals()))
-                .and_then(|units| u64::try_from(units).ok())
-                .filter(|units| *units > 0)
-                .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let nanotons = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .and_then(|units| u64::try_from(units).ok())
+        .filter(|units| *units > 0)
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         let lifetime = spend.expires_in_secs.unwrap_or(DEFAULT_LIFETIME_SECS);
         if !(600..=MAX_LIFETIME_SECS).contains(&lifetime) {
             return Err(SpectraBridgeError::invalid(

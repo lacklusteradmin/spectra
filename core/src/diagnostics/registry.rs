@@ -199,7 +199,7 @@ mod tests {
         diagnostics_record(crate::registry::Chain::Bitcoin, sample("w1"));
         diagnostics_record_history_run(crate::registry::Chain::Bitcoin);
         let probe = |endpoint: &str| EndpointProbe {
-            api: crate::EndpointApi::Esplora,
+            api: crate::api::endpoint::EndpointApi::Esplora,
             chain_id: crate::registry::Chain::Bitcoin,
             endpoint: endpoint.into(),
             capabilities: Vec::new(),

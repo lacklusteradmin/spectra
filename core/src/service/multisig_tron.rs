@@ -283,11 +283,13 @@ impl WalletService {
                 "A Tron transaction expires within a day of being built.",
             ));
         }
-        let amount =
-            crate::decimal::to_units(spend.amount.trim(), u32::from(chain.native_decimals()))
-                .and_then(|units| u64::try_from(units).ok())
-                .filter(|units| *units > 0)
-                .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let amount = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .and_then(|units| u64::try_from(units).ok())
+        .filter(|units| *units > 0)
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         let policy = self.tron_policy(chain, &address, true).await?;
         let permission = policy.permissions.for_contract(TRANSFER_CONTRACT).clone();
         if policy.balance_sun < amount.saturating_add(policy.multi_sign_fee_sun) {

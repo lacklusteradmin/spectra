@@ -189,7 +189,7 @@ impl Polyseed {
         salt[20..24].copy_from_slice(&self.birthday.to_le_bytes());
         salt[24..28].copy_from_slice(&self.features.to_le_bytes());
         let mut key = Zeroizing::new([0u8; 32]);
-        crate::kdf::pbkdf2_sha256(&*self.secret, &salt, KDF_ITERATIONS, &mut *key);
+        crate::secrets::kdf::pbkdf2_sha256(&*self.secret, &salt, KDF_ITERATIONS, &mut *key);
         key
     }
 }

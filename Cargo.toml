@@ -1,9 +1,9 @@
 [workspace]
-members = ["core", "ffi", "cli", "tools/uniffi-bindgen", "tools/zcash-fixture", "tools/litecoin-mweb-fixture"]
+members = ["core", "cli", "tools/uniffi-bindgen", "tools/zcash-fixture", "tools/litecoin-mweb-fixture"]
 resolver = "3"
 
 # Dependencies are optimized even in debug and test builds. Key stretching
-# (PBKDF2 through ring, see core/src/kdf.rs), curve arithmetic and hashing run
+# (PBKDF2 through ring, see core/src/secrets/kdf.rs), curve arithmetic and hashing run
 # in dependency code, which unoptimized made each password unlock in a debug
 # CLI, app or test take about three seconds instead of under a tenth. Our own
 # crates stay unoptimized, so an edit rebuilds as fast as before; a
@@ -20,9 +20,6 @@ strip = "symbols"
 # the wallet believe it can afford a spend, so our crates panic instead.
 # Dependencies are left alone: some crypto crates rely on wrapping arithmetic.
 [profile.release.package.spectra_core]
-overflow-checks = true
-
-[profile.release.package.spectra_core_ffi]
 overflow-checks = true
 
 [profile.release.package.spectra_cli]

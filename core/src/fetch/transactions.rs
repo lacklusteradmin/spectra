@@ -222,7 +222,7 @@ fn matches_identity(
                 && (operation_provider_match(existing, incoming)
                     || (normalize_evm_address(&existing.address)
                         == normalize_evm_address(&incoming.address)
-                        && crate::decimal::compare(&existing.amount, &incoming.amount)
+                        && crate::amount::decimal::compare(&existing.amount, &incoming.amount)
                             == Some(std::cmp::Ordering::Equal)))
         }
     }

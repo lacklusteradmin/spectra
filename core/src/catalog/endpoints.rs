@@ -1,13 +1,13 @@
 //! The endpoint catalog: `data/endpoints.toml`, validated against the
 //! adapters Spectra has, and indexed by network.
 
+use crate::api::endpoint::{EndpointApi, EndpointCapability, endpoint_capability_options};
 use crate::registry::Chain;
-use crate::{EndpointApi, EndpointCapability};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-const ENDPOINTS_TOML: &str = include_str!("../data/endpoints.toml");
+const ENDPOINTS_TOML: &str = include_str!("../../data/endpoints.toml");
 
 #[derive(Debug, Clone)]
 pub(crate) struct EndpointCatalog {
@@ -45,7 +45,7 @@ impl TryFrom<TomlEndpoint> for EndpointRecord {
                 e.id
             ));
         }
-        let supported = crate::endpoint_capability_options(e.chain_id, e.api);
+        let supported = endpoint_capability_options(e.chain_id, e.api);
         if let Some(claim) = e.capabilities.iter().find(|c| !supported.contains(c)) {
             return Err(format!(
                 "{}: {} has no {} adapter on this network",

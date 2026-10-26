@@ -105,7 +105,7 @@ impl WalletService {
     /// unknown level into `info`.
     pub async fn operational_events(&self, chain_id: crate::registry::Chain) -> Vec<DiagnosticLog> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.diagnostic_state()
                 .await

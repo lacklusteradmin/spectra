@@ -202,7 +202,7 @@ where
             .filter(|(net, _)| *net != 0)
             .map(|(net, row)| BitcoinHistorySnapshot {
                 txid: row.txid,
-                amount_btc: crate::decimal::from_units(
+                amount_btc: crate::amount::decimal::from_units(
                     net.unsigned_abs(),
                     u32::from(network.native_decimals()),
                 ),

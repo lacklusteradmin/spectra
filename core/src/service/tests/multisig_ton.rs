@@ -7,8 +7,8 @@
 
 use super::*;
 use crate::derivation::ton::TonWalletVersion;
-use crate::store::secret_backends::InMemorySecretStore;
-use crate::store::wallet_secrets::store_seed_phrase;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::store_seed_phrase;
 use base64::engine::general_purpose::STANDARD;
 use serde_json::Value;
 use std::sync::Mutex;

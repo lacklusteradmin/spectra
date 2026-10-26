@@ -51,7 +51,7 @@ fn target(endpoint: &str) -> Result<Target, ApiError> {
 
 /// A channel to `endpoint`, connected under the routing rules above.
 pub(crate) async fn channel(endpoint: &str) -> Result<tonic::transport::Channel, ApiError> {
-    if crate::tor::kill_switch_engaged() {
+    if crate::api::tor::kill_switch_engaged() {
         return Err(ApiError::Transport(
             crate::api::http::KILL_SWITCH_MESSAGE.into(),
         ));

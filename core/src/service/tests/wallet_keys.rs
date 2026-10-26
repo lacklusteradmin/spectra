@@ -161,7 +161,7 @@ async fn what_cannot_be_exported_is_not_offered_and_is_refused() {
     taproot.derivation_path = Some(
         crate::derivation::path::derivation_profile_path(
             Chain::BitcoinTestnet,
-            crate::chains::DerivationProfile::Taproot,
+            crate::catalog::chains::DerivationProfile::Taproot,
             0,
         )
         .unwrap(),

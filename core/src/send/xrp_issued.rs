@@ -287,7 +287,7 @@ impl PreparedXrpTrustSet {
     }
 
     pub(crate) fn removes(&self) -> bool {
-        crate::decimal::is_zero(&self.limit)
+        crate::amount::decimal::is_zero(&self.limit)
     }
 
     /// The same trust line change read again, whatever the sequence.

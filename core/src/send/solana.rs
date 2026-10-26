@@ -320,7 +320,7 @@ pub(crate) async fn prepare_transfer(
     if let Some(hook) = token.as_ref().and_then(|token| token.hook.as_ref())
         && let Some(error) = client.simulate_message(&message).await?
     {
-        return Err(SendError::Invalid(crate::LocalizableMessage::new(
+        return Err(SendError::Invalid(crate::error::LocalizableMessage::new(
             "The token's transfer hook program %@ refused this transfer: %@",
             [hook.program.as_str(), error.as_str()],
         )));

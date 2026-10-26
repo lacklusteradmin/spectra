@@ -1,3 +1,4 @@
+use crate::api::endpoint::EndpointCapability;
 use crate::derivation::import::{WalletImportCommit, WalletImportKind, WalletImportRequest};
 use crate::service::WalletService;
 use crate::store::wallet_domain::WalletDerivationOverrides;
@@ -10,7 +11,7 @@ async fn evm_imports_keep_each_networks_address_and_derivation_path() {
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
     let path = temp.join("state.db").to_string_lossy().into_owned();
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets.clone());
     service.open_state(path.clone()).await.unwrap();
@@ -61,7 +62,7 @@ async fn evm_identity_reuses_the_wallets_path_without_duplicate_address_records(
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
     let path = temp.join("state.db").to_string_lossy().into_owned();
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets.clone());
     service.open_state(path.clone()).await.unwrap();
@@ -136,7 +137,7 @@ async fn account_utxo_import_refuses_wrong_network_paths_before_storing() {
         std::fs::create_dir_all(&directory).unwrap();
         let service = WalletService::new(vec![]).unwrap();
         service.set_secret_store(std::sync::Arc::new(
-            crate::store::secret_backends::InMemorySecretStore::new(),
+            crate::secrets::backends::InMemorySecretStore::new(),
         ));
         service
             .open_state(directory.join("state.db").to_string_lossy().into_owned())
@@ -182,7 +183,7 @@ async fn imported_protected_peercoin_accounts_receive_after_restart_without_secr
     let database = directory.join("state.db").to_string_lossy().into_owned();
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service.open_state(database.clone()).await.unwrap();
     let mut imported = Vec::new();
@@ -237,7 +238,7 @@ async fn imported_wallets_land_in_core_state() {
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(Vec::new()).expect("service");
     service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
         .open_state(temp.join("state.db").to_string_lossy().into())
@@ -282,7 +283,7 @@ async fn a_seed_import_stores_only_its_own_networks_address() {
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(Vec::new()).expect("service");
     service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
         .open_state(temp.join("state.db").to_string_lossy().into())
@@ -319,7 +320,7 @@ async fn each_wallet_is_on_the_network_its_import_named() {
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(Vec::new()).expect("service");
     service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
         .open_state(temp.join("state.db").to_string_lossy().into())
@@ -367,31 +368,31 @@ async fn each_wallet_is_on_the_network_its_import_named() {
 
 #[derive(Default)]
 struct FailingSecrets {
-    inner: crate::store::secret_backends::InMemorySecretStore,
+    inner: crate::secrets::backends::InMemorySecretStore,
     writes: std::sync::atomic::AtomicUsize,
 }
-impl crate::store::secret_store::SecretStore for FailingSecrets {
+impl crate::secrets::store::SecretStore for FailingSecrets {
     fn load_secret(
         &self,
-        kind: crate::store::secret_store::SecretClass,
+        kind: crate::secrets::store::SecretClass,
         key: String,
-    ) -> Result<String, crate::store::secret_store::SecretStoreError> {
+    ) -> Result<String, crate::secrets::store::SecretStoreError> {
         self.inner.load_secret(kind, key)
     }
     fn save_secret(
         &self,
-        kind: crate::store::secret_store::SecretClass,
+        kind: crate::secrets::store::SecretClass,
         key: String,
         value: String,
-    ) -> Result<(), crate::store::secret_store::SecretStoreError> {
+    ) -> Result<(), crate::secrets::store::SecretStoreError> {
         // The device key is minted on the first seal and is not a wallet's.
-        if kind != crate::store::secret_store::SecretClass::DeviceKey
+        if kind != crate::secrets::store::SecretClass::DeviceKey
             && self
                 .writes
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
                 == 0
         {
-            return Err(crate::store::secret_store::SecretStoreError::Backend {
+            return Err(crate::secrets::store::SecretStoreError::Backend {
                 message: "injected write failure".into(),
             });
         }
@@ -399,21 +400,21 @@ impl crate::store::secret_store::SecretStore for FailingSecrets {
     }
     fn delete_secret(
         &self,
-        kind: crate::store::secret_store::SecretClass,
+        kind: crate::secrets::store::SecretClass,
         key: String,
-    ) -> Result<(), crate::store::secret_store::SecretStoreError> {
+    ) -> Result<(), crate::secrets::store::SecretStoreError> {
         self.inner.delete_secret(kind, key)
     }
     fn wrap_device_key(
         &self,
         key: Vec<u8>,
-    ) -> Result<Vec<u8>, crate::store::secret_store::SecretStoreError> {
+    ) -> Result<Vec<u8>, crate::secrets::store::SecretStoreError> {
         self.inner.wrap_device_key(key)
     }
     fn unwrap_device_key(
         &self,
         wrapped: Vec<u8>,
-    ) -> Result<Vec<u8>, crate::store::secret_store::SecretStoreError> {
+    ) -> Result<Vec<u8>, crate::secrets::store::SecretStoreError> {
         self.inner.unwrap_device_key(wrapped)
     }
 }
@@ -478,7 +479,7 @@ async fn a_blank_password_is_refused_rather_than_stored_unsealed() {
         crate::store::new_transaction_id()
     ));
     let service = WalletService::new(vec![]).unwrap();
-    let store = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let store = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     service.set_secret_store(store.clone());
     service
         .open_state(path.to_string_lossy().into())
@@ -495,7 +496,7 @@ async fn a_blank_password_is_refused_rather_than_stored_unsealed() {
         for commit in [seed, key] {
             assert!(matches!(
                 service.import_wallets(commit).await,
-                Err(crate::SpectraBridgeError::InvalidInput { .. })
+                Err(crate::error::SpectraBridgeError::InvalidInput { .. })
             ));
         }
     }
@@ -510,7 +511,7 @@ async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refu
         crate::store::new_transaction_id()
     ));
     let service = WalletService::new(vec![]).unwrap();
-    let store = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let store = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     service.set_secret_store(store.clone());
     service
         .open_state(path.to_string_lossy().into())
@@ -539,7 +540,7 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
     let path = temp.join("state.db").to_string_lossy().into_owned();
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service.open_state(path.clone()).await.unwrap();
     // Each on its own account: one wallet per address.
@@ -573,7 +574,7 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
     );
     let reopened = WalletService::new(vec![]).unwrap();
     reopened.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     reopened.open_state(path).await.unwrap();
     assert_eq!(
@@ -594,7 +595,7 @@ async fn raw_mnemonic_is_canonical_before_derivation_and_storage() {
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
         .open_state(temp.join("state.db").to_string_lossy().into())
@@ -636,7 +637,7 @@ async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
         .open_state(temp.join("state.db").to_string_lossy().into())
@@ -672,7 +673,7 @@ async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
 #[tokio::test]
 async fn testnet_paths_survive_reopen_and_signing() {
     use crate::registry::Chain;
-    use crate::store::secret_backends::InMemorySecretStore;
+    use crate::secrets::backends::InMemorySecretStore;
     use std::sync::Arc;
     let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
     std::fs::create_dir_all(&temp).unwrap();
@@ -749,7 +750,7 @@ fn an_absent_testnet_address_never_falls_back_to_mainnet() {
 }
 
 async fn fresh_service(
-    secrets: std::sync::Arc<dyn crate::store::secret_store::SecretStore>,
+    secrets: std::sync::Arc<dyn crate::secrets::store::SecretStore>,
 ) -> (std::sync::Arc<WalletService>, String) {
     let path = std::env::temp_dir()
         .join(format!(
@@ -791,7 +792,7 @@ fn derived(chain: crate::registry::Chain) -> String {
 #[tokio::test]
 async fn a_signing_import_upgrades_the_watched_wallet_in_place() {
     use crate::registry::Chain;
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let (service, path) = fresh_service(secrets.clone()).await;
     let address = derived(Chain::Ethereum);
     let watched = service
@@ -852,7 +853,7 @@ async fn a_signing_import_upgrades_the_watched_wallet_in_place() {
 #[tokio::test]
 async fn a_bitcoin_phrase_upgrades_its_watched_account_key() {
     use crate::registry::Chain;
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let (service, _) = fresh_service(secrets).await;
     let path = crate::derivation::path::default_path_from_catalog(Chain::Bitcoin).unwrap();
     let xpub = crate::service::address_discovery::UtxoDerivation::account_xpub(
@@ -899,7 +900,7 @@ async fn a_bitcoin_phrase_upgrades_its_watched_account_key() {
 #[tokio::test]
 async fn other_duplicates_are_refused_naming_the_wallet() {
     use crate::registry::Chain;
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let (service, _) = fresh_service(secrets).await;
     let mut signing = commit(Chain::Ethereum);
     signing.request.wallet_name = "Hot".into();
@@ -939,7 +940,7 @@ async fn other_duplicates_are_refused_naming_the_wallet() {
 #[tokio::test]
 async fn a_multisig_account_watched_again_is_refused_naming_the_wallet() {
     use crate::registry::Chain;
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let (service, _) = fresh_service(secrets).await;
     let descriptor = crate::derivation::multisig::tests::descriptor(
         &crate::derivation::multisig::tests::fixture()["networks"][0],
@@ -1053,13 +1054,13 @@ async fn a_near_named_account_is_held_once_the_network_lists_the_key() {
         .mount(&server)
         .await;
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
-        capabilities: crate::EndpointCapability::ALL.to_vec(),
+        capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Near,
         endpoints: vec![server.uri()],
     }])
     .unwrap();
     service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     let path = std::env::temp_dir()
         .join(format!(
@@ -1128,8 +1129,7 @@ async fn a_private_key_upgrades_the_watched_testnet_wallet_that_holds_its_addres
         {
             continue;
         }
-        let secrets =
-            std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+        let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
         let (service, _) = fresh_service(secrets).await;
         let mut key = fixture(chain, WalletSetupMethod::ImportPrivateKey);
         let address = service
@@ -1189,7 +1189,7 @@ async fn a_ton_key_is_one_account_per_wallet_version() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../../../tests/fixtures/ton-w5.json")).unwrap();
     let w5 = fixture["key_address"]["mainnet"].as_str().unwrap();
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let (service, _) = fresh_service(secrets).await;
     let key = |chain, name: &str, version| {
         let mut input = commit(chain);
@@ -1264,7 +1264,7 @@ async fn an_imported_polyseed_restores_from_its_birthday() {
     use crate::registry::Chain;
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../../../tests/fixtures/monero-phrases.json")).unwrap();
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let (service, _) = fresh_service(secrets).await;
     let import = |phrase: &str| {
         let mut input = commit(Chain::Monero);
@@ -1279,8 +1279,8 @@ async fn an_imported_polyseed_restores_from_its_birthday() {
         .remove(0);
     assert_eq!(wallet.primary_address(), polyseed["address"].as_str());
     let birthday = polyseed["birthday"].as_u64().unwrap();
-    let height = crate::restore_heights::height_at_or_before(Chain::Monero, birthday);
-    assert!(height > crate::restore_heights::default_restore_height(Chain::Monero));
+    let height = crate::catalog::restore_heights::height_at_or_before(Chain::Monero, birthday);
+    assert!(height > crate::catalog::restore_heights::default_restore_height(Chain::Monero));
     assert_eq!(wallet.restore_height, Some(height));
     let electrum = &fixture["electrum"][2];
     let wallet = import(electrum["phrase"].as_str().unwrap())
@@ -1298,7 +1298,7 @@ async fn an_imported_polyseed_restores_from_its_birthday() {
 #[tokio::test]
 async fn a_refused_key_import_seals_nothing() {
     use crate::registry::Chain;
-    let secrets = std::sync::Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+    let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let (service, _) = fresh_service(secrets.clone()).await;
     let mut input = commit(Chain::Cardano);
     input.seed_phrase = None;

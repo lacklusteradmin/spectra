@@ -15,9 +15,8 @@ def hand_written(root, suffix):
 
 
 def frontend_test(path):
-    """Swift tests and Kotlin test, instrumented-test and fixture source roots."""
-    return any(part in {'tests', 'test', 'androidTest', 'testFixtures'}
-               for part in path.parts)
+    """Swift test sources."""
+    return 'tests' in path.parts
 
 
 ATTRIBUTE = re.compile(r'\s*#\[(cfg\(test\)|test|tokio::test)')

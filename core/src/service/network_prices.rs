@@ -113,7 +113,7 @@ impl WalletService {
             let request = crate::fetch::price::PriceRequestCoin {
                 holding_key: key.clone(),
                 coingecko_id: chain.coingecko_id().to_string(),
-                coinpaprika_id: crate::tokens::deployment(&key)
+                coinpaprika_id: crate::catalog::tokens::deployment(&key)
                     .map(|token| token.coinpaprika_id.clone())
                     .unwrap_or_default(),
             };
@@ -161,7 +161,7 @@ impl WalletService {
         force: bool,
     ) -> Result<ResidentState, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let _guard = this.quote_refresh_lock.lock().await;
             let state = this.app_state().await;
@@ -205,7 +205,7 @@ impl WalletService {
                 }
             }
             for alert in state.price_alerts.iter().filter(|a| a.is_enabled) {
-                if let Some(token) = crate::tokens::deployment(&alert.holding_key)
+                if let Some(token) = crate::catalog::tokens::deployment(&alert.holding_key)
                     .filter(|t| !t.coingecko_id.is_empty() || !t.coinpaprika_id.is_empty())
                 {
                     requests.entry(token.deployment_id.clone()).or_insert(
@@ -240,7 +240,7 @@ impl WalletService {
         force: bool,
     ) -> Result<ResidentState, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let _guard = this.quote_refresh_lock.lock().await;
             let state = this.app_state().await;

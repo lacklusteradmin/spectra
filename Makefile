@@ -3,13 +3,12 @@ SHELL := /bin/bash
 XCODE_PROJECT := swift/Spectra.xcodeproj
 XCODE_SCHEME ?= Spectra
 IOS_SIM_DEST ?= generic/platform=iOS Simulator
-IOS_TEST_DEST ?= platform=iOS Simulator,name=iPhone 17 Pro
+# The first available iPhone simulator, unless one is named.
+IOS_TEST_DEST ?= platform=iOS Simulator,name=$(shell xcrun simctl list --json devices available | python3 -c "import json, sys; print(next(d['name'] for r in json.load(sys.stdin)['devices'].values() for d in r if d['name'].startswith('iPhone')))")
 # Optional isolation when another task is building the same Xcode project.
 IOS_TEST_DERIVED_DATA ?=
 
-.PHONY: verify fmt lint check-ui test test-cli test-ios \
-	ios iosr android androidr \
-	bindgen-android clean
+.PHONY: verify fmt lint check-ui test test-cli test-ios ios iosr clean
 
 # ── Verification ────────────────────────────────────────────────────
 # `verify` runs the full gate for major changes described in AGENTS.md.
@@ -59,17 +58,6 @@ ios:
 iosr:
 	xcodebuild -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" -configuration Release -destination "$(IOS_SIM_DEST)" build
 
-android:
-	scripts/build-android.sh
-	scripts/bindgen-android.sh
-
-androidr:
-	scripts/build-android.sh --release
-	scripts/bindgen-android.sh
-
-bindgen-android:
-	scripts/bindgen-android.sh
-
 clean:
 	cargo clean
-	rm -rf swift/generated/ kotlin/app/src/main/kotlin/uniffi/ kotlin/app/src/main/jniLibs/
+	rm -rf swift/generated/

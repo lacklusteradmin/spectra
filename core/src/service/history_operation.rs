@@ -1,7 +1,7 @@
 //! Core owns history protocol selection, scope, and successful refresh clocks.
 use super::{HistoryRefreshOutcome, WalletService};
 use crate::fetch::refresh_policy::HistoryRefreshKey;
-use crate::{SpectraBridgeError, registry::Chain};
+use crate::{error::SpectraBridgeError, registry::Chain};
 
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum HistoryRefreshScope {
@@ -28,7 +28,7 @@ impl WalletService {
         interval_secs: f64,
     ) -> Result<Vec<ChainHistoryRefresh>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.bound_database().await?;
             if !interval_secs.is_finite() || interval_secs < 0.0 {

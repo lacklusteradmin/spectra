@@ -7,7 +7,7 @@
 use serde::Deserialize;
 use std::sync::LazyLock;
 
-static DONATIONS_TOML: &str = include_str!("../data/donations.toml");
+static DONATIONS_TOML: &str = include_str!("../../data/donations.toml");
 
 /// Where a donation on one network goes.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, uniffi::Record)]

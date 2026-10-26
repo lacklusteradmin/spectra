@@ -88,16 +88,16 @@ pub struct AssetAmountText {
 /// shown in a compact row. `None` when `amount` is not a decimal.
 #[uniffi::export]
 pub fn format_asset_amount(amount: String, asset_decimals: u32) -> Option<AssetAmountText> {
-    let exact = crate::decimal::canonical(&amount)?;
-    let display = asset_amount_display(crate::decimal::to_f64(&exact), asset_decimals);
+    let exact = crate::amount::decimal::canonical(&amount)?;
+    let display = asset_amount_display(crate::amount::decimal::to_f64(&exact), asset_decimals);
     if display.below_threshold {
         return Some(AssetAmountText {
-            value: crate::decimal::from_units(1, display.places),
+            value: crate::amount::decimal::from_units(1, display.places),
             below_threshold: true,
         });
     }
     Some(AssetAmountText {
-        value: crate::decimal::truncate(&exact, display.places)?,
+        value: crate::amount::decimal::truncate(&exact, display.places)?,
         below_threshold: false,
     })
 }
@@ -320,18 +320,20 @@ pub struct AssetPrecisionCatalog {
 pub(crate) fn asset_precision_catalog(
     state: &crate::store::state::ResidentState,
 ) -> AssetPrecisionCatalog {
-    let by_deployment_id = crate::tokens::catalog()
+    let by_deployment_id = crate::catalog::tokens::catalog()
         .iter()
         .map(|entry| (entry.deployment_id.clone(), entry.decimals))
         .chain(state.token_preferences.iter().map(|entry| {
             let id = entry.token.deployment_id.clone();
-            let decimals =
-                crate::tokens::token_display_decimals(Some(id.clone()), Some(entry.token.decimals));
+            let decimals = crate::catalog::tokens::token_display_decimals(
+                Some(id.clone()),
+                Some(entry.token.decimals),
+            );
             (id, decimals)
         }))
         .collect();
     AssetPrecisionCatalog {
         by_deployment_id,
-        unknown_decimals: crate::tokens::token_display_decimals(None, None),
+        unknown_decimals: crate::catalog::tokens::token_display_decimals(None, None),
     }
 }

@@ -384,8 +384,8 @@ pub(crate) fn encode_p2tr(
 
 // ── Derivation pipeline (shared by Bitcoin-family chains) ────────────────
 
-use crate::SpectraBridgeError;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
+use crate::error::SpectraBridgeError;
 
 /// BIP-39 → BIP-32 path walk → (compressed pubkey, raw private bytes).
 /// `pub(crate)` so BCH / BSV / LTC / DOGE / DASH / BTG chain files can reuse it.

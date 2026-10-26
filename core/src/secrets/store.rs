@@ -41,7 +41,7 @@ pub enum SecretClass {
 impl SecretClass {
     /// Stable, filesystem- and identifier-safe name for this class's bucket.
     ///
-    /// Native backends (see [`secret_backends`](super::secret_backends)) use it
+    /// Native backends (see [`secret_backends`](super::backends)) use it
     /// as a directory / map key. It is part of the on-disk layout, so treat
     /// these strings as frozen.
     pub fn bucket(self) -> &'static str {
@@ -69,7 +69,7 @@ pub enum SecretStoreError {
     Backend { message: String },
 }
 
-impl From<SecretStoreError> for crate::SpectraBridgeError {
+impl From<SecretStoreError> for crate::error::SpectraBridgeError {
     fn from(error: SecretStoreError) -> Self {
         Self::failure(error)
     }

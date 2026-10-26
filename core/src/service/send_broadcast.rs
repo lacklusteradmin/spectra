@@ -1,5 +1,6 @@
 //! Broadcast signed transactions and answer the id each node gives back.
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::send::payload::SignedPayload;
 
 impl WalletService {
@@ -41,17 +42,17 @@ impl WalletService {
     pub(super) async fn broadcast_at(
         &self,
         chain: Chain,
-        api: crate::EndpointApi,
+        api: EndpointApi,
         eps: Arc<Vec<String>>,
         payload: &SignedPayload,
     ) -> Result<String, SpectraBridgeError> {
-        use crate::EndpointApi as Api;
+        use EndpointApi as Api;
         use SignedPayload::{Base64, Hex, Json};
         let txid = match (api, payload) {
             (api, Hex(raw)) if api.is_utxo_indexer() => {
                 let endpoints = eps
                     .iter()
-                    .map(|url| crate::Endpoint {
+                    .map(|url| crate::api::endpoint::Endpoint {
                         api,
                         url: url.clone(),
                     })
@@ -177,7 +178,7 @@ mod tests {
             .unwrap()
             .broadcast_at(
                 Chain::Stellar,
-                crate::EndpointApi::Horizon,
+                EndpointApi::Horizon,
                 Arc::new(vec![server.uri()]),
                 &SignedPayload::Base64("AAAA".into()),
             )
@@ -200,7 +201,7 @@ mod tests {
             .unwrap()
             .broadcast_at(
                 Chain::Ethereum,
-                crate::EndpointApi::EvmJsonRpc,
+                EndpointApi::EvmJsonRpc,
                 Arc::new(vec![server.uri()]),
                 &SignedPayload::Base64("AAAA".into()),
             )

@@ -3,13 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::derivation::bitcoin::{BitcoinNetworkKind, parse_bitcoin_address};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct AddressValidationRequest {
-    pub kind: String,
-    pub value: String,
-}
+use crate::registry::Chain;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -18,88 +12,55 @@ pub struct AddressValidationResult {
     pub normalized_value: Option<String>,
 }
 
-pub fn validate_address(request: AddressValidationRequest) -> AddressValidationResult {
-    let normalized_input = trim_string(&request.value);
-    if normalized_input.is_empty() {
+/// Whether `value` is an address on `chain`, and its canonical spelling.
+/// Each testnet is judged against its own network.
+pub fn validate_address(chain: Chain, value: &str) -> AddressValidationResult {
+    let value = value.trim();
+    if value.is_empty() {
         return invalid_result();
     }
-
-    // Each testnet has its own `kind` string (e.g. `"bitcoinTestnet"`,
-    // `"litecoinTestnet"`), so the kind says which network to judge against.
-    match request.kind.as_str() {
-        "bitcoin" => validate_bitcoin_address(&normalized_input, BitcoinNetworkKind::Mainnet),
-        "bitcoinTestnet" | "bitcoinTestnet4" | "bitcoinSignet" => {
-            validate_bitcoin_address(&normalized_input, BitcoinNetworkKind::Testnet)
+    if chain.is_evm() {
+        // EVM addresses are network-agnostic on the wire.
+        return validate_evm_address(value);
+    }
+    match chain {
+        Chain::Bitcoin => validate_bitcoin_address(value, BitcoinNetworkKind::Mainnet),
+        Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => {
+            validate_bitcoin_address(value, BitcoinNetworkKind::Testnet)
         }
-        "bitcoinCash" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinCash)
-        }
-        "bitcoinCashTestnet" => validate_fixed_utxo_address(
-            &normalized_input,
-            crate::registry::Chain::BitcoinCashTestnet,
-        ),
-        "bitcoinSV" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinSV)
-        }
-        "bitcoinSVTestnet" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinSVTestnet)
-        }
-        "litecoin" => {
-            validate_litecoin_address(&normalized_input, crate::registry::Chain::Litecoin)
-        }
-        "litecoinTestnet" => {
-            validate_litecoin_address(&normalized_input, crate::registry::Chain::LitecoinTestnet)
-        }
-        "dogecoin" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Dogecoin)
-        }
-        "dogecoinTestnet" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::DogecoinTestnet)
-        }
-        "peercoin" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Peercoin)
-        }
-        "peercoinTestnet" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::PeercoinTestnet)
-        }
-        // EVM addresses are network-agnostic on the wire — same validator
-        // for mainnet + every EVM testnet.
-        "evm" | "evmTestnet" => validate_evm_address(&normalized_input),
-        "tron" | "tronTestnet" => validate_tron_address(&normalized_input),
-        "solana" | "solanaDevnet" => validate_solana_address(&normalized_input),
-        "stellar" | "stellarTestnet" => validate_stellar_address(&normalized_input),
-        "xrp" | "xrpTestnet" => validate_xrp_address(&normalized_input),
-        "sui" | "suiTestnet" => validate_sui_address(&normalized_input),
-        "aptos" | "aptosTestnet" => validate_aptos_address(&normalized_input),
-        "ton" => validate_ton_address(&normalized_input, false),
-        "tonTestnet" => validate_ton_address(&normalized_input, true),
-        "internetComputer" => validate_icp_address(&normalized_input),
-        "near" | "nearTestnet" => validate_near_address(&normalized_input),
-        "polkadot" | "polkadotTestnet" => validate_polkadot_address(&normalized_input),
-        "monero" => validate_monero_address(&normalized_input, false),
-        "moneroStagenet" => validate_monero_address(&normalized_input, true),
-        "cardano" | "cardanoTestnet" => validate_cardano_address(&normalized_input),
-        "zcash" => validate_zcash_address(&normalized_input, false),
-        "zcashTestnet" => validate_zcash_address(&normalized_input, true),
-        "bitcoinGold" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::BitcoinGold)
-        }
-        "decred" => validate_decred_address(&normalized_input, crate::registry::Chain::Decred),
-        "decredTestnet" => {
-            validate_decred_address(&normalized_input, crate::registry::Chain::DecredTestnet)
-        }
-        "kaspa" | "kaspaTestnet" => validate_kaspa_address(&normalized_input),
-        "dash" => validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::Dash),
-        "dashTestnet" => {
-            validate_fixed_utxo_address(&normalized_input, crate::registry::Chain::DashTestnet)
-        }
-        "bittensor" => validate_bittensor_address(&normalized_input),
-        // Not an address, but the same question in the same shape: a typed
-        // string, is it well formed, and what is its canonical spelling. It had
-        // its own export, its own request record and its own result record,
-        // each identical to these, to dispatch on one kind.
-        "aptosTokenType" => validate_aptos_token_type(&normalized_input),
-        "suiCoinType" => validate_sui_coin_type(&normalized_input),
+        Chain::BitcoinCash
+        | Chain::BitcoinCashTestnet
+        | Chain::BitcoinSV
+        | Chain::BitcoinSVTestnet
+        | Chain::BitcoinGold
+        | Chain::Dogecoin
+        | Chain::DogecoinTestnet
+        | Chain::Peercoin
+        | Chain::PeercoinTestnet
+        | Chain::Dash
+        | Chain::DashTestnet => validate_fixed_utxo_address(value, chain),
+        Chain::Litecoin | Chain::LitecoinTestnet => validate_litecoin_address(value, chain),
+        Chain::Decred | Chain::DecredTestnet => validate_decred_address(value, chain),
+        Chain::Zcash => validate_zcash_address(value, false),
+        Chain::ZcashTestnet => validate_zcash_address(value, true),
+        Chain::Kaspa | Chain::KaspaTestnet => validate_kaspa_address(value),
+        Chain::Tron | Chain::TronNile => validate_tron_address(value),
+        Chain::Solana | Chain::SolanaDevnet => validate_solana_address(value),
+        Chain::Stellar | Chain::StellarTestnet => validate_stellar_address(value),
+        Chain::Xrp | Chain::XrpTestnet => validate_xrp_address(value),
+        Chain::Sui | Chain::SuiTestnet => validate_sui_address(value),
+        Chain::Aptos | Chain::AptosTestnet => validate_aptos_address(value),
+        Chain::Ton => validate_ton_address(value, false),
+        Chain::TonTestnet => validate_ton_address(value, true),
+        Chain::Icp => validate_icp_address(value),
+        Chain::Near | Chain::NearTestnet => validate_near_address(value),
+        Chain::Polkadot | Chain::PolkadotWestend => validate_polkadot_address(value),
+        Chain::Bittensor => validate_bittensor_address(value),
+        Chain::Monero => validate_monero_address(value, false),
+        Chain::MoneroStagenet => validate_monero_address(value, true),
+        Chain::Cardano | Chain::CardanoPreprod => validate_cardano_address(value),
+        // Every EVM network returned above; `a_derived_address_passes_its_own_validator`
+        // catches a new network missing here.
         _ => invalid_result(),
     }
 }
@@ -109,10 +70,6 @@ fn invalid_result() -> AddressValidationResult {
         is_valid: false,
         normalized_value: None,
     }
-}
-
-fn trim_string(value: &str) -> String {
-    value.trim().to_string()
 }
 
 fn make_result(normalized_value: String) -> AddressValidationResult {
@@ -435,7 +392,8 @@ fn validate_cardano_address(value: &str) -> AddressValidationResult {
 ///
 /// Same shape as the Aptos rule beside it: the address component has to be
 /// an address, so a mistyped package address is refused rather than stored.
-fn validate_sui_coin_type(value: &str) -> AddressValidationResult {
+pub fn validate_sui_coin_type(value: &str) -> AddressValidationResult {
+    let value = value.trim();
     let normalized = value.trim().to_lowercase();
     if normalized.is_empty() {
         return invalid_result();
@@ -461,7 +419,8 @@ fn validate_sui_coin_type(value: &str) -> AddressValidationResult {
     }
 }
 
-fn validate_aptos_token_type(value: &str) -> AddressValidationResult {
+pub fn validate_aptos_token_type(value: &str) -> AddressValidationResult {
+    let value = value.trim();
     let normalized = value.trim().to_lowercase();
     if normalized.is_empty() {
         return AddressValidationResult {
@@ -499,11 +458,8 @@ mod tests {
 
     const MNEMONIC: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
-    fn validate(kind: &str, value: String) -> AddressValidationResult {
-        validate_address(AddressValidationRequest {
-            kind: kind.to_string(),
-            value,
-        })
+    fn validate(chain: Chain, value: String) -> AddressValidationResult {
+        validate_address(chain, &value)
     }
 
     fn mutate_last_char(value: &str) -> String {
@@ -552,9 +508,12 @@ mod tests {
             &sapling,
             &p2sh,
         ] {
-            assert!(validate("zcash", address.to_string()).is_valid, "{address}");
             assert!(
-                !validate("zcashTestnet", address.to_string()).is_valid,
+                validate(Chain::Zcash, address.to_string()).is_valid,
+                "{address}"
+            );
+            assert!(
+                !validate(Chain::ZcashTestnet, address.to_string()).is_valid,
                 "{address}"
             );
         }
@@ -564,7 +523,7 @@ mod tests {
             "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa",
         ] {
             assert!(
-                !validate("zcash", address.to_string()).is_valid,
+                !validate(Chain::Zcash, address.to_string()).is_valid,
                 "{address}"
             );
         }
@@ -572,12 +531,12 @@ mod tests {
 
     #[test]
     fn normalizes_evm_addresses() {
-        let result = validate_address(AddressValidationRequest {
-            kind: "evm".to_string(),
-            // All one case: no EIP-55 checksum to verify, so this stays a
-            // test about trimming and lowercasing.
-            value: " 0XABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD ".to_string(),
-        });
+        // All one case: no EIP-55 checksum to verify, so this stays a test
+        // about trimming and lowercasing.
+        let result = validate_address(
+            Chain::Ethereum,
+            " 0XABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD ",
+        );
 
         assert!(result.is_valid);
         assert_eq!(
@@ -588,10 +547,7 @@ mod tests {
 
     #[test]
     fn normalizes_aptos_addresses() {
-        let result = validate_address(AddressValidationRequest {
-            kind: "aptos".to_string(),
-            value: "ABCD".to_string(),
-        });
+        let result = validate_address(crate::registry::Chain::Aptos, "ABCD");
 
         assert!(result.is_valid);
         assert_eq!(result.normalized_value.as_deref(), Some("0xabcd"));
@@ -606,23 +562,13 @@ mod tests {
     #[test]
     fn a_mixed_case_evm_address_must_checksum() {
         let valid = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
-        assert!(
-            validate_address(AddressValidationRequest {
-                kind: "evm".to_string(),
-                value: valid.to_string(),
-            })
-            .is_valid
-        );
+        assert!(validate_address(crate::registry::Chain::Ethereum, valid).is_valid);
 
         // One letter's case flipped: still forty hex digits, no longer a
         // checksum.
         let corrupted = "0x742d35cC6634C0532925a3b844Bc454e4438f44e";
         assert!(
-            !validate_address(AddressValidationRequest {
-                kind: "evm".to_string(),
-                value: corrupted.to_string(),
-            })
-            .is_valid,
+            !validate_address(crate::registry::Chain::Ethereum, corrupted).is_valid,
             "a broken checksum must be refused"
         );
 
@@ -632,11 +578,7 @@ mod tests {
             "0X742D35CC6634C0532925A3B844BC454E4438F44E",
         ] {
             assert!(
-                validate_address(AddressValidationRequest {
-                    kind: "evm".to_string(),
-                    value: unchecked.to_string(),
-                })
-                .is_valid,
+                validate_address(crate::registry::Chain::Ethereum, unchecked).is_valid,
                 "{unchecked}"
             );
         }
@@ -644,10 +586,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_near_addresses() {
-        let result = validate_address(AddressValidationRequest {
-            kind: "near".to_string(),
-            value: "bad..near".to_string(),
-        });
+        let result = validate_address(crate::registry::Chain::Near, "bad..near");
 
         assert!(!result.is_valid);
     }
@@ -669,7 +608,7 @@ mod tests {
             "0x2::sui::SUI",
         ] {
             assert!(
-                validate("suiCoinType", good.to_string()).is_valid,
+                validate_sui_coin_type(good).is_valid,
                 "{good} should be a coin type"
             );
         }
@@ -684,7 +623,7 @@ mod tests {
             "sui::SUI",
         ] {
             assert!(
-                !validate("suiCoinType", bad.to_string()).is_valid,
+                !validate_sui_coin_type(bad).is_valid,
                 "{bad:?} should not be a coin type"
             );
         }
@@ -692,10 +631,7 @@ mod tests {
 
     #[test]
     fn validates_aptos_token_types() {
-        let result = validate_address(AddressValidationRequest {
-            kind: "aptosTokenType".to_string(),
-            value: "0x1::aptos_coin::AptosCoin".to_string(),
-        });
+        let result = validate_aptos_token_type("0x1::aptos_coin::AptosCoin");
 
         assert!(result.is_valid);
         assert_eq!(
@@ -717,8 +653,8 @@ mod tests {
         .unwrap()
         .address
         .unwrap();
-        assert!(validate("xrp", xrp.clone()).is_valid);
-        assert!(!validate("xrp", mutate_last_char(&xrp)).is_valid);
+        assert!(validate(Chain::Xrp, xrp.clone()).is_valid);
+        assert!(!validate(Chain::Xrp, mutate_last_char(&xrp)).is_valid);
 
         let tron = crate::derivation::tron::derive_tron(
             MNEMONIC.to_string(),
@@ -731,8 +667,8 @@ mod tests {
         .unwrap()
         .address
         .unwrap();
-        assert!(validate("tron", tron.clone()).is_valid);
-        assert!(!validate("tron", mutate_last_char(&tron)).is_valid);
+        assert!(validate(Chain::Tron, tron.clone()).is_valid);
+        assert!(!validate(Chain::Tron, mutate_last_char(&tron)).is_valid);
 
         let stellar = crate::derivation::stellar::derive_stellar(
             MNEMONIC.to_string(),
@@ -746,8 +682,8 @@ mod tests {
         .unwrap()
         .address
         .unwrap();
-        assert!(validate("stellar", stellar.clone()).is_valid);
-        assert!(!validate("stellar", mutate_last_char(&stellar)).is_valid);
+        assert!(validate(Chain::Stellar, stellar.clone()).is_valid);
+        assert!(!validate(Chain::Stellar, mutate_last_char(&stellar)).is_valid);
 
         let bittensor = crate::derivation::bittensor::derive_bittensor(
             MNEMONIC.to_string(),
@@ -760,15 +696,15 @@ mod tests {
         .unwrap()
         .address
         .unwrap();
-        assert!(validate("bittensor", bittensor.clone()).is_valid);
-        assert!(!validate("bittensor", mutate_last_char(&bittensor)).is_valid);
+        assert!(validate(Chain::Bittensor, bittensor.clone()).is_valid);
+        assert!(!validate(Chain::Bittensor, mutate_last_char(&bittensor)).is_valid);
     }
 
     #[test]
     fn validates_utxo_family_by_decoded_network() {
         let bch_cashaddr = "bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a".to_string();
-        assert!(validate("bitcoinCash", bch_cashaddr.clone()).is_valid);
-        assert!(!validate("bitcoinCash", mutate_last_char(&bch_cashaddr)).is_valid);
+        assert!(validate(Chain::BitcoinCash, bch_cashaddr.clone()).is_valid);
+        assert!(!validate(Chain::BitcoinCash, mutate_last_char(&bch_cashaddr)).is_valid);
 
         let doge = crate::derivation::dogecoin::derive_dogecoin(
             MNEMONIC.to_string(),
@@ -782,8 +718,8 @@ mod tests {
         .unwrap()
         .address
         .unwrap();
-        assert!(validate("dogecoin", doge.clone()).is_valid);
-        assert!(!validate("dogecoinTestnet", doge).is_valid);
+        assert!(validate(Chain::Dogecoin, doge.clone()).is_valid);
+        assert!(!validate(Chain::DogecoinTestnet, doge).is_valid);
 
         let ltc = crate::derivation::litecoin::derive_litecoin(
             MNEMONIC.to_string(),
@@ -797,8 +733,8 @@ mod tests {
         .unwrap()
         .address
         .unwrap();
-        assert!(validate("litecoin", ltc.clone()).is_valid);
-        assert!(!validate("litecoinTestnet", ltc).is_valid);
+        assert!(validate(Chain::Litecoin, ltc.clone()).is_valid);
+        assert!(!validate(Chain::LitecoinTestnet, ltc).is_valid);
     }
 
     #[test]
@@ -820,23 +756,23 @@ mod tests {
             (Chain::Litecoin, &mainnet, &testnet),
             (Chain::LitecoinTestnet, &testnet, &mainnet),
         ] {
-            let result = validate(chain.address_validation_kind(), own.clone());
+            let result = validate(chain, own.clone());
             assert!(result.is_valid);
             assert_eq!(result.normalized_value.as_ref(), Some(own));
             assert!(crate::send::flow::is_valid_send_address(
                 chain,
                 own.to_ascii_uppercase()
             ));
-            assert!(!validate(chain.address_validation_kind(), other.clone()).is_valid);
+            assert!(!validate(chain, other.clone()).is_valid);
             // Bech32m and a changed character are not MWEB addresses.
             let payload = [key.serialize(), key.serialize()].concat();
             let hrp = bech32::Hrp::parse(&own[..own.find('1').unwrap()]).unwrap();
             let bech32m = bech32::encode::<bech32::Bech32m>(hrp, &payload).unwrap();
-            assert!(!validate(chain.address_validation_kind(), bech32m).is_valid);
+            assert!(!validate(chain, bech32m).is_valid);
             let mut changed = own.clone();
             let last = changed.pop().unwrap();
             changed.push(if last == 'q' { 'p' } else { 'q' });
-            assert!(!validate(chain.address_validation_kind(), changed).is_valid);
+            assert!(!validate(chain, changed).is_valid);
         }
     }
 }
@@ -859,7 +795,7 @@ mod every_chain_accepts_what_it_derives {
     fn a_derived_address_passes_its_own_validator() {
         let mut checked = 0;
         let mut failures: Vec<String> = Vec::new();
-        for chain in Chain::all().filter(|c| !c.is_testnet()) {
+        for chain in Chain::all() {
             let Ok(path) = crate::derivation::path::default_path_from_catalog(chain) else {
                 continue;
             };
@@ -871,19 +807,16 @@ mod every_chain_accepts_what_it_derives {
                 continue;
             };
             checked += 1;
-            let verdict = super::validate_address(super::AddressValidationRequest {
-                kind: chain.address_validation_kind().to_string(),
-                value: address.clone(),
-            });
+            let verdict = super::validate_address(chain, &address);
             if !verdict.is_valid {
                 failures.push(format!(
-                    "{} derived {address} and its own `{}` validator refuses it",
+                    "{} derived {address} and its own validator refuses it",
                     chain.str_id(),
-                    chain.address_validation_kind()
                 ));
             }
         }
-        // Every mainnet that derives at all, which is most of them.
+        // Every network that derives at all, which is most of them: a
+        // network `validate_address` has no arm for fails here.
         assert!(
             checked >= 40,
             "only {checked} chains derived — the probe is broken"
@@ -899,23 +832,17 @@ mod ton_validation_tests {
     fn ton_checks_checksum_flags_network_and_both_base64_alphabets() {
         let main = "EQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPrHF";
         let test = "kQDKbjIcfM6ezt8KjKJJLshZJJSqX7XOA4ff-W72r5gqPgpP";
-        let check = |s: &str, kind: &str| {
-            validate_address(AddressValidationRequest {
-                kind: kind.into(),
-                value: s.into(),
-            })
-            .is_valid
-        };
-        assert!(check(main, "ton"));
-        assert!(check(&main.replace('-', "+"), "ton"));
-        assert!(check(test, "tonTestnet"));
-        assert!(!check(test, "ton"));
-        assert!(!check(&"A".repeat(48), "ton"));
+        let check = |s: &str, chain: Chain| validate_address(chain, s).is_valid;
+        assert!(check(main, Chain::Ton));
+        assert!(check(&main.replace('-', "+"), Chain::Ton));
+        assert!(check(test, Chain::TonTestnet));
+        assert!(!check(test, Chain::Ton));
+        assert!(!check(&"A".repeat(48), Chain::Ton));
         for i in 0..48 {
             let mut typo = main.as_bytes().to_vec();
             typo[i] = if typo[i] == b'A' { b'B' } else { b'A' };
             assert!(
-                !check(std::str::from_utf8(&typo).unwrap(), "ton"),
+                !check(std::str::from_utf8(&typo).unwrap(), Chain::Ton),
                 "character {i}"
             );
         }
@@ -926,8 +853,8 @@ mod ton_validation_tests {
         bytes[34..].copy_from_slice(&crc.to_be_bytes());
         assert!(!check(
             &base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes),
-            "ton"
+            Chain::Ton
         ));
-        assert!(check(&format!("-1:{}", "ab".repeat(32)), "ton"));
+        assert!(check(&format!("-1:{}", "ab".repeat(32)), Chain::Ton));
     }
 }

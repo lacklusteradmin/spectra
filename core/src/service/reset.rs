@@ -14,7 +14,7 @@ impl WalletService {
         scopes: Vec<crate::store::state::ResetScope>,
     ) -> Result<ResetOutcome, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.bound_database().await?;
             let plan = crate::store::reset_dispatch(scopes);

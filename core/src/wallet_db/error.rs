@@ -25,7 +25,7 @@ impl From<serde_json::Error> for DbError {
     }
 }
 
-impl From<DbError> for crate::SpectraBridgeError {
+impl From<DbError> for crate::error::SpectraBridgeError {
     fn from(error: DbError) -> Self {
         let message = error.to_string();
         match error {

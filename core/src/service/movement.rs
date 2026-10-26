@@ -21,9 +21,9 @@ fn observe(state: &ResidentState) -> Option<PortfolioMovementBaseline> {
             if chain.is_testnet() {
                 continue;
             }
-            crate::decimal::canonical(&holding.amount)?;
+            crate::amount::decimal::canonical(&holding.amount)?;
             composition.push(serde_json::to_string(&(&wallet.id, holding.deployment_id())).ok()?);
-            if crate::decimal::is_zero(&holding.amount) {
+            if crate::amount::decimal::is_zero(&holding.amount) {
                 continue;
             }
             total_usd += super::valuation::value(state, holding)?;
@@ -71,7 +71,7 @@ impl WalletService {
         app_is_active: bool,
     ) -> Result<Option<LargeMovementEvaluation>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.write_persisted(move |service| async move {
                 let database = service.bound_database().await?;

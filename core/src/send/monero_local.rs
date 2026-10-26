@@ -521,7 +521,7 @@ pub(crate) async fn prepare(
                     encoded: hex::encode(plan.serialize()),
                 };
                 let json = Zeroizing::new(serde_json::to_vec(&private)?);
-                let encrypted = crate::store::seed_envelope::encrypt(&json, encryption_key)?;
+                let encrypted = crate::secrets::seed_envelope::encrypt(&json, encryption_key)?;
                 return Ok(PreparedMoneroTransaction {
                     sender: wallet.sender.clone(),
                     recipient: recipient.into(),
@@ -551,7 +551,7 @@ impl PreparedMoneroTransaction {
         encryption_key: &[u8],
     ) -> Result<Zeroizing<[u8; 32]>, SendError> {
         use std::io::Read;
-        let json = Zeroizing::new(crate::store::seed_envelope::decrypt(
+        let json = Zeroizing::new(crate::secrets::seed_envelope::decrypt(
             self.encrypted_plan.as_bytes(),
             encryption_key,
         )?);
@@ -587,7 +587,7 @@ impl PreparedMoneroTransaction {
         encryption_key: &[u8],
         wallet: &LocalWallet,
     ) -> Result<(String, String), SendError> {
-        let json = Zeroizing::new(crate::store::seed_envelope::decrypt(
+        let json = Zeroizing::new(crate::secrets::seed_envelope::decrypt(
             self.encrypted_plan.as_bytes(),
             encryption_key,
         )?);

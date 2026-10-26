@@ -1266,7 +1266,7 @@ fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
     let restore_height = args
         .creation
         .restore_height
-        .or_else(|| spectra_core::restore_heights::new_wallet_restore_height(chain));
+        .or_else(|| spectra_core::catalog::restore_heights::new_wallet_restore_height(chain));
     let outcome = seal_and_import(ctx, &args.creation, chain, &seed_phrase, restore_height)?;
 
     let wallet = first_wallet(&outcome)?;

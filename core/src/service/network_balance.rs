@@ -1,5 +1,6 @@
 //! Network balance: service adapters and dispatch.
 use super::*;
+use crate::api::endpoint::EndpointApi;
 
 impl WalletService {
     /// Recovery and receive reservations add addresses to the same wallet.
@@ -32,7 +33,7 @@ impl WalletService {
             .await?;
         Ok(NativeBalanceSummary {
             smallest_unit: total.to_string(),
-            amount_display: crate::decimal::from_units(
+            amount_display: crate::amount::decimal::from_units(
                 u128::from(total),
                 u32::from(chain.native_decimals()),
             ),
@@ -88,7 +89,7 @@ impl WalletService {
         address: String,
     ) -> Result<NativeBalanceSummary, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             fetch_native_balance_summary(&address, chain, this).await
         })
@@ -120,7 +121,10 @@ pub(super) async fn fetch_native_balance_summary(
         }
         return Ok(NativeBalanceSummary {
             smallest_unit: status.unlocked_piconeros.to_string(),
-            amount_display: crate::decimal::from_units(status.unlocked_piconeros as u128, 12),
+            amount_display: crate::amount::decimal::from_units(
+                status.unlocked_piconeros as u128,
+                12,
+            ),
         });
     }
     let units = if chain.uses_utxo_client() {
@@ -138,7 +142,10 @@ pub(super) async fn fetch_native_balance_summary(
         .parse::<u128>()
         .map_err(|_| SpectraBridgeError::failure("native balance exceeds core precision"))?;
     Ok(NativeBalanceSummary {
-        amount_display: crate::decimal::from_units(amount, u32::from(chain.native_decimals())),
+        amount_display: crate::amount::decimal::from_units(
+            amount,
+            u32::from(chain.native_decimals()),
+        ),
         smallest_unit: units,
     })
 }
@@ -151,7 +158,7 @@ async fn single_api_balance(
     let (api, endpoints) = service
         .fetch_endpoints(chain, &[EndpointCapability::Balance])
         .await?;
-    use crate::EndpointApi as Api;
+    use EndpointApi as Api;
     Ok(match api {
         Api::EvmJsonRpc => {
             EvmClient::new(endpoints, chain.evm_chain_id()?)

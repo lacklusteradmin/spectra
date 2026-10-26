@@ -1,10 +1,10 @@
 //! An ICP transfer is built only at the ledger's own fee, to an account
 //! identifier whose checksum holds.
 use super::*;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::store_seed_phrase;
 use crate::send::SendExecutionRequest;
-use crate::store::secret_backends::InMemorySecretStore;
 use crate::store::state::WalletState;
-use crate::store::wallet_secrets::store_seed_phrase;
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -95,7 +95,6 @@ async fn an_icp_transfer_is_built_only_at_the_ledger_fee_to_a_checksummed_accoun
         gas_budget: None,
         fee_amount: None,
         evm_overrides: None,
-        sign_only: false,
         memo: None,
     };
 

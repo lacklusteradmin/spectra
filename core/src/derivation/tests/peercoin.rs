@@ -1,5 +1,5 @@
 use super::*;
-use crate::chains::DerivationProfile;
+use crate::catalog::chains::DerivationProfile;
 use crate::derivation::utxo_address::{ParsedUtxoAddress, parse_utxo_address};
 
 const PHRASE: &str =
@@ -77,10 +77,8 @@ fn catalog_paths_derive_every_supported_script_on_the_selected_network() {
                     );
                     assert!(address.starts_with(if chain.is_testnet() { "tpc1q" } else { "pc1q" }));
                     let upper = crate::validation::address::validate_address(
-                        crate::validation::address::AddressValidationRequest {
-                            kind: chain.address_validation_kind().into(),
-                            value: address.to_ascii_uppercase(),
-                        },
+                        chain,
+                        &address.to_ascii_uppercase(),
                     );
                     assert_eq!(upper.normalized_value.as_deref(), Some(address.as_str()));
                 }

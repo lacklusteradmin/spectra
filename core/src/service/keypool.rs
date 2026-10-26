@@ -15,7 +15,7 @@ impl WalletService {
         chain: crate::registry::Chain,
     ) -> Result<Vec<KeypoolDiagnostic>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let mut wallets: Vec<(String, String)> = {
                 let state = this.wallet_state.read().await;
@@ -68,7 +68,7 @@ impl WalletService {
         minimum_index: i64,
     ) -> Result<i64, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.write_persisted(move |service| async move {
                 let baseline = service.chain_keypool_baseline(&wallet_id, chain_id).await?;
@@ -123,7 +123,7 @@ impl WalletService {
         chain_id: crate::registry::Chain,
     ) -> Result<i64, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.write_persisted(move |service| async move {
                 let baseline = service.chain_keypool_baseline(&wallet_id, chain_id).await?;
@@ -169,7 +169,7 @@ impl WalletService {
         branch_index: Option<i64>,
     ) -> Result<(), SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.write_persisted(move |service| async move {
                 let address = address.trim().to_string();

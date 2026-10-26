@@ -22,9 +22,9 @@ use base64::Engine as _;
 use rand::RngCore as _;
 use zeroize::Zeroizing;
 
-use super::secret_store::{SecretClass, SecretStore, SecretStoreError};
 use super::seed_envelope::{self, MASTER_KEY_LEN};
-use super::wallet_secrets::WalletSecretError;
+use super::store::{SecretClass, SecretStore, SecretStoreError};
+use super::wallet::WalletSecretError;
 
 /// Where the wrapped key is stored, in [`SecretClass::DeviceKey`]'s bucket.
 const ACCOUNT: &str = "signing-material";
@@ -111,7 +111,7 @@ pub(super) fn open(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::secret_backends::InMemorySecretStore;
+    use crate::secrets::backends::InMemorySecretStore;
 
     /// The key is stored only as the backend wrapped it, and reused after.
     #[test]

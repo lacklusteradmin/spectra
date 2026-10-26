@@ -6,6 +6,7 @@ use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::endpoint::EndpointApi;
 use crate::api::http::HttpClient;
 use crate::registry::Chain;
 
@@ -110,7 +111,7 @@ impl SubstrateClient {
 
     pub(crate) async fn rpc_call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
-            crate::EndpointApi::SubstrateJsonRpc,
+            EndpointApi::SubstrateJsonRpc,
             &self.client,
             &self.rpc_endpoints,
             method,

@@ -2,6 +2,7 @@
 //! before anything is built.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::api::horizon::StellarMergeableAccount;
 use crate::api::xrpl_json_rpc::XrpDeletableAccount;
 
@@ -189,7 +190,7 @@ async fn xrp_wallet(
     service
         .use_endpoint(
             Chain::Xrp,
-            crate::EndpointApi::XrplJsonRpc,
+            EndpointApi::XrplJsonRpc,
             &[Balance, Fee, Broadcast, Verification],
             &server.uri(),
         )
@@ -215,13 +216,13 @@ async fn a_blocker_that_appears_after_the_review_is_refused_at_signing() {
         .to_string();
     assert!(refusal.contains("escrows"), "{refusal}");
     let stored = service.inspect_send(built.id.clone()).await.unwrap();
-    assert_eq!(stored.stage, SendStage::Prepared);
+    assert_eq!(stored.stage, crate::send::stages::SendStage::Prepared);
     blockers.lock().unwrap().clear();
     let signed = service
         .sign_send(built.id, built.review_digest, None)
         .await
         .unwrap();
-    assert_eq!(signed.stage, SendStage::Signed);
+    assert_eq!(signed.stage, crate::send::stages::SendStage::Signed);
 }
 
 /// Only XRP and Stellar accounts close, and only from a wallet that signs:

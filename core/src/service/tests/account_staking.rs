@@ -3,6 +3,7 @@
 //! before anything is stored, and what signing reads again.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::derivation::setup::WalletSetupMethod;
 use crate::send::stages::SendStage;
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -347,28 +348,28 @@ impl Staking {
             .mount(&server)
             .await;
         use EndpointCapability::*;
-        let apis: &[(crate::EndpointApi, &[EndpointCapability])] = match chain {
+        let apis: &[(EndpointApi, &[EndpointCapability])] = match chain {
             Chain::Solana => &[(
-                crate::EndpointApi::SolanaJsonRpc,
+                EndpointApi::SolanaJsonRpc,
                 &[Staking, Balance, Fee, Verification, Broadcast],
             )],
             Chain::Sui => &[(
-                crate::EndpointApi::SuiJsonRpc,
+                EndpointApi::SuiJsonRpc,
                 &[Staking, Balance, Fee, Verification, Broadcast],
             )],
             Chain::Aptos => &[
                 (
-                    crate::EndpointApi::AptosRest,
+                    EndpointApi::AptosRest,
                     &[Staking, Balance, Fee, Verification, Broadcast],
                 ),
-                (crate::EndpointApi::AptosIndexer, &[History]),
+                (EndpointApi::AptosIndexer, &[History]),
             ],
             _ => &[
                 (
-                    crate::EndpointApi::NearJsonRpc,
+                    EndpointApi::NearJsonRpc,
                     &[Staking, Balance, Fee, Verification, Broadcast],
                 ),
-                (crate::EndpointApi::Fastnear, &[Staking]),
+                (EndpointApi::Fastnear, &[Staking]),
             ],
         };
         for (api, capabilities) in apis {

@@ -14,10 +14,11 @@
 //! a contract burns a balance instead of refusing.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::api::error::ApiError;
 use crate::send::near::{PreparedNearFunctionCall, STORAGE_UNREGISTER, STORAGE_UNREGISTER_ARGS};
 use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
+    PreparedPayload, SendArtifact, SendArtifactReview, StoredSend, WalletOperation,
 };
 use futures::{StreamExt, TryStreamExt};
 
@@ -113,7 +114,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<NearStorageDeposits, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
             let contracts = this.near_token_contracts(&wallet, chain, &account).await?;
             let endpoints = this.near_nodes(chain).await?;
@@ -149,11 +150,11 @@ impl WalletService {
                     .into_iter()
                     .map(|(contract, deposit)| NearStorageDeposit {
                         symbol: token_symbol(&wallet, chain, &contract),
-                        refund: crate::decimal::from_units(deposit, decimals),
+                        refund: crate::amount::decimal::from_units(deposit, decimals),
                         contract,
                     })
                     .collect(),
-                refundable: crate::decimal::from_units(refundable, decimals),
+                refundable: crate::amount::decimal::from_units(refundable, decimals),
                 account,
             })
         })
@@ -171,7 +172,7 @@ impl WalletService {
         contract: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
             if wallet.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
@@ -179,11 +180,14 @@ impl WalletService {
                 ));
             }
             let signer = super::wallet_near_keys::near_signing_key(&wallet, &account)?;
-            let contract =
-                crate::tokens::validate_protocol_identifier(chain, "NEP-141", contract.trim())
-                    .map_err(|_| {
-                        SpectraBridgeError::refused("%@ is not a NEAR token contract.", [&contract])
-                    })?;
+            let contract = crate::catalog::tokens::validate_protocol_identifier(
+                chain,
+                "NEP-141",
+                contract.trim(),
+            )
+            .map_err(|_| {
+                SpectraBridgeError::refused("%@ is not a NEAR token contract.", [&contract])
+            })?;
             let gas = chain
                 .near_token_gas_limit()
                 .ok_or_else(|| SpectraBridgeError::failure("Missing NEAR gas limit"))?;
@@ -237,8 +241,8 @@ impl WalletService {
                 reads.fee,
             );
             let decimals = u32::from(chain.native_decimals());
-            let network_fee = crate::decimal::from_units(reads.fee, decimals);
-            let refund = crate::decimal::from_units(reads.deposit, decimals);
+            let network_fee = crate::amount::decimal::from_units(reads.fee, decimals);
+            let refund = crate::amount::decimal::from_units(reads.deposit, decimals);
             let request = crate::send::SendExecutionRequest {
                 chain_id: chain,
                 wallet_id: wallet_id.clone(),
@@ -253,50 +257,26 @@ impl WalletService {
                 gas_budget: None,
                 fee_amount: Some(network_fee.clone()),
                 evm_overrides: None,
-                sign_only: false,
                 memo: None,
             };
             let signing_payload_hex = hex::encode(&prepared.message);
             let prepared = PreparedPayload::NearFunctionCall(prepared);
-            let mut stored = StoredSend {
-                view: SendArtifact {
-                    id: crate::store::new_transaction_id(),
-                    revision: 0,
-                    stage: SendStage::Prepared,
-                    wallet_id,
-                    chain_id: chain,
-                    sender: account.clone(),
-                    recipient: account,
-                    amount: refund.clone(),
-                    asset: chain.coin_symbol().into(),
-                    symbol: chain.coin_symbol().into(),
-                    staking: None,
-                    operation: Some(WalletOperation::RefundTokenStorage {
-                        contract,
-                        refund,
-                        network_fee,
-                    }),
-                    created_at: crate::store::now_unix().floor(),
-                    review_digest: String::new(),
-                    review: SendArtifactReview::default(),
-                    prepared_details: serde_json::to_string_pretty(&prepared)?,
-                    signing_payload_hex,
-                    signed_payload: None,
-                    transaction_hash: None,
-                    attempts: Vec::new(),
-                    selected_endpoints: Vec::new(),
-                    memo: None,
-                },
+            this.save_prepared_send(crate::send::stages::NewArtifact {
+                sender: account.clone(),
+                asset: chain.coin_symbol().into(),
+                symbol: chain.coin_symbol().into(),
+                staking: None,
+                operation: Some(WalletOperation::RefundTokenStorage {
+                    contract,
+                    refund,
+                    network_fee,
+                }),
+                review: SendArtifactReview::default(),
+                signing_payload_hex,
                 request,
                 prepared,
-                submission: None,
-                signed_digest: None,
-                substrate_verified_through: None,
-                icp_staking_receipts: vec![],
-            };
-            stored.view.review_digest = stored.digest()?;
-            this.save_send_artifact(&stored, &[]).await?;
-            Ok(stored.view)
+            })
+            .await
         })
         .await
     }
@@ -307,7 +287,7 @@ impl WalletService {
     async fn near_nodes(&self, chain: Chain) -> Result<Vec<String>, SpectraBridgeError> {
         self.api_endpoints(
             chain,
-            crate::EndpointApi::NearJsonRpc,
+            EndpointApi::NearJsonRpc,
             &[EndpointCapability::Verification],
         )
         .await
@@ -342,7 +322,7 @@ impl WalletService {
                 .filter_map(|record| record.deployment_id?.strip_prefix(&prefix).map(Into::into)),
         );
         let indexer = self
-            .listing_endpoints(chain, crate::EndpointApi::Nearblocks)
+            .listing_endpoints(chain, EndpointApi::Nearblocks)
             .await?;
         if !indexer.is_empty() {
             contracts.extend(
@@ -381,7 +361,9 @@ impl WalletService {
             let node = NearClient::new(Arc::new(vec![endpoint]));
             node.verify_network(chain).await?;
             let deposit = refund_preconditions(&node, contract, account).await?;
-            if crate::decimal::from_units(deposit, u32::from(chain.native_decimals())) != *refund {
+            if crate::amount::decimal::from_units(deposit, u32::from(chain.native_decimals()))
+                != *refund
+            {
                 return Err(SpectraBridgeError::invalid(
                     "The contract's storage deposit changed; build and review again",
                 ));
@@ -432,7 +414,7 @@ fn token_symbol(wallet: &crate::store::state::WalletState, chain: Chain, contrac
         .iter()
         .find(|holding| holding.chain_id == chain && holding.deployment_id() == id)
         .map(|holding| holding.symbol.clone())
-        .or_else(|| crate::tokens::deployment(&id).map(|token| token.symbol.clone()))
+        .or_else(|| crate::catalog::tokens::deployment(&id).map(|token| token.symbol.clone()))
         .unwrap_or_else(|| contract.to_string())
 }
 

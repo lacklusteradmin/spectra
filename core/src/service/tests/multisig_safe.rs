@@ -5,7 +5,7 @@
 
 use super::*;
 use crate::derivation::import::{WalletImportCommit, WalletImportKind, WalletImportRequest};
-use crate::store::secret_backends::InMemorySecretStore;
+use crate::secrets::backends::InMemorySecretStore;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
 const CHAIN: Chain = Chain::EthereumSepolia;

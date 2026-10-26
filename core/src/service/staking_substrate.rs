@@ -12,7 +12,7 @@ fn refusal(message: &str) -> SpectraBridgeError {
     SpectraBridgeError::invalid(message)
 }
 fn action_amount(request: &StakingRequest) -> Result<u128, SpectraBridgeError> {
-    let value = crate::send::amount_input::parse_raw_amount(
+    let value = crate::amount::input::parse_raw_amount(
         request
             .amount
             .as_deref()
@@ -351,7 +351,6 @@ mod tests {
                 gas_budget: None,
                 fee_amount: None,
                 evm_overrides: None,
-                sign_only: false,
                 memo: None,
             },
             prepared: PreparedPayload::Substrate(prepared),

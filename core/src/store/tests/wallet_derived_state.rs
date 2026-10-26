@@ -19,7 +19,7 @@ fn coin(symbol: &str, chain: crate::registry::Chain, amount: f64) -> AssetHoldin
         } else {
             None
         },
-        amount: crate::decimal::from_f64(amount).unwrap(),
+        amount: crate::amount::decimal::from_f64(amount).unwrap(),
     }
 }
 

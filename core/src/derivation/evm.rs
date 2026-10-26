@@ -99,9 +99,9 @@ pub(crate) fn derive_from_private_key_bytes(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::SpectraBridgeError;
 use crate::derivation::primitives::ExtendedPrivateKey;
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::error::SpectraBridgeError;
 
 // Shared derivation logic for all EVM-compatible chains (same address for all since there's no chain-specific encoding).
 fn evm_internal(

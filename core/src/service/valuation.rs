@@ -48,8 +48,8 @@ pub(super) fn value(state: &ResidentState, holding: &AssetHolding) -> Option<f64
 
 /// USD value of `amount` of the holding's asset.
 fn value_of(state: &ResidentState, holding: &AssetHolding, amount: &str) -> Option<f64> {
-    let amount = crate::decimal::canonical(amount)?;
-    let value = crate::decimal::to_f64(&amount) * price(state, holding)?;
+    let amount = crate::amount::decimal::canonical(amount)?;
+    let value = crate::amount::decimal::to_f64(&amount) * price(state, holding)?;
     value.is_finite().then_some(value)
 }
 
@@ -109,7 +109,7 @@ pub(super) fn total<'a>(
     let mut unpriced_count = 0;
     let mut test_network_count = 0;
     for holding in holdings {
-        if crate::decimal::is_zero(&holding.amount) {
+        if crate::amount::decimal::is_zero(&holding.amount) {
             continue;
         }
         if holding.chain_id.is_testnet() {
@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn missing_invalid_and_overflowed_quotes_are_not_zero_or_stored_prices() {
         let mut state = ResidentState::default();
-        let mut coin = crate::tokens::deployment("ethereum:native")
+        let mut coin = crate::catalog::tokens::deployment("ethereum:native")
             .unwrap()
             .holding_template();
         coin.amount = "2".into();
@@ -249,7 +249,7 @@ mod tests {
             .take(2)
             .collect();
         let holding = |deployment_id: &str, amount: &str| {
-            let mut coin = crate::tokens::deployment(deployment_id)
+            let mut coin = crate::catalog::tokens::deployment(deployment_id)
                 .unwrap()
                 .holding_template();
             coin.amount = amount.into();

@@ -80,7 +80,7 @@ pub enum TransactionDirection {
 /// kind, and reads neither as money out nor in.
 #[uniffi::export]
 pub fn transaction_amount_direction(kind: TransactionKind, amount: String) -> TransactionDirection {
-    if crate::decimal::is_zero(&amount) {
+    if crate::amount::decimal::is_zero(&amount) {
         return TransactionDirection::Neutral;
     }
     match kind {
@@ -187,18 +187,20 @@ impl AssetHolding {
         if self.is_native() {
             return format!("{network}:native");
         }
-        let contract =
-            crate::tokens::normalize_token_identifier(self.contract_address.clone(), self.chain_id)
-                .unwrap_or_default();
+        let contract = crate::catalog::tokens::normalize_token_identifier(
+            self.contract_address.clone(),
+            self.chain_id,
+        )
+        .unwrap_or_default();
         format!(
             "{network}:{}:{contract}",
             self.token_standard.to_lowercase()
         )
     }
 
-    pub fn catalog_token(&self) -> Option<&'static crate::tokens::TokenDeploymentEntry> {
+    pub fn catalog_token(&self) -> Option<&'static crate::catalog::tokens::TokenDeploymentEntry> {
         let key = self.deployment_id();
-        crate::tokens::catalog()
+        crate::catalog::tokens::catalog()
             .iter()
             .find(|t| t.deployment_id == key)
     }
@@ -210,13 +212,15 @@ impl AssetHolding {
     }
 
     /// Validate identity before persistence and derive catalog-owned display facts.
-    pub fn canonicalize(&mut self) -> Result<(), crate::SpectraBridgeError> {
-        use crate::SpectraBridgeError as E;
+    pub fn canonicalize(&mut self) -> Result<(), crate::error::SpectraBridgeError> {
+        use crate::error::SpectraBridgeError as E;
         let network = self.chain_id;
-        self.amount = crate::decimal::canonical(&self.amount)
+        self.amount = crate::amount::decimal::canonical(&self.amount)
             .ok_or_else(|| E::invalid("invalid holding amount"))?;
-        self.contract_address =
-            crate::tokens::normalize_token_identifier(self.contract_address.clone(), self.chain_id);
+        self.contract_address = crate::catalog::tokens::normalize_token_identifier(
+            self.contract_address.clone(),
+            self.chain_id,
+        );
         if self.token_standard == "Native" {
             if self.contract_address.is_some() {
                 return Err(E::invalid("native token cannot carry a contract"));
@@ -226,7 +230,7 @@ impl AssetHolding {
                 .contract_address
                 .as_ref()
                 .ok_or_else(|| E::invalid("protocol token requires an identifier"))?;
-            self.contract_address = Some(crate::tokens::validate_protocol_identifier(
+            self.contract_address = Some(crate::catalog::tokens::validate_protocol_identifier(
                 network,
                 &self.token_standard,
                 contract,
@@ -267,11 +271,11 @@ impl WalletDerivationOverrides {
     pub fn validate_for_chain(
         &self,
         chain: crate::registry::Chain,
-    ) -> Result<(), crate::SpectraBridgeError> {
+    ) -> Result<(), crate::error::SpectraBridgeError> {
         if self.passphrase.as_ref().is_some_and(|s| !s.is_empty())
             && !chain.supports_derivation_passphrase()
         {
-            return Err(crate::SpectraBridgeError::invalid(format!(
+            return Err(crate::error::SpectraBridgeError::invalid(format!(
                 "{} does not support a derivation passphrase",
                 chain.chain_display_name()
             )));
@@ -279,7 +283,7 @@ impl WalletDerivationOverrides {
         if self.hmac_key.as_ref().is_some_and(|s| !s.is_empty())
             && !chain.supports_derivation_hmac_override()
         {
-            return Err(crate::SpectraBridgeError::invalid(format!(
+            return Err(crate::error::SpectraBridgeError::invalid(format!(
                 "{} does not support a custom HMAC key",
                 chain.chain_display_name()
             )));
@@ -404,7 +408,7 @@ impl WalletView {
     /// be valid before a state can be stored.
     pub fn to_wallet_state(
         &self,
-    ) -> Result<crate::store::state::WalletState, crate::SpectraBridgeError> {
+    ) -> Result<crate::store::state::WalletState, crate::error::SpectraBridgeError> {
         use crate::registry::Chain;
         use crate::store::state::{WalletAddress, WalletState};
 
@@ -512,7 +516,7 @@ impl crate::store::state::WalletState {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenPreferenceEntry {
-    pub token: crate::tokens::TokenDeploymentEntry,
+    pub token: crate::catalog::tokens::TokenDeploymentEntry,
     /// The catalog ships it; the user cannot edit or delete it.
     pub is_built_in: bool,
 }

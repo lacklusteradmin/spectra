@@ -1,4 +1,4 @@
-use crate::SpectraBridgeError;
+use crate::error::SpectraBridgeError;
 
 /// Parse decimal input exactly. Never round, truncate, saturate, or allocate
 /// according to untrusted decimal counts. Zero is allowed here; each send
@@ -137,7 +137,7 @@ mod exact_tests {
 /// past what it was taken from.
 #[uniffi::export]
 pub fn send_amount_shortcut(maximum: String, decimals: u32, percentage: u32) -> Option<String> {
-    let truncated = crate::decimal::truncate(&maximum, decimals)?;
+    let truncated = crate::amount::decimal::truncate(&maximum, decimals)?;
     shortcut_of_units(
         parse_raw_amount(&truncated, decimals).ok()?,
         decimals,
@@ -151,7 +151,7 @@ fn shortcut_of_units(units: u128, decimals: u32, percentage: u32) -> Option<Stri
     }
     let percent = u128::from(percentage);
     let units = (units / 100).checked_mul(percent)? + (units % 100) * percent / 100;
-    (units > 0).then(|| crate::decimal::from_units(units, decimals))
+    (units > 0).then(|| crate::amount::decimal::from_units(units, decimals))
 }
 
 #[cfg(test)]

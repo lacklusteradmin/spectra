@@ -6,7 +6,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use rand::RngCore;
 use zeroize::Zeroizing;
 
-use super::secret_store::{SecretClass, SecretStore, SecretStoreError};
+use super::store::{SecretClass, SecretStore, SecretStoreError};
 
 /// PBKDF2-HMAC-SHA256 iteration count for the password → master-key step.
 ///
@@ -46,7 +46,7 @@ pub enum WalletSecretError {
     Backend { message: String },
 }
 
-impl From<WalletSecretError> for crate::SpectraBridgeError {
+impl From<WalletSecretError> for crate::error::SpectraBridgeError {
     fn from(error: WalletSecretError) -> Self {
         let message = error.to_string();
         match error {
@@ -172,7 +172,7 @@ fn read_blob(
 /// `Zeroizing` so the key is wiped rather than left in the caller's frame.
 fn derive_master_key(password: &str, salt: &[u8]) -> Zeroizing<[u8; 32]> {
     let mut key = Zeroizing::new([0u8; 32]);
-    crate::kdf::pbkdf2_sha256(
+    crate::secrets::kdf::pbkdf2_sha256(
         password.trim().as_bytes(),
         salt,
         PBKDF2_ITERATIONS,
@@ -451,7 +451,7 @@ fn load_material(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::secret_backends::InMemorySecretStore;
+    use crate::secrets::backends::InMemorySecretStore;
 
     fn is_private_key_backed(
         store: &dyn SecretStore,

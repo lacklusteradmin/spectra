@@ -161,7 +161,7 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
 
 fn catalog(out: Out, args: CatalogArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let tokens = spectra_core::tokens::list_token_deployments(Some(chain));
+    let tokens = spectra_core::catalog::tokens::list_token_deployments(Some(chain));
 
     out.text(|| {
         println!();
@@ -263,7 +263,7 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         .into_iter()
         .find_map(|entry| {
             (entry.token.chain_id == chain_id
-                && spectra_core::tokens::validate_protocol_identifier(
+                && spectra_core::catalog::tokens::validate_protocol_identifier(
                     chain_id,
                     &entry.token.token_standard,
                     &args.contract,
@@ -278,7 +278,7 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         .or_else(|| {
             stored_standard
                 .as_deref()
-                .and_then(spectra_core::tokens::fixed_token_decimals)
+                .and_then(spectra_core::catalog::tokens::fixed_token_decimals)
         })
         .ok_or_else(|| CliError::usage("--decimals is required for this token's standard"))?;
     let transition = ctx.apply(StateCommand::UpdateCustomToken {
@@ -301,7 +301,7 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     // otherwise the ones given. Which protocol is core's to settle: with
     // several and none named it refuses before storing anything, so the
     // places sent then are never read.
-    let standards = spectra_core::chains::list_all_chains()
+    let standards = spectra_core::catalog::chains::list_all_chains()
         .into_iter()
         .find(|entry| entry.id == chain_id.str_id())
         .map(|entry| entry.token_standards)
@@ -340,7 +340,7 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         .iter()
         .find(|entry| {
             entry.token.chain_id == chain_id
-                && spectra_core::tokens::validate_protocol_identifier(
+                && spectra_core::catalog::tokens::validate_protocol_identifier(
                     chain_id,
                     &entry.token.token_standard,
                     &args.contract,
@@ -506,7 +506,7 @@ fn format_amount(out: Out, args: FormatArgs) -> CliResult<()> {
     let asset_decimals = match &args.symbol {
         Some(symbol) => {
             let symbol_upper = symbol.to_uppercase();
-            let entry = spectra_core::tokens::list_token_deployments(Some(chain))
+            let entry = spectra_core::catalog::tokens::list_token_deployments(Some(chain))
                 .into_iter()
                 .find(|t| t.symbol.eq_ignore_ascii_case(&symbol_upper))
                 .ok_or_else(|| {
@@ -519,8 +519,11 @@ fn format_amount(out: Out, args: FormatArgs) -> CliResult<()> {
         }
         None => u32::from(chain.native_decimals()),
     };
-    let text = spectra_core::formatting::format_asset_amount(args.amount.clone(), asset_decimals)
-        .ok_or_else(|| CliError::usage("amount must be an unsigned decimal"))?;
+    let text = spectra_core::amount::presentation::format_asset_amount(
+        args.amount.clone(),
+        asset_decimals,
+    )
+    .ok_or_else(|| CliError::usage("amount must be an unsigned decimal"))?;
     let rendered = if text.below_threshold {
         format!("<{}", text.value)
     } else {

@@ -4,6 +4,7 @@
 //! typed protocol content live in [`crate::send::stages`].
 
 use super::*;
+use crate::api::endpoint::{EndpointApi, EndpointCapability};
 
 /// A holding the portfolio counts, and the wallet that holds it.
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
@@ -144,11 +145,11 @@ pub enum SeedPhraseReveal {
 /// One endpoint and whether it answered.
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct EndpointProbe {
-    pub api: crate::EndpointApi,
+    pub api: EndpointApi,
     pub chain_id: crate::registry::Chain,
     pub endpoint: String,
     /// Operations the endpoint declares.
-    pub capabilities: Vec<crate::EndpointCapability>,
+    pub capabilities: Vec<EndpointCapability>,
     /// False when nothing knows how to probe this endpoint. Not a pass.
     pub checked: bool,
     pub reachable: bool,
@@ -208,7 +209,7 @@ pub enum TransactionCommand {
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct ChainEndpoints {
     /// Declared operations for explicit URLs absent from the directory.
-    pub capabilities: Vec<crate::EndpointCapability>,
+    pub capabilities: Vec<EndpointCapability>,
     pub chain_id: crate::registry::Chain,
     pub endpoints: Vec<String>,
 }

@@ -311,8 +311,8 @@ fn bsv_history_from_details(
     // WoC answers in floating-point BTC. Its shortest spelling is what it
     // said; more than eight places is not a satoshi amount and reads as 0.
     let sats = |value: f64| {
-        crate::decimal::from_f64(value)
-            .and_then(|btc| crate::decimal::to_units(&btc, 8))
+        crate::amount::decimal::from_f64(value)
+            .and_then(|btc| crate::amount::decimal::to_units(&btc, 8))
             .and_then(|sats| i64::try_from(sats).ok())
             .unwrap_or(0)
     };

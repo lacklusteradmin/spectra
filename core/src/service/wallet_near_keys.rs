@@ -10,9 +10,7 @@
 //! action.
 
 use super::*;
-use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
-};
+use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, WalletOperation};
 
 /// One key on the account.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
@@ -77,7 +75,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<NearAccessKeys, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
             let signing = near_signing_key(&wallet, &account)
                 .ok()
@@ -106,9 +104,9 @@ impl WalletService {
                         full_access: false,
                         receiver: Some(call.receiver_id),
                         method_names: call.method_names,
-                        allowance: call
-                            .allowance
-                            .map(|allowance| crate::decimal::from_units(allowance, decimals)),
+                        allowance: call.allowance.map(|allowance| {
+                            crate::amount::decimal::from_units(allowance, decimals)
+                        }),
                         signs,
                     },
                 }
@@ -137,7 +135,7 @@ impl WalletService {
         public_key: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (wallet, chain, account) = this.near_account(&wallet_id, NOT_NEAR).await?;
             if wallet.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
@@ -190,7 +188,8 @@ impl WalletService {
                 PreparedPayload::NearDeleteKey(crate::send::near::PreparedNearDeleteKey::prepare(
                     &account, signer, nonce, deleted, block_hash, fee,
                 )?);
-            let network_fee = crate::decimal::from_units(fee, u32::from(chain.native_decimals()));
+            let network_fee =
+                crate::amount::decimal::from_units(fee, u32::from(chain.native_decimals()));
             let request = crate::send::SendExecutionRequest {
                 chain_id: chain,
                 wallet_id: wallet_id.clone(),
@@ -205,52 +204,28 @@ impl WalletService {
                 gas_budget: None,
                 fee_amount: Some(network_fee.clone()),
                 evm_overrides: None,
-                sign_only: false,
                 memo: None,
             };
             let signing_payload_hex = match &prepared {
                 PreparedPayload::NearDeleteKey(p) => hex::encode(&p.message),
                 _ => unreachable!("the deletion was prepared as a NEAR transaction"),
             };
-            let mut stored = StoredSend {
-                view: SendArtifact {
-                    id: crate::store::new_transaction_id(),
-                    revision: 0,
-                    stage: SendStage::Prepared,
-                    wallet_id,
-                    chain_id: chain,
-                    sender: account.clone(),
-                    recipient: account,
-                    amount: "0".into(),
-                    asset: chain.coin_symbol().into(),
-                    symbol: chain.coin_symbol().into(),
-                    staking: None,
-                    operation: Some(WalletOperation::DeleteAccessKey {
-                        public_key,
-                        receiver: call.receiver_id,
-                        network_fee,
-                    }),
-                    created_at: crate::store::now_unix().floor(),
-                    review_digest: String::new(),
-                    review: SendArtifactReview::default(),
-                    prepared_details: serde_json::to_string_pretty(&prepared)?,
-                    signing_payload_hex,
-                    signed_payload: None,
-                    transaction_hash: None,
-                    attempts: Vec::new(),
-                    selected_endpoints: Vec::new(),
-                    memo: None,
-                },
+            this.save_prepared_send(crate::send::stages::NewArtifact {
+                sender: account.clone(),
+                asset: chain.coin_symbol().into(),
+                symbol: chain.coin_symbol().into(),
+                staking: None,
+                operation: Some(WalletOperation::DeleteAccessKey {
+                    public_key,
+                    receiver: call.receiver_id,
+                    network_fee,
+                }),
+                review: SendArtifactReview::default(),
+                signing_payload_hex,
                 request,
                 prepared,
-                submission: None,
-                signed_digest: None,
-                substrate_verified_through: None,
-                icp_staking_receipts: vec![],
-            };
-            stored.view.review_digest = stored.digest()?;
-            this.save_send_artifact(&stored, &[]).await?;
-            Ok(stored.view)
+            })
+            .await
         })
         .await
     }

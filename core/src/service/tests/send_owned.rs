@@ -168,7 +168,7 @@ async fn an_owned_build_keeps_its_reviews_advisories_and_fee() {
     };
     assert_eq!(prepared.nonce, 7);
     assert_eq!(
-        crate::decimal::from_units(prepared.maximum_fee_wei().unwrap(), 18),
+        crate::amount::decimal::from_units(prepared.maximum_fee_wei().unwrap(), 18),
         quoted_fee
     );
 }

@@ -11,11 +11,11 @@
 //! for something else: a token's code is not a payment in the network's
 //! coin, and a code pinned to another EVM chain is not a payment on this one.
 
-use crate::SpectraBridgeError;
+use crate::error::SpectraBridgeError;
 use crate::registry::{Chain, PaymentMemoKind, PaymentUriFormat};
 use crate::send::flow::normalize_address;
 use crate::send::payment_memo::PaymentMemo;
-use crate::validation::address::{AddressValidationRequest, validate_address};
+use crate::validation::address::validate_address;
 
 /// A scanned code read for the composer.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -46,10 +46,11 @@ pub fn read_scanned_payment(
     let code = PaymentCode::parse(&payload);
     let request = code.request(chain)?;
     let address = recipient(chain, &request)?;
-    let selected = crate::tokens::normalize_token_identifier(token_contract, chain);
+    let selected = crate::catalog::tokens::normalize_token_identifier(token_contract, chain);
     let amount = match (&request.token, &selected) {
         (Some(asked), Some(selected))
-            if crate::tokens::normalize_token_identifier(Some(asked.clone()), chain).as_ref()
+            if crate::catalog::tokens::normalize_token_identifier(Some(asked.clone()), chain)
+                .as_ref()
                 == Some(selected) =>
         {
             request.amount
@@ -146,7 +147,7 @@ pub fn payment_request_uri(
     {
         None => None,
         Some(text) => Some(
-            crate::send::amount_input::parse_raw_amount(text, decimals)
+            crate::amount::input::parse_raw_amount(text, decimals)
                 .ok()
                 .filter(|units| *units > 0)
                 .ok_or_else(|| {
@@ -157,7 +158,7 @@ pub fn payment_request_uri(
                 })?,
         ),
     };
-    let whole = units.map(|units| crate::decimal::from_units(units, decimals));
+    let whole = units.map(|units| crate::amount::decimal::from_units(units, decimals));
     let memo = memo.map(|memo| memo.validated(chain)).transpose()?;
     let mut params: Vec<(&str, String)> = Vec::new();
     let head = match format {
@@ -242,11 +243,7 @@ fn percent_encoded(text: &str) -> String {
 }
 
 fn is_valid(chain: Chain, address: &str) -> bool {
-    validate_address(AddressValidationRequest {
-        kind: chain.address_validation_kind().to_string(),
-        value: address.to_string(),
-    })
-    .is_valid
+    validate_address(chain, address).is_valid
 }
 
 /// A payload split into its parts, without yet judging any of them.
@@ -439,7 +436,7 @@ impl PaymentCode {
             .map_or(0, |(_, fraction)| fraction.len());
         let units = u32::try_from(places)
             .ok()
-            .and_then(|places| crate::send::amount_input::parse_raw_amount(text, places).ok())
+            .and_then(|places| crate::amount::input::parse_raw_amount(text, places).ok())
             .ok_or_else(unreadable_amount)?;
         Ok((units > 0).then(|| text.to_string()))
     }
@@ -455,7 +452,8 @@ impl PaymentCode {
             return Ok(None);
         };
         let units = integer_with_exponent(text).ok_or_else(unreadable_amount)?;
-        Ok((units > 0).then(|| crate::decimal::from_units(units, chain.native_decimals().into())))
+        Ok((units > 0)
+            .then(|| crate::amount::decimal::from_units(units, chain.native_decimals().into())))
     }
 }
 
@@ -473,8 +471,7 @@ fn integer_with_exponent(text: &str) -> Option<u128> {
     let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
     let fraction = fraction.trim_end_matches('0');
     let shift = exponent.checked_sub(u32::try_from(fraction.len()).ok()?)?;
-    let digits =
-        crate::send::amount_input::parse_raw_amount(&format!("{whole}{fraction}"), 0).ok()?;
+    let digits = crate::amount::input::parse_raw_amount(&format!("{whole}{fraction}"), 0).ok()?;
     digits.checked_mul(10u128.checked_pow(shift)?)
 }
 

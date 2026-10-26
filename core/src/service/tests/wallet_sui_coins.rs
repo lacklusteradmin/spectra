@@ -3,6 +3,7 @@
 //! another.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::derivation::setup::WalletSetupMethod;
 use serde_json::{Value, json};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -93,7 +94,7 @@ async fn wallet() -> (
     service
         .use_endpoint(
             Chain::Sui,
-            crate::EndpointApi::SuiJsonRpc,
+            EndpointApi::SuiJsonRpc,
             &[Balance, Fee, Broadcast, Verification],
             &server.uri(),
         )

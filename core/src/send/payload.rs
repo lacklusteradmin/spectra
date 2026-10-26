@@ -2,11 +2,11 @@
 
 /// Interpret the shortest decimal representation of a UI fee exactly. Floats
 /// remain at the existing boundary; no rounding or saturating cast crosses it.
-pub fn fee_units(amount: &str, decimals: u32) -> Result<u64, crate::SpectraBridgeError> {
-    let invalid = || crate::SpectraBridgeError::InvalidInput {
+pub fn fee_units(amount: &str, decimals: u32) -> Result<u64, crate::error::SpectraBridgeError> {
+    let invalid = || crate::error::SpectraBridgeError::InvalidInput {
         message: "fee must be a positive decimal that fits its precision and integer range".into(),
     };
-    crate::decimal::to_units(amount, decimals)
+    crate::amount::decimal::to_units(amount, decimals)
         .filter(|&units| units > 0)
         .and_then(|units| u64::try_from(units).ok())
         .ok_or_else(invalid)

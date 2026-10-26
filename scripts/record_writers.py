@@ -20,7 +20,7 @@ written when production code
   * borrows the field, or anything inside it, mutably, since whatever takes
     the borrow may write through it,
   * copies it from another record's field that is itself written, or
-  * is hand-written Swift or Kotlin outside the tests that constructs the
+  * is hand-written Swift outside the tests that constructs the
     record, which has to supply every field.
 
 Not writes: a record's derived impls (`Clone`, `Default`, `Deserialize`,
@@ -495,9 +495,7 @@ def main(mir_files):
     from source_scan import frontend_test, hand_written
 
     records = records_in(sorted(pathlib.Path('core/src').rglob('*.rs')))
-    front_ends = '\n'.join(path.read_text()
-                           for root, suffix in (('swift', '.swift'), ('kotlin', '.kt'))
-                           for path in hand_written(root, suffix)
+    front_ends = '\n'.join(path.read_text() for path in hand_written('swift', '.swift')
                            if not frontend_test(path) and 'generated' not in path.parts)
     fields, unbuilt = analyse(mir_files, records, '.', front_ends)
     for record, field in fields:

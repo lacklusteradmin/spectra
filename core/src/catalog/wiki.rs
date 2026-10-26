@@ -1,11 +1,11 @@
 //! One asset page per registered token ID. Symbols are display text.
 
-use crate::chains::{self, ChainEntry};
-use crate::tokens;
+use crate::catalog::chains::{self, ChainEntry};
+use crate::catalog::tokens;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
-static CRYPTO_WIKI_TOML: &str = include_str!("../data/crypto-wiki.toml");
+static CRYPTO_WIKI_TOML: &str = include_str!("../../data/crypto-wiki.toml");
 
 /// The wiki file: one row per coin, keyed by the catalog's token id.
 #[derive(Debug, Deserialize)]
@@ -46,13 +46,13 @@ pub struct AssetWikiEntry {
     pub symbol: String,
     pub name: String,
     pub coingecko_id: String,
-    pub color: Option<crate::chains::CatalogColor>,
+    pub color: Option<crate::catalog::chains::CatalogColor>,
     pub artwork_name: String,
     pub comment: String,
     /// Empty for a token: a supply model is written for the coins that have
     /// one, and nobody has written one for an ERC-20.
     pub total_circulation_model: String,
-    pub tags: Vec<crate::tokens::TokenTag>,
+    pub tags: Vec<crate::catalog::tokens::TokenTag>,
 }
 
 static ASSETS: LazyLock<Vec<AssetWikiEntry>> = LazyLock::new(build);
@@ -211,7 +211,7 @@ mod the_wiki_is_one_asset_table {
     /// The table covers both catalogs and invents nothing.
     #[test]
     fn the_table_is_exactly_the_two_catalogs() {
-        let expected: std::collections::BTreeSet<&str> = crate::tokens::catalog()
+        let expected: std::collections::BTreeSet<&str> = crate::catalog::tokens::catalog()
             .iter()
             .filter(|t| !t.chain_id.is_testnet())
             .map(|t| t.token_id.as_str())

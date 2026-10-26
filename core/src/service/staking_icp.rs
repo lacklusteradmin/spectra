@@ -2,6 +2,7 @@
 //! journals locally signed funding/management ingress IDs through send stages.
 use super::send_identity::ResolvedSendIdentity;
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::api::icp_replica::*;
 use crate::send::icp_staking::{
     self, IcpStakingCall, IcpStakingCallKind, PreparedIcpStaking, SignedIcpStakingCall,
@@ -26,7 +27,7 @@ fn amount(request: &StakingRequest) -> Result<u64, SpectraBridgeError> {
         .amount
         .as_deref()
         .ok_or_else(|| fail("ICP staking amount is required"))?;
-    let value = crate::send::amount_input::parse_raw_amount(value, 8)?;
+    let value = crate::amount::input::parse_raw_amount(value, 8)?;
     u64::try_from(value)
         .ok()
         .filter(|v| *v > 0)
@@ -400,7 +401,7 @@ impl WalletService {
         let endpoints = self
             .api_endpoints(
                 Chain::Icp,
-                crate::EndpointApi::IcpReplica,
+                EndpointApi::IcpReplica,
                 &[EndpointCapability::Staking],
             )
             .await?;
@@ -496,7 +497,7 @@ impl WalletService {
         crate::staking::icp::IcpStakingClient::new(
             self.api_endpoints(
                 Chain::Icp,
-                crate::EndpointApi::IcpReplica,
+                EndpointApi::IcpReplica,
                 &[EndpointCapability::Staking],
             )
             .await?,

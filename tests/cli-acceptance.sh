@@ -145,7 +145,8 @@ check "imports a key from a file"           $OK \
 section "confirmation gates"
 check "export will not print a seed without --yes" $USAGE spectra wallet export "Acceptance BTC"
 check "a broadcast without --yes is refused" $USAGE \
-    spectra send broadcast --from "Acceptance BTC" --to bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98 --amount 0.001
+    spectra send owned-broadcast --wallet "Acceptance BTC" --holding bitcoin:native \
+        --amount 0.001 --destination bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98
 check "delete will not run without --yes"   $USAGE spectra wallet delete "Acceptance BTC"
 check "reset will not run without --yes"    $USAGE spectra settings reset
 

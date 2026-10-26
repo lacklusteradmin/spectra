@@ -111,7 +111,7 @@ fn ton_entropy(mnemonic: &str, password: &str) -> Result<Zeroizing<[u8; 64]>, De
 
 fn pbkdf2_first_byte(entropy: &[u8; 64], salt: &str, iterations: u32) -> u8 {
     let mut seed = Zeroizing::new([0u8; 64]);
-    crate::kdf::pbkdf2_sha512(entropy, salt.as_bytes(), iterations, &mut *seed);
+    crate::secrets::kdf::pbkdf2_sha512(entropy, salt.as_bytes(), iterations, &mut *seed);
     seed[0]
 }
 
@@ -213,7 +213,7 @@ pub(crate) fn derive_ton_seed(
     check_ton_mnemonic(mnemonic, password)?;
     let entropy = ton_entropy(mnemonic, password)?;
     let mut seed = Zeroizing::new([0u8; 64]);
-    crate::kdf::pbkdf2_sha512(
+    crate::secrets::kdf::pbkdf2_sha512(
         &*entropy,
         b"TON default seed",
         TON_PBKDF_ITERATIONS,
@@ -570,9 +570,9 @@ pub(crate) fn derive_ton_standard(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::SpectraBridgeError;
 use crate::derivation::primitives::hmac_sha512;
 use crate::derivation::types::DerivationResult;
+use crate::error::SpectraBridgeError;
 
 // Shared derivation logic for all TON networks.
 fn ton_internal(

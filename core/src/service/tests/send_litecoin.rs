@@ -1,9 +1,9 @@
 use super::*;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::store_seed_phrase;
 use crate::send::SendExecutionRequest;
 use crate::send::stages::SendStage;
-use crate::store::secret_backends::InMemorySecretStore;
 use crate::store::state::{WalletSigning, WalletState};
-use crate::store::wallet_secrets::store_seed_phrase;
 use serde_json::json;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
@@ -34,7 +34,6 @@ fn request(chain: Chain, recipient: String) -> SendExecutionRequest {
         gas_budget: None,
         fee_amount: None,
         evm_overrides: None,
-        sign_only: false,
         memo: None,
     }
 }
@@ -334,14 +333,14 @@ async fn an_mweb_destination_is_paid_by_a_peg_in() {
 
 #[tokio::test]
 async fn litecoin_private_key_wallet_uses_its_actual_network_and_needs_no_path() {
-    use crate::store::wallet_secrets::store_private_key;
+    use crate::secrets::wallet::store_private_key;
     for chain in [Chain::Litecoin, Chain::LitecoinTestnet] {
         let server = MockServer::start().await;
         Mock::given(any()).respond_with(ResponseTemplate::new(200).set_body_json(json!([{"txid": "01".repeat(32), "vout": 0, "value": "100000", "confirmations": 1}]))).mount(&server).await;
         let coin = if chain == Chain::Litecoin { 2 } else { 1 };
         let (wallet, _, secrets) =
             service(chain, server.uri(), &format!("m/44'/{coin}'/0'/0/0"), None).await;
-        crate::store::wallet_secrets::delete(&*secrets, "w").unwrap();
+        crate::secrets::wallet::delete(&*secrets, "w").unwrap();
         let key = format!("{:064x}", 1);
         store_private_key(&*secrets, "w", &key, None).unwrap();
         let derived = crate::derivation::dispatch::derive_from_private_key(chain, key, true, false)
@@ -546,7 +545,7 @@ async fn litecoin_build_boundaries_recipient_dust_is_checked_before_provider_rea
                 chain,
                 address(chain, &format!("m/{purpose}'/{coin}'/0'/0/9")),
             );
-            req.amount_str = crate::decimal::from_units(dust - 1, 8);
+            req.amount_str = crate::amount::decimal::from_units(dust - 1, 8);
             assert!(
                 wallet
                     .build_send(req.clone())
@@ -563,7 +562,7 @@ async fn litecoin_build_boundaries_recipient_dust_is_checked_before_provider_rea
                 }])))
                 .mount(&server)
                 .await;
-            req.amount_str = crate::decimal::from_units(dust, 8);
+            req.amount_str = crate::amount::decimal::from_units(dust, 8);
             assert!(wallet.build_send(req).await.is_ok());
         }
     }
@@ -637,7 +636,7 @@ async fn an_owned_litecoin_build_pays_the_fee_its_preview_quoted() {
         };
         assert_eq!(prepared.inputs.len(), 2, "{purpose}");
         assert_eq!(
-            crate::decimal::from_units(prepared.fee.into(), 8),
+            crate::amount::decimal::from_units(prepared.fee.into(), 8),
             quoted,
             "{purpose}"
         );

@@ -208,12 +208,12 @@ pub(crate) fn polyseed_birthday(phrase: &str) -> Option<u64> {
 pub(crate) fn generate_phrase(
     chain: Chain,
     word_count: u32,
-) -> Result<Zeroizing<String>, crate::SpectraBridgeError> {
+) -> Result<Zeroizing<String>, crate::error::SpectraBridgeError> {
     let format = chain.created_phrase_format();
     if !word_counts(format).contains(&word_count) {
         let counts: Vec<String> = word_counts(format).iter().map(u32::to_string).collect();
-        return Err(crate::SpectraBridgeError::InvalidInput {
-            message: crate::LocalizableMessage::new(
+        return Err(crate::error::SpectraBridgeError::InvalidInput {
+            message: crate::error::LocalizableMessage::new(
                 "A new %@ phrase has %@ words, not %@.",
                 [
                     chain.chain_display_name().to_string(),
@@ -232,7 +232,7 @@ pub(crate) fn generate_phrase(
                 Zeroizing::new(vec![0u8; entropy_bits(format, word_count) as usize / 8]);
             rand::thread_rng().fill_bytes(&mut entropy);
             let mnemonic = bip39::Mnemonic::from_entropy_in(bip39::Language::English, &entropy)
-                .map_err(crate::SpectraBridgeError::failure)?;
+                .map_err(crate::error::SpectraBridgeError::failure)?;
             Ok(Zeroizing::new(mnemonic.to_string()))
         }
     }

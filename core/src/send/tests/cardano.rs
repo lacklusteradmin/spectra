@@ -277,7 +277,10 @@ fn token_sends_carry_their_minimum_ada_and_conserve_assets() {
     );
     assert_eq!(
         terms.carried_native,
-        Some(crate::decimal::from_units(u128::from(sent.lovelace), 6))
+        Some(crate::amount::decimal::from_units(
+            u128::from(sent.lovelace),
+            6
+        ))
     );
     // More than is held, and enough tokens without the ADA to carry them.
     let error = plan(

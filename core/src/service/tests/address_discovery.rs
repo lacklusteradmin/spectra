@@ -108,7 +108,7 @@ async fn known_utxo_addresses_deduplicate_witness_addresses_by_their_canonical_c
 }
 
 async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
-    use crate::store::secret_backends::InMemorySecretStore;
+    use crate::secrets::backends::InMemorySecretStore;
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: crate::registry::Chain::Bitcoin,
@@ -121,7 +121,7 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
         .into_owned();
     service.open_state(dir.clone()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
-    crate::store::wallet_secrets::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
+    crate::secrets::wallet::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
     service.set_secret_store(secrets);
     let mut wallet = WalletState::single_address(
         "scan",
@@ -326,7 +326,7 @@ async fn malformed_activity_is_an_error_and_does_not_advance_or_register() {
 
 #[tokio::test]
 async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
-    use crate::store::secret_backends::InMemorySecretStore;
+    use crate::secrets::backends::InMemorySecretStore;
     use serde_json::json;
     use wiremock::{
         Mock, MockServer, ResponseTemplate,
@@ -374,7 +374,7 @@ async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
                 .into_owned();
             service.open_state(database.clone()).await.unwrap();
             let secrets = Arc::new(InMemorySecretStore::new());
-            crate::store::wallet_secrets::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
+            crate::secrets::wallet::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
             service.set_secret_store(secrets);
             let mut wallet = WalletState::single_address(
                 "scan",
@@ -499,7 +499,7 @@ async fn discovery_scans_past_known_floor_and_refuses_to_truncate_at_the_ceiling
 
 #[tokio::test]
 async fn imported_litecoin_root_paths_raise_receive_and_change_floors() {
-    use crate::store::secret_backends::InMemorySecretStore;
+    use crate::secrets::backends::InMemorySecretStore;
     use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
     for root_branch in [0, 1] {
         let chain = Chain::Litecoin;
@@ -529,7 +529,7 @@ async fn imported_litecoin_root_paths_raise_receive_and_change_floors() {
             .into_owned();
         service.open_state(database).await.unwrap();
         let secrets = Arc::new(InMemorySecretStore::new());
-        crate::store::wallet_secrets::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
+        crate::secrets::wallet::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
         service.set_secret_store(secrets);
         let mut wallet =
             WalletState::single_address("scan", "Scan", chain, &root, Some(base.clone()), false);

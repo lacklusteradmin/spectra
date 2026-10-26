@@ -31,7 +31,8 @@ pub(super) fn add(
     currency: super::state::FiatCurrency,
     condition: PriceAlertCondition,
 ) -> Vec<StateEvent> {
-    let Some(target) = crate::decimal::canonical(target.trim()).map(|t| crate::decimal::to_f64(&t))
+    let Some(target) = crate::amount::decimal::canonical(target.trim())
+        .map(|t| crate::amount::decimal::to_f64(&t))
     else {
         return rejected(PriceAlertRejection::InvalidTarget);
     };

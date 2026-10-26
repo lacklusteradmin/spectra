@@ -67,7 +67,6 @@ fn signed(id: &str, chain: Chain, sender: &str, prepared: PreparedPayload) -> St
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         },
         prepared,

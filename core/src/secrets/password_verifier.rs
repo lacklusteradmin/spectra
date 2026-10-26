@@ -29,19 +29,17 @@ struct PasswordVerifierEnvelope {
 
 /// Create a PBKDF2-HMAC-SHA256 verifier for `password`.
 /// Returns the current JSON envelope.
-pub fn create_verifier(
-    password: &str,
-) -> Result<Vec<u8>, super::wallet_secrets::WalletSecretError> {
+pub fn create_verifier(password: &str) -> Result<Vec<u8>, super::wallet::WalletSecretError> {
     let normalized = password.trim();
     if normalized.is_empty() {
-        return Err(super::wallet_secrets::WalletSecretError::EmptyPassword);
+        return Err(super::wallet::WalletSecretError::EmptyPassword);
     }
 
     let mut salt = vec![0u8; SALT_LENGTH];
     rand::thread_rng().fill_bytes(&mut salt);
 
     let mut digest = vec![0u8; DERIVED_KEY_LENGTH];
-    crate::kdf::pbkdf2_sha256(normalized.as_bytes(), &salt, DEFAULT_ROUNDS, &mut digest);
+    crate::secrets::kdf::pbkdf2_sha256(normalized.as_bytes(), &salt, DEFAULT_ROUNDS, &mut digest);
 
     let envelope = PasswordVerifierEnvelope {
         version: CURRENT_VERSION,
@@ -77,7 +75,7 @@ pub fn verify(password: &str, verifier_data: &[u8]) -> bool {
     }
 
     let mut candidate = vec![0u8; DERIVED_KEY_LENGTH];
-    crate::kdf::pbkdf2_sha256(
+    crate::secrets::kdf::pbkdf2_sha256(
         normalized.as_bytes(),
         &envelope.salt,
         envelope.rounds,

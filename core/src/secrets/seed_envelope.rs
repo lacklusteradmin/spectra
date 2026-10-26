@@ -38,7 +38,7 @@ pub enum EnvelopeError {
     Encrypt(String),
 }
 
-impl From<EnvelopeError> for crate::SpectraBridgeError {
+impl From<EnvelopeError> for crate::error::SpectraBridgeError {
     fn from(error: EnvelopeError) -> Self {
         let message = error.to_string();
         match error {

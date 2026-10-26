@@ -194,7 +194,7 @@ impl HttpClient {
         // The one choke point every request passes through, so a caller that
         // reaches for a client without checking the guards below still cannot
         // send in the clear.
-        crate::tor::with_routing_guard(|blocked| {
+        crate::api::tor::with_routing_guard(|blocked| {
             if blocked {
                 BLOCKED_CLIENT.clone()
             } else {
@@ -219,7 +219,7 @@ impl HttpClient {
         build: impl Fn(&Client) -> reqwest::RequestBuilder,
         profile: RetryProfile,
     ) -> Result<reqwest::Response, ApiError> {
-        if crate::tor::kill_switch_engaged() {
+        if crate::api::tor::kill_switch_engaged() {
             return Err(ApiError::Transport(KILL_SWITCH_MESSAGE.to_string()));
         }
         let max_attempts = profile.max_attempts();
@@ -467,7 +467,7 @@ impl RetryProfile {
 
 /// Replace the shared reqwest client with one that routes all traffic
 /// through the given SOCKS5 URL, or remove the proxy when `None`.
-/// Called by `crate::tor` when Arti finishes bootstrapping / is stopped.
+/// Called by `crate::api::tor` when Arti finishes bootstrapping / is stopped.
 pub(crate) fn set_socks5_proxy(proxy_url: Option<&str>) {
     *PROXY.write() = proxy_url.map(str::to_string);
     SHARED_CLIENT.set_proxy(proxy_url);

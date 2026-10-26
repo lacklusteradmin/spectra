@@ -13,7 +13,7 @@ use spectra_core::send::{
 };
 use spectra_core::service::WalletService;
 
-use super::chain::{EndpointCapability, service_for_chain};
+use super::chain::service_for_chain;
 use super::resolve_chain;
 use crate::ctx::{Ctx, PasswordArgs};
 use crate::error::{CliError, CliResult};
@@ -263,8 +263,6 @@ pub enum SendCommand {
     Shortcut(ShortcutArgs),
     /// Validate a fee or gas budget in native units, without keys or network.
     FeeUnits(FeeUnitsArgs),
-    /// Sign and broadcast a transfer.
-    Broadcast(SendArgs),
     /// Build the transaction an EVM send would sign — no key, no network.
     Assemble(AssembleArgs),
     /// Ask what a recipient address looks like before sending to it.
@@ -300,7 +298,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         } => {
             let wallet = ctx.find_wallet(&from)?;
             let chain = wallet.chain_id;
-            let service = staged_service(ctx, chain, endpoint.into_iter().collect())?;
+            let service = ctx.service_with_endpoints(chain, endpoint.into_iter().collect())?;
             let artifact =
                 ctx.rt.block_on(
                     service.build_send(SendExecutionRequest {
@@ -332,7 +330,6 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                             ),
                             ..Default::default()
                         }),
-                        sign_only: false,
                         memo: memo.memo(),
                     }),
                 )?;
@@ -373,7 +370,8 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
                 .rt
                 .block_on(ctx.service()?.inspect_send(transaction_id.clone()))?;
             let password = password.for_wallet(&ctx.find_wallet(&artifact.wallet_id)?)?;
-            let service = staged_service(ctx, artifact.chain_id, endpoint.into_iter().collect())?;
+            let service =
+                ctx.service_with_endpoints(artifact.chain_id, endpoint.into_iter().collect())?;
             let artifact =
                 ctx.rt
                     .block_on(service.sign_send(transaction_id, review_digest, password))?;
@@ -391,7 +389,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             let artifact = ctx
                 .rt
                 .block_on(ctx.service()?.inspect_send(transaction_id.clone()))?;
-            let service = staged_service(ctx, artifact.chain_id, endpoint.clone())?;
+            let service = ctx.service_with_endpoints(artifact.chain_id, endpoint.clone())?;
             let artifact = ctx
                 .rt
                 .block_on(service.broadcast_send(transaction_id, endpoint))?;
@@ -464,7 +462,7 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             password,
         } => {
             if !yes {
-                return Err(CliError::rejected("Broadcast requires --yes"));
+                return Err(CliError::usage("owned-broadcast requires --yes"));
             }
             let wallet = ctx.find_wallet(&wallet)?;
             let password = password.for_wallet(&wallet)?;
@@ -567,7 +565,6 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         SendCommand::MoneroStatus { from } => {
             let wallet = ctx.find_wallet(&from)?;
             let service = ctx.service()?;
-            service.set_secret_store(ctx.secrets.clone());
             let status = ctx
                 .rt
                 .block_on(service.monero_sync_status(wallet.id.clone()))?;
@@ -588,7 +585,6 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
             }
             let password = args.password.for_wallet(&wallet)?;
             let service = ctx.service()?;
-            service.set_secret_store(ctx.secrets.clone());
             loop {
                 let status = ctx
                     .rt
@@ -608,7 +604,6 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         SendCommand::Amount(args) => exact_amount(out, args),
         SendCommand::Shortcut(args) => shortcut(out, args),
         SendCommand::FeeUnits(args) => fee_units(out, args),
-        SendCommand::Broadcast(args) => send(ctx, out, args),
         SendCommand::Assemble(args) => assemble(ctx, out, args),
         SendCommand::Probe(args) => probe(ctx, out, args),
         SendCommand::Destination(args) => destination(ctx, out, args),
@@ -639,7 +634,6 @@ fn identity(ctx: &Ctx, out: Out, args: IdentityArgs) -> CliResult<()> {
     };
     let password = args.password.for_wallet(&wallet)?;
     let service = ctx.service()?;
-    service.set_secret_store(ctx.secrets.clone());
     let address =
         ctx.rt
             .block_on(service.send_identity_address(wallet.id.clone(), chain, password))?;
@@ -664,7 +658,7 @@ pub struct AmountArgs {
 fn exact_amount(out: Out, args: AmountArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     let decimals = args.decimals.unwrap_or(u32::from(chain.native_decimals()));
-    let raw = spectra_core::send::amount_input::parse_raw_amount(&args.amount, decimals)?;
+    let raw = spectra_core::amount::input::parse_raw_amount(&args.amount, decimals)?;
     out.text(|| println!("  {raw} integer units ({decimals} decimals)"));
     out.emit(serde_json::json!({ "chain": chain.str_id(), "decimals": decimals, "rawAmount": raw.to_string() }));
     Ok(())
@@ -680,13 +674,15 @@ pub struct ShortcutArgs {
     percentage: u32,
 }
 fn shortcut(out: Out, args: ShortcutArgs) -> CliResult<()> {
-    let amount = spectra_core::send::amount_input::send_amount_shortcut(
+    let amount = spectra_core::amount::input::send_amount_shortcut(
         args.maximum,
         args.decimals,
         args.percentage,
     )
     .ok_or_else(|| {
-        spectra_core::SpectraBridgeError::failure("no positive amount within the quoted maximum")
+        spectra_core::error::SpectraBridgeError::failure(
+            "no positive amount within the quoted maximum",
+        )
     })?;
     out.text(|| println!("  {amount}"));
     out.emit(serde_json::json!({"amount": amount}));
@@ -816,7 +812,7 @@ fn affordability(out: Out, args: AffordabilityArgs) -> CliResult<()> {
     let deployment_id = args
         .deployment
         .unwrap_or_else(|| chain.entry().native_deployment_id.clone());
-    let token = spectra_core::tokens::deployment(&deployment_id)
+    let token = spectra_core::catalog::tokens::deployment(&deployment_id)
         .ok_or_else(|| CliError::usage("unknown deployment"))?;
     if token.chain_id != chain || token.symbol != args.symbol {
         return Err(CliError::usage(
@@ -1152,37 +1148,6 @@ pub struct AssembleArgs {
     decimals: Option<u32>,
 }
 
-#[derive(Args)]
-pub struct SendArgs {
-    /// Wallet to send from (id, name or address).
-    #[arg(long)]
-    from: String,
-    /// Recipient address.
-    #[arg(long)]
-    to: String,
-    /// Amount in the chain's native asset.
-    #[arg(long)]
-    amount: String,
-    /// Broadcast without asking for confirmation.
-    #[arg(long)]
-    yes: bool,
-    /// Sign the transaction and stop, printing the raw payload. Reads the live
-    /// nonce or UTXO set, moves nothing, and needs no `--yes`.
-    #[arg(long)]
-    sign_only: bool,
-    /// EVM gas limit. Overrides automatic estimation; amount and fee funding
-    /// checks still apply.
-    #[arg(long)]
-    gas_limit: Option<i64>,
-    /// EVM nonce. Omitted, the live one is read from the node.
-    #[arg(long)]
-    nonce: Option<i64>,
-    #[command(flatten)]
-    memo: MemoArgs,
-    #[command(flatten)]
-    password: PasswordArgs,
-}
-
 /// Transactions core has recorded locally. Distinct from `history`, which asks
 /// the chain.
 pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
@@ -1261,7 +1226,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
             let chain = transaction.chain_id;
             ctx.rt.block_on(service.update_endpoints(vec![
                 spectra_core::service::ChainEndpoints {
-                    capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
+                    capabilities: spectra_core::api::endpoint::EndpointCapability::ALL.to_vec(),
                     chain_id: chain,
                     endpoints: vec![endpoint],
                 },
@@ -1308,11 +1273,7 @@ pub fn txs(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
         // A maintenance request names the stored transaction network.
         // Keep catalog transport mode so persisted custom nodes are
         // available. The poll itself still targets only this stored network.
-        let service = WalletService::new_catalog().map_err(CliError::from)?;
-        ctx.rt
-            .block_on(service.open_state(ctx.db_path()))
-            .map_err(CliError::from)?;
-        ctx.prepare_transport(&service)?;
+        let service = ctx.service()?;
         let changes = ctx
             .rt
             .block_on(service.poll_pending_transactions(chain))
@@ -1488,126 +1449,6 @@ fn replaceable(ctx: &Ctx, out: Out, args: TxsArgs) -> CliResult<()> {
     Ok(())
 }
 
-pub fn send(ctx: &Ctx, out: Out, args: SendArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.from)?;
-    if wallet.is_watch_only() {
-        return Err(CliError::rejected("a watch-only wallet cannot send"));
-    }
-    // The network this wallet is on, not its family's mainnet: it decides
-    // which chain id is signed and which endpoints the send reads. Core
-    // resolves it the same way, so the two agree on one rule
-    // (`WalletState::chain`) rather than each having its own.
-    let chain = wallet.chain_id;
-
-    let amount: f64 = args
-        .amount
-        .trim()
-        .parse()
-        .ok()
-        .filter(|value: &f64| *value > 0.0)
-        .ok_or_else(|| CliError::usage(format!("{:?} is not a positive amount", args.amount)))?;
-
-    // Broadcasting is irreversible, so it takes an explicit --yes rather than
-    // a prompt: a prompt cannot be answered by a script, and a script that
-    // sends funds by accident is the failure worth designing against. Signing
-    // without broadcasting moves nothing, so it does not ask.
-    if !args.yes && !args.sign_only {
-        return Err(CliError::usage(format!(
-            "this broadcasts {} {} to {} — re-run with --yes",
-            amount,
-            chain.coin_symbol(),
-            args.to
-        )));
-    }
-
-    let password = args.password.for_wallet(&wallet)?;
-    let service = service_for_chain(
-        ctx,
-        chain,
-        &[
-            EndpointCapability::Balance,
-            EndpointCapability::Broadcast,
-            EndpointCapability::Fee,
-            EndpointCapability::Utxo,
-        ],
-    )?;
-    service.set_secret_store(ctx.secrets.clone());
-    ctx.rt.block_on(service.open_state(ctx.db_path()))?;
-    let request = SendExecutionRequest {
-        token_standard: None,
-        chain_id: chain,
-        wallet_id: wallet.id.clone(),
-        password,
-        to_address: args.to.clone(),
-        amount_str: args.amount.trim().to_string(),
-        contract_address: None,
-        token_decimals: None,
-        fee_rate_svb: None,
-        fee_sat: None,
-        gas_budget: None,
-        fee_amount: None,
-        evm_overrides: (args.gas_limit.is_some() || args.nonce.is_some()).then_some({
-            EvmSendOverridesInput {
-                nonce: args.nonce,
-                custom_fees: None,
-                gas_limit: args.gas_limit,
-                calldata_hex: None,
-                sign_only: None,
-                access_list_json: None,
-            }
-        }),
-        sign_only: args.sign_only,
-        memo: args.memo.clone().memo(),
-    };
-
-    out.text(|| {
-        println!(
-            "  {} {}…",
-            out::hint("→"),
-            if args.sign_only {
-                "signing"
-            } else {
-                "signing and broadcasting"
-            }
-        )
-    });
-    let result = ctx
-        .rt
-        .block_on(service.execute_send(request))
-        .map_err(CliError::from)?;
-
-    out.text(|| {
-        println!();
-        if args.sign_only {
-            println!("  {} signed, not broadcast", out::ok_mark());
-        } else {
-            println!("  {} broadcast", out::ok_mark());
-        }
-        if !result.transaction_hash.is_empty() {
-            out::field("tx", &out::info(&result.transaction_hash).to_string());
-        }
-        if let Some(payload) = result.signed_payload.as_deref().filter(|p| !p.is_empty()) {
-            out::field(
-                "bytes",
-                &(payload.trim_start_matches("0x").len() / 2).to_string(),
-            );
-            println!();
-            println!("  {}", out::hint(payload));
-        }
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "signOnly": args.sign_only,
-        "hash": result.transaction_hash,
-        "signedPayload": result.signed_payload,
-        "from": wallet.id,
-        "to": args.to,
-        "amount": amount,
-        "symbol": chain.coin_symbol(),
-    }));
-    Ok(())
-}
-
 /// Build the transaction an EVM send would sign, and print it.
 ///
 /// This exists because `prepare_evm_send_assembly` had only one caller — the
@@ -1630,9 +1471,8 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
 
     // The typed decimal goes through untouched. Parsing it to an `f64` here
     // and letting the assembler shift that is what printed `--amount 1.1` as
-    // 1100000000000000089 wei — 89 more than `spectra send broadcast` signs for
-    // the same input, from the command whose whole job is showing what a send
-    // would sign. The assembler validates it against the asset's precision.
+    // 1100000000000000089 wei — 89 more than a send signs for the same input,
+    // from the command whose whole job is showing what a send would sign. The assembler validates it against the asset's precision.
     let amount = args.amount.trim().to_string();
 
     let symbol = args
@@ -1653,8 +1493,9 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
 
     // The asset is its deployment: the contract's on this chain, or the gas
     // asset's when there is none. The ticker only labels the output.
-    let deployment_id = spectra_core::tokens::deployment_id_for(chain, args.contract.as_deref())
-        .ok_or_else(|| CliError::rejected("the contract is not valid on this chain"))?;
+    let deployment_id =
+        spectra_core::catalog::tokens::deployment_id_for(chain, args.contract.as_deref())
+            .ok_or_else(|| CliError::rejected("the contract is not valid on this chain"))?;
     let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
         chain_id: chain,
         deployment_id,
@@ -1693,23 +1534,6 @@ pub fn assemble(_ctx: &Ctx, out: Out, args: AssembleArgs) -> CliResult<()> {
     Ok(())
 }
 
-fn staged_service(
-    ctx: &Ctx,
-    chain_id: spectra_core::registry::Chain,
-    endpoints: Vec<String>,
-) -> CliResult<std::sync::Arc<WalletService>> {
-    if endpoints.is_empty() {
-        return ctx.service();
-    }
-    let service = WalletService::new(vec![spectra_core::service::ChainEndpoints {
-        capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
-        chain_id,
-        endpoints,
-    }])?;
-    service.set_secret_store(ctx.secrets.clone());
-    ctx.rt.block_on(service.open_state(ctx.db_path()))?;
-    Ok(service)
-}
 pub(super) fn emit_artifact(out: Out, artifact: &spectra_core::send::stages::SendArtifact) {
     out.text(|| {
         println!(

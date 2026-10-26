@@ -91,8 +91,8 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::SpectraBridgeError;
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::error::SpectraBridgeError;
 
 /// Derive Internet Computer keys from a BIP-39 seed phrase.
 pub fn derive_icp(

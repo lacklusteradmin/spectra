@@ -198,9 +198,9 @@ impl PreparedCardanoTransaction {
                 };
                 let minimum = required_ada(&output, params)?;
                 if *lovelace < minimum {
-                    return Err(SendError::Invalid(crate::LocalizableMessage::new(
+                    return Err(SendError::Invalid(crate::error::LocalizableMessage::new(
                         "A Cardano output holds at least %@ ADA",
-                        [crate::decimal::from_units(u128::from(minimum), 6)],
+                        [crate::amount::decimal::from_units(u128::from(minimum), 6)],
                     )));
                 }
                 output
@@ -500,13 +500,13 @@ impl PreparedCardanoTransaction {
     pub(crate) fn terms(&self, decimals: u32) -> Option<crate::send::stages::AssetTransferTerms> {
         let recipient = self.outputs.first()?;
         let sent = recipient.assets.first()?;
-        let amount = crate::decimal::from_units(u128::from(sent.quantity), decimals);
+        let amount = crate::amount::decimal::from_units(u128::from(sent.quantity), decimals);
         Some(crate::send::stages::AssetTransferTerms {
             debited: amount.clone(),
             received: amount,
             fee: "0".into(),
             hook_program: None,
-            carried_native: Some(crate::decimal::from_units(
+            carried_native: Some(crate::amount::decimal::from_units(
                 u128::from(recipient.lovelace),
                 6,
             )),

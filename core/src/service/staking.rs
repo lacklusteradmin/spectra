@@ -1,8 +1,7 @@
 //! Staking queries use committed transport settings, refreshed for every call.
 use super::*;
-use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend,
-};
+use crate::api::endpoint::EndpointApi;
+use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, StoredSend};
 use crate::staking::{StakingPosition, StakingRequest, StakingValidator, service::StakingService};
 use crate::store::wallet_domain::TransactionStatus;
 
@@ -18,7 +17,7 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<Vec<StakingPosition>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let owner = this.staking_owner(&wallet_id, chain_id).await?;
             let mut known = this.stored_staking_targets(&wallet_id, chain_id).await?;
             known.extend(targets);
@@ -57,7 +56,7 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let chain = request.chain_id;
             let owner = this.staking_owner(&request.wallet_id, chain).await?;
             if request.lockup_seconds.is_some() && chain != Chain::Icp {
@@ -125,10 +124,13 @@ impl WalletService {
                     _ => return Err(SpectraBridgeError::invalid("Staking amount is required")),
                 };
                 resolved_amount = Some(
-                    crate::decimal::from_unit_digits(units, u32::from(chain.native_decimals()))
-                        .ok_or_else(|| {
-                            SpectraBridgeError::invalid("Invalid staking position amount")
-                        })?,
+                    crate::amount::decimal::from_unit_digits(
+                        units,
+                        u32::from(chain.native_decimals()),
+                    )
+                    .ok_or_else(|| {
+                        SpectraBridgeError::invalid("Invalid staking position amount")
+                    })?,
                 );
                 if matches!(
                     chain,
@@ -180,7 +182,6 @@ impl WalletService {
                 fee_rate_svb: None,
                 fee_sat: None,
                 gas_budget: None,
-                sign_only: false,
                 memo: None,
             };
             let signing_payload = match &prepared {
@@ -196,46 +197,23 @@ impl WalletService {
                 PreparedPayload::IcpStaking(p) => serde_json::to_vec(&p.calls)?,
                 _ => Vec::new(),
             };
-            let mut stored = StoredSend {
-                view: SendArtifact {
-                    id: crate::store::new_transaction_id(),
-                    revision: 0,
-                    stage: SendStage::Prepared,
-                    wallet_id: request.wallet_id.clone(),
-                    chain_id: chain,
-                    sender: owner,
-                    recipient,
-                    amount,
-                    asset: chain.coin_symbol().into(),
-                    symbol: chain.coin_symbol().into(),
-                    staking: Some(request),
-                    operation: None,
-                    created_at: crate::store::now_unix().floor(),
-                    review_digest: String::new(),
-                    review: SendArtifactReview {
-                        network_fee: Some(review.network_fee.clone()),
-                        network_fee_value,
-                        staking: Some(review),
-                        ..SendArtifactReview::default()
-                    },
-                    prepared_details: serde_json::to_string_pretty(&prepared)?,
-                    signing_payload_hex: hex::encode(signing_payload),
-                    signed_payload: None,
-                    transaction_hash: None,
-                    attempts: vec![],
-                    selected_endpoints: vec![],
-                    memo: None,
+            this.save_prepared_send(crate::send::stages::NewArtifact {
+                sender: owner,
+                asset: chain.coin_symbol().into(),
+                symbol: chain.coin_symbol().into(),
+                staking: Some(request),
+                operation: None,
+                review: SendArtifactReview {
+                    network_fee: Some(review.network_fee.clone()),
+                    network_fee_value,
+                    staking: Some(review),
+                    ..SendArtifactReview::default()
                 },
+                signing_payload_hex: hex::encode(signing_payload),
                 request: send_request,
                 prepared,
-                submission: None,
-                signed_digest: None,
-                substrate_verified_through: None,
-                icp_staking_receipts: vec![],
-            };
-            stored.view.review_digest = stored.digest()?;
-            this.save_send_artifact(&stored, &[]).await?;
-            Ok(stored.view)
+            })
+            .await
         })
         .await
     }
@@ -245,7 +223,7 @@ impl WalletService {
         chain_id: crate::registry::Chain,
     ) -> Result<Vec<StakingValidator>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             if chain_id == Chain::Icp {
                 return this.fetch_icp_staking_validators().await;
@@ -271,7 +249,7 @@ impl WalletService {
         if chain_id == Chain::Icp {
             self.api_endpoints(
                 chain_id,
-                crate::EndpointApi::IcpReplica,
+                EndpointApi::IcpReplica,
                 &[EndpointCapability::Staking, EndpointCapability::Broadcast],
             )
             .await
@@ -288,7 +266,10 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move { this.repair_icp_staking_owned(id, password).await }).await
+        crate::service::worker::run(
+            async move { this.repair_icp_staking_owned(id, password).await },
+        )
+        .await
     }
 
     /// Check execution, authorizing only a fresh IC read_state request when
@@ -299,7 +280,7 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let stored = this.load_send_artifact(id.clone()).await?;
             if stored.view.staking.is_none() || stored.view.attempts.is_empty() {
                 return Err(SpectraBridgeError::invalid(
@@ -450,7 +431,7 @@ impl WalletService {
         let endpoints = if chain == Chain::Icp {
             self.api_endpoints(
                 chain,
-                crate::EndpointApi::IcpReplica,
+                EndpointApi::IcpReplica,
                 &[EndpointCapability::Staking],
             )
             .await?
@@ -518,14 +499,14 @@ fn staking_review(
     };
     let decimals = u32::from(request.chain_id.native_decimals());
     Ok(crate::staking::StakingReview {
-        network_fee: crate::decimal::from_units(fee, decimals),
+        network_fee: crate::amount::decimal::from_units(fee, decimals),
         fee_is_upper_bound: upper,
         fee_is_deducted_from_amount: request.chain_id == Chain::Icp
             && request.action == crate::staking::StakingAction::Withdraw,
         funding_already_completed: false,
         refundable_deposit: rent
             .filter(|r| *r > 0)
-            .map(|r| crate::decimal::from_units(r, decimals)),
+            .map(|r| crate::amount::decimal::from_units(r, decimals)),
         lockup_seconds: request.lockup_seconds,
         reward_payout_is_delayed: request.chain_id == Chain::Icp
             && request.action == crate::staking::StakingAction::ClaimRewards,
@@ -548,9 +529,9 @@ mod tests {
             service
                 .apply_state_command(StateCommand::SetAppSetting {
                     update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
-                        capabilities: crate::endpoint_capability_options(
+                        capabilities: crate::api::endpoint::endpoint_capability_options(
                             crate::registry::Chain::Solana,
-                            crate::EndpointApi::SolanaJsonRpc,
+                            EndpointApi::SolanaJsonRpc,
                         ),
                         chain_id: crate::registry::Chain::Solana,
                         api: "solana-json-rpc".into(),
@@ -630,9 +611,9 @@ mod tests {
         service
             .apply_state_command(StateCommand::SetAppSetting {
                 update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
-                    capabilities: crate::endpoint_capability_options(
+                    capabilities: crate::api::endpoint::endpoint_capability_options(
                         Chain::Solana,
-                        crate::EndpointApi::SolanaJsonRpc,
+                        EndpointApi::SolanaJsonRpc,
                     ),
                     chain_id: Chain::Solana,
                     api: "solana-json-rpc".into(),

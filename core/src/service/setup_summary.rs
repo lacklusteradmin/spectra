@@ -6,7 +6,7 @@
 //! before the wallet's address is sent anywhere.
 
 use super::*;
-use crate::{EndpointApi, endpoint_capability_options};
+use crate::api::endpoint::{EndpointApi, endpoint_capability_options};
 
 /// How a network serves one kind of read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, uniffi::Enum)]
@@ -195,7 +195,10 @@ impl WalletService {
         };
         Ok(AccountReserve {
             chain,
-            amount: crate::decimal::from_units(smallest, u32::from(chain.native_decimals())),
+            amount: crate::amount::decimal::from_units(
+                smallest,
+                u32::from(chain.native_decimals()),
+            ),
             symbol: chain.coin_symbol().to_string(),
         })
     }
@@ -220,7 +223,7 @@ impl WalletService {
             .collect();
         if !settings.custom_endpoints_only.contains(&chain) {
             configured.extend(
-                crate::endpoints::records_for_chain(chain, &[])
+                crate::catalog::endpoints::records_for_chain(chain, &[])
                     .into_iter()
                     .filter(|record| apis.contains(&record.api))
                     .map(|record| SetupEndpoint {
@@ -299,7 +302,7 @@ mod tests {
                 .await
                 .unwrap();
         }
-        let catalog = crate::endpoints::records_for_chain(chain, &[]);
+        let catalog = crate::catalog::endpoints::records_for_chain(chain, &[]);
         assert!(!catalog.is_empty());
         let reaches_catalog = |urls: &[String]| {
             urls.iter()

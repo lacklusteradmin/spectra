@@ -2,6 +2,7 @@
 //! wallet may delete.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::derivation::setup::WalletSetupMethod;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -145,7 +146,7 @@ pub(in crate::service) async fn near_wallet(
     service
         .use_endpoint(
             Chain::Near,
-            crate::EndpointApi::NearJsonRpc,
+            EndpointApi::NearJsonRpc,
             &[Balance, Fee, Broadcast, Verification],
             &server.uri(),
         )
@@ -271,7 +272,7 @@ async fn only_a_function_call_key_the_wallet_does_not_sign_with_is_deleted() {
         Some(crate::send::stages::WalletOperation::DeleteAccessKey {
             public_key: dapp,
             receiver: "zapp.near".into(),
-            network_fee: crate::decimal::from_units(fee, 24),
+            network_fee: crate::amount::decimal::from_units(fee, 24),
         })
     );
     assert_eq!((built.sender, built.recipient), (account.clone(), account));

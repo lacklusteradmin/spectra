@@ -1,6 +1,6 @@
 use crate::api::error::{ApiError, OrDecode};
 use crate::registry::Chain;
-use crate::validation::address::{AddressValidationRequest, validate_address};
+use crate::validation::address::validate_address;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -49,12 +49,8 @@ pub struct ChainSelfTestResult {
     pub outcome: ChainSelfTestOutcome,
 }
 
-fn validate(kind: &str, value: &str) -> bool {
-    validate_address(AddressValidationRequest {
-        kind: kind.to_string(),
-        value: value.to_string(),
-    })
-    .is_valid
+fn validate(chain: crate::registry::Chain, value: &str) -> bool {
+    validate_address(chain, value).is_valid
 }
 
 /// Derive the fixture from the network's catalog path so derivation and
@@ -95,7 +91,6 @@ fn result(
 }
 
 fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
-    let kind = chain.address_validation_kind();
     let mut results = Vec::new();
 
     if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
@@ -116,7 +111,7 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
         return results;
     };
 
-    let accepted = validate(kind, &address);
+    let accepted = validate(chain, &address);
     results.push(result(
         chain,
         "Seed Derivation",
@@ -132,7 +127,7 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
         ChainSelfTestOutcome::ValidAddressRejected,
     ));
 
-    let rejected = !validate(kind, IMPOSSIBLE_ADDRESS);
+    let rejected = !validate(chain, IMPOSSIBLE_ADDRESS);
     results.push(result(
         chain,
         "Address Rejects Invalid",
@@ -145,13 +140,10 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
     // must already be in it — otherwise a receive address and the same address
     // typed back in are two different strings.
     if chain.address_normalization() != crate::registry::AddressNormalization::None {
-        let normalized = validate_address(AddressValidationRequest {
-            kind: kind.to_string(),
-            value: address.clone(),
-        })
-        .normalized_value
-        .map(|v| v == crate::send::flow::normalize_address(chain, &address))
-        .unwrap_or(false);
+        let normalized = validate_address(chain, &address)
+            .normalized_value
+            .map(|v| v == crate::send::flow::normalize_address(chain, &address))
+            .unwrap_or(false);
         results.push(result(
             chain,
             "Receive Address Normalization",
@@ -317,7 +309,7 @@ mod fixtures_are_real_tests {
     #[test]
     fn a_chain_accepts_the_address_it_derives() {
         use crate::registry::Chain;
-        use crate::validation::address::{AddressValidationRequest, validate_address};
+        use crate::validation::address::validate_address;
 
         for chain in Chain::all() {
             if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
@@ -330,11 +322,7 @@ mod fixtures_are_real_tests {
                 continue;
             };
             assert!(
-                validate_address(AddressValidationRequest {
-                    kind: chain.address_validation_kind().to_string(),
-                    value: address.clone(),
-                })
-                .is_valid,
+                validate_address(chain, &address).is_valid,
                 "{} derives {address} and its own validator refuses it",
                 chain.str_id()
             );

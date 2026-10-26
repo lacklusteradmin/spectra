@@ -244,10 +244,10 @@ async fn seed_probe_holding(
     if let Some((contract, decimals)) = token {
         state.token_preferences.push(TokenPreferenceEntry {
             is_built_in: false,
-            token: crate::tokens::TokenDeploymentEntry {
+            token: crate::catalog::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
-                kind: crate::tokens::TokenKind::Protocol {
+                kind: crate::catalog::tokens::TokenKind::Protocol {
                     standard: chain.token_standard_for_identifier(contract).into(),
                     identifier: contract.into(),
                 },
@@ -700,7 +700,7 @@ mod a_preview_quotes_the_asset_it_moves {
                         None
                     )
                     .await,
-                Err(crate::SpectraBridgeError::InvalidInput { .. })
+                Err(crate::error::SpectraBridgeError::InvalidInput { .. })
             ));
         }
         assert!(server.received_requests().await.unwrap().is_empty());
@@ -776,7 +776,7 @@ mod a_preview_quotes_the_asset_it_moves {
             "the gas coin's balance is not the token's"
         );
         // The fee is still quoted in the gas coin: it is a separate claim.
-        let fee_wei = crate::decimal::to_units(&value.estimated_network_fee, 18).unwrap();
+        let fee_wei = crate::amount::decimal::to_units(&value.estimated_network_fee, 18).unwrap();
         assert!(fee_wei > 0);
     }
 
@@ -794,12 +794,12 @@ mod a_preview_quotes_the_asset_it_moves {
         )
         .await;
 
-        let fee_wei = crate::decimal::to_units(&value.estimated_network_fee, 18).unwrap();
+        let fee_wei = crate::amount::decimal::to_units(&value.estimated_network_fee, 18).unwrap();
         assert!(fee_wei > 0);
         // One ether less the fee, to the wei.
         assert_eq!(
             value.spendable_balance,
-            crate::decimal::from_units(1_000_000_000_000_000_000 - fee_wei, 18)
+            crate::amount::decimal::from_units(1_000_000_000_000_000_000 - fee_wei, 18)
         );
     }
 
@@ -1142,7 +1142,10 @@ mod evm_network_fee_budgets {
             // The gas budget alone: no operator fee on Monad.
             assert_eq!(
                 preview.estimated_network_fee,
-                crate::decimal::from_units(u128::from(expected_limit as u64 * 4_000_000_000), 18)
+                crate::amount::decimal::from_units(
+                    u128::from(expected_limit as u64 * 4_000_000_000),
+                    18
+                )
             );
             assert!(
                 calls(&server)
@@ -1180,11 +1183,11 @@ mod evm_network_fee_budgets {
         assert_eq!(terms.max_priority_fee_per_gas_gwei, "1");
         assert_eq!(
             preview.estimated_network_fee,
-            crate::decimal::from_units(total, 18)
+            crate::amount::decimal::from_units(total, 18)
         );
         assert_eq!(
             preview.max_sendable,
-            crate::decimal::from_units(BALANCE - total, 18)
+            crate::amount::decimal::from_units(BALANCE - total, 18)
         );
 
         let calls = calls(&server).await;

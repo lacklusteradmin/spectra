@@ -4,9 +4,9 @@
 //! a witness and a submission.
 
 use super::*;
-use crate::store::secret_backends::InMemorySecretStore;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::{store_private_key, store_seed_phrase};
 use crate::store::state::WalletSigning;
-use crate::store::wallet_secrets::{store_private_key, store_seed_phrase};
 use serde_json::Value;
 use std::sync::Mutex;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};

@@ -191,8 +191,8 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::SpectraBridgeError;
 use crate::derivation::types::DerivationResult;
+use crate::error::SpectraBridgeError;
 
 /// Derive Monero mainnet keys from a Monero seed or Polyseed.
 pub fn derive_monero(

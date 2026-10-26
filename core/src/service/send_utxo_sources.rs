@@ -1,9 +1,9 @@
 //! Resolve every known source in an account UTXO wallet.
 use super::*;
+use crate::secrets::wallet::SigningMaterial;
 use crate::send::stages::UtxoSendSource;
 use crate::store::state::{WalletSigning, WalletState};
 use crate::store::wallet_domain::SensitiveOverrides;
-use crate::store::wallet_secrets::SigningMaterial;
 use std::collections::BTreeMap;
 use zeroize::Zeroizing;
 

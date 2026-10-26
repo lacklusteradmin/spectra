@@ -5,6 +5,7 @@ use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::endpoint::EndpointApi;
 use crate::api::http::HttpClient;
 
 // ── Public result types
@@ -182,7 +183,7 @@ impl XrplClient {
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
-            crate::EndpointApi::XrplJsonRpc,
+            EndpointApi::XrplJsonRpc,
             &self.client,
             &self.endpoints,
             method,
@@ -872,7 +873,7 @@ fn trust_line_changes(meta: &Value, address: &str) -> Vec<(String, bool, String)
                 _ => read(node.pointer("/PreviousFields/Balance")).unwrap_or(after),
             };
             let (negative, change) = after.minus(&before);
-            if crate::decimal::is_zero(&change) {
+            if crate::amount::decimal::is_zero(&change) {
                 return None;
             }
             let currency = fields.pointer("/Balance/currency")?.as_str()?;

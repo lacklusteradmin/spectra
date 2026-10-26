@@ -1,6 +1,7 @@
 //! Account-chain staking uses the same immutable transaction and broadcast journal
 //! as transfers. The chain's owned accounts, pools and objects authorise operations.
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::api::{aptos_indexer::AptosIndexerClient, fastnear::FastnearClient};
 use crate::send::stages::{PreparedPayload, StoredSend};
 use crate::staking::{StakingAction, StakingPosition, StakingPositionStatus, StakingRequest};
@@ -11,7 +12,7 @@ fn staking_amount(request: &StakingRequest) -> Result<u128, SpectraBridgeError> 
         .amount
         .as_deref()
         .ok_or_else(|| SpectraBridgeError::invalid("Review an explicit staking amount"))?;
-    let amount = crate::send::amount_input::parse_raw_amount(
+    let amount = crate::amount::input::parse_raw_amount(
         value,
         u32::from(request.chain_id.native_decimals()),
     )?;
@@ -199,7 +200,7 @@ impl WalletService {
             let urls = self
                 .api_endpoints(
                     chain,
-                    crate::EndpointApi::AptosIndexer,
+                    EndpointApi::AptosIndexer,
                     &[EndpointCapability::History],
                 )
                 .await?;
@@ -210,11 +211,7 @@ impl WalletService {
             );
         } else if chain == Chain::Near {
             let urls = self
-                .api_endpoints(
-                    chain,
-                    crate::EndpointApi::Fastnear,
-                    &[EndpointCapability::Staking],
-                )
+                .api_endpoints(chain, EndpointApi::Fastnear, &[EndpointCapability::Staking])
                 .await?;
             targets.extend(
                 FastnearClient::new(Arc::new(urls))

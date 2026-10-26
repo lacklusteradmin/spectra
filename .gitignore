@@ -15,10 +15,3 @@ __pycache__/
 
 # UniFFI-generated Swift bindings (regenerated from the Rust core)
 swift/generated/
-
-# UniFFI-generated Android bindings and Rust JNI libraries
-kotlin/app/src/main/kotlin/uniffi/
-kotlin/app/src/main/jniLibs/
-
-# Gradle cache
-.gradle/

@@ -1,5 +1,5 @@
-use crate::SpectraBridgeError;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
+use crate::error::SpectraBridgeError;
 
 pub fn script_type_for_path(path: &str) -> BitcoinScriptType {
     let purpose = path

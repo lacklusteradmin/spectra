@@ -6,7 +6,7 @@ use crate::service::WalletService;
 use crate::store::state::{StateCommand, WalletState};
 
 fn holding(deployment_id: &str, amount: &str) -> crate::store::wallet_domain::AssetHolding {
-    let mut holding = crate::tokens::deployment(deployment_id)
+    let mut holding = crate::catalog::tokens::deployment(deployment_id)
         .unwrap()
         .holding_template();
     holding.amount = amount.into();

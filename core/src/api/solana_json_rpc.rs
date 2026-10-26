@@ -5,6 +5,7 @@ use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::endpoint::EndpointApi;
 use crate::api::http::HttpClient;
 
 // ── Public result types
@@ -56,7 +57,7 @@ impl SolanaClient {
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
-            crate::EndpointApi::SolanaJsonRpc,
+            EndpointApi::SolanaJsonRpc,
             &self.client,
             &self.endpoints,
             method,
@@ -429,7 +430,7 @@ impl SolanaClient {
                 let balance = |raw: u128| SplBalance {
                     mint: mint.to_string(),
                     balance_raw: raw.to_string(),
-                    balance_display: crate::decimal::from_units(raw, u32::from(decimals)),
+                    balance_display: crate::amount::decimal::from_units(raw, u32::from(decimals)),
                     decimals,
                 };
                 match out.iter_mut().find(|b| b.mint == mint) {
@@ -514,7 +515,10 @@ impl SolanaClient {
                     Ok(Some(SplBalance {
                         mint,
                         balance_raw: raw.to_string(),
-                        balance_display: crate::decimal::from_units(raw, u32::from(decimals)),
+                        balance_display: crate::amount::decimal::from_units(
+                            raw,
+                            u32::from(decimals),
+                        ),
                         decimals,
                     }))
                 }
@@ -745,7 +749,7 @@ fn solana_transfers_in_transaction(tx: &Value, sig: &str, address: &str) -> Vec<
         let delta = post.abs_diff(pre);
         result.push(transfer(
             post > pre,
-            crate::decimal::from_units(delta, decimals),
+            crate::amount::decimal::from_units(delta, decimals),
             mint,
         ));
     }
@@ -765,7 +769,7 @@ fn solana_transfers_in_transaction(tx: &Value, sig: &str, address: &str) -> Vec<
             if delta != 0 {
                 result.push(transfer(
                     delta > 0,
-                    crate::decimal::from_units(delta.unsigned_abs(), 9),
+                    crate::amount::decimal::from_units(delta.unsigned_abs(), 9),
                     String::new(),
                 ));
             }

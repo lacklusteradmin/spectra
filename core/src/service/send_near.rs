@@ -1,5 +1,6 @@
 //! NEAR native, NEP-141 and staking share protocol admission-fee accounting.
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::send::stages::{PreparedPayload, StoredSend};
 
 pub(super) struct NearSendQuote {
@@ -34,7 +35,7 @@ impl WalletService {
         let endpoints = self
             .api_endpoints(
                 chain,
-                crate::EndpointApi::NearJsonRpc,
+                EndpointApi::NearJsonRpc,
                 &[
                     EndpointCapability::Fee,
                     EndpointCapability::Balance,
@@ -106,7 +107,7 @@ impl WalletService {
             .near_send_quote(chain, owner, destination, amount, contract)
             .await?;
         let decimal =
-            |amount| crate::decimal::from_units(amount, u32::from(chain.native_decimals()));
+            |amount| crate::amount::decimal::from_units(amount, u32::from(chain.native_decimals()));
         Ok(crate::send::preview_types::SendPreview {
             estimated_network_fee: decimal(quote.budget),
             spendable_balance: decimal(quote.spendable),
@@ -144,8 +145,7 @@ impl WalletService {
             .request
             .token_decimals
             .unwrap_or(u32::from(chain.native_decimals()));
-        if crate::send::amount_input::parse_raw_amount(&stored.request.amount_str, decimals)?
-            != *amount
+        if crate::amount::input::parse_raw_amount(&stored.request.amount_str, decimals)? != *amount
         {
             return Err(SpectraBridgeError::invalid(
                 "NEAR amount differs from reviewed transfer",
@@ -174,7 +174,7 @@ impl WalletService {
             .fee_amount
             .as_deref()
             .map(|fee| {
-                crate::send::amount_input::parse_raw_amount(fee, u32::from(chain.native_decimals()))
+                crate::amount::input::parse_raw_amount(fee, u32::from(chain.native_decimals()))
             })
             .transpose()?
             != Some(reviewed)

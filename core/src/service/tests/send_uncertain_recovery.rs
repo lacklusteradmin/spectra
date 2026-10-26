@@ -60,7 +60,7 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
             endpoints: vec![server.uri()],
         }])
         .unwrap();
-        let secrets = Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
+        let secrets = Arc::new(crate::secrets::backends::InMemorySecretStore::new());
         service.set_secret_store(secrets.clone());
         service
             .open_state(
@@ -82,13 +82,8 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
             })
             .await
             .unwrap();
-        crate::store::wallet_secrets::store_private_key(
-            &*secrets,
-            "w",
-            &hex::encode([1; 32]),
-            None,
-        )
-        .unwrap();
+        crate::secrets::wallet::store_private_key(&*secrets, "w", &hex::encode([1; 32]), None)
+            .unwrap();
         let artifact = service
             .build_send(crate::send::SendExecutionRequest {
                 chain_id: chain,
@@ -104,7 +99,6 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
                 gas_budget: None,
                 fee_amount: None,
                 evm_overrides: None,
-                sign_only: false,
                 memo: None,
             })
             .await
@@ -276,7 +270,6 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             gas_budget: None,
             fee_amount: Some("0.007".into()),
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         };
         let prepared = PreparedPayload::Ton {

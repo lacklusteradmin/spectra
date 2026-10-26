@@ -4,9 +4,10 @@
 //! Each service is a data directory of its own.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::derivation::import::{WalletImportCommit, WalletImportKind, WalletImportRequest};
+use crate::secrets::backends::InMemorySecretStore;
 use crate::service::multisig::MultisigInput;
-use crate::store::secret_backends::InMemorySecretStore;
 use crate::store::state::AppSettingUpdate;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
 
@@ -106,9 +107,9 @@ async fn service(chain: Chain, server: &MockServer) -> Arc<WalletService> {
         service
             .apply_state_command(StateCommand::SetAppSetting {
                 update: AppSettingUpdate::AddCustomEndpoint {
-                    capabilities: crate::endpoint_api::endpoint_capability_options(
+                    capabilities: crate::api::endpoint::endpoint_capability_options(
                         chain,
-                        crate::EndpointApi::Blockbook,
+                        EndpointApi::Blockbook,
                     ),
                     chain_id: chain,
                     api: "blockbook".into(),

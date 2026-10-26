@@ -7,7 +7,7 @@ use crate::registry::Chain;
 use serde::Deserialize;
 use std::sync::LazyLock;
 
-static EXPLORERS_TOML: &str = include_str!("../data/explorers.toml");
+static EXPLORERS_TOML: &str = include_str!("../../data/explorers.toml");
 
 /// Where a transaction's hash goes in `tx_url`.
 const HASH_PLACEHOLDER: &str = "{hash}";
