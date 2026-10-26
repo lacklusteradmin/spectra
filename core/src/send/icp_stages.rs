@@ -4,7 +4,7 @@
 
 use crate::api::icp_rosetta::{IcpClient, network_identifier as network};
 use crate::send::error::SendError;
-use crate::send::keys::Ed25519Seed;
+use crate::send::keys::Secp256k1Key;
 use crate::{derivation::icp::*, registry::Chain};
 use ciborium::Value as Cbor;
 use serde::{Deserialize, Serialize};
@@ -100,10 +100,10 @@ pub(super) fn request_hash(value: &Cbor) -> Result<[u8; 32], SendError> {
     };
     Ok(Sha256::digest(data).into())
 }
-pub(super) fn envelope(content: Cbor, key: &Ed25519Seed) -> Result<Cbor, SendError> {
+pub(super) fn envelope(content: Cbor, key: &Secp256k1Key) -> Result<Cbor, SendError> {
     let mut signing = b"\x0aic-request".to_vec();
     signing.extend(request_hash(&content)?);
-    let sig = key.sign(&signing);
+    let sig = key.sign_sha256(&signing);
     Ok(map(vec![
         ("content", content),
         ("sender_pubkey", bytes(&public_key_der(&key.public_key()))),
@@ -150,7 +150,7 @@ impl PreparedIcpTransaction {
         arg.extend(message(7, &integer(self.created_at_time_ns)));
         Ok(arg)
     }
-    pub(crate) fn sign(&self, key: &Ed25519Seed) -> Result<String, SendError> {
+    pub(crate) fn sign(&self, key: &Secp256k1Key) -> Result<String, SendError> {
         let sender = principal(&key.public_key());
         if hex::encode(account_from_principal(&sender)) != self.sender {
             return Err(SendError::Invalid(
@@ -292,7 +292,7 @@ mod tests {
     use super::*;
     #[test]
     fn signed_envelopes_bind_only_the_reviewed_transfer_and_status_path() {
-        let key = Ed25519Seed::from_hex(&"01".repeat(32)).unwrap();
+        let key = Secp256k1Key::from_hex(&"01".repeat(32)).unwrap();
         let sender = hex::encode(account_from_principal(&principal(&key.public_key())));
         let mut p = PreparedIcpTransaction {
             sender,
@@ -339,12 +339,17 @@ mod tests {
             };
             let mut message = b"\x0aic-request".to_vec();
             message.extend(request_hash(content).unwrap());
-            ed25519_dalek::VerifyingKey::from_bytes(&key.public_key())
-                .unwrap()
-                .verify_strict(
-                    &message,
-                    &ed25519_dalek::Signature::from_slice(signature).unwrap(),
-                )
+            let Cbor::Bytes(sender_key) = get(envelope, "sender_pubkey") else {
+                panic!()
+            };
+            assert_eq!(sender_key, &public_key_der(&key.public_key()));
+            let digest = secp256k1::Message::from_digest(Sha256::digest(&message).into());
+            let signature = secp256k1::ecdsa::Signature::from_compact(signature).unwrap();
+            let mut normalized = signature;
+            normalized.normalize_s();
+            assert_eq!(signature, normalized, "a low-S signature");
+            secp256k1::SECP256K1
+                .verify_ecdsa(&digest, &signature, &key.public_key())
                 .unwrap();
         }
         p.amount += 1;
@@ -360,11 +365,11 @@ mod tests {
     }
 
     /// The signed envelope, byte for byte: canonical CBOR key order and
-    /// deterministic Ed25519. Captured from the previous CBOR library, so a
-    /// library change that reorders or re-encodes anything fails here.
+    /// deterministic RFC 6979 ECDSA, so a library change that reorders or
+    /// re-encodes anything fails here.
     #[test]
     fn signed_envelope_bytes_are_pinned() {
-        let key = Ed25519Seed::from_hex(&"01".repeat(32)).unwrap();
+        let key = Secp256k1Key::from_hex(&"01".repeat(32)).unwrap();
         let sender = hex::encode(account_from_principal(&principal(&key.public_key())));
         let mut p = PreparedIcpTransaction {
             sender,
@@ -382,7 +387,7 @@ mod tests {
         let raw = hex::decode(payload["signed_transaction"].as_str().unwrap()).unwrap();
         assert_eq!(
             hex::encode(Sha256::digest(raw)),
-            "66a46f5fec7970295086a1e145237b2dbfcd877e9cfb5b90d02a49223d6e49e1"
+            "1fa4ebe1ce2377ccc4d06dae8810bdbb11539aa56fc6bd4298e3de3e92dd9dd3"
         );
     }
 

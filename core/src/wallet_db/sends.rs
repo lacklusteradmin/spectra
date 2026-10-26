@@ -353,7 +353,7 @@ mod query_tests {
             stored.view.review_digest = stored.digest().unwrap();
             stored.signed_digest = stored.submission_digest().unwrap();
         }
-        fn sign(stored: &mut StoredSend, key: &crate::send::keys::Ed25519Seed) {
+        fn sign(stored: &mut StoredSend, key: &crate::send::keys::Secp256k1Key) {
             let PreparedPayload::IcpStaking(prepared) = &stored.prepared else {
                 panic!("ICP")
             };

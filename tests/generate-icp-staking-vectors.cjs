@@ -1,12 +1,12 @@
-// Independent Candid, ingress IDs and Ed25519 signatures from DFINITY SDKs.
-// npm install --prefix /tmp/spectra-icp-sdk --ignore-scripts @dfinity/candid@3.4.3 @dfinity/principal@3.4.3 @dfinity/agent@3.4.3 @dfinity/identity@3.4.3
+// Independent Candid, ingress IDs and secp256k1 signatures from DFINITY SDKs.
+// npm install --prefix /tmp/spectra-icp-sdk --ignore-scripts @dfinity/candid@3.4.3 @dfinity/principal@3.4.3 @dfinity/agent@3.4.3 @dfinity/identity-secp256k1@3.4.3
 // NODE_PATH=/tmp/spectra-icp-sdk/node_modules node tests/generate-icp-staking-vectors.cjs
 // Candid fields are taken from dfinity/ic rs/nns/governance/canister/governance.did.
 const fs = require('node:fs'), crypto = require('node:crypto');
 const { IDL } = require('@dfinity/candid');
 const { Principal } = require('@dfinity/principal');
 const { Cbor, requestIdOf } = require('@dfinity/agent');
-const { Ed25519KeyIdentity } = require('@dfinity/identity');
+const { Secp256k1KeyIdentity } = require('@dfinity/identity-secp256k1');
 const hex = value => Buffer.from(value).toString('hex');
 const blob = IDL.Vec(IDL.Nat8), empty = IDL.Record({}), neuronId = IDL.Record({id:IDL.Nat64});
 const accountId = IDL.Record({hash:blob});
@@ -40,14 +40,14 @@ function accountIdentifier(principal,subaccount=Buffer.alloc(32)) {
 const encode = (type,value) => Buffer.from(IDL.encode([type],[value]));
 const queryReply = (type,value) => hex(Cbor.encode({status:'replied',reply:{arg:encode(type,value)}}));
 async function main() {
-  const identity=Ed25519KeyIdentity.generate(new Uint8Array(32).fill(1)), owner=identity.getPrincipal();
+  const identity=Secp256k1KeyIdentity.fromSecretKey(new Uint8Array(32).fill(1)), owner=identity.getPrincipal();
   const governance=Principal.fromText('rrkah-fqaaa-aaaaa-aaaaq-cai');
   const index=Buffer.alloc(8);index.writeBigUInt64BE(42n);
   const subaccount=crypto.createHash('sha256').update(Buffer.from('\x0cneuron-stake')).update(owner.toUint8Array()).update(index).digest();
   const id={id:42n}, base={id:[id],controller:[owner],account:subaccount,cached_neuron_stake_e8s:200000000n,neuron_fees_e8s:10000n,maturity_e8s_equivalent:200000000n,staked_maturity_e8s_equivalent:[],spawn_at_timestamp_seconds:[],maturity_disbursements_in_progress:[]};
   const owned = state => ({...base,dissolve_state:[state]});
-  const foreign = {...owned({DissolveDelaySeconds:600n}),id:[{id:43n}],controller:[Ed25519KeyIdentity.generate(new Uint8Array(32).fill(2)).getPrincipal()]};
-  const fixtures={provenance:'@dfinity/candid, principal, agent, identity 3.4.3; official NNS governance.did',
+  const foreign = {...owned({DissolveDelaySeconds:600n}),id:[{id:43n}],controller:[Secp256k1KeyIdentity.fromSecretKey(new Uint8Array(32).fill(2)).getPrincipal()]};
+  const fixtures={provenance:'@dfinity/candid, principal, agent, identity-secp256k1 3.4.3; official NNS governance.did',
     public_key:hex(identity.getPublicKey().toRaw()),controller:owner.toText(),owner:hex(accountIdentifier(owner)),neuron_nonce:'42',subaccount:hex(subaccount),neuron_account:hex(accountIdentifier(governance,subaccount)),
     query_replies:{
       economics:queryReply(economics,{neuron_minimum_stake_e8s:100000000n,transaction_fee_e8s:10000n}),

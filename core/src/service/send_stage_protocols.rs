@@ -1336,8 +1336,9 @@ impl WalletService {
                         "ICP transaction expired; build and review again",
                     ));
                 }
+                let key = crate::send::keys::Secp256k1Key::from_hex(&signer.private_key_hex)?;
                 (
-                    SignedPayload::Json(p.sign(&seed()?)?),
+                    SignedPayload::Json(p.sign(&key)?),
                     Some(p.transaction_hash()?),
                 )
             }
@@ -1347,7 +1348,9 @@ impl WalletService {
                         "ICP staking expired; build and review again",
                     ));
                 }
-                let calls = p.sign(&seed()?)?;
+                let calls = p.sign(&crate::send::keys::Secp256k1Key::from_hex(
+                    &signer.private_key_hex,
+                )?)?;
                 let hash = calls.last().map(|c| c.request_id.clone()).ok_or_else(|| {
                     SpectraBridgeError::invalid("Missing ICP staking ingress IDs")
                 })?;

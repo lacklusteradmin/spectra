@@ -1,7 +1,7 @@
 //! Known NNS neurons are voting follow targets, not APR-bearing validators.
 use crate::api::error::ApiError;
 use crate::api::icp_replica::{IcpReplicaClient, ListKnownNeuronsResponse};
-use crate::send::{icp_staking, keys::Ed25519Seed};
+use crate::send::{icp_staking, keys::Secp256k1Key};
 use crate::staking::{StakingError, StakingValidator};
 use std::sync::Arc;
 
@@ -15,8 +15,7 @@ impl IcpStakingClient {
     pub async fn fetch_validators(&self) -> Result<Vec<StakingValidator>, StakingError> {
         // Public directory: an ephemeral sender authenticates this read, with
         // no wallet identity, secret-store lookup or funding capability.
-        let key = Ed25519Seed::from_hex(&hex::encode(rand::random::<[u8; 32]>()))
-            .map_err(ApiError::invalid)?;
+        let key = Secp256k1Key::random();
         let query = icp_staking::signed_query(
             "list_known_neurons",
             &candid::encode_args(()).map_err(ApiError::decode)?,

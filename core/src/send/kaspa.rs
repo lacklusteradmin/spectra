@@ -36,6 +36,41 @@ const SIGHASH_ALL: u8 = 1;
 const SIG_OP_COUNT_DEFAULT: u8 = 1;
 const KASPA_SIGHASH_KEY: &[u8] = b"TransactionSigningHash";
 
+/// KIP-9's storage mass parameter C: 10^12, ten thousand kaspa in sompi.
+const STORAGE_MASS_PARAMETER: u64 = 1_000_000_000_000;
+
+/// The most mass a node relays in one transaction (rusty-kaspa's
+/// `MAXIMUM_STANDARD_TRANSACTION_MASS`), storage mass included.
+pub(crate) const MAXIMUM_STANDARD_MASS: u64 = 100_000;
+
+/// The KIP-9 storage mass, in grams, of a transaction spending `inputs` to
+/// pay `outputs` (values in sompi), as rusty-kaspa's `calc_storage_mass` computes it for
+/// standard scripts: `C·(Σ 1/o − |I|²/Σ i)`, or with the inputs' harmonic
+/// sum in place of the last term where `|O| = 1`, `|I| = 1` or both are 2,
+/// never below zero. It charges outputs that are small beside the coins they
+/// spend; `None` where an output is zero or the sum overflows.
+pub(crate) fn storage_mass(inputs: &[u64], outputs: &[u64]) -> Option<u64> {
+    let harmonic = |values: &[u64]| {
+        values.iter().try_fold(0u64, |sum, value| {
+            sum.checked_add(STORAGE_MASS_PARAMETER.checked_div(*value)?)
+        })
+    };
+    let outs = harmonic(outputs)?;
+    let ins =
+        if outputs.len() == 1 || inputs.len() == 1 || (outputs.len() == 2 && inputs.len() == 2) {
+            harmonic(inputs)?
+        } else {
+            let count = u64::try_from(inputs.len()).ok()?;
+            let mean = inputs
+                .iter()
+                .try_fold(0u64, |sum, value| sum.checked_add(*value))?
+                .checked_div(count)?
+                .max(1);
+            count.saturating_mul(STORAGE_MASS_PARAMETER / mean)
+        };
+    Some(outs.saturating_sub(ins))
+}
+
 /// The version and payload of an address on `chain`'s own network.
 fn network_address(chain: Chain, address: &str) -> Result<(u8, Vec<u8>), SendError> {
     let (version, payload, is_testnet) = decode_kaspa_address(address)?;
@@ -429,6 +464,32 @@ fn build_broadcast_body(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// rusty-kaspa's `test_storage_mass` values (consensus/core/src/mass).
+    #[test]
+    fn storage_mass_matches_rusty_kaspa() {
+        assert_eq!(storage_mass(&[100, 200, 300], &[300, 300]), Some(0));
+        assert_eq!(
+            storage_mass(&[100, 200, 300], &[50, 550]),
+            Some(6_818_181_818)
+        );
+        assert_eq!(storage_mass(&[100, 200], &[50, 250]), Some(9_000_000_000));
+        assert_eq!(storage_mass(&[100, 200], &[100, 200]), Some(0));
+        assert_eq!(storage_mass(&[100, 200], &[50]), Some(5_000_000_000));
+        let base = 10_000 * 100_000_000;
+        assert_eq!(
+            storage_mass(&[base, base, 2 * base], &[base, base, base, base]),
+            Some(4)
+        );
+        assert_eq!(
+            storage_mass(
+                &[base, base, 2 * base],
+                &[10 * 100_000_000, base, base, base]
+            ),
+            Some(1003)
+        );
+        assert_eq!(storage_mass(&[100], &[0]), None);
+    }
 
     /// kaspa-wasm's per-input sighashes for an account spend with two keys
     /// (`account-utxo-transactions.json`), and each signature verifies under

@@ -196,9 +196,21 @@ impl FeePolicy {
             }
         })
     }
+
+    /// Whether nodes relay a spend of `inputs` paying `outputs`: on Kaspa,
+    /// one whose KIP-9 storage mass is within the standard limit.
+    fn admits(&self, inputs: &[u64], outputs: &[u64]) -> bool {
+        match self {
+            Self::Kaspa(_) => crate::send::kaspa::storage_mass(inputs, outputs)
+                .is_some_and(|mass| mass <= crate::send::kaspa::MAXIMUM_STANDARD_MASS),
+            _ => true,
+        }
+    }
 }
 
-/// Change below this joins the fee rather than standing as an output.
+/// The smallest output the network relays: a recipient amount below it is
+/// refused, and change below it joins the fee rather than standing as an
+/// output.
 pub(super) fn change_dust(chain: Chain) -> Result<u64, SpectraBridgeError> {
     Ok(match chain.mainnet_counterpart() {
         Chain::Bitcoin | Chain::Zcash => 546,
@@ -235,6 +247,7 @@ fn select(
             .then_with(|| (a.utxo.txid, a.utxo.vout).cmp(&(b.utxo.txid, b.utxo.vout)))
     });
     let mut total = 0u64;
+    let mut over_mass = false;
     for count in 1..=candidates.len() {
         total = total
             .checked_add(candidates[count - 1].utxo.value)
@@ -262,22 +275,37 @@ fn select(
         else {
             continue;
         };
-        candidates.truncate(count);
-        return Ok(if change < dust {
-            Selection {
-                inputs: candidates,
-                fee: fee + change,
-                change: 0,
-            }
+        let (fee, change) = if change < dust {
+            (fee + change, 0)
         } else {
-            Selection {
-                inputs: candidates,
-                fee,
-                change,
-            }
+            (fee, change)
+        };
+        let values: Vec<u64> = candidates[..count]
+            .iter()
+            .map(|input| input.utxo.value)
+            .collect();
+        let outputs: Vec<u64> = std::iter::once(amount)
+            .chain((change > 0).then_some(change))
+            .collect();
+        // More inputs leave more change and weigh less against it.
+        if !policy.admits(&values, &outputs) {
+            over_mass = true;
+            continue;
+        }
+        candidates.truncate(count);
+        return Ok(Selection {
+            inputs: candidates,
+            fee,
+            change,
         });
     }
-    Err(crate::send::error::SendError::insufficient_funds().into())
+    Err(if over_mass {
+        SpectraBridgeError::invalid(
+            "Kaspa's storage mass limit refuses an output this small beside the coins it spends. Send more, or the whole balance.",
+        )
+    } else {
+        crate::send::error::SendError::insufficient_funds().into()
+    })
 }
 
 impl WalletService {
@@ -407,7 +435,7 @@ impl WalletService {
             crate::send::account_utxo::recipient_script(chain, &request.to_address)?;
         let change_script = crate::send::account_utxo::source_script(chain, sender)?;
         let dust = change_dust(chain)?;
-        if amount == 0 || (chain.mainnet_counterpart() == Chain::Zcash && amount < dust) {
+        if amount < dust {
             return Err(SpectraBridgeError::invalid(
                 "The amount is below the network's dust threshold",
             ));

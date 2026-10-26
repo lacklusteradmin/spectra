@@ -67,8 +67,8 @@ total_circulation_model = "Protocol-capped at 45,000,000,000 ADA."
 
 [[assets]]
 token_id = "polkadot"
-comment = "Secures Polkadot through staking, votes on protocol changes, and is bonded to lease the parachain slots that other networks run in."
-total_circulation_model = "No fixed terminal cap is surfaced here. Supply changes over time through staking-era issuance and protocol economics, so live circulation is treated as dynamic."
+comment = "Secures Polkadot through staking, votes on protocol changes, and buys the coretime that parachains run on."
+total_circulation_model = "Capped at 2,100,000,000 DOT by Referendum 1710 (2025). Issuance has stepped down every two years since March 2026."
 
 [[assets]]
 token_id = "avalanche-2"
@@ -108,7 +108,7 @@ total_circulation_model = "No fixed terminal cap. Monero uses tail emission afte
 [[assets]]
 token_id = "ethereum-classic"
 comment = "The coin of the original Ethereum chain, which kept proof-of-work after the 2016 fork and again after Ethereum moved to proof-of-stake."
-total_circulation_model = "No fixed maximum supply. Emission declines over time under the ETC monetary policy, so live circulation changes and is treated as dynamic in this wiki."
+total_circulation_model = "Capped near 210,700,000 ETC: ECIP-1017 cuts the block reward by 20% every 5,000,000 blocks."
 
 [[assets]]
 token_id = "bitcoin-cash-sv"
@@ -168,7 +168,7 @@ total_circulation_model = "1,000,000,000 CELO cap with epoch rewards."
 [[assets]]
 token_id = "crypto-com-chain"
 comment = "Utility token for the Cronos and Crypto.com ecosystem, used across network fees, staking, and platform services."
-total_circulation_model = "30,000,000,000 CRO cap (post-2022 burn)."
+total_circulation_model = "100,000,000,000 CRO maximum. The 70 billion burned in 2021 were reissued to a vesting strategic reserve after a 2025 governance vote."
 
 [[assets]]
 token_id = "sonic-3"

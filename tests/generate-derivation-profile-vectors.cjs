@@ -1,8 +1,10 @@
 // Independent addresses for every derivation profile the registry lists, at
 // accounts 0 and 1, for core/tests/fixtures/derivation-profiles.json.
 // Install the pinned libraries in a temporary directory:
-// npm install --prefix /tmp/spectra-profile-vectors --ignore-scripts bip39@3.1.0 bip32@5.0.1 tiny-secp256k1@2.2.4 bitcoinjs-lib@7.0.2 bchaddrjs@0.5.2 ethers@6.17.0 ed25519-hd-key@2.0.0 @solana/web3.js@1.98.4 @stellar/stellar-base@14.0.1 ripple-keypairs@3.1.0 @mysten/sui@1.38.0 @aptos-labs/ts-sdk@5.1.1 near-seed-phrase@0.2.1 @dfinity/principal@3.4.3 @emurgo/cardano-serialization-lib-nodejs@17.0.0 blake-hash@2.0.0 @noble/hashes@2.4.0 bs58check@4.0.0 kaspa-wasm@0.13.0
-// NODE_PATH=/tmp/spectra-profile-vectors/node_modules node tests/generate-derivation-profile-vectors.cjs > core/tests/fixtures/derivation-profiles.json
+// npm install --prefix /tmp/spectra-profile-vectors --ignore-scripts --legacy-peer-deps bip39@3.1.0 bip32@5.0.1 tiny-secp256k1@2.2.4 bitcoinjs-lib@7.0.2 bchaddrjs@0.5.2 ethers@6.17.0 ed25519-hd-key@2.0.0 @solana/web3.js@1.98.4 @stellar/stellar-base@14.0.1 ripple-keypairs@3.1.0 @mysten/sui@1.38.0 @aptos-labs/ts-sdk@5.1.1 got@11 near-seed-phrase@0.2.1 @emurgo/cardano-serialization-lib-nodejs@17.0.0 blake-hash@2.0.0 @noble/hashes@2.4.0 bs58check@4.0.0 kaspa-wasm@0.13.0
+// The DFINITY identity needs @noble/hashes 1, so it gets a directory of its own:
+// npm install --prefix /tmp/spectra-icp-sdk --ignore-scripts @dfinity/identity-secp256k1@3.4.3
+// NODE_PATH=/tmp/spectra-profile-vectors/node_modules:/tmp/spectra-icp-sdk/node_modules node tests/generate-derivation-profile-vectors.cjs > core/tests/fixtures/derivation-profiles.json
 //
 // The paths here are written from each chain's wallet convention, not read
 // from chains.toml: the core test holds that the catalog's profiles and these
@@ -21,7 +23,7 @@ const rippleKeypairs = require('ripple-keypairs');
 const { Ed25519Keypair } = require('@mysten/sui/keypairs/ed25519');
 const { Account } = require('@aptos-labs/ts-sdk');
 const { parseSeedPhrase } = require('near-seed-phrase');
-const { Principal } = require('@dfinity/principal');
+const { Secp256k1KeyIdentity } = require('@dfinity/identity-secp256k1');
 const CSL = require('@emurgo/cardano-serialization-lib-nodejs');
 const blake = require('blake-hash/js');
 const { ripemd160 } = require('@noble/hashes/legacy.js');
@@ -102,11 +104,14 @@ const stellar = (path) => StellarKeypair.fromRawEd25519Seed(ed25519Seed(path)).p
 const sui = (path) => Ed25519Keypair.deriveKeypair(PHRASE, path).toSuiAddress();
 const aptos = (path) => Account.fromDerivationPath({ path, mnemonic: PHRASE }).accountAddress.toString();
 const near = (path) => Buffer.from(bs58.decode(parseSeedPhrase(PHRASE, path).publicKey.replace('ed25519:', ''))).toString('hex');
+// DFINITY's own phrase identity is the key at account 0; other accounts are
+// the same BIP-32 key at their own account index.
+if (Secp256k1KeyIdentity.fromSeedPhrase(PHRASE).getPrincipal().toText()
+    !== Secp256k1KeyIdentity.fromSecretKey(secpKey("m/44'/223'/0'/0/0").privateKey).getPrincipal().toText()) {
+  throw new Error('ICP phrase identity');
+}
 const icp = (path) => {
-  const publicKey = crypto.createPublicKey(crypto.createPrivateKey({
-    key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), ed25519Seed(path)]), format: 'der', type: 'pkcs8',
-  })).export({ format: 'der', type: 'spki' });
-  const principal = Principal.selfAuthenticating(new Uint8Array(publicKey)).toUint8Array();
+  const principal = Secp256k1KeyIdentity.fromSecretKey(secpKey(path).privateKey).getPrincipal().toUint8Array();
   const hash = crypto.createHash('sha224').update(Buffer.concat([Buffer.from('\x0aaccount-id'), principal, Buffer.alloc(32)])).digest();
   const crc = Buffer.alloc(4);
   crc.writeUInt32BE(require('node:zlib').crc32(hash));
@@ -221,7 +226,7 @@ for (const [chain, profiles] of Object.entries(PROFILES)) {
 console.log(JSON.stringify({
   provenance: 'bip39 3.1.0, bip32 5.0.1, bitcoinjs-lib 7.0.2, bchaddrjs 0.5.2, ethers 6.17.0, ed25519-hd-key 2.0.0, '
     + '@solana/web3.js 1.98.4, @stellar/stellar-base 14.0.1, ripple-keypairs 3.1.0, @mysten/sui 1.38.0, '
-    + '@aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/principal 3.4.3, '
+    + '@aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/identity-secp256k1 3.4.3, '
     + '@emurgo/cardano-serialization-lib-nodejs 17.0.0, blake-hash 2.0.0, kaspa-wasm 0.13.0',
   phrase: PHRASE,
   vectors,

@@ -2,7 +2,7 @@
 //! funding a neuron never stands in for executing its management commands.
 use super::error::SendError;
 use super::icp_stages::{bytes, encode, envelope, map, request_hash, text};
-use super::keys::Ed25519Seed;
+use super::keys::Secp256k1Key;
 use crate::api::icp_replica::{ClaimResponse, ClaimResult, ManageReply, ManageResponse};
 use crate::derivation::icp::{account_from_principal, principal};
 use ciborium::Value as Cbor;
@@ -204,7 +204,7 @@ fn self_describing(value: Cbor) -> Result<Vec<u8>, SendError> {
 pub(crate) fn signed_query(
     method: &str,
     argument: &[u8],
-    key: &Ed25519Seed,
+    key: &Secp256k1Key,
 ) -> Result<Vec<u8>, SendError> {
     let canister = candid::Principal::from_text(crate::registry::Chain::Icp.icp_governance_id()?)
         .map_err(SendError::invalid)?;
@@ -223,7 +223,7 @@ pub(crate) fn signed_query(
 pub(crate) fn read_state(
     id: &[u8; 32],
     expiry_ns: u64,
-    key: &Ed25519Seed,
+    key: &Secp256k1Key,
 ) -> Result<Vec<u8>, SendError> {
     self_describing(envelope(
         map(vec![
@@ -282,7 +282,7 @@ impl PreparedIcpStaking {
         selected_endpoints.clear();
     }
 
-    pub(crate) fn sign(&self, key: &Ed25519Seed) -> Result<Vec<SignedIcpStakingCall>, SendError> {
+    pub(crate) fn sign(&self, key: &Secp256k1Key) -> Result<Vec<SignedIcpStakingCall>, SendError> {
         let controller = principal(&key.public_key());
         if hex::encode(&controller) != self.controller_hex
             || hex::encode(account_from_principal(&controller)) != self.sender
@@ -482,12 +482,12 @@ pub(crate) fn validate_reply(kind: &IcpStakingCallKind, bytes: &[u8]) -> Result<
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    pub(crate) fn new_neuron_fixture() -> (Ed25519Seed, PreparedIcpStaking) {
+    pub(crate) fn new_neuron_fixture() -> (Secp256k1Key, PreparedIcpStaking) {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(
             "../../tests/fixtures/icp-staking-vectors.json"
         ))
         .unwrap();
-        let key = Ed25519Seed::from_hex(&"01".repeat(32)).unwrap();
+        let key = Secp256k1Key::from_hex(&"01".repeat(32)).unwrap();
         let controller = principal(&key.public_key());
         let subaccount = neuron_subaccount(&controller, 42);
         let governance =
@@ -565,7 +565,7 @@ pub(crate) mod tests {
         assert!(
             original
                 .validate_original_funding(&principal(
-                    &Ed25519Seed::from_hex(&"02".repeat(32))
+                    &Secp256k1Key::from_hex(&"02".repeat(32))
                         .unwrap()
                         .public_key()
                 ))
@@ -654,9 +654,12 @@ pub(crate) mod tests {
             "../../tests/fixtures/icp-staking-vectors.json"
         ))
         .unwrap();
-        let key = Ed25519Seed::from_hex(&"01".repeat(32)).unwrap();
+        let key = Secp256k1Key::from_hex(&"01".repeat(32)).unwrap();
         let controller = principal(&key.public_key());
-        assert_eq!(hex::encode(key.public_key()), fixture["public_key"]);
+        assert_eq!(
+            hex::encode(key.public_key().serialize_uncompressed()),
+            fixture["public_key"]
+        );
         assert_eq!(
             candid::Principal::from_slice(&controller).to_text(),
             fixture["controller"]
@@ -752,7 +755,7 @@ pub(crate) mod tests {
 
     #[test]
     fn controller_and_request_ids_bind_all_staking_steps() {
-        let key = Ed25519Seed::from_hex(&"01".repeat(32)).unwrap();
+        let key = Secp256k1Key::from_hex(&"01".repeat(32)).unwrap();
         let owner = principal(&key.public_key());
         let mut p = PreparedIcpStaking {
             sender: hex::encode(account_from_principal(&owner)),
@@ -784,7 +787,7 @@ pub(crate) mod tests {
         p.calls[0].argument_hex.push_str("00");
         assert_ne!(first[0].request_id, p.sign(&key).unwrap()[0].request_id);
         assert!(
-            p.sign(&Ed25519Seed::from_hex(&"02".repeat(32)).unwrap())
+            p.sign(&Secp256k1Key::from_hex(&"02".repeat(32)).unwrap())
                 .is_err()
         );
         assert!(validate_reply(&IcpStakingCallKind::Configure, &[]).is_err());

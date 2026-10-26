@@ -145,3 +145,60 @@ fn fees_follow_each_networks_rule() {
         62 + 2 * 119 + 2 * 52 + 10 * 2 * 27 + 2 * 1_000
     );
 }
+
+/// A Kaspa spend is relayed only within KIP-9's storage mass limit, which
+/// charges an output small beside the coins it spends: more inputs are
+/// taken while their change is too small to stand, and a spend no
+/// selection fits is refused rather than signed.
+#[test]
+fn kaspa_selection_keeps_within_the_storage_mass_limit() {
+    // Pay-to-pubkey Schnorr: a push of 32 bytes and OP_CHECKSIG.
+    let p2pk = [[0x20].as_slice(), &[7; 32], &[0xac]].concat();
+    let policy = FeePolicy::Kaspa(1_000);
+    let kas = 100_000_000;
+    let fits = |selection: &Selection, amount: u64| {
+        let values: Vec<u64> = selection.inputs.iter().map(|i| i.utxo.value).collect();
+        let outputs: Vec<u64> = std::iter::once(amount)
+            .chain((selection.change > 0).then_some(selection.change))
+            .collect();
+        crate::send::kaspa::storage_mass(&values, &outputs).unwrap()
+            <= crate::send::kaspa::MAXIMUM_STANDARD_MASS
+    };
+    // One coin pays 10 KAS and returns about 90 as change.
+    let candidates = vec![input(1, 100 * kas, &p2pk), input(2, kas, &p2pk)];
+    let plain = select(
+        candidates.clone(),
+        10 * kas,
+        &policy,
+        &p2pk,
+        &p2pk,
+        1_000,
+        None,
+    )
+    .unwrap();
+    assert_eq!(plain.inputs.len(), 1);
+    assert!(fits(&plain, 10 * kas));
+    // 99.995 KAS from the large coin leaves change of about 0.005 KAS,
+    // which storage mass refuses; the second coin raises it past one KAS.
+    let amount = 100 * kas - 500_000;
+    let widened = select(
+        candidates.clone(),
+        amount,
+        &policy,
+        &p2pk,
+        &p2pk,
+        1_000,
+        None,
+    )
+    .unwrap();
+    assert_eq!(widened.inputs.len(), 2);
+    assert!(widened.change > kas);
+    assert!(fits(&widened, amount));
+    // 0.05 KAS beside a 100 KAS coin can never be relayed.
+    let refused = select(candidates, 5_000_000, &policy, &p2pk, &p2pk, 1_000, None)
+        .err()
+        .unwrap();
+    assert!(refused.to_string().contains("storage mass"), "{refused}");
+    // Elsewhere the limit does not apply.
+    assert!(FeePolicy::PerKilobyte(1_000).admits(&[100 * kas], &[1_000]));
+}

@@ -256,7 +256,8 @@ impl Account {
 
 /// Every account network but Litecoin and Peercoin, whose transfers have
 /// stages of their own; with the amounts' scale (Dogecoin's static fee is a
-/// hundred times the others').
+/// hundred times the others', and Kaspa's storage mass refuses outputs of
+/// less than about a tenth of a kaspa beside the coins they spend).
 fn account_networks() -> impl Iterator<Item = (Chain, u64)> {
     Chain::all()
         .filter(|chain| {
@@ -267,10 +268,10 @@ fn account_networks() -> impl Iterator<Item = (Chain, u64)> {
                 )
         })
         .map(|chain| {
-            let scale = if chain.mainnet_counterpart() == Chain::Dogecoin {
-                100
-            } else {
-                1
+            let scale = match chain.mainnet_counterpart() {
+                Chain::Dogecoin => 100,
+                Chain::Kaspa => 1_000,
+                _ => 1,
             };
             (chain, scale)
         })
@@ -389,6 +390,64 @@ async fn an_output_spent_after_review_is_refused_at_signing() {
             "{chain}"
         );
     }
+}
+
+/// An amount the network would not relay is refused before it is built, on
+/// every account network as on its multisig accounts. Kaspa's storage mass
+/// refuses one this small beside the coin it spends as well.
+#[tokio::test]
+async fn an_amount_below_the_dust_threshold_is_refused() {
+    for (chain, scale) in account_networks() {
+        let account = Account::new(chain).await;
+        account.fund(&account.root, 1, 1_000_000 * scale);
+        let dust = crate::service::send_stage_utxo::change_dust(chain).unwrap();
+        let refused = account
+            .service
+            .build_send(account.request(chain, dust - 1))
+            .await
+            .unwrap_err();
+        assert!(
+            refused.to_string().contains("dust threshold"),
+            "{chain}: {refused}"
+        );
+        let at_dust = account
+            .service
+            .build_send(account.request(chain, dust))
+            .await;
+        if chain.mainnet_counterpart() == Chain::Kaspa {
+            let refused = at_dust.unwrap_err().to_string();
+            assert!(refused.contains("storage mass"), "{chain}: {refused}");
+        } else {
+            at_dust.unwrap();
+        }
+    }
+}
+
+/// Dogecoin Core charges an output under 0.01 DOGE that much again in fee
+/// and relays none under 0.001 DOGE, so smaller change joins the fee.
+#[tokio::test]
+async fn dogecoin_change_under_its_dust_limit_joins_the_fee() {
+    let chain = Chain::Dogecoin;
+    let account = Account::new(chain).await;
+    account.fund(&account.root, 1, 100_000_000);
+    // One input and two outputs fit a kilobyte: a 0.01 DOGE fee, leaving
+    // 0.005 DOGE of change.
+    let built = account
+        .service
+        .build_send(account.request(chain, 98_500_000))
+        .await
+        .unwrap();
+    let PreparedPayload::AccountTransfer(prepared) = account
+        .service
+        .load_send_artifact(built.id)
+        .await
+        .unwrap()
+        .prepared
+    else {
+        panic!("not an account transfer")
+    };
+    assert_eq!(prepared.outputs.len(), 1);
+    assert_eq!(prepared.fee, 1_500_000);
 }
 
 /// A Zcash transfer is bound to the network upgrade and expiry height it was

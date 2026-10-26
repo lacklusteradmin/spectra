@@ -328,7 +328,7 @@ impl WalletService {
                         password.as_deref().map(String::as_str),
                     )
                     .await?;
-                let key = crate::send::keys::Ed25519Seed::from_hex(&identity.private_key_hex)?;
+                let key = crate::send::keys::Secp256k1Key::from_hex(&identity.private_key_hex)?;
                 this.icp_staking_receipts(&stored, Some(&key)).await?
             } else if chain == Chain::Polkadot {
                 let hash = record.transaction_hash.as_deref().ok_or_else(|| {

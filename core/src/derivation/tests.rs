@@ -225,7 +225,7 @@ fn derives_all_supported_chains() {
         "internet_computer",
         derive_icp(
             m.clone(),
-            "m/44'/223'/0'/0'/0'".into(),
+            "m/44'/223'/0'/0/0".into(),
             None,
             true,
             true,

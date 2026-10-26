@@ -94,7 +94,7 @@ state_model = "eUTXO"
 
 [[chains]]
 chain = "polkadot"
-comment = "DOT balances and transfers use Polkadot Asset Hub. The relay chain secures the network; substrate-bip39 ignores BIP-32 nodes, so the derivation path shown is the canonical display form."
+comment = "DOT balances and transfers use Polkadot Asset Hub, which the relay chain secures. A phrase's keys come from its sr25519 root and an optional Substrate path of `//hard` and `/soft` junctions, as polkadot.js reads them, not from a BIP-32 path."
 family = "Polkadot Asset Hub (system parachain)"
 consensus = "Nominated Proof of Stake"
 state_model = "Account state + runtime pallets"
@@ -234,7 +234,7 @@ state_model = "EVM account state"
 
 [[chains]]
 chain = "zcash"
-comment = "Optionally-shielded payments. Spectra uses transparent (t1) addresses only; shielded sends are not supported."
+comment = "Optionally-shielded payments. A phrase wallet holds transparent (t1) funds and shielded funds, can shield its transparent ZEC, and pays unified, Sapling, transparent and TEX addresses."
 family = "Zcash (Halo 2 + transparent UTXO)"
 consensus = "Proof-of-Work (Equihash 200,9)"
 state_model = "UTXO (transparent) + zk-SNARK shielded notes (Sapling, Orchard)"
@@ -262,8 +262,8 @@ state_model = "UTXO over GHOSTDAG topological ordering"
 
 [[chains]]
 chain = "sei"
-comment = "High-throughput EVM with parallel execution and Cosmos-native interop."
-family = "Cosmos-SDK with EVM v2 module"
+comment = "High-throughput EVM with parallel execution. SIP-3 retired its Cosmos accounts and CosmWasm, so funds live at EVM addresses."
+family = "Sei L1 (EVM-only after SIP-3)"
 consensus = "Tendermint BFT (Sei v2 with EVM execution)"
 state_model = "EVM account state"
 
@@ -332,16 +332,16 @@ state_model = "UTXO with InstantSend + ChainLocks"
 
 [[chains]]
 chain = "x-layer"
-comment = "OKX-anchored zkEVM L2 for low-fee EVM transfers and DeFi denominated in OKB."
-family = "Ethereum L2 (Polygon CDK zkEVM)"
-consensus = "ZK rollup with Polygon CDK validity proofs"
+comment = "OKX's L2 for low-fee EVM transfers and DeFi, with OKB paying gas."
+family = "Ethereum L2 (OP Stack, Agglayer-connected; migrated from Polygon CDK in 2025)"
+consensus = "OP Stack rollup settling to Ethereum"
 state_model = "EVM account state"
 
 [[chains]]
 chain = "bittensor"
 comment = "Decentralized machine-learning marketplace where subnets stake TAO and earn emissions for serving AI inferences."
 family = "Substrate (subtensor; Polkadot-style runtime)"
-consensus = "Proof-of-Work + subnet validator scoring (Yuma consensus)"
+consensus = "Proof of Authority (Aura block production, GRANDPA finality); Yuma consensus scores subnet work, not blocks"
 state_model = "Substrate account/balances; subnets and neurons modeled as on-chain state"
 
 [[chains]]
