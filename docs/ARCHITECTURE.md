@@ -166,8 +166,11 @@ The send service is split into `send_execution` (stored identity and exact
 amount conversion), `send_destination` (fresh resolution and review binding),
 `send_preflight` (eligibility and recipient warnings), `send_preview` (quotes),
 `send_stages` (durable build/sign/broadcast) and `send_broadcast`
-(rebroadcast). Protocol preparation lives in `send_stage_protocols` and
-`send_stage_utxo`; prepared content is typed Rust data, not caller-owned JSON.
+(rebroadcast). `send_stage_protocols` dispatches an account protocol's
+preparation, revalidation, signing and expiry to that protocol's own
+`send_stage_<protocol>` sibling (NEAR's in `send_near`); the UTXO family's
+live in `send_stage_utxo`, `send_stage_litecoin` and `send_stage_peercoin`.
+Prepared content is typed Rust data, not caller-owned JSON.
 Secrets use redacted, zeroizing storage; an Ed25519 seed is a distinct type
 rather than an unlabelled 32/64-byte array.
 
