@@ -478,14 +478,7 @@ impl WalletService {
                     }
                     Api::AptosRest => {
                         let client = crate::api::aptos_rest::AptosClient::new(eps);
-                        let expected = chain.aptos_chain_id().ok_or_else(|| {
-                            crate::api::error::ApiError::decode("Missing Aptos network identity")
-                        })?;
-                        if client.fetch_ledger_info().await?.0 != u64::from(expected) {
-                            return Err(crate::api::error::ApiError::decode(
-                                "Aptos status: wrong network",
-                            ));
-                        }
+                        client.verify_network(chain).await?;
                         client.fetch_transaction_status(&hash).await
                     }
                     Api::SuiJsonRpc => {
@@ -519,9 +512,9 @@ impl WalletService {
                         client.fetch_transaction_status(&hash).await
                     }
                     Api::Koios => {
-                        crate::api::koios::KoiosClient::new(eps)
-                            .fetch_transaction_status(&hash)
-                            .await
+                        let client = crate::api::koios::KoiosClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
                     }
                     Api::IcpRosetta => {
                         let client = crate::api::icp_rosetta::IcpClient::new(eps);

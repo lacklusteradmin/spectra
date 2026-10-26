@@ -1,5 +1,5 @@
 use super::*;
-use crate::api::endpoint::EndpointCapability;
+use crate::catalog::endpoints::EndpointRecord;
 use wiremock::matchers::{body_partial_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -31,7 +31,7 @@ fn every_builtin_api_has_a_probe_on_its_own_origin() {
             // acceptance suites drive against loopback servers.
             continue;
         }
-        let checks = checks(chain, record).unwrap_or_else(|e| panic!("{}: {e}", record.id));
+        let checks = checks_record(chain, record).unwrap_or_else(|e| panic!("{}: {e}", record.id));
         assert!(!checks.is_empty());
         for check in checks {
             assert_eq!(
@@ -77,7 +77,7 @@ async fn icp_replica_health_reads_cbor_status_on_the_configured_origin() {
             .expect(1)
             .mount(&server)
             .await;
-        let (checked, healthy, detail) = probe(Chain::Icp, &record).await;
+        let (checked, healthy, detail) = probe_record(Chain::Icp, &record).await;
         assert!(checked && healthy, "{detail}");
         server.verify().await;
         let requests = server.received_requests().await.unwrap();
@@ -137,7 +137,7 @@ async fn icp_replica_health_refuses_unhealthy_and_malformed_statuses() {
             .expect(2)
             .mount(&server)
             .await;
-        let (checked, healthy, detail) = probe(Chain::Icp, &record).await;
+        let (checked, healthy, detail) = probe_record(Chain::Icp, &record).await;
         assert!(checked && !healthy, "{detail}");
         server.verify().await;
         server.reset().await;
@@ -148,7 +148,7 @@ async fn icp_replica_health_refuses_unhealthy_and_malformed_statuses() {
         .expect(2)
         .mount(&server)
         .await;
-    let (checked, healthy, detail) = probe(Chain::Icp, &record).await;
+    let (checked, healthy, detail) = probe_record(Chain::Icp, &record).await;
     assert!(checked && !healthy && detail.contains("503"), "{detail}");
     server.verify().await;
 }
@@ -172,8 +172,8 @@ async fn aptos_indexer_health_uses_the_configured_api_and_proves_network_identit
         .expect(2)
         .mount(&server)
         .await;
-    assert!(probe(Chain::Aptos, &record).await.1);
-    let (checked, reachable, detail) = probe(Chain::AptosTestnet, &record).await;
+    assert!(probe_record(Chain::Aptos, &record).await.1);
+    let (checked, reachable, detail) = probe_record(Chain::AptosTestnet, &record).await;
     assert!(checked && !reachable);
     assert!(detail.contains("chain id 1, expected 2"), "{detail}");
     server.verify().await;
@@ -212,7 +212,7 @@ async fn peercoin_health_verifies_network_and_precision_on_the_configured_origin
                 .respond_with(ResponseTemplate::new(200).set_body_json(identity))
                 .mount(&server)
                 .await;
-            let (checked, healthy, detail) = probe(
+            let (checked, healthy, detail) = probe_record(
                 chain,
                 &record(
                     chain,
@@ -248,7 +248,7 @@ async fn evm_checks_reads_after_chain_identity_and_rejects_wrong_network() {
         )
         .mount(&server)
         .await;
-    let (checked, reachable, detail) = probe(Chain::Ethereum, &record).await;
+    let (checked, reachable, detail) = probe_record(Chain::Ethereum, &record).await;
     assert!(checked && !reachable);
     assert!(detail.contains("eth_blockNumber") && detail.contains("Cannot fulfill request"));
     server.reset().await;
@@ -256,7 +256,7 @@ async fn evm_checks_reads_after_chain_identity_and_rejects_wrong_network() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"result":"0x89"})))
         .mount(&server)
         .await;
-    assert!(!probe(Chain::Ethereum, &record).await.1);
+    assert!(!probe_record(Chain::Ethereum, &record).await.1);
     assert!(
         server
             .received_requests()
@@ -279,7 +279,7 @@ async fn polkadot_health_refuses_a_relay_node_before_other_reads() {
     .expect(1)
     .mount(&server)
     .await;
-    let (_, healthy, detail) = probe(
+    let (_, healthy, detail) = probe_record(
         Chain::Polkadot,
         &record(Chain::Polkadot, EndpointApi::SubstrateJsonRpc, server.uri()),
     )
@@ -323,7 +323,7 @@ async fn esplora_and_monero_use_the_protocol_path() {
         .mount(&server)
         .await;
     assert!(
-        probe(
+        probe_record(
             Chain::Bitcoin,
             &record(
                 Chain::Bitcoin,
@@ -345,7 +345,7 @@ async fn esplora_and_monero_use_the_protocol_path() {
         .mount(&server)
         .await;
     assert!(
-        probe(
+        probe_record(
             Chain::Monero,
             &record(Chain::Monero, EndpointApi::MoneroDaemonRpc, server.uri())
         )
@@ -369,7 +369,7 @@ async fn blockbook_is_probed_at_its_status_and_must_report_its_height() {
         .expect(1)
         .mount(&server)
         .await;
-    let (checked, reachable, detail) = probe(Chain::DashTestnet, &record).await;
+    let (checked, reachable, detail) = probe_record(Chain::DashTestnet, &record).await;
     assert!(checked && reachable, "{detail}");
     for answer in [
         json!({"error": "Internal server error"}),
@@ -381,7 +381,7 @@ async fn blockbook_is_probed_at_its_status_and_must_report_its_height() {
             .respond_with(ResponseTemplate::new(200).set_body_json(answer.clone()))
             .mount(&server)
             .await;
-        let (checked, reachable, detail) = probe(Chain::DashTestnet, &record).await;
+        let (checked, reachable, detail) = probe_record(Chain::DashTestnet, &record).await;
         assert!(checked && !reachable, "{answer}");
         assert!(detail.contains(&answer.to_string()), "{detail}");
     }
@@ -400,7 +400,7 @@ async fn rest_probes_reject_html() {
         .respond_with(ResponseTemplate::new(200).set_body_string("<html>Unavailable</html>"))
         .mount(&server)
         .await;
-    let (checked, reachable, _) = probe(Chain::Tron, &record).await;
+    let (checked, reachable, _) = probe_record(Chain::Tron, &record).await;
     assert!(checked && !reachable);
     assert!(!server.received_requests().await.unwrap().is_empty());
 }
@@ -417,7 +417,7 @@ async fn history_rejects_http_success_with_an_api_error() {
         )
         .mount(&server)
         .await;
-    let (_, reachable, detail) = probe(
+    let (_, reachable, detail) = probe_record(
         Chain::Berachain,
         &record(
             Chain::Berachain,
@@ -442,12 +442,29 @@ async fn rosetta_posts_metadata_and_checks_the_response() {
         .expect(1)
         .mount(&server)
         .await;
-    assert!(probe(Chain::Icp, &record).await.1);
+    assert!(probe_record(Chain::Icp, &record).await.1);
     server.reset().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(403))
         .mount(&server)
         .await;
-    let (_, reachable, detail) = probe(Chain::Icp, &record).await;
+    let (_, reachable, detail) = probe_record(Chain::Icp, &record).await;
     assert!(!reachable && detail.contains("403"));
+}
+
+/// A catalog record's endpoint and what it is used for, as the service hands
+/// them over.
+async fn probe_record(chain: Chain, record: &EndpointRecord) -> (bool, bool, String) {
+    probe(chain, &endpoint(record), &record.capabilities).await
+}
+
+fn checks_record(chain: Chain, record: &EndpointRecord) -> Result<Vec<Check>, ApiError> {
+    checks(chain, &endpoint(record), &record.capabilities)
+}
+
+fn endpoint(record: &EndpointRecord) -> Endpoint {
+    Endpoint {
+        api: record.api,
+        url: record.endpoint.clone(),
+    }
 }

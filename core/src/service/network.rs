@@ -52,8 +52,12 @@ impl WalletService {
             }
             let mut out = Vec::with_capacity(records.len());
             for record in records {
+                let endpoint = crate::api::endpoint::Endpoint {
+                    api: record.api,
+                    url: record.endpoint.clone(),
+                };
                 let (checked, reachable, detail) =
-                    super::endpoint_health::probe(chain, &record).await;
+                    crate::api::health::probe(chain, &endpoint, &record.capabilities).await;
                 out.push(EndpointProbe {
                     api: record.api,
                     chain_id: chain,

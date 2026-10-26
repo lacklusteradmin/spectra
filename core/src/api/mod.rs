@@ -6,7 +6,8 @@
 //! answer types they share. `http`, `json_rpc` and `grpc` are the transport
 //! under all of them, `time` the provider timestamps they read. Every history
 //! adapter converts its answer into one `history_page::HistoryEntry`. `price`
-//! is the market-quote and fiat-rate providers.
+//! is the market-quote and fiat-rate providers. `network` proves an endpoint
+//! is the network it is configured for, and `health` probes its reads.
 //!
 //! `api` depends on nothing but the transport and `registry`: `send`,
 //! `staking` and `service` call it, never the other way round. Building and
@@ -15,9 +16,11 @@
 pub mod endpoint;
 pub mod error;
 pub(crate) mod grpc;
+pub(crate) mod health;
 pub(crate) mod history_page;
 pub mod http;
 pub(crate) mod json_rpc;
+pub(crate) mod network;
 pub mod price;
 pub(crate) mod tcp;
 pub mod time;

@@ -25,13 +25,6 @@ symptom, and delete the item with the change.
 
 ### Core
 
-- [ ] **Network identity checks are rewritten per call site.**
-  `send_stage_protocols.rs`, `pending_status.rs` and `multisig_aptos.rs`
-  check each network's identity by hand (the Aptos ledger check five times)
-  and service issues raw RPC (`isBlockhashValid`, `eth_getTransactionCount`,
-  `eth_chainId`). `endpoint_health.rs` builds probe requests in `service/`.
-  Give each client a `verify_network`, move the probes to `api/`, and keep
-  `EvmClient::call` and `SolanaClient::call` private to `api/`.
 - [ ] **`send_stage_protocols.rs` is four chain ladders** (prepare, validate,
   sign, expiry) with copied XRP/Stellar sequence checks and NEAR expiry arms.
   Split it per protocol, as `send_near.rs` and `send_stage_litecoin.rs`
