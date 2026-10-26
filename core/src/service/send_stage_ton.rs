@@ -47,8 +47,10 @@ impl WalletService {
                     "Jetton master differs from the reviewed asset",
                 ));
             }
-            if self.token_contract_decimals(chain, &plan.master).await?
-                != stored.request.token_decimals
+            if Some(u32::from(
+                self.token_decimals(chain, &plan.master, MetadataRead::Fresh)
+                    .await?,
+            )) != stored.request.token_decimals
             {
                 return Err(SpectraBridgeError::failure(
                     "Jetton precision changed; review again",

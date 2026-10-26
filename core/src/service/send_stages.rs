@@ -732,26 +732,17 @@ impl WalletService {
                 overrides.nonce = Some(self.next_send_nonce(chain, &sender).await?);
             }
             let (to, value, data) = if let Some(contract) = &request.contract_address {
-                let metadata = EvmClient::new(
-                    self.endpoints_for(chain, &[EndpointCapability::TokenBalance])
-                        .await,
-                    chain.evm_chain_id()?,
-                )
-                .fetch_erc20_metadata(contract)
-                .await?;
-                if request
-                    .token_decimals
-                    .is_some_and(|d| d != u32::from(metadata.decimals))
-                {
+                let decimals = u32::from(
+                    self.token_decimals(chain, contract, MetadataRead::Fresh)
+                        .await?,
+                );
+                if request.token_decimals.is_some_and(|d| d != decimals) {
                     return Err(SpectraBridgeError::failure(
                         "Token decimals do not match the selected network",
                     ));
                 }
-                request.token_decimals = Some(u32::from(metadata.decimals));
-                let amount = crate::amount::input::parse_raw_amount(
-                    &request.amount_str,
-                    u32::from(metadata.decimals),
-                )?;
+                request.token_decimals = Some(decimals);
+                let amount = crate::amount::input::parse_raw_amount(&request.amount_str, decimals)?;
                 (
                     contract.clone(),
                     0,

@@ -1,5 +1,4 @@
 use super::*;
-use crate::api::endpoint::EndpointApi;
 use zeroize::Zeroizing;
 
 /// Validate before keys or network reads; token precision is checked again
@@ -246,96 +245,6 @@ pub(crate) fn send_chain_for(
         ));
     }
     Ok(requested)
-}
-
-impl WalletService {
-    /// None means no metadata reader for this family; provider failures are errors.
-    pub(super) async fn token_contract_decimals(
-        &self,
-        chain: Chain,
-        contract: &str,
-    ) -> Result<Option<u32>, SpectraBridgeError> {
-        let standard = crate::catalog::tokens::resolve_token_standard(chain, None, contract)?;
-        crate::catalog::tokens::validate_protocol_identifier(chain, standard, contract)?;
-        if !chain.allows_token_standard(standard) {
-            return Err(SpectraBridgeError::invalid(format!(
-                "{standard} metadata reads are not supported"
-            )));
-        }
-        // A protocol that fixes every token's places has nothing to read.
-        if let Some(places) = standard.fixed_decimals() {
-            return Ok(Some(places));
-        }
-        let endpoints = self
-            .endpoints_for(chain, &[EndpointCapability::TokenBalance])
-            .await;
-        if chain.is_evm() {
-            let client = crate::api::evm_json_rpc::EvmClient::new(endpoints, chain.evm_chain_id()?);
-            return Ok(Some(u32::from(
-                client.fetch_erc20_metadata(contract).await?.decimals,
-            )));
-        }
-        if chain.mainnet_counterpart() == Chain::Tron {
-            let client = crate::api::tron_http::TronHttpClient::new(endpoints);
-            return Ok(Some(u32::from(
-                if standard == crate::registry::TokenStandard::Trc10 {
-                    client.fetch_trc10_metadata(chain, contract).await?.decimals
-                } else {
-                    client.fetch_trc20_metadata(contract).await?.decimals
-                },
-            )));
-        }
-        if chain.mainnet_counterpart() == Chain::Solana {
-            let client = crate::api::solana_json_rpc::SolanaClient::new(endpoints);
-            return Ok(Some(u32::from(
-                client.fetch_transfer_mint(contract).await?.decimals,
-            )));
-        }
-        if chain.mainnet_counterpart() == Chain::Near {
-            let client = crate::api::near_json_rpc::NearClient::new(endpoints);
-            return Ok(Some(u32::from(
-                client.fetch_ft_metadata(contract).await?.decimals,
-            )));
-        }
-        if chain.mainnet_counterpart() == Chain::Cardano {
-            let asset = crate::api::cardano_asset::CardanoAssetId::parse(contract)?;
-            let decimals = crate::api::koios::KoiosClient::new(endpoints)
-                .fetch_asset_decimals(std::slice::from_ref(&asset))
-                .await?;
-            return Ok(decimals.get(&asset).map(|places| u32::from(*places)));
-        }
-        if chain.mainnet_counterpart() == Chain::Sui {
-            return Ok(SuiClient::new(endpoints)
-                .fetch_coin_decimals(contract)
-                .await
-                .map(u32::from));
-        }
-        if chain.mainnet_counterpart() == Chain::Aptos {
-            return Ok(AptosClient::new(endpoints)
-                .fetch_token_decimals(contract)
-                .await
-                .map(u32::from));
-        }
-        if chain.mainnet_counterpart() == Chain::Ton {
-            let endpoints = self
-                .api_endpoints(
-                    chain,
-                    EndpointApi::ToncenterV3,
-                    &[
-                        EndpointCapability::Verification,
-                        EndpointCapability::TokenBalance,
-                    ],
-                )
-                .await?;
-            return Ok(
-                crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(endpoints))
-                    .fetch_jetton_decimals(chain, contract)
-                    .await
-                    .map(u32::from),
-            );
-        }
-        Ok(None)
-    }
 }
 
 #[cfg(test)]

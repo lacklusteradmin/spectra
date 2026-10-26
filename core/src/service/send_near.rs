@@ -157,8 +157,10 @@ impl WalletService {
             ));
         }
         if let Some(contract) = token_contract {
-            let actual = self.token_contract_decimals(chain, contract).await?;
-            if actual != stored.request.token_decimals {
+            let actual = self
+                .token_decimals(chain, contract, MetadataRead::Fresh)
+                .await?;
+            if Some(u32::from(actual)) != stored.request.token_decimals {
                 return Err(SpectraBridgeError::invalid("NEAR token precision changed"));
             }
         }

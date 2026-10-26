@@ -1,8 +1,9 @@
 //! Staking queries use committed transport settings, refreshed for every call.
 use super::*;
 use crate::api::endpoint::EndpointApi;
+use crate::registry::StakingModel;
 use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, StoredSend};
-use crate::staking::{StakingPosition, StakingRequest, StakingValidator, service::StakingService};
+use crate::staking::{StakingPosition, StakingRequest, StakingValidator};
 use crate::store::wallet_domain::TransactionStatus;
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -26,24 +27,22 @@ impl WalletService {
             if known.len() > 1000 {
                 return Err(SpectraBridgeError::invalid("Too many staking targets"));
             }
-            match chain_id {
-                Chain::Polkadot => this.fetch_substrate_staking_positions(&owner).await,
-                Chain::Icp => {
-                    let password = password.map(zeroize::Zeroizing::new);
-                    let identity = this
-                        .resolve_send_identity(
-                            chain_id,
-                            &wallet_id,
-                            password.as_deref().map(String::as_str),
-                        )
-                        .await?;
-                    this.fetch_icp_staking_positions(&identity).await
-                }
-                _ => {
-                    this.fetch_account_staking_positions(chain_id, &owner, None, &known)
-                        .await
-                }
-            }
+            // A neuron is read with the wallet's own key.
+            let identity = if staking_model(chain_id)? == StakingModel::Neuron {
+                let password = password.map(zeroize::Zeroizing::new);
+                Some(
+                    this.resolve_send_identity(
+                        chain_id,
+                        &wallet_id,
+                        password.as_deref().map(String::as_str),
+                    )
+                    .await?,
+                )
+            } else {
+                None
+            };
+            this.owned_staking_positions(chain_id, &owner, identity.as_ref(), &known)
+                .await
         })
         .await
     }
@@ -59,7 +58,8 @@ impl WalletService {
         crate::service::worker::run(async move {
             let chain = request.chain_id;
             let owner = this.staking_owner(&request.wallet_id, chain).await?;
-            if request.lockup_seconds.is_some() && chain != Chain::Icp {
+            let model = staking_model(chain)?;
+            if request.lockup_seconds.is_some() && model != StakingModel::Neuron {
                 return Err(SpectraBridgeError::invalid(
                     "Dissolve delay applies only to ICP neurons",
                 ));
@@ -89,21 +89,12 @@ impl WalletService {
             }
             let mut resolved_amount = request.amount.clone();
             if resolved_amount.is_none() {
-                let positions = match chain {
-                    Chain::Polkadot => this.fetch_substrate_staking_positions(&owner).await?,
-                    Chain::Icp => this.fetch_icp_staking_positions(&identity).await?,
-                    _ => {
-                        this.fetch_account_staking_positions(
-                            chain,
-                            &owner,
-                            identity.public_key_hex.as_deref(),
-                            &this
-                                .stored_staking_targets(&request.wallet_id, chain)
-                                .await?,
-                        )
-                        .await?
-                    }
-                };
+                let targets = this
+                    .stored_staking_targets(&request.wallet_id, chain)
+                    .await?;
+                let positions = this
+                    .owned_staking_positions(chain, &owner, Some(&identity), &targets)
+                    .await?;
                 let position = positions
                     .iter()
                     .find(|p| Some(&p.id) == request.position_id.as_ref())
@@ -132,17 +123,12 @@ impl WalletService {
                         SpectraBridgeError::invalid("Invalid staking position amount")
                     })?,
                 );
-                if matches!(
-                    chain,
-                    Chain::Solana | Chain::Sui | Chain::Aptos | Chain::Near
-                ) {
+                if model == StakingModel::Delegation {
                     request.amount = resolved_amount.clone();
                 }
             }
-            let prepared = match chain {
-                Chain::Polkadot => this.prepare_substrate_staking(&request, &owner).await?,
-                Chain::Icp => this.prepare_icp_staking(&request, &identity).await?,
-                _ => {
+            let prepared = match model {
+                StakingModel::Delegation => {
                     this.prepare_account_staking(
                         &request,
                         &owner,
@@ -150,6 +136,10 @@ impl WalletService {
                     )
                     .await?
                 }
+                StakingModel::NominationPool => {
+                    this.prepare_substrate_staking(&request, &owner).await?
+                }
+                StakingModel::Neuron => this.prepare_icp_staking(&request, &identity).await?,
             };
             let recipient = match (&prepared, request.action) {
                 (PreparedPayload::IcpStaking(p), crate::staking::StakingAction::Stake) => {
@@ -223,38 +213,25 @@ impl WalletService {
         chain_id: crate::registry::Chain,
     ) -> Result<Vec<StakingValidator>, SpectraBridgeError> {
         let this = self.clone();
-        crate::service::worker::run(async move {
-            let this = &this;
-            if chain_id == Chain::Icp {
-                return this.fetch_icp_staking_validators().await;
-            }
-            let endpoints = this.staking_endpoints(chain_id).await?;
-            StakingService::new(vec![endpoints])
-                .fetch_validators(chain_id)
-                .await
-                .map_err(|error| match error {
-                    crate::staking::StakingError::Api(error) => error.into(),
-                    crate::staking::StakingError::NotYetImplemented => {
-                        SpectraBridgeError::invalid(error)
-                    }
-                })
-        })
-        .await
+        crate::service::worker::run(async move { this.staking_validators(chain_id).await }).await
     }
 
     pub async fn staking_broadcast_endpoints(
         &self,
         chain_id: Chain,
     ) -> Result<Vec<String>, SpectraBridgeError> {
-        if chain_id == Chain::Icp {
-            self.api_endpoints(
-                chain_id,
-                EndpointApi::IcpReplica,
-                &[EndpointCapability::Staking, EndpointCapability::Broadcast],
-            )
-            .await
-        } else {
-            self.send_endpoints(chain_id).await
+        match staking_model(chain_id)? {
+            StakingModel::Neuron => {
+                self.api_endpoints(
+                    chain_id,
+                    EndpointApi::IcpReplica,
+                    &[EndpointCapability::Staking, EndpointCapability::Broadcast],
+                )
+                .await
+            }
+            StakingModel::Delegation | StakingModel::NominationPool => {
+                self.send_endpoints(chain_id).await
+            }
         }
     }
 
@@ -300,36 +277,40 @@ impl WalletService {
             if record.status != TransactionStatus::Pending {
                 return Ok(stored.view);
             }
-            let status = if chain == Chain::Icp {
-                let password = password.map(zeroize::Zeroizing::new);
-                let identity = this
-                    .resolve_send_identity(
-                        chain,
-                        &stored.view.wallet_id,
-                        password.as_deref().map(String::as_str),
-                    )
-                    .await?;
-                let key = crate::send::keys::Secp256k1Key::from_hex(&identity.private_key_hex)?;
-                this.icp_staking_receipts(&stored, Some(&key)).await?
-            } else if chain == Chain::Polkadot {
-                let hash = record.transaction_hash.as_deref().ok_or_else(|| {
-                    SpectraBridgeError::invalid("Missing staking transaction hash")
-                })?;
-                this.poll_substrate_artifact(chain, &id, hash)
-                    .await?
-                    .map(
-                        |outcome| crate::api::transaction_status::TransactionStatus::Confirmed {
-                            succeeded: outcome.succeeded,
-                            block: Some(outcome.block_number),
-                        },
-                    )
-                    .unwrap_or(crate::api::transaction_status::TransactionStatus::Pending)
-            } else {
-                let api = chain.default_api().ok_or_else(|| {
-                    SpectraBridgeError::invalid("Missing staking verification API")
-                })?;
-                this.fetch_pending_transaction_status(chain, api, &record)
-                    .await?
+            let status = match staking_model(chain)? {
+                StakingModel::Neuron => {
+                    let password = password.map(zeroize::Zeroizing::new);
+                    let identity = this
+                        .resolve_send_identity(
+                            chain,
+                            &stored.view.wallet_id,
+                            password.as_deref().map(String::as_str),
+                        )
+                        .await?;
+                    let key = crate::send::keys::Secp256k1Key::from_hex(&identity.private_key_hex)?;
+                    this.icp_staking_receipts(&stored, Some(&key)).await?
+                }
+                StakingModel::NominationPool => {
+                    let hash = record.transaction_hash.as_deref().ok_or_else(|| {
+                        SpectraBridgeError::invalid("Missing staking transaction hash")
+                    })?;
+                    this.poll_substrate_artifact(chain, &id, hash)
+                        .await?
+                        .map(|outcome| {
+                            crate::api::transaction_status::TransactionStatus::Confirmed {
+                                succeeded: outcome.succeeded,
+                                block: Some(outcome.block_number),
+                            }
+                        })
+                        .unwrap_or(crate::api::transaction_status::TransactionStatus::Pending)
+                }
+                StakingModel::Delegation => {
+                    let api = chain.default_api().ok_or_else(|| {
+                        SpectraBridgeError::invalid("Missing staking verification API")
+                    })?;
+                    this.fetch_pending_transaction_status(chain, api, &record)
+                        .await?
+                }
             };
             if let crate::api::transaction_status::TransactionStatus::Confirmed {
                 succeeded,
@@ -358,25 +339,65 @@ impl WalletService {
     }
 }
 impl WalletService {
+    /// The address of the wallet staking on `chain`, which must be its own.
     pub(super) async fn staking_owner(
         &self,
         wallet_id: &str,
         chain: Chain,
     ) -> Result<String, SpectraBridgeError> {
-        if chain.is_testnet() || !chain.supports_staking() {
-            return Err(SpectraBridgeError::invalid(
+        let (_, wallet_chain, owner) = self
+            .action_wallet(
+                wallet_id,
+                WalletAction::Stake,
                 "Staking is unavailable for this network",
+            )
+            .await?;
+        if wallet_chain != chain {
+            return Err(SpectraBridgeError::invalid(
+                "Staking wallet is on another network",
             ));
         }
-        let state = self.app_state().await;
-        let wallet = state
-            .wallets
-            .iter()
-            .find(|w| w.id == wallet_id)
-            .ok_or_else(|| SpectraBridgeError::invalid("Staking wallet does not exist"))?;
-        wallet.address_on(chain).map(str::to_string).ok_or_else(|| {
-            SpectraBridgeError::invalid("Wallet has no address on this staking network")
-        })
+        Ok(owner)
+    }
+
+    /// What `chain` stakes with, from the staking endpoints a query uses.
+    pub(super) async fn staking_validators(
+        &self,
+        chain: Chain,
+    ) -> Result<Vec<StakingValidator>, SpectraBridgeError> {
+        let endpoints = self.staking_endpoints(chain).await?.endpoints;
+        crate::staking::fetch_validators(chain, endpoints)
+            .await
+            .map_err(|error| match error {
+                crate::staking::StakingError::Api(error) => error.into(),
+                crate::staking::StakingError::NotYetImplemented => {
+                    SpectraBridgeError::invalid(error)
+                }
+            })
+    }
+
+    /// The positions `owner` holds on `chain`, as the network reports them.
+    /// A neuron is read with the wallet's key, so ICP needs its `identity`.
+    async fn owned_staking_positions(
+        &self,
+        chain: Chain,
+        owner: &str,
+        identity: Option<&super::send_identity::ResolvedSendIdentity>,
+        targets: &[String],
+    ) -> Result<Vec<StakingPosition>, SpectraBridgeError> {
+        match staking_model(chain)? {
+            StakingModel::Delegation => {
+                self.fetch_account_staking_positions(chain, owner, targets)
+                    .await
+            }
+            StakingModel::NominationPool => self.fetch_substrate_staking_positions(owner).await,
+            StakingModel::Neuron => {
+                let identity = identity.ok_or_else(|| {
+                    SpectraBridgeError::invalid("A neuron is read with the wallet's key")
+                })?;
+                self.fetch_icp_staking_positions(identity).await
+            }
+        }
     }
 
     async fn stored_staking_targets(
@@ -407,10 +428,10 @@ impl WalletService {
         &self,
         stored: &StoredSend,
     ) -> Result<(), SpectraBridgeError> {
-        match stored.view.chain_id {
-            Chain::Polkadot => self.validate_substrate_staking_state(stored).await,
-            Chain::Icp => self.validate_icp_staking_state(stored).await,
-            _ => self.validate_account_staking_state(stored).await,
+        match staking_model(stored.view.chain_id)? {
+            StakingModel::Delegation => self.validate_account_staking_state(stored).await,
+            StakingModel::NominationPool => self.validate_substrate_staking_state(stored).await,
+            StakingModel::Neuron => self.validate_icp_staking_state(stored).await,
         }
     }
 
@@ -419,7 +440,7 @@ impl WalletService {
         &self,
         chain: crate::registry::Chain,
     ) -> Result<ChainEndpoints, SpectraBridgeError> {
-        if chain.is_testnet() || !chain.supports_staking() {
+        let Some(model) = chain.staking_model() else {
             return Err(SpectraBridgeError::InvalidInput {
                 message: format!(
                     "Staking queries are unavailable for {}",
@@ -427,8 +448,8 @@ impl WalletService {
                 )
                 .into(),
             });
-        }
-        let endpoints = if chain == Chain::Icp {
+        };
+        let endpoints = if model == StakingModel::Neuron {
             self.api_endpoints(
                 chain,
                 EndpointApi::IcpReplica,
@@ -457,6 +478,13 @@ impl WalletService {
             endpoints,
         })
     }
+}
+
+/// How `chain` stakes, or a refusal for a network Spectra does not stake on.
+fn staking_model(chain: Chain) -> Result<StakingModel, SpectraBridgeError> {
+    chain
+        .staking_model()
+        .ok_or_else(|| SpectraBridgeError::invalid("Staking is unavailable for this network"))
 }
 
 fn staking_review(
@@ -498,17 +526,18 @@ fn staking_review(
         _ => return Err(invalid()),
     };
     let decimals = u32::from(request.chain_id.native_decimals());
+    let neuron = request.chain_id.staking_model() == Some(StakingModel::Neuron);
     Ok(crate::staking::StakingReview {
         network_fee: crate::amount::decimal::from_units(fee, decimals),
         fee_is_upper_bound: upper,
-        fee_is_deducted_from_amount: request.chain_id == Chain::Icp
+        fee_is_deducted_from_amount: neuron
             && request.action == crate::staking::StakingAction::Withdraw,
         funding_already_completed: false,
         refundable_deposit: rent
             .filter(|r| *r > 0)
             .map(|r| crate::amount::decimal::from_units(r, decimals)),
         lockup_seconds: request.lockup_seconds,
-        reward_payout_is_delayed: request.chain_id == Chain::Icp
+        reward_payout_is_delayed: neuron
             && request.action == crate::staking::StakingAction::ClaimRewards,
     })
 }

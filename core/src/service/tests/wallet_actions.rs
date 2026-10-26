@@ -165,74 +165,44 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
     }
 }
 
-const ACTIONS: [WalletAction; 27] = [
-    WalletAction::Send,
-    WalletAction::Receive,
-    WalletAction::History,
-    WalletAction::OpenInExplorer,
-    WalletAction::AddKeys,
-    WalletAction::Stake,
-    WalletAction::ScanBlocks,
-    WalletAction::Coins,
-    WalletAction::TokenApprovals,
-    WalletAction::Nfts,
-    WalletAction::ShieldedFunds,
-    WalletAction::MwebFunds,
-    WalletAction::NetworkAccount,
-    WalletAction::AccessKeys,
-    WalletAction::TokenStorage,
-    WalletAction::CoinObjects,
-    WalletAction::TokenAccounts,
-    WalletAction::TrustLines,
-    WalletAction::GetTestCoins,
-    WalletAction::SignMessage,
-    WalletAction::VerifyMessage,
-    WalletAction::AddToNetwork,
-    WalletAction::Rename,
-    WalletAction::RevealPhrase,
-    WalletAction::ExportKeys,
-    WalletAction::Delete,
-    WalletAction::Multisig,
-];
-
-/// Each action's place in [`ACTIONS`]. A new action does not compile here
-/// until it has one, so the list cannot leave an action unchecked, as it
-/// once left three.
+/// Each action's place in [`WalletAction::ALL`]. A new action does not
+/// compile here until it has one, so the list cannot leave an action out, as
+/// it once left three.
 fn position(action: WalletAction) -> usize {
     match action {
         WalletAction::Send => 0,
-        WalletAction::Receive => 1,
-        WalletAction::History => 2,
-        WalletAction::OpenInExplorer => 3,
-        WalletAction::AddKeys => 4,
-        WalletAction::Stake => 5,
-        WalletAction::ScanBlocks => 6,
-        WalletAction::Coins => 7,
-        WalletAction::TokenApprovals => 8,
-        WalletAction::Nfts => 9,
-        WalletAction::ShieldedFunds => 10,
-        WalletAction::MwebFunds => 11,
-        WalletAction::NetworkAccount => 12,
-        WalletAction::AccessKeys => 13,
-        WalletAction::TokenStorage => 14,
-        WalletAction::CoinObjects => 15,
-        WalletAction::TokenAccounts => 16,
-        WalletAction::TrustLines => 17,
-        WalletAction::GetTestCoins => 18,
-        WalletAction::SignMessage => 19,
-        WalletAction::VerifyMessage => 20,
-        WalletAction::AddToNetwork => 21,
-        WalletAction::Rename => 22,
-        WalletAction::RevealPhrase => 23,
-        WalletAction::ExportKeys => 24,
-        WalletAction::Delete => 25,
-        WalletAction::Multisig => 26,
+        WalletAction::Multisig => 1,
+        WalletAction::Receive => 2,
+        WalletAction::History => 3,
+        WalletAction::OpenInExplorer => 4,
+        WalletAction::AddKeys => 5,
+        WalletAction::Stake => 6,
+        WalletAction::ScanBlocks => 7,
+        WalletAction::Coins => 8,
+        WalletAction::TokenApprovals => 9,
+        WalletAction::Nfts => 10,
+        WalletAction::ShieldedFunds => 11,
+        WalletAction::MwebFunds => 12,
+        WalletAction::NetworkAccount => 13,
+        WalletAction::AccessKeys => 14,
+        WalletAction::TokenStorage => 15,
+        WalletAction::CoinObjects => 16,
+        WalletAction::TokenAccounts => 17,
+        WalletAction::TrustLines => 18,
+        WalletAction::GetTestCoins => 19,
+        WalletAction::SignMessage => 20,
+        WalletAction::VerifyMessage => 21,
+        WalletAction::AddToNetwork => 22,
+        WalletAction::Rename => 23,
+        WalletAction::RevealPhrase => 24,
+        WalletAction::ExportKeys => 25,
+        WalletAction::Delete => 26,
     }
 }
 
 #[test]
-fn the_checked_actions_are_every_action() {
-    for (index, action) in ACTIONS.into_iter().enumerate() {
+fn the_page_order_holds_every_action() {
+    for (index, action) in WalletAction::ALL.into_iter().enumerate() {
         assert_eq!(position(action), index, "{action:?}");
     }
 }
@@ -256,7 +226,7 @@ async fn every_listed_action_is_performed_and_every_other_refused() {
             let offered = service.wallet_actions(wallet.id.clone()).await.unwrap();
             assert_eq!(offered.chain, chain);
             assert_eq!(offered.summary.chain, chain);
-            for action in ACTIONS {
+            for action in WalletAction::ALL {
                 let listed = offered.actions.iter().any(|offer| offer.action == action);
                 assert_eq!(
                     listed,
@@ -323,7 +293,7 @@ async fn a_removed_wallet_has_no_actions() {
 
 #[test]
 fn every_action_has_a_sentence_and_a_section() {
-    for action in ACTIONS {
+    for action in WalletAction::ALL {
         let note = action.note();
         assert!(note.ends_with('.'), "{action:?}");
         assert!(note.starts_with(char::is_uppercase), "{action:?}");

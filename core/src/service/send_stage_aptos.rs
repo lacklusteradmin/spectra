@@ -79,7 +79,11 @@ impl WalletService {
             .unwrap_or(u32::from(chain.native_decimals()));
         let amount = crate::amount::input::parse_raw_amount(&stored.request.amount_str, decimals)?;
         let native_amount = if let Some(contract) = &stored.request.contract_address {
-            if self.token_contract_decimals(chain, contract).await? != Some(decimals) {
+            if u32::from(
+                self.token_decimals(chain, contract, MetadataRead::Fresh)
+                    .await?,
+            ) != decimals
+            {
                 return Err(SpectraBridgeError::failure(
                     "Aptos token precision changed; review again",
                 ));

@@ -55,7 +55,10 @@ impl WalletService {
     pub async fn wallet_nfts(&self, wallet_id: String) -> Result<WalletNfts, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (chain, owner) = this.evm_owner(&wallet_id, NFT_REFUSAL).await?;
+            let (_, chain, owner) = this
+                .action_wallet(&wallet_id, WalletAction::Nfts, NFT_REFUSAL)
+                .await?;
+            let owner = owner.to_ascii_lowercase();
             let explorers: Vec<String> = this
                 .api_endpoints(
                     chain,
@@ -115,7 +118,10 @@ impl WalletService {
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (chain, owner) = this.evm_owner(&wallet_id, NFT_REFUSAL).await?;
+            let (_, chain, owner) = this
+                .action_wallet(&wallet_id, WalletAction::Nfts, NFT_REFUSAL)
+                .await?;
+            let owner = owner.to_ascii_lowercase();
             if this.stored_wallet(&wallet_id).await?.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
                     "a watch-only wallet cannot send",

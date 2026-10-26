@@ -12,6 +12,8 @@
 use super::*;
 use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, WalletOperation};
 
+const NO_TRUST_LINES: &str = "Only an XRP Ledger or Stellar wallet keeps trust lines.";
+
 /// One trust line of a wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -52,7 +54,9 @@ impl WalletService {
     ) -> Result<WalletTrustLines, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (chain, owner) = this.trust_line_owner(&wallet_id).await?;
+            let (_, chain, owner) = this
+                .action_wallet(&wallet_id, WalletAction::TrustLines, NO_TRUST_LINES)
+                .await?;
             let endpoints = this
                 .endpoints_for(chain, &[EndpointCapability::Verification])
                 .await;
@@ -167,33 +171,16 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// An XRP Ledger or Stellar wallet's network and address, or a refusal.
-    async fn trust_line_owner(
-        &self,
-        wallet_id: &str,
-    ) -> Result<(Chain, String), SpectraBridgeError> {
-        let wallet = self.stored_wallet(wallet_id).await?;
-        let chain = wallet.chain_id;
-        if !matches!(chain.mainnet_counterpart(), Chain::Xrp | Chain::Stellar) {
-            return Err(SpectraBridgeError::invalid(
-                "Only an XRP Ledger or Stellar wallet keeps trust lines.",
-            ));
-        }
-        let owner = wallet
-            .address_on(chain)
-            .ok_or_else(|| SpectraBridgeError::failure("Wallet has no address on this network"))?
-            .to_string();
-        Ok((chain, owner))
-    }
-
     async fn build_trust_line_change(
         &self,
         wallet_id: String,
         asset: String,
         remove: bool,
     ) -> Result<SendArtifact, SpectraBridgeError> {
-        let (chain, owner) = self.trust_line_owner(&wallet_id).await?;
-        if self.stored_wallet(&wallet_id).await?.is_watch_only() {
+        let (wallet, chain, owner) = self
+            .action_wallet(&wallet_id, WalletAction::TrustLines, NO_TRUST_LINES)
+            .await?;
+        if wallet.is_watch_only() {
             return Err(SpectraBridgeError::invalid(
                 "a watch-only wallet cannot send",
             ));

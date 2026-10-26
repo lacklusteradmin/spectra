@@ -111,10 +111,10 @@ async fn trc10_preview_and_metadata_use_real_token_precision_and_native_fee_budg
     let service = service(&server);
     assert_eq!(
         service
-            .token_contract_decimals(Chain::Tron, "1002000")
+            .token_decimals(Chain::Tron, "1002000", MetadataRead::Fresh)
             .await
             .unwrap(),
-        Some(2)
+        2
     );
     let preview = service
         .fetch_tron_send_preview(Chain::Tron, owner.into(), "T10".into(), "1002000".into())

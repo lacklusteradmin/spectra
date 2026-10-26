@@ -261,7 +261,17 @@ panic when broken, since a broken embedded file is a build defect.
   the send stages decide that only a catalog endpoint may skip a network
   core cannot ask. Its siblings `network_balance`, `network_tokens`,
   `network_history` and `network_prices` own the corresponding reads and
-  dispatch.
+  dispatch. `network_tokens::token_decimals` is the one reader of a token's
+  decimals: a send asks it `MetadataRead::Fresh`, while a balance read may
+  reuse the TRC-20 metadata other balance reads cached.
+- `service/wallet_actions.rs::offers` is the one gate for what a wallet
+  does: its page lists the actions it answers yes to, and each operation
+  behind one fetches its wallet through `action_wallet`, which asks it again.
+- Staking: `registry::StakingModel` says how a network stakes — delegation
+  (Solana, Sui, Aptos, NEAR), nomination pools (Polkadot) or neurons (ICP).
+  `service/staking.rs` dispatches each operation once on it, to
+  `staking_protocols.rs`, `staking_substrate.rs` or `staking_icp.rs`;
+  `staking::fetch_validators` reads each network's validator directory.
 - `service/history_refresh.rs` reads an account UTXO wallet's history over
   every address its account is known to hold. `service/bitcoin_history.rs`
   owns provider pagination and buffered block-cohort aggregation; a display

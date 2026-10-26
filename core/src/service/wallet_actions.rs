@@ -95,6 +95,37 @@ pub enum WalletActionSection {
 }
 
 impl WalletAction {
+    /// Every action, in the order a wallet's page offers them.
+    pub(crate) const ALL: [Self; 27] = [
+        Self::Send,
+        Self::Multisig,
+        Self::Receive,
+        Self::History,
+        Self::OpenInExplorer,
+        Self::AddKeys,
+        Self::Stake,
+        Self::ScanBlocks,
+        Self::Coins,
+        Self::TokenApprovals,
+        Self::Nfts,
+        Self::ShieldedFunds,
+        Self::MwebFunds,
+        Self::NetworkAccount,
+        Self::AccessKeys,
+        Self::TokenStorage,
+        Self::CoinObjects,
+        Self::TokenAccounts,
+        Self::TrustLines,
+        Self::GetTestCoins,
+        Self::SignMessage,
+        Self::VerifyMessage,
+        Self::AddToNetwork,
+        Self::Rename,
+        Self::RevealPhrase,
+        Self::ExportKeys,
+        Self::Delete,
+    ];
+
     pub fn section(self) -> WalletActionSection {
         match self {
             Self::Send | Self::Receive | Self::History => WalletActionSection::Everyday,
@@ -215,100 +246,62 @@ pub struct WalletActions {
 
 /// The actions `wallet` offers, in page order.
 pub(crate) fn offered_actions(wallet: &WalletState) -> Vec<WalletAction> {
+    WalletAction::ALL
+        .into_iter()
+        .filter(|action| offers(wallet, *action))
+        .collect()
+}
+
+/// Whether `wallet`'s page offers `action`: the one gate the page and the
+/// operation behind it both ask.
+pub(crate) fn offers(wallet: &WalletState, action: WalletAction) -> bool {
     let chain = wallet.chain_id;
     let signs = !wallet.signing.is_watch_only();
-    let message_scheme = wallet
-        .address_on(chain)
-        .and_then(|address| crate::send::message::scheme_for(chain, address));
-    [
-        (
-            signs && wallet.multisig_policy.is_none(),
-            WalletAction::Send,
-        ),
-        (
-            super::multisig::MultisigScheme::of(wallet).is_some(),
-            WalletAction::Multisig,
-        ),
-        (true, WalletAction::Receive),
-        (true, WalletAction::History),
-        (
-            wallet
-                .address_on(chain)
-                .and_then(|address| {
-                    crate::catalog::explorers::address_explorer_link(chain, address.to_string())
-                })
-                .is_some(),
-            WalletAction::OpenInExplorer,
-        ),
-        (!upgrade_methods(wallet).is_empty(), WalletAction::AddKeys),
+    let message_scheme = || {
+        wallet
+            .address_on(chain)
+            .and_then(|address| crate::send::message::scheme_for(chain, address))
+    };
+    match action {
+        WalletAction::Send => signs && wallet.multisig_policy.is_none(),
+        WalletAction::Multisig => super::multisig::MultisigScheme::of(wallet).is_some(),
+        WalletAction::Receive
+        | WalletAction::History
+        | WalletAction::Rename
+        | WalletAction::Delete => true,
+        WalletAction::OpenInExplorer => wallet
+            .address_on(chain)
+            .and_then(|address| {
+                crate::catalog::explorers::address_explorer_link(chain, address.to_string())
+            })
+            .is_some(),
+        WalletAction::AddKeys => !upgrade_methods(wallet).is_empty(),
         // Positions are read from the address, so a watched wallet sees them;
         // every staking action still needs the key.
-        (
-            !chain.is_testnet() && chain.supports_staking(),
-            WalletAction::Stake,
-        ),
+        WalletAction::Stake => !chain.is_testnet() && chain.supports_staking(),
         // The scan reads with the wallet's own keys, or a view-only
         // wallet's view key.
-        (chain.scans_for_balance(), WalletAction::ScanBlocks),
-        (chain.lists_account_coins(), WalletAction::Coins),
-        (chain.is_evm(), WalletAction::TokenApprovals),
-        (chain.is_evm(), WalletAction::Nfts),
-        (
-            super::zcash_shielded::shielded_account(wallet).is_ok(),
-            WalletAction::ShieldedFunds,
-        ),
-        (
-            super::litecoin_mweb::holds_mweb_keys(wallet).is_ok(),
-            WalletAction::MwebFunds,
-        ),
-        (
-            super::wallet_network_account::has_network_account(wallet),
-            WalletAction::NetworkAccount,
-        ),
-        (
-            chain.mainnet_counterpart() == Chain::Near,
-            WalletAction::AccessKeys,
-        ),
-        (
-            chain.mainnet_counterpart() == Chain::Near,
-            WalletAction::TokenStorage,
-        ),
-        (
-            chain.mainnet_counterpart() == Chain::Sui,
-            WalletAction::CoinObjects,
-        ),
-        (
-            chain.mainnet_counterpart() == Chain::Solana,
-            WalletAction::TokenAccounts,
-        ),
-        (
-            matches!(chain.mainnet_counterpart(), Chain::Xrp | Chain::Stellar),
-            WalletAction::TrustLines,
-        ),
-        (chain.faucet_url().is_some(), WalletAction::GetTestCoins),
-        (signs && message_scheme.is_some(), WalletAction::SignMessage),
-        (
-            !signs && message_scheme.is_some(),
-            WalletAction::VerifyMessage,
-        ),
-        (
-            !super::wallet_copy::copy_targets(wallet).is_empty(),
-            WalletAction::AddToNetwork,
-        ),
-        (true, WalletAction::Rename),
-        (
-            matches!(wallet.signing, WalletSigning::SeedPhrase { .. }),
-            WalletAction::RevealPhrase,
-        ),
-        (
-            !super::wallet_keys::exportable_keys(wallet).is_empty(),
-            WalletAction::ExportKeys,
-        ),
-        (true, WalletAction::Delete),
-    ]
-    .into_iter()
-    .filter_map(|(offered, action)| offered.then_some(action))
-    .collect()
+        WalletAction::ScanBlocks => chain.scans_for_balance(),
+        WalletAction::Coins => chain.lists_account_coins(),
+        WalletAction::TokenApprovals | WalletAction::Nfts => chain.is_evm(),
+        WalletAction::ShieldedFunds => super::zcash_shielded::shielded_account(wallet).is_ok(),
+        WalletAction::MwebFunds => super::litecoin_mweb::holds_mweb_keys(wallet).is_ok(),
+        WalletAction::NetworkAccount => super::wallet_network_account::has_network_account(wallet),
+        WalletAction::AccessKeys | WalletAction::TokenStorage => {
+            chain.mainnet_counterpart() == Chain::Near
+        }
+        WalletAction::CoinObjects => chain.mainnet_counterpart() == Chain::Sui,
+        WalletAction::TokenAccounts => chain.mainnet_counterpart() == Chain::Solana,
+        WalletAction::TrustLines => {
+            matches!(chain.mainnet_counterpart(), Chain::Xrp | Chain::Stellar)
+        }
+        WalletAction::GetTestCoins => chain.faucet_url().is_some(),
+        WalletAction::SignMessage => signs && message_scheme().is_some(),
+        WalletAction::VerifyMessage => !signs && message_scheme().is_some(),
+        WalletAction::AddToNetwork => !super::wallet_copy::copy_targets(wallet).is_empty(),
+        WalletAction::RevealPhrase => matches!(wallet.signing, WalletSigning::SeedPhrase { .. }),
+        WalletAction::ExportKeys => !super::wallet_keys::exportable_keys(wallet).is_empty(),
+    }
 }
 
 /// The setup methods that give a watched wallet its keys: a phrase always,
@@ -387,6 +380,28 @@ impl WalletService {
                 .collect(),
             summary,
         })
+    }
+}
+
+impl WalletService {
+    /// The stored wallet an `action` runs for, with its network and address,
+    /// or `refusal` where its page does not offer the action.
+    pub(super) async fn action_wallet(
+        &self,
+        wallet_id: &str,
+        action: WalletAction,
+        refusal: &'static str,
+    ) -> Result<(WalletState, Chain, String), SpectraBridgeError> {
+        let wallet = self.stored_wallet(wallet_id).await?;
+        if !offers(&wallet, action) {
+            return Err(SpectraBridgeError::invalid(refusal));
+        }
+        let chain = wallet.chain_id;
+        let address = wallet
+            .address_on(chain)
+            .ok_or_else(|| SpectraBridgeError::failure("Wallet has no address on this network"))?
+            .to_string();
+        Ok((wallet, chain, address))
     }
 }
 

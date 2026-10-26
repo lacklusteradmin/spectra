@@ -13,6 +13,8 @@ use super::*;
 use crate::send::solana::{MAX_CLOSED_ACCOUNTS, PreparedSolanaAccountClosure};
 use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, WalletOperation};
 
+const NOT_SOLANA: &str = "Only a Solana wallet holds token accounts.";
+
 /// One empty token account.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
@@ -73,7 +75,9 @@ impl WalletService {
     ) -> Result<EmptyTokenAccounts, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (chain, owner) = this.solana_owner(&wallet_id).await?;
+            let (_, chain, owner) = this
+                .action_wallet(&wallet_id, WalletAction::TokenAccounts, NOT_SOLANA)
+                .await?;
             let state = this.app_state().await;
             let decimals = u32::from(chain.native_decimals());
             let mut reclaimable = 0u128;
@@ -127,7 +131,9 @@ impl WalletService {
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let (chain, owner) = this.solana_owner(&wallet_id).await?;
+            let (_, chain, owner) = this
+                .action_wallet(&wallet_id, WalletAction::TokenAccounts, NOT_SOLANA)
+                .await?;
             if this.stored_wallet(&wallet_id).await?.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
                     "a watch-only wallet cannot send",
@@ -242,22 +248,6 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// A Solana wallet's network and address, or a refusal.
-    async fn solana_owner(&self, wallet_id: &str) -> Result<(Chain, String), SpectraBridgeError> {
-        let wallet = self.stored_wallet(wallet_id).await?;
-        let chain = wallet.chain_id;
-        if chain.mainnet_counterpart() != Chain::Solana {
-            return Err(SpectraBridgeError::invalid(
-                "Only a Solana wallet holds token accounts.",
-            ));
-        }
-        let owner = wallet
-            .address_on(chain)
-            .ok_or_else(|| SpectraBridgeError::failure("Wallet has no address on this network"))?
-            .to_string();
-        Ok((chain, owner))
-    }
-
     async fn solana_client(&self, chain: Chain) -> Result<SolanaClient, SpectraBridgeError> {
         let client = SolanaClient::new(
             self.endpoints_for(chain, &[EndpointCapability::Verification])

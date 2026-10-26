@@ -3,11 +3,12 @@ use crate::api::endpoint::EndpointCapability;
 #[cfg(test)]
 mod token_decimals_come_from_the_contract {
     use crate::registry::Chain;
-    use crate::service::WalletService;
+    use crate::service::{MetadataRead, WalletService};
 
-    /// A missing execution metadata reader does not bypass identity validation.
+    /// Decimals no service answers for are an error, never a guess, and an
+    /// identifier the network does not use is refused before any request.
     #[tokio::test]
-    async fn valid_tokens_without_execution_metadata_return_none() {
+    async fn unreadable_or_malformed_tokens_are_refused() {
         let service = WalletService::new(Vec::new()).expect("service");
         for (chain, identifier) in [
             (
@@ -17,21 +18,16 @@ mod token_decimals_come_from_the_contract {
             (Chain::Sui, "0x1::coin::TEST"),
             (Chain::Aptos, "0x1"),
         ] {
-            assert_eq!(
-                service
-                    .token_contract_decimals(chain, identifier)
-                    .await
-                    .unwrap(),
-                None,
-                "{} has no execution metadata reader",
-                chain.str_id()
-            );
-            assert!(
-                service
-                    .token_contract_decimals(chain, "whatever")
-                    .await
-                    .is_err()
-            );
+            for identifier in [identifier, "whatever"] {
+                assert!(
+                    service
+                        .token_decimals(chain, identifier, MetadataRead::Fresh)
+                        .await
+                        .is_err(),
+                    "{} {identifier}",
+                    chain.str_id()
+                );
+            }
         }
     }
 }

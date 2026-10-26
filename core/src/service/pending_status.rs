@@ -50,6 +50,52 @@ pub(super) fn needs_status_poll(
         && status == S::Pending
 }
 
+/// What a UTXO status read says about one stored transaction, for the poll
+/// and an explicit recheck alike. Confirmation depth and block height are
+/// metadata of a confirmed transaction, not a polling threshold; a pending
+/// one has neither, and an answer about another hash is no answer.
+pub(super) fn utxo_resolution(
+    record: &crate::store::persistence_models::TransactionRecord,
+    status: crate::api::utxo::UtxoTxStatus,
+) -> Result<ResolvedPendingStatus, SpectraBridgeError> {
+    if record
+        .transaction_hash
+        .as_deref()
+        .is_none_or(|hash| !status.txid.eq_ignore_ascii_case(hash))
+    {
+        return Err(SpectraBridgeError::failure(
+            "Provider returned a different transaction hash.",
+        ));
+    }
+    let (confirmations, receipt_block_number) = if status.confirmed {
+        (
+            status
+                .confirmations
+                .map(u32::try_from)
+                .transpose()
+                .map_err(|_| SpectraBridgeError::failure("Confirmation count is out of range."))?,
+            status
+                .block_height
+                .map(i64::try_from)
+                .transpose()
+                .map_err(|_| SpectraBridgeError::failure("Block height is out of range."))?,
+        )
+    } else {
+        (None, None)
+    };
+    Ok(ResolvedPendingStatus {
+        id: record.id.clone(),
+        status: if status.confirmed {
+            TransactionStatus::Confirmed
+        } else {
+            TransactionStatus::Pending
+        },
+        confirmations,
+        receipt_block_number,
+        evm_receipt_cost: None,
+    })
+}
+
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct PendingMaintenanceFailure {
     pub chain_id: crate::registry::Chain,
@@ -172,56 +218,22 @@ impl WalletService {
                         let Some(hash) = record.transaction_hash.clone() else {
                             continue;
                         };
-                        match this.fetch_utxo_tx_status(chain, hash).await {
-                            Ok(status) => {
-                                // Confirmation depth is provider metadata, not a polling threshold.
-                                let confirmations = if status.confirmed {
-                                    match status.confirmations.map(u32::try_from).transpose() {
-                                        Ok(count) => count,
-                                        Err(_) => {
-                                            this.record_status_poll(
-                                                record.id.clone(),
-                                                crate::service::StatusPollOutcome::Failed,
-                                            )
-                                            .await;
-                                            continue;
-                                        }
-                                    }
-                                } else {
-                                    None
-                                };
-                                let block = match status.block_height.map(i64::try_from).transpose()
-                                {
-                                    Ok(block) => block,
-                                    Err(_) => {
-                                        this.record_status_poll(
-                                            record.id.clone(),
-                                            crate::service::StatusPollOutcome::Failed,
-                                        )
-                                        .await;
-                                        continue;
-                                    }
-                                };
+                        let resolved = this
+                            .fetch_utxo_tx_status(chain, hash)
+                            .await
+                            .and_then(|status| utxo_resolution(record, status));
+                        match resolved {
+                            Ok(resolution) => {
                                 this.record_status_poll(
                                     record.id.clone(),
-                                    if status.confirmed {
+                                    if resolution.status == TransactionStatus::Confirmed {
                                         crate::service::StatusPollOutcome::Confirmed
                                     } else {
                                         crate::service::StatusPollOutcome::Pending
                                     },
                                 )
                                 .await;
-                                resolutions.push(ResolvedPendingStatus {
-                                    id: record.id.clone(),
-                                    status: if status.confirmed {
-                                        TransactionStatus::Confirmed
-                                    } else {
-                                        TransactionStatus::Pending
-                                    },
-                                    confirmations,
-                                    receipt_block_number: block,
-                                    evm_receipt_cost: None,
-                                });
+                                resolutions.push(resolution);
                             }
                             Err(_) => {
                                 this.record_status_poll(
