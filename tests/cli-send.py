@@ -77,7 +77,7 @@ class SendTests(unittest.TestCase):
                 args=('send','owned-broadcast','--wallet','Sealed','--holding','ethereum:native','--amount','1',
                       '--destination','0x'+'22'*20)
                 refused=run(*args,success=False,env={'SPECTRA_PASSWORD':password})
-                assert refused.returncode==3 and '--yes' in json.loads(refused.stdout)['error'],refused
+                assert refused.returncode==2 and '--yes' in json.loads(refused.stdout)['error'],refused
                 assert not submitted,submitted
                 sent=json.loads(run(*args,'--yes',env={'SPECTRA_PASSWORD':password}).stdout)
                 assert sent['transactionHash'].startswith('0x') and len(sent['transactionHash']) == 66,sent

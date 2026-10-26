@@ -26,7 +26,8 @@ impl EvmCustomFeeConfiguration {
     /// one past the u64 the signer carries is refused, never rounded.
     pub(crate) fn to_wei(&self) -> Result<(u128, u128), EvmCustomFeeError> {
         fn wei(gwei: &str) -> Option<u128> {
-            crate::decimal::to_units(gwei, 9).filter(|&wei| wei > 0 && wei <= u128::from(u64::MAX))
+            crate::amount::decimal::to_units(gwei, 9)
+                .filter(|&wei| wei > 0 && wei <= u128::from(u64::MAX))
         }
         let max = wei(&self.max_fee_per_gas_gwei).ok_or(EvmCustomFeeError::InvalidMaxFee)?;
         let priority = wei(&self.max_priority_fee_per_gas_gwei)
@@ -45,9 +46,9 @@ pub fn parse_evm_custom_fees(
     priority_fee_gwei_raw: String,
 ) -> Result<EvmCustomFeeConfiguration, EvmCustomFeeError> {
     let fees = EvmCustomFeeConfiguration {
-        max_fee_per_gas_gwei: crate::decimal::canonical(&max_fee_gwei_raw)
+        max_fee_per_gas_gwei: crate::amount::decimal::canonical(&max_fee_gwei_raw)
             .ok_or(EvmCustomFeeError::InvalidMaxFee)?,
-        max_priority_fee_per_gas_gwei: crate::decimal::canonical(&priority_fee_gwei_raw)
+        max_priority_fee_per_gas_gwei: crate::amount::decimal::canonical(&priority_fee_gwei_raw)
             .ok_or(EvmCustomFeeError::InvalidPriorityFee)?,
     };
     fees.to_wei()?;
@@ -92,10 +93,6 @@ pub struct EvmSendOverridesInput {
     /// overrides the auto-encoded `transfer(to, amount)` calldata entirely,
     /// enabling approvals, swaps, multicall, or any ABI-encoded function call.
     pub calldata_hex: Option<String>,
-    /// Sign the transaction without broadcasting. The signed raw transaction
-    /// hex is returned in `SendExecutionResult.evm.raw_tx_hex`; `txid` is
-    /// left empty. Useful for offline signing or pre-flight inspection.
-    pub sign_only: Option<bool>,
     /// EIP-2930 access list as a flat JSON string (array of
     /// `{address, storageKeys}` objects). Pre-warms storage slots to reduce
     /// gas cost for contracts with known read patterns. Non-empty lists require
@@ -124,7 +121,7 @@ pub struct EvmSendAssemblyInput {
     // Caller passes the already-resolved destination (ENS resolved in Swift).
     pub resolved_destination: String,
     /// The amount as the user typed it, exactly: the decimal string
-    /// `execute_send` signs, so the preview prices the same transaction. An
+    /// `build_send` signs, so the preview prices the same transaction. An
     /// `f64` would also run out of significant digits six orders of magnitude
     /// above a wei.
     pub amount: String,
@@ -166,8 +163,8 @@ fn is_valid_evm_address(address: &str) -> bool {
 
 /// Shift a typed decimal amount into the asset's smallest unit.
 ///
-/// This is [`crate::send::amount_input::parse_raw_amount`], which is the same
-/// conversion `execute_send` performs on the amount it signs. The function that
+/// This is [`crate::amount::input::parse_raw_amount`], which is the same
+/// conversion `build_send` performs on the amount it signs. The function that
 /// stood here took an `f64` and claimed in its own doc comment to "avoid float
 /// rounding by doing string arithmetic" — but the rounding had already happened
 /// in the caller's `f64`, and `format!("{:.18}", …)` then wrote it out in full:
@@ -176,7 +173,7 @@ fn is_valid_evm_address(address: &str) -> bool {
 /// what the preview priced and what `spectra send assemble` printed as the
 /// transaction a send would sign.
 fn amount_to_smallest_unit(amount: &str, decimals: u32) -> Result<u128, EvmSendError> {
-    crate::send::amount_input::parse_raw_amount(amount, decimals)
+    crate::amount::input::parse_raw_amount(amount, decimals)
         .map_err(|_| EvmSendError::InvalidAmount)
 }
 
@@ -247,7 +244,8 @@ pub fn prepare_evm_send_assembly(
         return Err(EvmSendError::UnsupportedAsset);
     };
     let matches = ["ERC-20", "BEP-20", "ARC-20"].iter().any(|standard| {
-        crate::tokens::protocol_deployment_id(chain, standard, &token.contract_address).as_deref()
+        crate::catalog::tokens::protocol_deployment_id(chain, standard, &token.contract_address)
+            .as_deref()
             == Some(input.deployment_id.as_str())
     });
     if !matches {
@@ -286,16 +284,16 @@ pub(crate) fn evm_send_preview(
         .filter(|gas| *gas > 0)
         .ok_or_else(|| crate::send::error::SendError::invalid("EVM gas limit must be positive"))?;
     let fee_wei = prepared.maximum_fee_wei()?;
-    let gwei = |wei: u128| crate::decimal::from_units(wei, 9);
+    let gwei = |wei: u128| crate::amount::decimal::from_units(wei, 9);
     let (max_fee, priority_fee) = (
         gwei(prepared.max_fee_per_gas),
         gwei(prepared.max_priority_fee_per_gas),
     );
     let spendable = token_balance.unwrap_or_else(|| {
-        crate::decimal::from_units(native_balance_wei.saturating_sub(fee_wei), 18)
+        crate::amount::decimal::from_units(native_balance_wei.saturating_sub(fee_wei), 18)
     });
     Ok(crate::send::preview_types::SendPreview {
-        estimated_network_fee: crate::decimal::from_units(fee_wei, 18),
+        estimated_network_fee: crate::amount::decimal::from_units(fee_wei, 18),
         max_sendable: spendable.clone(),
         spendable_balance: spendable,
         fee_rate_description: Some(format!(
@@ -323,7 +321,7 @@ pub struct EvmSendDetails {
     pub gas_limit: i64,
 }
 
-/// The assembler and `execute_send` shift the same typed decimal into the same
+/// The assembler and `build_send` shift the same typed decimal into the same
 /// integer. They used not to: this one took an `f64`.
 #[cfg(test)]
 mod one_amount_one_conversion {
@@ -335,7 +333,7 @@ mod one_amount_one_conversion {
     fn native_wei(amount: &str) -> Result<String, EvmSendError> {
         prepare_evm_send_assembly(EvmSendAssemblyInput {
             chain_id: crate::registry::Chain::Ethereum,
-            deployment_id: crate::tokens::deployment_id_for(
+            deployment_id: crate::catalog::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 None,
             )
@@ -402,7 +400,7 @@ mod one_amount_one_conversion {
     fn a_token_amount_uses_the_contract_precision() {
         let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
             chain_id: crate::registry::Chain::Ethereum,
-            deployment_id: crate::tokens::deployment_id_for(
+            deployment_id: crate::catalog::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 Some(&String::from("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48")),
             )
@@ -430,7 +428,7 @@ mod one_amount_one_conversion {
         assert!(
             prepare_evm_send_assembly(EvmSendAssemblyInput {
                 chain_id: crate::registry::Chain::Ethereum,
-                deployment_id: crate::tokens::deployment_id_for(
+                deployment_id: crate::catalog::tokens::deployment_id_for(
                     crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                     Some(&String::from("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"))
                 )
@@ -466,7 +464,7 @@ mod every_evm_chain_can_assemble {
         for chain in crate::registry::Chain::all().filter(|c| c.is_evm() && !c.is_testnet()) {
             let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
                 chain_id: chain,
-                deployment_id: crate::tokens::deployment_id_for(
+                deployment_id: crate::catalog::tokens::deployment_id_for(
                     crate::registry::Chain::from_str_id(&String::from(chain.str_id())).unwrap(),
                     None,
                 )
@@ -492,7 +490,7 @@ mod every_evm_chain_can_assemble {
         let usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
         let chain = crate::registry::Chain::Ethereum;
         let native = chain.entry().native_deployment_id.clone();
-        let usdc_deployment = crate::tokens::deployment_id_for(chain, Some(usdc)).unwrap();
+        let usdc_deployment = crate::catalog::tokens::deployment_id_for(chain, Some(usdc)).unwrap();
         let token = |contract: &str| EvmSupportedToken {
             symbol: "ETH".into(),
             contract_address: contract.into(),
@@ -545,7 +543,7 @@ mod every_evm_chain_can_assemble {
         ] {
             let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
                 chain_id,
-                deployment_id: crate::tokens::deployment_id_for(
+                deployment_id: crate::catalog::tokens::deployment_id_for(
                     chain_id,
                     Some(&String::from(contract)),
                 )
@@ -578,7 +576,7 @@ mod tests {
     fn native_eth_assembly() {
         let a = prepare_evm_send_assembly(EvmSendAssemblyInput {
             chain_id: crate::registry::Chain::Ethereum,
-            deployment_id: crate::tokens::deployment_id_for(
+            deployment_id: crate::catalog::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 None,
             )
@@ -600,7 +598,7 @@ mod tests {
     fn erc20_assembly_has_transfer_selector() {
         let a = prepare_evm_send_assembly(EvmSendAssemblyInput {
             chain_id: crate::registry::Chain::Ethereum,
-            deployment_id: crate::tokens::deployment_id_for(
+            deployment_id: crate::catalog::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 Some(&String::from("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")),
             )
@@ -630,7 +628,7 @@ mod tests {
     fn invalid_destination_rejected() {
         let err = prepare_evm_send_assembly(EvmSendAssemblyInput {
             chain_id: crate::registry::Chain::Ethereum,
-            deployment_id: crate::tokens::deployment_id_for(
+            deployment_id: crate::catalog::tokens::deployment_id_for(
                 crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
                 None,
             )

@@ -36,9 +36,8 @@ DOTTED = re.compile(r'^[a-zA-Z_]+[._][a-zA-Z0-9_.-]+$')
 # splitting as the public-function scan, so `mod tests;` in the middle of a
 # source file does not hide the production items that follow it.
 paths = [p for suffix, roots in (
-             ('.swift', ('swift',)), ('.rs', ('core', 'cli', 'ffi')),
-             ('.json', ('resources',)), ('.toml', ('core/data',)),
-             ('.kt', ('kotlin',)), ('.xml', ('kotlin',)))
+             ('.swift', ('swift',)), ('.rs', ('core', 'cli')),
+             ('.json', ('resources',)), ('.toml', ('core/data',)))
          for root in roots for p in hand_written(root, suffix)
          if not p.name.startswith('RuntimeStrings.')]
 declared_tests = test_modules(p for p in paths if p.suffix == '.rs')

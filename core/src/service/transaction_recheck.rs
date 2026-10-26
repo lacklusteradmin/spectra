@@ -1,5 +1,5 @@
 //! Explicit status reads target a stored transaction, not a caller-built poll plan.
-use crate::SpectraBridgeError;
+use crate::error::SpectraBridgeError;
 use crate::registry::{Chain, PendingStatusPoll};
 use crate::service::WalletService;
 use crate::store::persistence_models::TransactionRecord;
@@ -39,7 +39,7 @@ impl WalletService {
         transaction_id: String,
     ) -> Result<TransactionStatusChange, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let result = this.recheck_stored_status(transaction_id).await;
             if let Err(error) = &result {

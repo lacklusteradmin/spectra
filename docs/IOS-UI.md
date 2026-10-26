@@ -155,30 +155,30 @@ or draws glass in a shape only a surface inside a card has — `Radius.inner`,
 
 Shared values and helpers live in:
 
-- [`SpectraLayout`, `spectraCardFill`, `spectraElevatedFill`, `spectraInsetFill` and `spectraRowPadding`](../swift/views/SpectraLayout.swift)
-- [`SpectraRowGroup` and `SpectraRowSection`](../swift/views/SpectraRowGroup.swift)
-- [`SpectraEmptyStateCard` and `SpectraEmptyStateContent`](../swift/views/ViewExtensions.swift)
-- [`AddressEntryRow`](../swift/views/AddressEntryRow.swift)
-- [`SpectraDisclosureStyle`](../swift/views/SpectraDisclosureStyle.swift) and
-  [`keyboardAnchor`](../swift/views/KeyboardAnchor.swift)
-- [`SendCostRows` and `SendSummaryRow`](../swift/views/SendCostRows.swift)
-- [`BalanceText`](../swift/views/BalanceText.swift), [`CopyButton`](../swift/views/CopyButton.swift),
-  [`secretShield`](../swift/views/SecretShield.swift) and
-  [`SecretWordField`](../swift/views/SecretWordField.swift)
-- [`spectraInputFieldStyle` and `spectraDetailCard`](../swift/views/ViewExtensions.swift)
+- [`SpectraLayout`, `spectraCardFill`, `spectraElevatedFill`, `spectraInsetFill` and `spectraRowPadding`](../swift/app/Components/SpectraLayout.swift)
+- [`SpectraRowGroup` and `SpectraRowSection`](../swift/app/Components/SpectraRowGroup.swift)
+- [`SpectraEmptyStateCard` and `SpectraEmptyStateContent`](../swift/app/Components/ViewExtensions.swift)
+- [`AddressEntryRow`](../swift/app/Components/AddressEntryRow.swift)
+- [`SpectraDisclosureStyle`](../swift/app/Components/SpectraDisclosureStyle.swift) and
+  [`keyboardAnchor`](../swift/app/Components/KeyboardAnchor.swift)
+- [`SendCostRows` and `SendSummaryRow`](../swift/app/Send/SendCostRows.swift)
+- [`BalanceText`](../swift/app/Components/BalanceText.swift), [`CopyButton`](../swift/app/Components/CopyButton.swift),
+  [`secretShield`](../swift/app/Components/SecretShield.swift) and
+  [`SecretWordField`](../swift/app/Components/SecretWordField.swift)
+- [`spectraInputFieldStyle` and `spectraDetailCard`](../swift/app/Components/ViewExtensions.swift)
 
 ## Examples in the app
 
-- [DashboardViews.swift](../swift/views/DashboardViews.swift): top-level tab,
+- [DashboardViews.swift](../swift/app/Dashboard/DashboardViews.swift): top-level tab,
   hero cards and asset detail rows.
-- [ReceiveFlowViews.swift](../swift/views/ReceiveFlowViews.swift): business detail layout.
-- [ChainWikiViews.swift](../swift/views/ChainWikiViews.swift): compact interactive cards.
-- [HistoryView.swift](../swift/views/HistoryView.swift) and
-  [AddWalletEntryView.swift](../swift/views/AddWalletEntryView.swift): lists as
+- [ReceiveFlowViews.swift](../swift/app/Receive/ReceiveFlowViews.swift): business detail layout.
+- [ChainWikiViews.swift](../swift/app/Wiki/ChainWikiViews.swift): compact interactive cards.
+- [HistoryView.swift](../swift/app/History/HistoryView.swift) and
+  [AddWalletEntryView.swift](../swift/app/Wallets/AddWalletEntryView.swift): lists as
   `SpectraRowGroup` rows.
-- [SettingsViews.swift](../swift/views/SettingsViews.swift): a top-level tab
+- [SettingsViews.swift](../swift/app/Settings/SettingsViews.swift): a top-level tab
   of `SpectraRowSection` cards.
-- [SendFlowViews.swift](../swift/views/SendFlowViews.swift): a flow with its
+- [SendFlowViews.swift](../swift/app/Send/SendFlowViews.swift): a flow with its
   action bar in `safeAreaBar`.
 
 Pages use `spectraScreenPadding()` with `sectionSpacing` between cards, and

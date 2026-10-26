@@ -20,8 +20,8 @@ pub(crate) fn decode_ss58(address: &str) -> Result<[u8; 32], DerivationError> {
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::SpectraBridgeError;
 use crate::derivation::types::DerivationResult;
+use crate::error::SpectraBridgeError;
 
 // Shared derivation logic for all Substrate-based networks; ss58_prefix selects the network.
 fn substrate_internal(

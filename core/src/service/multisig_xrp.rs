@@ -207,11 +207,13 @@ impl WalletService {
             .expires_in_secs
             .unwrap_or(DEFAULT_LIFETIME_SECS)
             .max(1);
-        let amount_drops =
-            crate::decimal::to_units(spend.amount.trim(), u32::from(chain.native_decimals()))
-                .and_then(|units| u64::try_from(units).ok())
-                .filter(|units| *units > 0)
-                .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let amount_drops = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .and_then(|units| u64::try_from(units).ok())
+        .filter(|units| *units > 0)
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         crate::send::xrp::validate_drops(u128::from(amount_drops))?;
         let policy = XrplClient::new(
             self.endpoints_for(chain, &[EndpointCapability::Verification])

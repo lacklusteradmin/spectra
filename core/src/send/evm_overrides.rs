@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use super::ethereum::EvmSendOverridesInput;
 use super::evm::{AccessListEntry, EvmSendOverrides};
-use crate::SpectraBridgeError;
+use crate::error::SpectraBridgeError;
 
 fn invalid(message: impl Into<String>) -> SpectraBridgeError {
     SpectraBridgeError::invalid(message.into())
@@ -65,12 +65,7 @@ impl EvmSendOverridesInput {
                 .map_err(|error| invalid(format!("invalid access list: {error}")))?;
             for (index, entry) in entries.into_iter().enumerate() {
                 let address = entry.address.trim();
-                let validation = crate::validation::address::validate_address(
-                    crate::validation::address::AddressValidationRequest {
-                        kind: chain.address_validation_kind().into(),
-                        value: address.into(),
-                    },
-                );
+                let validation = crate::validation::address::validate_address(chain, address);
                 if !validation.is_valid {
                     return Err(invalid(format!(
                         "access list entry {index} has an invalid address"

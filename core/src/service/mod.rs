@@ -30,8 +30,7 @@
 //! visibility, so anything that should stay off the FFI lives in a plain
 //! `impl` block.
 
-pub(crate) use crate::EndpointCapability;
-pub(crate) use crate::SpectraBridgeError;
+pub(crate) use crate::api::endpoint::EndpointCapability;
 pub(crate) use crate::api::utxo::UtxoTxStatus;
 pub(crate) use crate::api::{
     aptos_rest::AptosClient, blockbook::BlockbookClient, evm_json_rpc::EvmClient,
@@ -40,9 +39,10 @@ pub(crate) use crate::api::{
     solana_json_rpc::SolanaClient, substrate_json_rpc::SubstrateClient, sui_json_rpc::SuiClient,
     toncenter_v2::ToncenterV2Client, tron_http::TronHttpClient, xrpl_json_rpc::XrplClient,
 };
+pub(crate) use crate::error::SpectraBridgeError;
 pub(crate) use crate::fetch::history_store::HistoryPaginationStore;
 pub(crate) use crate::registry::Chain;
-pub(crate) use crate::store::secret_store::SecretStore;
+pub(crate) use crate::secrets::store::SecretStore;
 pub(crate) use crate::store::state::{
     ResidentState, StateCommand, StateTransition, reduce_state_in_place,
 };
@@ -64,6 +64,8 @@ pub(crate) use std::sync::Arc;
 pub(crate) use tokio::sync::RwLock as AsyncRwLock;
 
 pub(crate) use serde::{Deserialize, Serialize};
+
+use crate::api::endpoint::EndpointApi;
 
 pub(crate) mod address_discovery;
 mod balance_refresh;
@@ -141,6 +143,7 @@ mod wallet_nfts;
 mod wallet_sui_coins;
 mod wallet_token_accounts;
 mod wallet_trust_lines;
+pub(crate) mod worker;
 mod zcash_shielded;
 pub use zcash_shielded::ZcashShieldedStatus;
 mod litecoin_mweb;
@@ -167,7 +170,7 @@ impl EndpointIndex {
     fn from_list(list: Vec<ChainEndpoints>) -> Result<Self, SpectraBridgeError> {
         for row in &list {
             for url in &row.endpoints {
-                crate::endpoint_api::validate_configured_endpoint(row.chain_id, url)?;
+                crate::api::endpoint::validate_configured_endpoint(row.chain_id, url)?;
             }
         }
 
@@ -312,7 +315,7 @@ impl WalletService {
         &self,
         chain: Chain,
         required: &[EndpointCapability],
-    ) -> Result<(crate::EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
+    ) -> Result<(EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
         let [api] = chain.endpoint_apis() else {
             return Err(SpectraBridgeError::failure(format!(
                 "{} has no single fetch API",
@@ -369,7 +372,7 @@ pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
         endpoints.push(ChainEndpoints {
             capabilities: vec![],
             chain_id: chain,
-            endpoints: crate::endpoints::records_for_chain(chain, &[])
+            endpoints: crate::catalog::endpoints::records_for_chain(chain, &[])
                 .into_iter()
                 .filter(|record| {
                     apis.contains(&record.api)
@@ -394,7 +397,7 @@ mod a_primary_endpoint_can_serve_a_primary_read {
         for row in catalog_endpoints().expect("catalog endpoints") {
             for endpoint in &row.endpoints {
                 let chain = row.chain_id;
-                let record = crate::endpoints::records_for_chain(row.chain_id, &[])
+                let record = crate::catalog::endpoints::records_for_chain(row.chain_id, &[])
                     .into_iter()
                     .find(|record| &record.endpoint == endpoint)
                     .unwrap();

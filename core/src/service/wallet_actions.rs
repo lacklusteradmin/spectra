@@ -234,7 +234,9 @@ pub(crate) fn offered_actions(wallet: &WalletState) -> Vec<WalletAction> {
         (
             wallet
                 .address_on(chain)
-                .and_then(|address| crate::address_explorer_link(chain, address.to_string()))
+                .and_then(|address| {
+                    crate::catalog::explorers::address_explorer_link(chain, address.to_string())
+                })
                 .is_some(),
             WalletAction::OpenInExplorer,
         ),

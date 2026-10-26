@@ -1,9 +1,9 @@
 //! Dogecoin: address validation, BIP-32 derivation, P2PKH (D…) base58check
 //! encoding
 
-use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
+use crate::error::SpectraBridgeError;
 
 pub(crate) const DOGE_MAINNET_VERSION: u8 = 0x1e;
 pub(crate) const DOGE_TESTNET_VERSION: u8 = 0x71;

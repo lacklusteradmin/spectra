@@ -1,8 +1,7 @@
 //! Real stored mnemonic -> identity -> params -> signer -> mock submission.
 use super::*;
-use crate::store::{
-    secret_backends::InMemorySecretStore, state::WalletState, wallet_secrets::store_seed_phrase,
-};
+use crate::secrets::{backends::InMemorySecretStore, wallet::store_seed_phrase};
+use crate::store::state::WalletState;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -202,7 +201,6 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         };
         let prepared = service.build_send(request).await.unwrap();
@@ -914,7 +912,7 @@ mod owned_world_chain_nonce_rollover {
         assert_eq!(oracle_sizes.last().copied(), Some(size_at_127 + 1));
         assert_eq!(
             preview.estimated_network_fee,
-            crate::decimal::from_units(
+            crate::amount::decimal::from_units(
                 21_000 * 4_000_000_000_u128 + (size_at_127 as u128 + 1) * 1_000 + 1_000,
                 18,
             )

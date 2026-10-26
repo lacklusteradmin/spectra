@@ -1,9 +1,9 @@
 //! Dash: address validation, BIP-32 derivation, P2PKH (X…) base58check
 //! encoding
 
-use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
+use crate::error::SpectraBridgeError;
 
 const DASH_MAINNET_P2PKH: u8 = 0x4C;
 const DASH_TESTNET_P2PKH: u8 = 0x8C;

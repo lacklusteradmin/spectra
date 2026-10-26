@@ -1,5 +1,6 @@
 //! Network history: service adapters and dispatch.
 use super::*;
+use crate::api::endpoint::EndpointApi;
 
 /// Pagination describes the provider page before unknown tokens are filtered.
 #[derive(Debug)]
@@ -19,7 +20,7 @@ impl WalletService {
         address: String,
     ) -> Result<Vec<crate::fetch::history::NormalizedHistoryItem>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             Ok(this
                 .fetch_normalized_history_page(chain_id, &address, None)
@@ -97,7 +98,7 @@ impl WalletService {
             } else {
                 &token.standard
             };
-            crate::tokens::validate_protocol_identifier(chain, standard, &token.contract)?;
+            crate::catalog::tokens::validate_protocol_identifier(chain, standard, &token.contract)?;
         }
 
         // History is served by indexers, independently for native and token transfers.
@@ -105,7 +106,7 @@ impl WalletService {
         let sources = self
             .api_endpoints(
                 chain,
-                crate::EndpointApi::Blockscout,
+                EndpointApi::Blockscout,
                 &[EndpointCapability::History],
             )
             .await?;
@@ -132,7 +133,7 @@ impl WalletService {
         let token_sources = self
             .api_endpoints(
                 chain,
-                crate::EndpointApi::Blockscout,
+                EndpointApi::Blockscout,
                 &[EndpointCapability::TokenHistory],
             )
             .await?;
@@ -222,7 +223,7 @@ impl WalletService {
                     symbol,
                     from_address: entry.from,
                     to_address: entry.to,
-                    amount_decimal: crate::decimal::from_unit_digits(
+                    amount_decimal: crate::amount::decimal::from_unit_digits(
                         &entry.amount_raw,
                         u32::from(decimals),
                     )?,
@@ -237,7 +238,7 @@ impl WalletService {
             .into_iter()
             .map(|e| {
                 // A value that is not an integer is not a transfer of nothing.
-                let amount_decimal = crate::decimal::from_unit_digits(&e.value_wei, 18)
+                let amount_decimal = crate::amount::decimal::from_unit_digits(&e.value_wei, 18)
                     .ok_or_else(|| {
                         SpectraBridgeError::failure(format!("transfer {}: malformed value", e.txid))
                     })?;
@@ -326,7 +327,7 @@ async fn fetch_history_page(
     cursor: Option<&str>,
     service: &WalletService,
 ) -> Result<RawHistoryPage, SpectraBridgeError> {
-    use crate::EndpointApi as Api;
+    use EndpointApi as Api;
     let requirements = &[EndpointCapability::History];
     if chain.uses_utxo_client() {
         return serialized_page(

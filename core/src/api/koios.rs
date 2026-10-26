@@ -159,7 +159,7 @@ fn cardano_history_from_transactions(
         }
         for (asset, change) in assets.into_iter().filter(|(_, change)| *change != 0) {
             entries.push(CardanoHistoryEntry {
-                amount_display: Some(crate::decimal::from_units(
+                amount_display: Some(crate::amount::decimal::from_units(
                     change.unsigned_abs(),
                     u32::from(decimals.get(&asset).copied().unwrap_or(0)),
                 )),

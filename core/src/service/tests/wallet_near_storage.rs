@@ -172,7 +172,7 @@ mod service {
         service
             .use_endpoint(
                 Chain::Near,
-                crate::EndpointApi::Nearblocks,
+                crate::api::endpoint::EndpointApi::Nearblocks,
                 &[
                     EndpointCapability::History,
                     EndpointCapability::TokenHistory,

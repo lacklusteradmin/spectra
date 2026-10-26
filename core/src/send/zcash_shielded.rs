@@ -350,7 +350,7 @@ pub(crate) fn sign(
     let proposal = encoded
         .try_into_standard_proposal(network, db)
         .map_err(|error| {
-            SendError::Invalid(crate::LocalizableMessage::new(
+            SendError::Invalid(crate::error::LocalizableMessage::new(
                 "The reviewed notes changed; build and review again (%@)",
                 [error],
             ))

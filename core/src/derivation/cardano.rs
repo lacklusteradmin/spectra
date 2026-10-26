@@ -170,7 +170,7 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
         iteration_count
     };
     let mut xprv = Zeroizing::new([0u8; 96]);
-    crate::kdf::pbkdf2_sha512(passphrase.as_bytes(), &entropy, iterations, &mut *xprv);
+    crate::secrets::kdf::pbkdf2_sha512(passphrase.as_bytes(), &entropy, iterations, &mut *xprv);
     xprv[0] &= 0b1111_1000;
     xprv[31] &= 0b0001_1111;
     xprv[31] |= 0b0100_0000;
@@ -399,9 +399,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::SpectraBridgeError;
 use crate::derivation::primitives::hmac_sha512;
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::error::SpectraBridgeError;
 
 // Shared derivation logic for Cardano networks; mainnet flag selects addr/addr_test HRP.
 fn cardano_internal(

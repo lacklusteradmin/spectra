@@ -6,7 +6,8 @@
 //! fetch, so it owns the loop; what comes back is what changed, which is what
 //! a front end needs to write an event and a notification.
 
-use crate::SpectraBridgeError;
+use crate::api::endpoint::{EndpointApi, EndpointCapability};
+use crate::error::SpectraBridgeError;
 use crate::registry::{Chain, PendingStatusPoll};
 use crate::service::WalletService;
 use crate::store::wallet_domain::TransactionStatus;
@@ -92,7 +93,7 @@ impl WalletService {
         &self,
     ) -> Result<PendingMaintenanceResult, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.prune_status_trackers().await?;
             let chains = this.pending_maintenance_chains().await?;
@@ -134,7 +135,7 @@ impl WalletService {
         chain: crate::registry::Chain,
     ) -> Result<Vec<TransactionStatusChange>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let poll = chain.pending_status_poll();
             if matches!(poll, PendingStatusPoll::None) {
@@ -389,10 +390,10 @@ impl WalletService {
     pub(super) async fn fetch_pending_transaction_status(
         &self,
         chain: Chain,
-        api: crate::EndpointApi,
+        api: EndpointApi,
         record: &crate::store::persistence_models::TransactionRecord,
     ) -> Result<crate::api::transaction_status::TransactionStatus, SpectraBridgeError> {
-        use crate::EndpointApi as Api;
+        use EndpointApi as Api;
         use std::sync::Arc;
         if chain == Chain::Icp && record.kind.is_staking() {
             let stored = self.load_send_artifact(record.id.clone()).await?;
@@ -404,11 +405,11 @@ impl WalletService {
             .clone()
             .ok_or_else(|| SpectraBridgeError::failure("Missing transaction hash"))?;
         let endpoints = if chain.endpoint_apis().contains(&api) {
-            self.endpoints_for(chain, &[crate::EndpointCapability::Verification])
+            self.endpoints_for(chain, &[EndpointCapability::Verification])
                 .await
         } else {
             Arc::new(
-                self.api_endpoints(chain, api, &[crate::EndpointCapability::Verification])
+                self.api_endpoints(chain, api, &[EndpointCapability::Verification])
                     .await?,
             )
         };
@@ -572,7 +573,7 @@ impl WalletService {
             ));
         }
         let endpoints = self
-            .endpoints_for(chain, &[crate::EndpointCapability::Verification])
+            .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
         let (outcome, through) = crate::api::http::race(&endpoints, |endpoint| async move {
             crate::api::substrate_json_rpc::SubstrateClient::new(std::sync::Arc::new(vec![
@@ -718,7 +719,7 @@ mod tests {
         // Execution result shapes track pending sends.
         for poll in [
             PendingStatusPoll::EvmReceipt,
-            PendingStatusPoll::TransactionStatus(crate::EndpointApi::SolanaJsonRpc),
+            PendingStatusPoll::TransactionStatus(EndpointApi::SolanaJsonRpc),
         ] {
             assert_eq!(
                 ids(&tracked(&all, Chain::Bitcoin, poll)),
@@ -854,7 +855,7 @@ mod tests {
             .expect(6).mount(&server).await;
         let service = WalletService::new(vec![crate::service::ChainEndpoints {
             chain_id: Chain::Solana,
-            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -931,7 +932,7 @@ mod tests {
             .await;
         let service = WalletService::new(vec![crate::service::ChainEndpoints {
             chain_id: Chain::Solana,
-            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             endpoints: vec![server.uri()],
         }])
         .unwrap();
@@ -1005,7 +1006,7 @@ mod tests {
                 "result":if body["method"] == "eth_chainId" { json!("0x1") } else { serde_json::Value::Null }}))
         }).mount(&server).await;
         let service = WalletService::new(vec![crate::service::ChainEndpoints {
-            capabilities: crate::EndpointCapability::ALL.to_vec(),
+            capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
         }])
@@ -1125,12 +1126,12 @@ mod tests {
         service
             .update_endpoints(vec![
                 crate::service::ChainEndpoints {
-                    capabilities: crate::EndpointCapability::ALL.to_vec(),
+                    capabilities: EndpointCapability::ALL.to_vec(),
                     chain_id: crate::registry::Chain::Ethereum,
                     endpoints: vec![mainnet.uri()],
                 },
                 crate::service::ChainEndpoints {
-                    capabilities: crate::EndpointCapability::ALL.to_vec(),
+                    capabilities: EndpointCapability::ALL.to_vec(),
                     chain_id: crate::registry::Chain::EthereumSepolia,
                     endpoints: vec![sepolia.uri()],
                 },

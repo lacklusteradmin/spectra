@@ -3,8 +3,8 @@
 //! read again before a signature and before execution.
 
 use super::*;
-use crate::store::secret_backends::InMemorySecretStore;
-use crate::store::wallet_secrets::store_seed_phrase;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::store_seed_phrase;
 use serde_json::Value;
 use std::sync::Mutex;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};

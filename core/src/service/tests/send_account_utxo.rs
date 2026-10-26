@@ -4,13 +4,14 @@
 //! output gone since the review is not signed for. Zcash's transfer is bound
 //! to its network upgrade and expiry height as well.
 use super::*;
+use crate::api::endpoint::EndpointApi;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::store_seed_phrase;
 use crate::send::SendExecutionRequest;
 use crate::send::account_utxo::AccountProtocol;
 use crate::send::stages::{SendStage, SubmissionOutcome};
 use crate::service::address_discovery::UtxoDerivation;
-use crate::store::secret_backends::InMemorySecretStore;
 use crate::store::state::WalletState;
-use crate::store::wallet_secrets::store_seed_phrase;
 use serde_json::{Value, json};
 use std::sync::Mutex;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -50,10 +51,10 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     let query = request.url.query().unwrap_or_default();
     match (chain.default_api().unwrap(), parts.as_slice()) {
-        (crate::EndpointApi::Blockbook, ["api", "v2", "block-index", "0"]) => {
+        (EndpointApi::Blockbook, ["api", "v2", "block-index", "0"]) => {
             json!({"blockHash": chain.zcash_genesis().unwrap()})
         }
-        (crate::EndpointApi::Blockbook, ["api", "v2"]) => {
+        (EndpointApi::Blockbook, ["api", "v2"]) => {
             let height = ledger.height;
             let branch = |height| {
                 let branch = chain.zcash_consensus_branch(height).unwrap();
@@ -62,7 +63,7 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
             json!({"backend": {"blocks": height,
                 "consensus": {"chaintip": branch(height), "nextblock": branch(height + 1)}}})
         }
-        (crate::EndpointApi::Blockbook, ["api", "v2", "utxo", address]) => json!(
+        (EndpointApi::Blockbook, ["api", "v2", "utxo", address]) => json!(
             ledger
                 .held(address)
                 .iter()
@@ -72,16 +73,16 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
                 }))
                 .collect::<Vec<_>>()
         ),
-        (crate::EndpointApi::Blockbook, ["api", "v2", "sendtx", ..]) => {
+        (EndpointApi::Blockbook, ["api", "v2", "sendtx", ..]) => {
             ledger
                 .submitted
                 .push(String::from_utf8(request.body.clone()).unwrap());
             json!({"result": ledger.accepted_hash})
         }
-        (crate::EndpointApi::Esplora, ["fee-estimates"]) => {
+        (EndpointApi::Esplora, ["fee-estimates"]) => {
             json!({"1": 3.0, "6": 2.0, "144": 1.0})
         }
-        (crate::EndpointApi::Esplora, ["address", address, "utxo"]) => json!(
+        (EndpointApi::Esplora, ["address", address, "utxo"]) => json!(
             ledger
                 .held(address)
                 .iter()
@@ -91,7 +92,7 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
                 }))
                 .collect::<Vec<_>>()
         ),
-        (crate::EndpointApi::Whatsonchain, ["address", address, "unspent"]) => json!(
+        (EndpointApi::Whatsonchain, ["address", address, "unspent"]) => json!(
             ledger
                 .held(address)
                 .iter()
@@ -100,13 +101,13 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
                 }))
                 .collect::<Vec<_>>()
         ),
-        (crate::EndpointApi::Blockcypher, ["addrs", address]) if query.contains("unspentOnly") => {
+        (EndpointApi::Blockcypher, ["addrs", address]) if query.contains("unspentOnly") => {
             json!({"txrefs": ledger.held(address).iter().map(|(txid, vout, value)| json!({
                 "tx_hash": txid, "tx_output_n": vout, "value": value,
                 "block_height": 1, "confirmations": 6,
             })).collect::<Vec<_>>()})
         }
-        (crate::EndpointApi::Insight, ["addr", address, "utxo"]) => json!(
+        (EndpointApi::Insight, ["addr", address, "utxo"]) => json!(
             ledger
                 .held(address)
                 .iter()
@@ -115,7 +116,7 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
                 }))
                 .collect::<Vec<_>>()
         ),
-        (crate::EndpointApi::KaspaRest, ["addresses", address, "utxos"]) => {
+        (EndpointApi::KaspaRest, ["addresses", address, "utxos"]) => {
             let script = crate::send::account_utxo::source_script(chain, address).unwrap();
             json!(ledger.held(address).iter().map(|(txid, vout, value)| json!({
                 "address": address,
@@ -237,7 +238,7 @@ impl Account {
             wallet_id: "w".into(),
             password: None,
             to_address: self.context.derive(9).unwrap().0,
-            amount_str: crate::decimal::from_units(
+            amount_str: crate::amount::decimal::from_units(
                 u128::from(units),
                 u32::from(chain.native_decimals()),
             ),
@@ -248,7 +249,6 @@ impl Account {
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         }
     }

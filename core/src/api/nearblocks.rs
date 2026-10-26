@@ -352,7 +352,7 @@ fn near_ft_history(rows: &[Value], account: &str, txid: &str) -> Result<Vec<Valu
         let incoming = total.received > total.spent;
         let peers = if incoming { total.senders } else { total.recipients };
         let other = if peers.len() == 1 { peers.into_iter().next().unwrap_or_default() } else { String::new() };
-        serde_json::json!({"txid":txid,"timestamp_ns":total.timestamp,"amount_display":crate::decimal::from_units(total.received.abs_diff(total.spent),u32::from(total.decimals)),"contract":contract,"from":if incoming { other.as_str() } else { account },"to":if incoming { account } else { other.as_str() },"is_incoming":incoming})
+        serde_json::json!({"txid":txid,"timestamp_ns":total.timestamp,"amount_display":crate::amount::decimal::from_units(total.received.abs_diff(total.spent),u32::from(total.decimals)),"contract":contract,"from":if incoming { other.as_str() } else { account },"to":if incoming { account } else { other.as_str() },"is_incoming":incoming})
     }).collect())
 }
 

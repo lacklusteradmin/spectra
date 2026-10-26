@@ -24,8 +24,8 @@ upsells.
 
 ## Development
 
-One Rust wallet core serves several front ends: the `spectra` CLI, a native
-SwiftUI iOS app, and an Android skeleton. Core owns domain state and decisions;
+One Rust wallet core serves two front ends: the `spectra` CLI and a native
+SwiftUI iOS app. Core owns domain state and decisions;
 the front ends render its results and forward user intent.
 
 - [AGENTS.md](AGENTS.md): the rules for working in this repository, Rule 0

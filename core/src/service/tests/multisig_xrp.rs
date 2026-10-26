@@ -4,9 +4,9 @@
 
 use super::*;
 use crate::registry::PaymentMemoKind;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::store_seed_phrase;
 use crate::send::payment_memo::PaymentMemo;
-use crate::store::secret_backends::InMemorySecretStore;
-use crate::store::wallet_secrets::store_seed_phrase;
 use serde_json::Value;
 use std::sync::Mutex;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -249,7 +249,6 @@ async fn an_ordinary_send_is_refused_before_it_is_built_once_the_master_key_is_d
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         })
         .await

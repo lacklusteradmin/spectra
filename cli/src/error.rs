@@ -46,9 +46,9 @@ impl fmt::Display for CliError {
     }
 }
 
-impl From<spectra_core::SpectraBridgeError> for CliError {
-    fn from(error: spectra_core::SpectraBridgeError) -> Self {
-        use spectra_core::SpectraBridgeError as Bridge;
+impl From<spectra_core::error::SpectraBridgeError> for CliError {
+    fn from(error: spectra_core::error::SpectraBridgeError) -> Self {
+        use spectra_core::error::SpectraBridgeError as Bridge;
         match error {
             // Bad input is core saying no, not core falling over.
             Bridge::InvalidInput { message } => Self::rejected(message.to_string()),
@@ -67,7 +67,7 @@ macro_rules! via_bridge {
     ($($error:ty),* $(,)?) => {$(
         impl From<$error> for CliError {
             fn from(error: $error) -> Self {
-                spectra_core::SpectraBridgeError::from(error).into()
+                spectra_core::error::SpectraBridgeError::from(error).into()
             }
         }
     )*};
@@ -81,9 +81,9 @@ via_bridge!(
     spectra_core::registry::RegistryError,
 );
 
-impl From<spectra_core::store::wallet_secrets::WalletSecretError> for CliError {
-    fn from(error: spectra_core::store::wallet_secrets::WalletSecretError) -> Self {
-        use spectra_core::store::wallet_secrets::WalletSecretError as Secret;
+impl From<spectra_core::secrets::wallet::WalletSecretError> for CliError {
+    fn from(error: spectra_core::secrets::wallet::WalletSecretError) -> Self {
+        use spectra_core::secrets::wallet::WalletSecretError as Secret;
         match error {
             Secret::IncorrectPassword | Secret::NotSealed | Secret::EmptyPassword => {
                 Self::rejected(error.to_string())

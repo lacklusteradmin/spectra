@@ -13,9 +13,7 @@ make check-ui     # UI design tokens and SVG formatting
 
 | File | Purpose |
 |---|---|
-| `build-ios.sh` | Run by the Xcode “Build Rust Core” phase: compiles the Rust library for the device or the arm64 simulator and generates the Swift bindings from it. |
-| `build-android.sh` | Compiles Rust libraries for Android architectures and copies them to `jniLibs`. Requires the Android NDK and cargo-ndk. Accepts `--release`. |
-| `bindgen-android.sh` | Generates Kotlin bindings from the compiled Rust library. |
+| `build-ios.sh` | Run by the Xcode “Build Rust Core” phase: compiles core as a static library for the device or the arm64 simulator and generates the Swift bindings from it. |
 | `ios-rust-build-env.sh` | Sourced by build scripts to set a consistent minimum iOS version and clear incompatible iOS build caches when that version changes. |
 
 ## Code and resource checks

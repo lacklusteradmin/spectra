@@ -42,7 +42,7 @@ def calls_only(source, language):
 
 # The app, not its tests: an export only a test calls is a fixture, and it
 # reads as API to everyone else.
-BRIDGE = pathlib.Path('swift/WalletServiceBridge.swift')
+BRIDGE = pathlib.Path('swift/app/App/WalletServiceBridge.swift')
 
 def strip_comments(source):
     source = re.sub(r'/\*.*?\*/', '', source, flags=re.S)

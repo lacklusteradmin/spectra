@@ -1,15 +1,9 @@
 pub mod artwork;
-mod device_key;
-pub mod password_verifier;
 pub mod persistence_models;
 mod price_alerts;
 pub use price_alerts::PriceAlertRejection;
-pub mod secret_backends;
-pub mod secret_store;
-pub mod seed_envelope;
 pub mod state;
 pub mod wallet_domain;
-pub mod wallet_secrets;
 
 pub use artwork::{chain_artwork_name, deployment_artwork_name, token_artwork_name};
 
@@ -44,7 +38,7 @@ pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -
 /// `id` is derived from chain and contract rather than minted at random: a
 /// built-in's identity *is* its contract.
 pub fn built_in_token_preferences() -> Vec<wallet_domain::TokenPreferenceEntry> {
-    crate::tokens::catalog()
+    crate::catalog::tokens::catalog()
         .iter()
         .filter(|token| !token.is_native())
         .filter_map(|token| {
@@ -70,7 +64,7 @@ pub fn merge_built_in_token_preferences(
     let key = |entry: &wallet_domain::TokenPreferenceEntry| {
         (
             entry.token.chain_id,
-            crate::tokens::normalize_token_identifier(
+            crate::catalog::tokens::normalize_token_identifier(
                 Some(entry.token.contract.clone()),
                 entry.token.chain_id,
             ),
@@ -492,8 +486,8 @@ impl EvmReceiptCost {
         let price = effective_gas_price_wei?.parse::<u128>().ok()?;
         Some(Self {
             gas_used: gas.to_string(),
-            effective_gas_price_gwei: crate::decimal::from_units(price, 9),
-            network_fee: crate::decimal::from_units(
+            effective_gas_price_gwei: crate::amount::decimal::from_units(price, 9),
+            network_fee: crate::amount::decimal::from_units(
                 gas.checked_mul(price)?,
                 u32::from(native_decimals),
             ),
@@ -510,15 +504,19 @@ impl EvmReceiptCost {
         native_decimals: u8,
     ) -> Option<Self> {
         let mut cost = Self::from_receipt(gas_used, effective_gas_price_wei, native_decimals)?;
-        let execution = crate::decimal::to_units(&cost.network_fee, u32::from(native_decimals))?;
+        let execution =
+            crate::amount::decimal::to_units(&cost.network_fee, u32::from(native_decimals))?;
         let l1 = l1_fee_wei?.parse::<u128>().ok()?;
         let operator = operator_fee_wei?.parse::<u128>().ok()?;
-        cost.network_fee = crate::decimal::from_units(
+        cost.network_fee = crate::amount::decimal::from_units(
             execution.checked_add(l1)?.checked_add(operator)?,
             u32::from(native_decimals),
         );
-        cost.l1_data_fee = Some(crate::decimal::from_units(l1, u32::from(native_decimals)));
-        cost.operator_fee = Some(crate::decimal::from_units(
+        cost.l1_data_fee = Some(crate::amount::decimal::from_units(
+            l1,
+            u32::from(native_decimals),
+        ));
+        cost.operator_fee = Some(crate::amount::decimal::from_units(
             operator,
             u32::from(native_decimals),
         ));
@@ -527,14 +525,15 @@ impl EvmReceiptCost {
 
     /// Recompute a supplied projection's total from exact components.
     pub(crate) fn validated_for_chain(&self, chain: crate::registry::Chain) -> Option<Self> {
-        let price = crate::decimal::to_units(&self.effective_gas_price_gwei, 9)?.to_string();
+        let price =
+            crate::amount::decimal::to_units(&self.effective_gas_price_gwei, 9)?.to_string();
         let expected = if chain.evm_rollup_fee_model().is_some() {
-            let l1 = crate::decimal::to_units(
+            let l1 = crate::amount::decimal::to_units(
                 self.l1_data_fee.as_deref()?,
                 u32::from(chain.native_decimals()),
             )?
             .to_string();
-            let operator = crate::decimal::to_units(
+            let operator = crate::amount::decimal::to_units(
                 self.operator_fee.as_deref()?,
                 u32::from(chain.native_decimals()),
             )?

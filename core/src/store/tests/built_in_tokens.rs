@@ -23,7 +23,7 @@ fn every_built_in_has_a_unique_id() {
 /// must resolve the registry identity rather than depend on display spelling.
 #[test]
 fn the_catalog_chain_ids_all_resolve() {
-    for token in crate::tokens::catalog() {
+    for token in crate::catalog::tokens::catalog() {
         let chain = token.chain_id;
         if !token.is_native() {
             assert!(chain.hosts_tokens(), "{}", token.deployment_id);
@@ -118,11 +118,11 @@ fn the_token_list_keeps_each_tokens_deployments_together() {
     custom.token.symbol = "AAA".into();
     custom.token.token_id = "custom:aaa".into();
     custom.token.contract = format!("0x{}", "42".repeat(20));
-    custom.token.kind = crate::tokens::TokenKind::Protocol {
+    custom.token.kind = crate::catalog::tokens::TokenKind::Protocol {
         standard: custom.token.token_standard.clone(),
         identifier: custom.token.contract.clone(),
     };
-    custom.token.deployment_id = crate::tokens::protocol_deployment_id(
+    custom.token.deployment_id = crate::catalog::tokens::protocol_deployment_id(
         custom.token.chain_id,
         &custom.token.token_standard,
         &custom.token.contract,
@@ -168,11 +168,11 @@ async fn reopening_prefers_catalog_identity_and_deduplicates_protocol_aliases() 
     custom.token.contract = format!("0x{}", "Aa".repeat(20));
     custom.token.token_id = "custom:other".into();
     custom.token.symbol = "OTHER".into();
-    custom.token.kind = crate::tokens::TokenKind::Protocol {
+    custom.token.kind = crate::catalog::tokens::TokenKind::Protocol {
         standard: custom.token.token_standard.clone(),
         identifier: custom.token.contract.clone(),
     };
-    custom.token.deployment_id = crate::tokens::protocol_deployment_id(
+    custom.token.deployment_id = crate::catalog::tokens::protocol_deployment_id(
         custom.token.chain_id,
         &custom.token.token_standard,
         &custom.token.contract,

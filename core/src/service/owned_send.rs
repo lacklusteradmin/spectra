@@ -32,7 +32,7 @@ pub struct OwnedSendPreview {
     /// too little left for the fee — as the build would refuse it. `None`
     /// when the amount and the fee fit, or when the gas balance is unknown.
     #[uniffi(default = None)]
-    pub amount_refusal: Option<crate::LocalizableMessage>,
+    pub amount_refusal: Option<crate::error::LocalizableMessage>,
 }
 
 /// The share of the fee-adjusted maximum each amount shortcut fills in; 100
@@ -48,7 +48,7 @@ fn shortcut_amount(exact: String, percent: u32, asset_decimals: u32) -> String {
     if percent >= 100 {
         return exact;
     }
-    match crate::formatting::format_asset_amount(exact.clone(), asset_decimals) {
+    match crate::amount::presentation::format_asset_amount(exact.clone(), asset_decimals) {
         Some(text) if !text.below_threshold => text.value,
         _ => exact,
     }
@@ -93,7 +93,7 @@ fn owned_preview(
     let gas_decimals = u32::from(chain.native_decimals());
     let asset_decimals = decimals.unwrap_or(gas_decimals);
     let cut = |value: &str, places: u32| {
-        crate::decimal::truncate(value, places)
+        crate::amount::decimal::truncate(value, places)
             .ok_or_else(|| SpectraBridgeError::failure("Send quote is not an exact amount"))
     };
     preview.estimated_network_fee = cut(&preview.estimated_network_fee, gas_decimals)?;
@@ -108,7 +108,7 @@ fn owned_preview(
     let shortcuts = SEND_AMOUNT_SHORTCUT_PERCENTAGES
         .into_iter()
         .filter_map(|percent| {
-            let exact = crate::send::amount_input::send_amount_shortcut(
+            let exact = crate::amount::input::send_amount_shortcut(
                 preview.max_sendable.clone(),
                 asset_decimals,
                 percent,
@@ -163,31 +163,32 @@ pub(super) fn send_total(
     if !is_native {
         return None;
     }
-    crate::decimal::add(amount, network_fee?)
+    crate::amount::decimal::add(amount, network_fee?)
 }
 
 /// Why an amount does not fit, as a person reads it. `Unavailable` is not a
 /// refusal of the amount: the gas balance is unknown, which the build checks
 /// for itself.
-fn amount_refusal(verdict: &crate::send::SendAffordability) -> Option<crate::LocalizableMessage> {
+fn amount_refusal(
+    verdict: &crate::send::SendAffordability,
+) -> Option<crate::error::LocalizableMessage> {
     use crate::send::SendAffordability;
     match verdict {
         SendAffordability::Affordable | SendAffordability::Unavailable => None,
         SendAffordability::AmountPlusFeeExceedsBalance { symbol, required } => {
-            Some(crate::LocalizableMessage::new(
+            Some(crate::error::LocalizableMessage::new(
                 "Insufficient %@ for the amount plus the network fee (requires %@ %@).",
                 [symbol.as_str(), required.as_str(), symbol.as_str()],
             ))
         }
-        SendAffordability::AmountExceedsBalance { symbol } => Some(crate::LocalizableMessage::new(
-            "Insufficient %@ balance.",
-            [symbol],
-        )),
+        SendAffordability::AmountExceedsBalance { symbol } => Some(
+            crate::error::LocalizableMessage::new("Insufficient %@ balance.", [symbol]),
+        ),
         SendAffordability::FeeExceedsGasBalance {
             gas_symbol,
             fee,
             chain_id,
-        } => Some(crate::LocalizableMessage::new(
+        } => Some(crate::error::LocalizableMessage::new(
             "Insufficient %@ for the %@ network fee (%@ %@).",
             [
                 gas_symbol.as_str(),
@@ -213,7 +214,7 @@ impl WalletService {
         custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
     ) -> Result<Option<OwnedSendPreview>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let recipient = async {
                 if destination.trim().is_empty() {
@@ -339,7 +340,7 @@ impl WalletService {
             .as_ref()
             .map(|t| u32::from(t.decimals))
             .unwrap_or(u32::from(chain.native_decimals()));
-        if crate::send::amount_input::parse_raw_amount(&amount, decimals)? == 0 {
+        if crate::amount::input::parse_raw_amount(&amount, decimals)? == 0 {
             return Err(SpectraBridgeError::failure("amount must be positive"));
         }
         let address = wallet
@@ -396,7 +397,7 @@ impl WalletService {
                     chain,
                     &address,
                     &destination,
-                    crate::send::amount_input::parse_raw_amount(&amount, real_decimals)?,
+                    crate::amount::input::parse_raw_amount(&amount, real_decimals)?,
                     Some(&token.contract),
                 )
                 .await?
@@ -418,9 +419,9 @@ impl WalletService {
                 .issuer
                 .map_or(1_000_000_000, |issuer| issuer.transfer_rate);
                 let places = u32::from(balance.decimals);
-                let units = crate::decimal::to_units(&balance.balance_display, places)
+                let units = crate::amount::decimal::to_units(&balance.balance_display, places)
                     .ok_or_else(|| SpectraBridgeError::failure("Token balance unavailable"))?;
-                crate::decimal::from_units(units * 1_000_000_000 / u128::from(rate), places)
+                crate::amount::decimal::from_units(units * 1_000_000_000 / u128::from(rate), places)
             } else {
                 balance.balance_display.clone()
             };
@@ -437,19 +438,21 @@ impl WalletService {
                     .await?;
                     let carried =
                         crate::send::cardano::token_send_ada(&address, &token.contract, &params)?;
-                    let carried = crate::decimal::from_units(u128::from(carried), 6);
+                    let carried = crate::amount::decimal::from_units(u128::from(carried), 6);
                     preview.estimated_network_fee =
-                        crate::decimal::add(&preview.estimated_network_fee, &carried).ok_or_else(
-                            || SpectraBridgeError::failure("Invalid Cardano fee estimate"),
-                        )?;
+                        crate::amount::decimal::add(&preview.estimated_network_fee, &carried)
+                            .ok_or_else(|| {
+                                SpectraBridgeError::failure("Invalid Cardano fee estimate")
+                            })?;
                     preview.fee_rate_description =
                         Some("Network fee and the minimum ADA sent with the token".into());
                 }
                 Chain::Ton => {
                     preview.estimated_network_fee =
-                        crate::decimal::add(&preview.estimated_network_fee, "0.1").ok_or_else(
-                            || SpectraBridgeError::failure("Invalid jetton gas budget"),
-                        )?;
+                        crate::amount::decimal::add(&preview.estimated_network_fee, "0.1")
+                            .ok_or_else(|| {
+                                SpectraBridgeError::failure("Invalid jetton gas budget")
+                            })?;
                     preview.fee_rate_description =
                         Some("Network estimate and 0.1 TON attached to the jetton wallet".into());
                 }
@@ -463,7 +466,7 @@ impl WalletService {
                     chain,
                     &address,
                     &destination,
-                    crate::send::amount_input::parse_raw_amount(&amount, decimals)?,
+                    crate::amount::input::parse_raw_amount(&amount, decimals)?,
                     None,
                 )
                 .await?
@@ -564,7 +567,7 @@ impl WalletService {
                 (shape.fee_field == crate::registry::SendFeeField::None).then(|| "0".into())
             })
             .ok_or_else(|| SpectraBridgeError::failure("Unable to estimate network fee"))?;
-        let fee = crate::decimal::canonical(&fee)
+        let fee = crate::amount::decimal::canonical(&fee)
             .ok_or_else(|| SpectraBridgeError::failure("invalid network fee"))?;
         let latest = self.app_state().await;
         let wallet = latest
@@ -634,7 +637,6 @@ impl WalletService {
                 gas_budget: (shape.fee_field == SendFeeField::GasBudget).then(|| fee.clone()),
                 fee_amount: (shape.fee_field == SendFeeField::FeeAmount).then(|| fee.clone()),
                 evm_overrides: overrides,
-                sign_only: false,
                 memo: None,
             },
             preview,
@@ -662,7 +664,7 @@ impl WalletService {
         cancel: bool,
     ) -> Result<OwnedReplacementDraft, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let pending = this
                 .replaceable_sends()
@@ -673,7 +675,7 @@ impl WalletService {
                     SpectraBridgeError::failure("transaction is no longer replaceable")
                 })?;
             if !cancel && !pending.can_speed_up {
-                return Err(crate::SpectraBridgeError::failure(
+                return Err(crate::error::SpectraBridgeError::failure(
                     "This token transfer cannot be reconstructed; cancel it instead",
                 ));
             }

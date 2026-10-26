@@ -1,5 +1,5 @@
 //! Send eligibility, asset routing and recipient warnings from owned state.
-use crate::SpectraBridgeError;
+use crate::error::SpectraBridgeError;
 use crate::service::WalletService;
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -13,7 +13,7 @@ impl WalletService {
         amount_input: String,
     ) -> Result<crate::send::SendPreflight, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let state = this.wallet_state.read().await;
             let wallet = state.wallets.iter().find(|w| w.id == wallet_id);
             let holding = wallet.and_then(|wallet| {
@@ -207,8 +207,9 @@ impl WalletService {
             .iter()
             .find(|w| w.id == request.wallet_id)
             .ok_or_else(|| SpectraBridgeError::failure("Wallet removed"))?;
-        let normalize_contract =
-            |value: Option<String>| crate::tokens::normalize_token_identifier(value, chain);
+        let normalize_contract = |value: Option<String>| {
+            crate::catalog::tokens::normalize_token_identifier(value, chain)
+        };
         let holding = wallet.holdings.iter().find(|h| {
             h.chain_id == chain
                 && normalize_contract(h.contract_address.clone())
@@ -223,7 +224,7 @@ impl WalletService {
         let warnings = crate::send::flow::evaluate_high_risk_send_reasons(HighRiskSendRequest {
             chain_id: chain,
             symbol: symbol.clone(),
-            amount: crate::decimal::canonical(&request.amount_str)
+            amount: crate::amount::decimal::canonical(&request.amount_str)
                 .ok_or_else(|| SpectraBridgeError::failure("Invalid amount"))?,
             holding_amount: holding.map_or_else(|| "0".into(), |h| h.amount.clone()),
             destination_address: request.to_address.clone(),
@@ -344,11 +345,13 @@ mod preflight_tests {
     fn known(chain: Chain, standard: &str, contract: &str) -> TokenPreferenceEntry {
         TokenPreferenceEntry {
             is_built_in: false,
-            token: crate::tokens::TokenDeploymentEntry {
-                deployment_id: crate::tokens::protocol_deployment_id(chain, standard, contract)
-                    .expect("valid protocol fixture"),
+            token: crate::catalog::tokens::TokenDeploymentEntry {
+                deployment_id: crate::catalog::tokens::protocol_deployment_id(
+                    chain, standard, contract,
+                )
+                .expect("valid protocol fixture"),
                 token_id: "fixture:token".into(),
-                kind: crate::tokens::TokenKind::Protocol {
+                kind: crate::catalog::tokens::TokenKind::Protocol {
                     standard: standard.into(),
                     identifier: contract.into(),
                 },

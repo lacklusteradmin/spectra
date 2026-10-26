@@ -147,7 +147,7 @@ impl WalletService {
         amount: &str,
         destination: &str,
     ) -> Result<crate::send::preview_types::SendPreview, SpectraBridgeError> {
-        let amount = u64::try_from(crate::send::amount_input::parse_raw_amount(
+        let amount = u64::try_from(crate::amount::input::parse_raw_amount(
             amount,
             u32::from(chain.native_decimals()),
         )?)
@@ -188,7 +188,7 @@ impl WalletService {
             .try_fold(0u64, |total, input| total.checked_add(input.utxo.value))
             .ok_or_else(|| SpectraBridgeError::invalid("Peercoin input total overflow"))?;
         let units = |raw: u64| {
-            crate::decimal::from_units(u128::from(raw), u32::from(chain.native_decimals()))
+            crate::amount::decimal::from_units(u128::from(raw), u32::from(chain.native_decimals()))
         };
         let fee_rate_sat_vb = chain.peercoin_fee_per_kb_units()? / 1_000;
         let mut preview = crate::send::preview_types::SendPreview {

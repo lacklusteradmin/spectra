@@ -58,7 +58,7 @@ impl WalletService {
         conditions: DeviceConditions,
     ) -> Result<AppRefreshResult, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let rescanned = match &intent {
                 AppRefreshIntent::DeepRescan { chain_id } => Some(*chain_id),

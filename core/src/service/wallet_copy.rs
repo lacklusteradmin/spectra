@@ -183,7 +183,7 @@ impl WalletService {
                 import
             }
             WalletSigning::SeedPhrase { .. } => {
-                let phrase = crate::store::wallet_secrets::load_seed_phrase(
+                let phrase = crate::secrets::wallet::load_seed_phrase(
                     &*self.secrets()?,
                     &source.id,
                     password.as_deref().map(String::as_str),
@@ -197,7 +197,7 @@ impl WalletService {
                 import
             }
             WalletSigning::PrivateKey { .. } => {
-                let key = crate::store::wallet_secrets::load_private_key(
+                let key = crate::secrets::wallet::load_private_key(
                     &*self.secrets()?,
                     &source.id,
                     password.as_deref().map(String::as_str),

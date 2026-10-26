@@ -352,7 +352,7 @@ fn decode_transaction(
     }
     Ok(totals.into_iter().filter(|(_, (received,spent,_))|received!=spent).map(|(asset,(received,spent,decimals))|{
         let incoming=received>spent;let amount=received.abs_diff(spent);
-        json!({"txid":hash,"version":version,"timestamp_us":timestamp,"from":if incoming&&sender!=address{sender.as_str()}else{""},"to":"","amount_octas":amount.to_string(),"amount_display":crate::decimal::from_units(amount,u32::from(decimals)),"contract":if native_asset(&asset){None}else{Some(asset)},"is_incoming":incoming})
+        json!({"txid":hash,"version":version,"timestamp_us":timestamp,"from":if incoming&&sender!=address{sender.as_str()}else{""},"to":"","amount_octas":amount.to_string(),"amount_display":crate::amount::decimal::from_units(amount,u32::from(decimals)),"contract":if native_asset(&asset){None}else{Some(asset)},"is_incoming":incoming})
     }).collect())
 }
 #[cfg(test)]

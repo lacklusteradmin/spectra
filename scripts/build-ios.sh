@@ -52,8 +52,8 @@ source "${REPO_ROOT}/scripts/ios-rust-build-env.sh"
 if command -v rustup >/dev/null 2>&1; then
   rustup target add "${TARGET}" >/dev/null 2>&1 || true
 fi
-# Only the static library: ffi's cdylib is for Android, and iOS never loads it.
-cargo rustc ${RELEASE_FLAG} --manifest-path "${REPO_ROOT}/ffi/Cargo.toml" --target "${TARGET}" \
+# Core itself is the library the app links: its rlib built as a static one.
+cargo rustc ${RELEASE_FLAG} --manifest-path "${REPO_ROOT}/core/Cargo.toml" --target "${TARGET}" \
   --lib --crate-type staticlib
 
 mkdir -p "${OUT}"

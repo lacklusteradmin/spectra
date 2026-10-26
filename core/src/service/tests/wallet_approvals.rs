@@ -194,7 +194,7 @@ async fn standing_approvals_are_found_revoked_and_named() {
     let service =
         WalletService::new(vec![endpoints(Chain::Ethereum), endpoints(Chain::BnbChain)]).unwrap();
     service.set_secret_store(Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
         .open_state(

@@ -13,9 +13,7 @@
 use super::*;
 use crate::api::horizon::StellarMergeState;
 use crate::api::xrpl_json_rpc::{LSF_REQUIRE_DEST_TAG, XrpDeletionState};
-use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
-};
+use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, WalletOperation};
 
 /// An XRP account whose `Sequence` is within this many ledgers of the
 /// current one cannot be deleted, so a recreated account cannot replay.
@@ -177,7 +175,7 @@ impl WalletService {
         memo: Option<crate::send::payment_memo::PaymentMemo>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let wallet = this.stored_wallet(&wallet_id).await?;
             let chain = wallet.chain_id;
             if !closes_accounts(chain) {
@@ -211,7 +209,7 @@ impl WalletService {
             }
             let memo = memo.map(|memo| memo.validated(chain)).transpose()?;
             let decimals = u32::from(chain.native_decimals());
-            let coin = |units: u128| crate::decimal::from_units(units, decimals);
+            let coin = |units: u128| crate::amount::decimal::from_units(units, decimals);
             let (prepared, balance, fee, reserve, removed_objects) = this
                 .account_closing(chain, &sender, &destination, memo.is_some())
                 .await?;
@@ -237,44 +235,20 @@ impl WalletService {
                 gas_budget: None,
                 fee_amount: Some(network_fee),
                 evm_overrides: None,
-                sign_only: false,
                 memo: memo.clone(),
             };
-            let mut stored = StoredSend {
-                view: SendArtifact {
-                    id: crate::store::new_transaction_id(),
-                    revision: 0,
-                    stage: SendStage::Prepared,
-                    wallet_id,
-                    chain_id: chain,
-                    sender,
-                    recipient: destination,
-                    amount,
-                    asset: chain.coin_symbol().into(),
-                    symbol: chain.coin_symbol().into(),
-                    staking: None,
-                    operation: Some(operation),
-                    created_at: crate::store::now_unix().floor(),
-                    review_digest: String::new(),
-                    review: SendArtifactReview::default(),
-                    prepared_details: serde_json::to_string_pretty(&prepared)?,
-                    signing_payload_hex: String::new(),
-                    signed_payload: None,
-                    transaction_hash: None,
-                    attempts: Vec::new(),
-                    selected_endpoints: Vec::new(),
-                    memo,
-                },
+            this.save_prepared_send(crate::send::stages::NewArtifact {
+                sender,
+                asset: chain.coin_symbol().into(),
+                symbol: chain.coin_symbol().into(),
+                staking: None,
+                operation: Some(operation),
+                review: SendArtifactReview::default(),
+                signing_payload_hex: String::new(),
                 request,
                 prepared,
-                submission: None,
-                signed_digest: None,
-                substrate_verified_through: None,
-                icp_staking_receipts: vec![],
-            };
-            stored.view.review_digest = stored.digest()?;
-            this.save_send_artifact(&stored, &[]).await?;
-            Ok(stored.view)
+            })
+            .await
         })
         .await
     }

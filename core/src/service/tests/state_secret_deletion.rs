@@ -1,6 +1,6 @@
 use super::*;
-use crate::store::secret_backends::InMemorySecretStore;
-use crate::store::secret_store::{SecretClass, SecretStoreError};
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::store::{SecretClass, SecretStoreError};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 const MNEMONIC: &str = "test test test test test test test test test test test junk";
@@ -10,7 +10,7 @@ async fn deleting_stored_secrets_requires_a_durable_state_binding() {
     let service = WalletService::new(vec![]).unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
-    crate::store::wallet_secrets::store_seed_phrase(&*secrets, "w", MNEMONIC, None).unwrap();
+    crate::secrets::wallet::store_seed_phrase(&*secrets, "w", MNEMONIC, None).unwrap();
     service
         .apply_state_command(StateCommand::UpsertWallet {
             wallet: crate::store::state::WalletState::single_address(
@@ -34,7 +34,7 @@ async fn deleting_stored_secrets_requires_a_durable_state_binding() {
     assert!(error.to_string().contains("database must be opened"));
     assert_eq!(service.app_state().await, before);
     assert_eq!(
-        &*crate::store::wallet_secrets::load_seed_phrase(&*secrets, "w", None).unwrap(),
+        &*crate::secrets::wallet::load_seed_phrase(&*secrets, "w", None).unwrap(),
         MNEMONIC
     );
 }
@@ -321,7 +321,7 @@ async fn a_store_with_an_undecodable_row_opens_as_unreadable_and_discards_with_i
 
     let state = service.discard_state(path.clone()).await.unwrap();
     assert!(state.wallets.is_empty());
-    assert!(crate::store::wallet_secrets::load_seed_phrase(&*secrets, &id, None).is_err());
+    assert!(crate::secrets::wallet::load_seed_phrase(&*secrets, &id, None).is_err());
     // The new store is the open one, so discarding it again is refused.
     assert!(service.discard_state(path.clone()).await.is_err());
     assert!(service.app_state().await.wallets.is_empty());

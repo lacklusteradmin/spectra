@@ -17,6 +17,99 @@ Delete an item once it is done.
   offline CLI fixtures. Keep live probes read-only; any resulting behaviour
   changes need `make verify`.
 
+## Technical debt
+
+Found by the 2026-10-26 code audit and not yet paid down. Each item names
+where the duplication or misplaced rule lives; fix the cause, not the
+symptom, and delete the item with the change.
+
+### Core
+
+- [ ] **History round-trips through a JSON string.** Every `api` module returns
+  its own entry type; `service/network_history.rs` serializes each page to a
+  string and `fetch/history.rs` re-parses it by per-chain field names
+  (`HistoryShape`). Give `api` one typed history entry, map each adapter to
+  it, and delete `HistoryShape`, `RawHistoryPage` and the re-parse. With that
+  gone, `fetch/` is no longer a layer: move `refresh_*` and `history_store`
+  into `service/`, the merge rules into `store/` and `fetch/price.rs`'s
+  requests into `api/`.
+- [ ] **Network identity checks are rewritten per call site.**
+  `send_stage_protocols.rs`, `pending_status.rs` and `multisig_aptos.rs`
+  check each network's identity by hand (the Aptos ledger check five times)
+  and service issues raw RPC (`isBlockhashValid`, `eth_getTransactionCount`,
+  `eth_chainId`). `endpoint_health.rs` builds probe requests in `service/`.
+  Give each client a `verify_network`, move the probes to `api/`, and keep
+  `EvmClient::call` and `SolanaClient::call` private to `api/`.
+- [ ] **`send_stage_protocols.rs` is four chain ladders** (prepare, validate,
+  sign, expiry) with copied XRP/Stellar sequence checks and NEAR expiry arms.
+  Split it per protocol, as `send_near.rs` and `send_stage_litecoin.rs`
+  already are.
+- [ ] **Token standards are strings.** About 140 literals across 16 files,
+  the closed set spelled five times, a `"Native"` sentinel, and the
+  deployment id format built in six places. Add a `TokenStandard` enum and
+  one deployment-id constructor.
+- [ ] **One fact, two readers.** Token decimals are read by
+  `send_execution::token_contract_decimals` and
+  `network_tokens::token_decimals`, which disagree on caching and coverage;
+  `transaction_recheck.rs` re-implements the UTXO branch of
+  `pending_status.rs` with different confirmation semantics;
+  `MultisigScheme::of` restates `Chain::multisig_policy_format`; wallet
+  actions are gated by name in `wallet_actions.rs` and again in five
+  `*_owner` helpers; staking branches on ICP/Polkadot/other about twelve
+  times in `service/staking.rs`, beside a `StakingService` whose ICP arm only
+  tests reach.
+- [ ] **`api` depends on `send`** for Safe, Stellar, XRP and Tron multisig
+  read models and Solana's token programs. Move those types into `api/`.
+- [ ] **Duplicated primitives.** Three BIP-32 implementations with path
+  parsers that disagree (`derivation/bitcoin.rs`, `derivation/primitives.rs`,
+  `bitcoin::bip32`); two Blake2b crates; three LEB128 encoders; two
+  CompactSize writers; lenient and strict EVM ABI word decoders. Keep one of
+  each; key derivation changes need the independent vectors.
+- [ ] **Grab-bag modules.** `service/helpers.rs`, `service/types.rs`,
+  `service/standalone.rs`, the endpoint code in `service/mod.rs` and the
+  single-caller pieces of `store/mod.rs` belong beside their callers.
+- [ ] **Storage leftovers.** `wallets.chain_id`, `is_watch_only`,
+  `include_in_portfolio_total` and `address_book.chain_id`/`address` are
+  written and never read; the wallet upsert is written twice;
+  `HistoryRecord` copies `TransactionRecord`'s keys; diagnostics runs live
+  in a process-global beside `ResidentState`.
+- [ ] **Dead or never-varying paths.** `apply_transaction_command` is
+  exported for one production use (`Clear`), and rebroadcast still falls back
+  to `TransactionRecord.signed_transaction_payload`, which core-made sends no
+  longer need; `seed_derivation_chain_raw` always answers; the Dogecoin
+  transaction merge rule has no reason Dash does not share.
+
+### CLI and tests
+
+- [ ] **CLI output.** About fifteen commands print nothing in text mode and
+  seven print Rust `{:?}`; `send`'s offline calculators format amounts with
+  `{:.6}` and some wallet commands spell tickers. Emit one `Serialize` report
+  per command with its own text rendering, then split `cmd/wallet.rs` and
+  `cmd/tx.rs` along their sections. Wallet selection is positional,
+  `--wallet` or `--from` depending on the command.
+- [ ] **One acceptance harness.** The 25 Python suites each re-implement the
+  CLI runner, a loopback JSON-RPC server and fixture loading; only five refuse
+  `-O`. Share one helper module and run the shell checks from Python too.
+  The SDK generators have no shared `package.json`, and their pinned SDK
+  versions drift.
+- [ ] **Source scans are Python inside bash heredocs** with copied helpers.
+  Make them modules on `scripts/source_scan.py`.
+
+### iOS app
+
+- [ ] **The send composer's requests live in a view.** `SendFlowViews.swift`
+  keeps recipient resolution, preview refresh (with a polling loop) and the
+  staged-transaction read as `@State` tasks; they belong on `SendFlowState`.
+- [ ] **Decisions made in Swift.** The next send stage
+  (`SendExecutionAction.swift`), staking repair/broadcast availability, the
+  10% provisional-quote amount, whether a fee is an upper bound, and review
+  warnings (assembled three ways) are core's to answer.
+- [ ] **Duplicated views.** Ten wallet-tool sheets repeat one build/review
+  form; three copy-with-feedback implementations and three address
+  shorteners; the send recipient field rebuilds `AddressEntryRow`.
+  `DashboardViews.swift`, `WalletFlowViews.swift` and
+  `SendPrimarySectionsView.swift` each hold several screens.
+
 ## Supported chain scope
 
 [CHAIN-SUPPORT.md](CHAIN-SUPPORT.md) defines supported protocols, import formats,

@@ -190,11 +190,13 @@ impl WalletService {
                 [chain.chain_display_name(), to],
             ));
         }
-        let mist =
-            crate::decimal::to_units(spend.amount.trim(), u32::from(chain.native_decimals()))
-                .and_then(|units| u64::try_from(units).ok())
-                .filter(|units| *units > 0)
-                .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let mist = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .and_then(|units| u64::try_from(units).ok())
+        .filter(|units| *units > 0)
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         let client = self.sui_verified_client(chain).await?;
         let prepared = crate::send::sui::prepare_native_transfer(
             &client,

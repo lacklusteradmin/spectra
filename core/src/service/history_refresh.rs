@@ -6,7 +6,8 @@
 use futures::{StreamExt as _, stream};
 use std::collections::HashMap;
 
-use crate::SpectraBridgeError;
+use crate::api::endpoint::EndpointCapability;
+use crate::error::SpectraBridgeError;
 use crate::registry::Chain;
 use crate::service::WalletService;
 use crate::store::state::ResidentState;
@@ -324,7 +325,7 @@ fn token_descriptors(state: &ResidentState, chain: Chain) -> Vec<crate::service:
         .iter()
         .filter(|entry| entry.hosting_chain() == Some(chain))
         .filter_map(|entry| {
-            let contract = crate::tokens::normalize_token_identifier(
+            let contract = crate::catalog::tokens::normalize_token_identifier(
                 Some(entry.token.contract.clone()),
                 chain,
             )?;
@@ -560,7 +561,7 @@ impl WalletService {
                             &target,
                             &HashMap::new(),
                             crate::fetch::history::NormalizedHistoryItem {
-                                deployment_id: crate::tokens::deployment_id_for(
+                                deployment_id: crate::catalog::tokens::deployment_id_for(
                                     target.network,
                                     None,
                                 ),
@@ -620,7 +621,7 @@ enum AccountHistoryReader {
 
 impl AccountHistoryReader {
     async fn new(service: &WalletService, chain: Chain) -> Self {
-        let endpoints = || service.endpoints_for(chain, &[crate::EndpointCapability::History]);
+        let endpoints = || service.endpoints_for(chain, &[EndpointCapability::History]);
         match chain.mainnet_counterpart() {
             Chain::Decred => {
                 Self::Insight(crate::api::insight::InsightClient::new(endpoints().await))
@@ -630,7 +631,7 @@ impl AccountHistoryReader {
             }
             _ => Self::Utxo(
                 service
-                    .utxo_client(chain, &[crate::EndpointCapability::History])
+                    .utxo_client(chain, &[EndpointCapability::History])
                     .await,
             ),
         }

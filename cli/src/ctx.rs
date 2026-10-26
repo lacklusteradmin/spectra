@@ -8,8 +8,10 @@ use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use spectra_core::service::WalletService;
-use spectra_core::store::secret_backends::FileSecretStore;
+use spectra_core::api::endpoint::EndpointCapability;
+use spectra_core::registry::Chain;
+use spectra_core::secrets::backends::FileSecretStore;
+use spectra_core::service::{ChainEndpoints, WalletService};
 use spectra_core::store::state::{ResidentState, StateCommand, StateTransition, WalletState};
 
 use crate::error::{CliError, CliResult};
@@ -146,48 +148,63 @@ impl Ctx {
             .into_owned()
     }
 
+    /// The service every network command uses: its secret store, the opened
+    /// store and a ready network transport, Tor included when it is on.
+    ///
     /// Opened fresh per command on purpose: a short-lived process never holds
     /// a snapshot old enough to overwrite a newer store with.
     pub fn service(&self) -> CliResult<Arc<WalletService>> {
+        let service = self.offline_service()?;
+        self.rt.block_on(service.configure_network_runtime(
+            self.data_dir.join("cache").to_string_lossy().into_owned(),
+        ))?;
+        self.rt.block_on(service.await_network_ready())?;
+        Ok(service)
+    }
+
+    /// [`Ctx::service`], reading `chain` only through `endpoints` when the
+    /// command named any.
+    pub fn service_with_endpoints(
+        &self,
+        chain: Chain,
+        endpoints: Vec<String>,
+    ) -> CliResult<Arc<WalletService>> {
+        let service = self.service()?;
+        if !endpoints.is_empty() {
+            self.rt
+                .block_on(service.update_endpoints(vec![ChainEndpoints {
+                    capabilities: EndpointCapability::ALL.to_vec(),
+                    chain_id: chain,
+                    endpoints,
+                }]))?;
+        }
+        Ok(service)
+    }
+
+    /// The opened store without the network: editing stored settings must
+    /// work offline, including turning Tor off after a failed bootstrap.
+    pub fn offline_service(&self) -> CliResult<Arc<WalletService>> {
         let service = self.unopened_service()?;
-        self.prepare_transport(&service)?;
+        self.rt.block_on(service.open_state(self.db_path()))?;
         Ok(service)
     }
 
     /// The service with its secret store but no database: for discarding a
     /// store `open_state` cannot read.
     pub fn unopened_service(&self) -> CliResult<Arc<WalletService>> {
-        let service = WalletService::new_catalog().map_err(CliError::from)?;
+        let service = WalletService::new_catalog()?;
         service.set_secret_store(self.secrets.clone());
         Ok(service)
     }
 
-    pub fn prepare_transport(&self, service: &WalletService) -> CliResult<()> {
-        self.rt.block_on(service.open_state(self.db_path()))?;
-        self.rt.block_on(service.configure_network_runtime(
-            self.data_dir.join("cache").to_string_lossy().into_owned(),
-        ))?;
-        self.rt.block_on(service.await_network_ready())?;
-        Ok(())
-    }
-
     pub fn state(&self) -> CliResult<ResidentState> {
-        let service = WalletService::new_catalog().map_err(CliError::from)?;
-        service.set_secret_store(self.secrets.clone());
-        self.rt
-            .block_on(service.open_state(self.db_path()))
-            .map_err(CliError::from)
+        let service = self.unopened_service()?;
+        Ok(self.rt.block_on(service.open_state(self.db_path()))?)
     }
 
     pub fn apply(&self, command: StateCommand) -> CliResult<StateTransition> {
-        // Editing stored settings must work offline, including turning Tor off
-        // after a failed bootstrap. Network commands initialize the runtime.
-        let service = WalletService::new_catalog()?;
-        service.set_secret_store(self.secrets.clone());
-        self.rt.block_on(service.open_state(self.db_path()))?;
-        self.rt
-            .block_on(service.apply_state_command(command))
-            .map_err(CliError::from)
+        let service = self.offline_service()?;
+        Ok(self.rt.block_on(service.apply_state_command(command))?)
     }
 
     /// By argument, never an interactive picker: a command that needs a TTY

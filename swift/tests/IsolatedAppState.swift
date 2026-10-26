@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import Spectra
 
@@ -79,20 +80,19 @@ extension IsolatedAppStateSuite {
     func makeState() -> AppState { isolated.makeState() }
 }
 
-final class TestSecretStore: SecretStore, @unchecked Sendable {
-    private let lock = NSLock()
-    private var values: [SecretClass: [String: String]] = [:]
+final class TestSecretStore: SecretStore, Sendable {
+    private let values = Mutex<[SecretClass: [String: String]]>([:])
     func loadSecret(kind: SecretClass, key: String) throws -> String {
-        try lock.withLock {
+        try values.withLock { values in
             guard let value = values[kind]?[key] else { throw SecretStoreError.NotFound }
             return value
         }
     }
     func saveSecret(kind: SecretClass, key: String, value: String) throws {
-        lock.withLock { values[kind, default: [:]][key] = value }
+        values.withLock { $0[kind, default: [:]][key] = value }
     }
     func deleteSecret(kind: SecretClass, key: String) throws {
-        lock.withLock { _ = values[kind]?.removeValue(forKey: key) }
+        values.withLock { _ = $0[kind]?.removeValue(forKey: key) }
     }
     /// No enclave in a test store: the device key is kept as core minted it.
     func wrapDeviceKey(key: Data) throws -> Data { key }

@@ -203,10 +203,12 @@ impl WalletService {
                 [chain.chain_display_name(), to],
             ));
         }
-        let value =
-            crate::decimal::to_units(spend.amount.trim(), u32::from(chain.native_decimals()))
-                .filter(|value| *value > 0)
-                .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let value = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .filter(|value| *value > 0)
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         let state = self.safe_state(chain, &safe).await?;
         let policy = state.policy()?;
         let open = self.open_safe_sessions(wallet).await?;

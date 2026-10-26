@@ -220,7 +220,7 @@ async fn a_near_token_send_reviews_the_prepayment_its_calls_cost() {
     let budget = token_budget(false);
     assert_eq!(
         preview.estimated_network_fee,
-        crate::decimal::from_units(budget, 24)
+        crate::amount::decimal::from_units(budget, 24)
     );
     let built = wallet.build(token(&wallet)).await.unwrap();
     let near = prepared(&built);

@@ -196,7 +196,7 @@
     }
   ],
   "restore_height_reference": {
-    "source": "core/src/restore_heights.rs ZCASH_REFERENCE",
+    "source": "core/src/catalog/restore_heights.rs ZCASH_REFERENCE",
     "zcash": {
       "height": 3510167,
       "time": 1791428961,

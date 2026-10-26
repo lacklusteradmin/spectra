@@ -11,7 +11,7 @@ struct MoneroSyncViewModelTests {
     }
 
     @Test func cancelledBatchCannotOverwriteOrFinishRestartedScan() async throws {
-        let vm = MoneroSyncViewModel()
+        let vm = MoneroSyncState()
         vm.status = status(height: 0)
         vm.password = "old password"
         vm.begin()
@@ -58,7 +58,7 @@ struct MoneroSyncViewModelTests {
     }
 
     @Test func cancelledRunCannotSubmitAfterItsTaskWasQueued() async throws {
-        let vm = MoneroSyncViewModel()
+        let vm = MoneroSyncState()
         vm.begin()
         let request = try #require(vm.requestId)
         vm.cancel()

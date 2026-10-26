@@ -5,6 +5,7 @@ use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::endpoint::EndpointApi;
 use crate::api::http::HttpClient;
 
 // ── Public result types
@@ -61,7 +62,7 @@ impl SuiClient {
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
-            crate::EndpointApi::SuiJsonRpc,
+            EndpointApi::SuiJsonRpc,
             &self.client,
             &self.endpoints,
             method,
@@ -240,8 +241,10 @@ impl SuiClient {
                     decimals.insert(contract.clone(), precision);
                     precision
                 };
-                entry.amount_display =
-                    crate::decimal::from_unit_digits(&entry.amount_mist, u32::from(precision));
+                entry.amount_display = crate::amount::decimal::from_unit_digits(
+                    &entry.amount_mist,
+                    u32::from(precision),
+                );
                 if entry.amount_display.is_none() {
                     return Err(ApiError::Decode("Sui token history: invalid amount".into()));
                 }
@@ -502,7 +505,7 @@ fn sui_history_from_blocks(
                 timestamp_ms,
                 is_incoming,
                 amount_display: if coin_type == SUI_COIN_TYPE {
-                    crate::decimal::from_unit_digits(&amount_mist, 9)
+                    crate::amount::decimal::from_unit_digits(&amount_mist, 9)
                 } else {
                     None
                 },

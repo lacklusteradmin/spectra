@@ -108,7 +108,7 @@ impl WalletService {
             _ => None,
         };
         if let Some(scanned) = scanned {
-            native_amount = crate::decimal::add(&native_amount, &scanned)
+            native_amount = crate::amount::decimal::add(&native_amount, &scanned)
                 .ok_or_else(|| SpectraBridgeError::failure("invalid balance amount"))?;
         }
         let mut holdings = vec![
@@ -121,7 +121,7 @@ impl WalletService {
         if !known.is_empty() {
             let descriptors = known
                 .iter()
-                .filter(|p| chain.reads_token_standard(&p.token.token_standard))
+                .filter(|p| chain.allows_token_standard(&p.token.token_standard))
                 .map(|p| {
                     Ok(TokenDescriptor {
                         standard: p.token.token_standard.clone(),
@@ -162,7 +162,7 @@ impl WalletService {
         holdings: Vec<AssetHolding>,
     ) -> Result<WalletState, SpectraBridgeError> {
         for h in &holdings {
-            if crate::decimal::canonical(&h.amount).as_ref() != Some(&h.amount) {
+            if crate::amount::decimal::canonical(&h.amount).as_ref() != Some(&h.amount) {
                 return Err(SpectraBridgeError::failure("invalid balance"));
             }
         }
@@ -210,18 +210,18 @@ impl WalletService {
 /// A provider's balance text as an exact decimal. Refused rather than
 /// rounded: a balance is what the wallet shows and what a send spends.
 fn balance_amount(raw: &str) -> Result<String, SpectraBridgeError> {
-    crate::decimal::canonical(raw)
+    crate::amount::decimal::canonical(raw)
         .ok_or_else(|| SpectraBridgeError::failure("invalid balance amount"))
 }
 fn contract_key(chain: Chain, contract: &str) -> String {
-    crate::tokens::normalize_token_identifier(Some(contract.into()), chain)
+    crate::catalog::tokens::normalize_token_identifier(Some(contract.into()), chain)
         .unwrap_or_else(|| contract.into())
 }
 fn balance_key(h: &AssetHolding) -> (Chain, bool, Option<String>) {
     (
         h.chain_id,
         h.is_native(),
-        crate::tokens::normalize_token_identifier(h.contract_address.clone(), h.chain_id),
+        crate::catalog::tokens::normalize_token_identifier(h.contract_address.clone(), h.chain_id),
     )
 }
 fn merge_balances(stored: &mut Vec<AssetHolding>, incoming: Vec<AssetHolding>) {
@@ -241,7 +241,7 @@ fn merge_balances(stored: &mut Vec<AssetHolding>, incoming: Vec<AssetHolding>) {
             matched = true;
             true
         });
-        if !matched && !crate::decimal::is_zero(&h.amount) {
+        if !matched && !crate::amount::decimal::is_zero(&h.amount) {
             stored.push(h);
         }
     }
@@ -254,7 +254,7 @@ mod tests {
     #[tokio::test]
     async fn balance_commit_replaces_protocol_aliases_without_duplicating_funds() {
         let chain = Chain::BnbChain;
-        let token = crate::tokens::catalog()
+        let token = crate::catalog::tokens::catalog()
             .iter()
             .find(|token| token.chain_id == chain && !token.is_native())
             .unwrap();
@@ -316,7 +316,7 @@ mod tests {
     #[test]
     fn a_token_the_refresh_could_not_read_keeps_its_stored_balance() {
         let chain = Chain::Ethereum;
-        let token = crate::tokens::catalog()
+        let token = crate::catalog::tokens::catalog()
             .iter()
             .find(|token| token.chain_id == chain && token.symbol == "USDC")
             .unwrap();
@@ -612,8 +612,8 @@ mod lifecycle_tests {
             .open_state(path.to_string_lossy().into())
             .await
             .unwrap();
-        let secrets = Arc::new(crate::store::secret_backends::InMemorySecretStore::new());
-        crate::store::wallet_secrets::store_seed_phrase(
+        let secrets = Arc::new(crate::secrets::backends::InMemorySecretStore::new());
+        crate::secrets::wallet::store_seed_phrase(
             &*secrets,
             "w",
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",

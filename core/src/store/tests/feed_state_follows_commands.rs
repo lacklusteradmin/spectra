@@ -1,5 +1,6 @@
 //! History pagination and diagnostics rows go with the commands that
 //! invalidate them, rather than with a front end remembering to reset them.
+use crate::api::endpoint::{EndpointApi, endpoint_capability_options};
 use crate::service::WalletService;
 use crate::store::state::{AppSettingUpdate, StateCommand, WalletState};
 
@@ -87,9 +88,9 @@ async fn an_esplora_change_restarts_the_bitcoin_feed() {
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: AppSettingUpdate::AddCustomEndpoint {
-                capabilities: crate::endpoint_capability_options(
+                capabilities: endpoint_capability_options(
                     crate::registry::Chain::Bitcoin,
-                    crate::EndpointApi::Esplora,
+                    EndpointApi::Esplora,
                 ),
                 chain_id: crate::registry::Chain::Bitcoin,
                 api: "esplora".into(),
@@ -189,10 +190,7 @@ async fn removing_the_last_custom_endpoint_stops_using_only_custom_ones() {
         service
             .apply_state_command(StateCommand::SetAppSetting {
                 update: AppSettingUpdate::AddCustomEndpoint {
-                    capabilities: crate::endpoint_capability_options(
-                        chain,
-                        crate::EndpointApi::Esplora,
-                    ),
+                    capabilities: endpoint_capability_options(chain, EndpointApi::Esplora),
                     chain_id: chain,
                     api: "esplora".into(),
                     endpoint: endpoint.into(),
@@ -254,7 +252,7 @@ async fn editing_a_custom_endpoint_keeps_it_and_using_only_custom_ones() {
     let service = crate::service::WalletService::new(Vec::new()).unwrap();
     let chain = crate::registry::Chain::Bitcoin;
     let set = |update| StateCommand::SetAppSetting { update };
-    let capabilities = crate::endpoint_capability_options(chain, crate::EndpointApi::Esplora);
+    let capabilities = endpoint_capability_options(chain, EndpointApi::Esplora);
     for endpoint in ["https://one.example/api", "https://two.example/api"] {
         service
             .apply_state_command(set(AppSettingUpdate::AddCustomEndpoint {

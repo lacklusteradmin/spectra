@@ -1,6 +1,6 @@
 //! Views of the transaction store, derived where the store is.
 
-use crate::SpectraBridgeError;
+use crate::error::SpectraBridgeError;
 use crate::service::WalletService;
 use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
@@ -11,7 +11,7 @@ impl WalletService {
     /// family is the registry's.
     pub async fn replaceable_sends(&self) -> Result<Vec<ReplaceableSend>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             Ok(this.transaction_snapshot().await?.replaceable)
         })

@@ -2,9 +2,9 @@
 
 use crate::derivation::error::DerivationError;
 
-use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::{BitcoinNetworkParams, derive_secp_keypair, encode_address_inner};
 use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
+use crate::error::SpectraBridgeError;
 use crate::registry::Chain;
 use secp256k1::PublicKey;
 

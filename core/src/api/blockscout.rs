@@ -818,7 +818,7 @@ mod every_evm_chain_says_where_its_history_comes_from {
 
     #[test]
     fn history_sources_match_the_concrete_network_directory() {
-        let catalog = crate::endpoints::catalog();
+        let catalog = crate::catalog::endpoints::catalog();
         for chain in Chain::all().filter(|chain| chain.is_evm()) {
             if let EvmHistorySource::Open(url) = chain.evm_history_source() {
                 assert!(catalog.records.iter().any(|record| {
@@ -826,7 +826,7 @@ mod every_evm_chain_says_where_its_history_comes_from {
                         && record.endpoint == url
                         && record
                             .capabilities
-                            .contains(&crate::EndpointCapability::History)
+                            .contains(&crate::api::endpoint::EndpointCapability::History)
                 }));
             }
             // A testnet reads its own explorer or none, never its mainnet's.

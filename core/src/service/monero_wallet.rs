@@ -1,7 +1,7 @@
 //! Core-owned local Monero sync cache and send preparation.
 use super::*;
+use crate::secrets::store::SecretClass;
 use crate::send::monero_local::{self, LocalWallet, PreparedMoneroTransaction};
-use crate::store::secret_store::SecretClass;
 use ::monero_wallet::address::MoneroAddress;
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
@@ -56,7 +56,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<Option<MoneroSyncStatus>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let state = this.app_state().await;
             let wallet = state
@@ -101,7 +101,7 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<MoneroSyncStatus, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let password = password.map(Zeroizing::new);
             let wallet = this.stored_wallet(&wallet_id).await?;
@@ -199,7 +199,7 @@ impl WalletService {
             .load_secret(SecretClass::Generic, format!("{wallet_id}.scan-key"))
         {
             Ok(view) => Zeroizing::new(view),
-            Err(crate::store::secret_store::SecretStoreError::NotFound) => return Ok(None),
+            Err(crate::secrets::store::SecretStoreError::NotFound) => return Ok(None),
             Err(error) => return Err(error.into()),
         };
         Ok(Some(crate::derivation::monero::view_keys(
@@ -306,7 +306,7 @@ impl WalletService {
             .first()
             .cloned()
             .ok_or_else(|| {
-                crate::SpectraBridgeError::failure(
+                crate::error::SpectraBridgeError::failure(
                     "Configure a Monero daemon endpoint before syncing",
                 )
             })
@@ -341,7 +341,7 @@ impl WalletService {
                 "Sync the local Monero wallet before building a transaction",
             )
         })?;
-        let plaintext = Zeroizing::new(crate::store::seed_envelope::decrypt(
+        let plaintext = Zeroizing::new(crate::secrets::seed_envelope::decrypt(
             payload.as_bytes(),
             &key,
         )?);
@@ -364,7 +364,7 @@ impl WalletService {
         key: &[u8],
     ) -> Result<(), SpectraBridgeError> {
         let plain = Zeroizing::new(serde_json::to_vec(wallet)?);
-        let encrypted = String::from_utf8(crate::store::seed_envelope::encrypt(&plain, key)?)
+        let encrypted = String::from_utf8(crate::secrets::seed_envelope::encrypt(&plain, key)?)
             .map_err(SpectraBridgeError::failure)?;
         let _writer = self.state_writer.lock().await;
         let state = self.wallet_state.read().await;
@@ -495,7 +495,7 @@ impl WalletService {
         txid: String,
     ) -> Result<Option<MoneroPaymentProof>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let wallet = this.stored_wallet(&wallet_id).await?;
             let chain = wallet.chain_id;
             if chain.mainnet_counterpart() != Chain::Monero {
@@ -541,7 +541,10 @@ impl WalletService {
                 txid,
                 tx_key: hex::encode(*tx_key),
                 address: prepared.recipient,
-                amount: crate::decimal::from_units(total, u32::from(chain.native_decimals())),
+                amount: crate::amount::decimal::from_units(
+                    total,
+                    u32::from(chain.native_decimals()),
+                ),
             }))
         })
         .await
@@ -569,7 +572,7 @@ mod tests {
             &hex::decode(&private).unwrap()[32..],
         );
         let wallet: LocalWallet = serde_json::from_str(
-            &crate::store::seed_envelope::decrypt(
+            &crate::secrets::seed_envelope::decrypt(
                 fixture["cache"].as_str().unwrap().as_bytes(),
                 &key,
             )

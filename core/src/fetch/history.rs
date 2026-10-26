@@ -209,14 +209,17 @@ fn history_shape(chain: Chain) -> Option<HistoryShape> {
 /// spelling, which is all the source ever said.
 fn magnitude(value: &Value, in_base_units: bool, chain: Chain) -> Option<String> {
     if in_base_units {
-        return exact_units(value)
-            .map(|units| crate::decimal::from_units(units, chain.native_decimals().into()));
+        return exact_units(value).map(|units| {
+            crate::amount::decimal::from_units(units, chain.native_decimals().into())
+        });
     }
     match value {
-        Value::String(text) => crate::decimal::canonical(text.trim().trim_start_matches('-')),
+        Value::String(text) => {
+            crate::amount::decimal::canonical(text.trim().trim_start_matches('-'))
+        }
         _ => value
             .as_f64()
-            .and_then(|n| crate::decimal::from_f64(n.abs())),
+            .and_then(|n| crate::amount::decimal::from_f64(n.abs())),
     }
 }
 
@@ -320,10 +323,10 @@ pub fn normalize_chain_history(
                 .filter(|s| !s.is_empty());
             // A contract that does not normalize for this chain names no asset
             // the row could be filed under, so the row is refused.
-            let deployment_id = crate::tokens::deployment_id_for(chain, contract)?;
+            let deployment_id = crate::catalog::tokens::deployment_id_for(chain, contract)?;
             let (entry_asset, entry_symbol) = match contract {
                 None => (asset_display_name, symbol),
-                Some(contract) => match crate::tokens::deployment(&deployment_id) {
+                Some(contract) => match crate::catalog::tokens::deployment(&deployment_id) {
                     Some(token) => (token.name.as_str(), token.symbol.as_str()),
                     // An unregistered contract cannot borrow another asset's
                     // name or ticker; it is shown as itself.
@@ -430,7 +433,7 @@ mod normalize_chain_history_tests {
         let row = &rows[0];
         assert_eq!(
             row.deployment_id,
-            crate::tokens::deployment_id_for(
+            crate::catalog::tokens::deployment_id_for(
                 Chain::Tron,
                 Some("TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf")
             )
@@ -624,7 +627,7 @@ mod normalize_chain_history_tests {
                     .or_else(|| source.get("contract"))
                     .and_then(Value::as_str)
                     .filter(|c| !c.is_empty());
-                let expected = crate::tokens::deployment_id_for(*chain, contract);
+                let expected = crate::catalog::tokens::deployment_id_for(*chain, contract);
                 assert_eq!(identity, serde_json::to_value(expected).unwrap(), "{chain}");
             }
             assert_eq!(

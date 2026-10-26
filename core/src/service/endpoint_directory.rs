@@ -1,7 +1,7 @@
 //! One directory for built-in and user-supplied API endpoints.
 use super::*;
-use crate::endpoints::EndpointRecord;
-use crate::{Endpoint, EndpointApi, EndpointCapability};
+use crate::api::endpoint::{Endpoint, EndpointApi, EndpointCapability};
+use crate::catalog::endpoints::EndpointRecord;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, uniffi::Record)]
@@ -28,7 +28,7 @@ impl CustomEndpoint {
         endpoint: String,
         mut capabilities: Vec<EndpointCapability>,
     ) -> Result<Self, SpectraBridgeError> {
-        let catalog = crate::endpoints::catalog();
+        let catalog = crate::catalog::endpoints::catalog();
         let api = chain
             .compatible_endpoint_apis()
             .into_iter()
@@ -36,7 +36,7 @@ impl CustomEndpoint {
             .ok_or_else(|| {
                 SpectraBridgeError::failure("API type is not supported by this network")
             })?;
-        let supported = crate::endpoint_api::endpoint_capability_options(chain, api);
+        let supported = crate::api::endpoint::endpoint_capability_options(chain, api);
         if capabilities.is_empty() || capabilities.iter().any(|c| !supported.contains(c)) {
             return Err(SpectraBridgeError::failure(
                 "Select at least one capability supported by this adapter",
@@ -119,9 +119,9 @@ impl WalletService {
         &self,
     ) -> Result<Vec<EndpointDirectoryEntry>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
-            let catalog = crate::endpoints::catalog();
+            let catalog = crate::catalog::endpoints::catalog();
             let custom = this
                 .wallet_state
                 .read()
@@ -253,7 +253,7 @@ impl WalletService {
         let catalog_records: &[EndpointRecord] = if self.uses_custom_endpoints_only(chain).await {
             &[]
         } else {
-            &crate::endpoints::catalog().records
+            &crate::catalog::endpoints::catalog().records
         };
         for record in catalog_records {
             if record.chain_id == chain
@@ -354,14 +354,14 @@ mod tests {
     #[test]
     fn every_catalog_network_and_api_takes_a_custom_endpoint() {
         let mut pairs: Vec<(Chain, EndpointApi)> = Vec::new();
-        for record in &crate::endpoints::catalog().records {
+        for record in &crate::catalog::endpoints::catalog().records {
             if !pairs.contains(&(record.chain_id, record.api)) {
                 pairs.push((record.chain_id, record.api));
             }
         }
         let mut accepted = 0;
         for (index, (chain, api)) in pairs.into_iter().enumerate() {
-            let capabilities = crate::endpoint_api::endpoint_capability_options(chain, api);
+            let capabilities = crate::api::endpoint::endpoint_capability_options(chain, api);
             if capabilities.is_empty() {
                 continue;
             }

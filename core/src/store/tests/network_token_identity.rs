@@ -86,7 +86,7 @@ fn a_contract_called_eth_is_encoded_as_erc20() {
     let contract = "0x1111111111111111111111111111111111111111";
     let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
         chain_id: crate::registry::Chain::Ethereum,
-        deployment_id: crate::tokens::deployment_id_for(
+        deployment_id: crate::catalog::tokens::deployment_id_for(
             crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
             Some(&String::from(contract)),
         )
@@ -109,12 +109,12 @@ fn a_contract_called_eth_is_encoded_as_erc20() {
 
 #[test]
 fn display_precision_is_deployment_specific() {
-    use crate::tokens::token_display_decimals;
+    use crate::catalog::tokens::token_display_decimals;
     assert_eq!(
         token_display_decimals(Some("ethereum:native".into()), Some(6)),
         18
     );
-    let usdc = crate::tokens::catalog()
+    let usdc = crate::catalog::tokens::catalog()
         .iter()
         .find(|t| t.chain_id == crate::registry::Chain::Ethereum && t.token_id == "usd-coin")
         .unwrap();

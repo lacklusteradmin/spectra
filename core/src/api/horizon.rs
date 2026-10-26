@@ -755,9 +755,9 @@ fn stellar_history_from_payments(
                 _ => return Ok(None),
             };
             let amount_stroops = parse_stellar_amount(&amount)?;
-            let amount_display = contract
-                .is_some()
-                .then(|| crate::decimal::from_units(u128::from(amount_stroops.unsigned_abs()), 7));
+            let amount_display = contract.is_some().then(|| {
+                crate::amount::decimal::from_units(u128::from(amount_stroops.unsigned_abs()), 7)
+            });
             // Horizon lists only operations already in a ledger.
             let timestamp = crate::api::time::confirmed_history_time(
                 crate::api::time::parse_iso8601_timestamp(&r.created_at)
@@ -794,7 +794,7 @@ pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, ApiError> {
         Some(rest) => (true, rest),
         None => (false, s),
     };
-    let stroops = crate::decimal::to_units(digits, 7).ok_or_else(invalid)?;
+    let stroops = crate::amount::decimal::to_units(digits, 7).ok_or_else(invalid)?;
     let stroops = i64::try_from(stroops).map_err(|_| invalid())?;
     Ok(if negative { -stroops } else { stroops })
 }

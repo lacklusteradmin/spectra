@@ -392,7 +392,7 @@ mod tests {
                 &text(&vectors["destination"]),
                 PaymentMemo::stellar(Some(&memo)).unwrap(),
                 asset.as_ref(),
-                crate::decimal::to_units(&text(&vector["amount"]), 7).unwrap() as i64,
+                crate::amount::decimal::to_units(&text(&vector["amount"]), 7).unwrap() as i64,
                 100,
                 text(&vector["sequence"]).parse().unwrap(),
                 passphrase.as_bytes(),
@@ -439,7 +439,7 @@ mod tests {
         let text = |value: &serde_json::Value| value.as_str().unwrap().to_string();
         let passphrase = text(&vectors["network_passphrase"]);
         let stroops = |amount: &serde_json::Value| {
-            crate::decimal::to_units(amount.as_str().unwrap(), 7).unwrap() as i64
+            crate::amount::decimal::to_units(amount.as_str().unwrap(), 7).unwrap() as i64
         };
         let encode = base64::engine::general_purpose::STANDARD;
         for vector in vectors["payments"].as_array().unwrap() {

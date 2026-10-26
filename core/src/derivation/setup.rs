@@ -131,7 +131,7 @@ pub struct WalletSetupOption {
     /// The phrase methods' derivation profiles, default first, each with an
     /// account index; empty for every other method and on a chain that
     /// derives without a path.
-    pub profiles: Vec<crate::chains::DerivationProfile>,
+    pub profiles: Vec<crate::catalog::chains::DerivationProfile>,
     pub fields: Vec<WalletSetupField>,
 }
 
@@ -156,7 +156,7 @@ impl WalletSetupDescriptor {
 pub fn wallet_setup_descriptor(chain: Chain) -> WalletSetupDescriptor {
     // A scanning chain asks where a restored wallet's scan starts; a created
     // one starts near now without asking.
-    let restore_fields = if crate::restore_heights::takes_restore_height(chain) {
+    let restore_fields = if crate::catalog::restore_heights::takes_restore_height(chain) {
         vec![WalletSetupField::RestoreHeight]
     } else {
         Vec::new()
@@ -290,7 +290,7 @@ pub(crate) mod tests {
         std::fs::create_dir_all(&directory).unwrap();
         let service = WalletService::new(vec![]).unwrap();
         service.set_secret_store(std::sync::Arc::new(
-            crate::store::secret_backends::InMemorySecretStore::new(),
+            crate::secrets::backends::InMemorySecretStore::new(),
         ));
         service
             .open_state(directory.join("state.db").to_string_lossy().into_owned())

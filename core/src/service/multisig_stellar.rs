@@ -172,7 +172,7 @@ impl WalletService {
         };
         let mut warnings = Vec::new();
         for (key, _) in &signers.other {
-            warnings.push(crate::LocalizableMessage::new(
+            warnings.push(crate::error::LocalizableMessage::new(
                 "Signer %@ is a hash or a pre-authorized transaction: it counts toward the thresholds, but no wallet here signs as it.",
                 [key],
             ));
@@ -219,11 +219,13 @@ impl WalletService {
         }
         self.require_payment_memo(chain, to, spend.memo.as_ref())
             .await?;
-        let stroops =
-            crate::decimal::to_units(spend.amount.trim(), u32::from(chain.native_decimals()))
-                .and_then(|units| i64::try_from(units).ok())
-                .filter(|units| *units > 0)
-                .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let stroops = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .and_then(|units| i64::try_from(units).ok())
+        .filter(|units| *units > 0)
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         let lifetime = spend
             .expires_in_secs
             .unwrap_or(DEFAULT_LIFETIME_SECS)

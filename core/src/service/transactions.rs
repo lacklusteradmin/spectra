@@ -23,7 +23,7 @@ impl WalletService {
         command: TransactionCommand,
     ) -> Result<TransactionChange, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let database = this.bound_database().await?;
 
@@ -107,7 +107,7 @@ impl WalletService {
         &self,
     ) -> Result<Vec<crate::store::persistence_models::TransactionRecord>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let database = this.bound_database().await?;
             tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&database))
@@ -127,7 +127,7 @@ impl WalletService {
         transaction_id: String,
     ) -> Result<crate::send::verification::SendVerificationNotice, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let record = this.transaction(transaction_id).await?;
             Ok(

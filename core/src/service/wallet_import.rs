@@ -20,13 +20,9 @@ impl WalletService {
         wallet_id: String,
         password: Option<String>,
     ) -> Result<SeedPhraseReveal, SpectraBridgeError> {
-        use crate::store::wallet_secrets::WalletSecretError as E;
+        use crate::secrets::wallet::WalletSecretError as E;
         let store = self.secrets()?;
-        match crate::store::wallet_secrets::load_seed_phrase(
-            &*store,
-            &wallet_id,
-            password.as_deref(),
-        ) {
+        match crate::secrets::wallet::load_seed_phrase(&*store, &wallet_id, password.as_deref()) {
             Ok(phrase) if !phrase.trim().is_empty() => Ok(SeedPhraseReveal::Phrase {
                 phrase: phrase.to_string(),
             }),
@@ -43,7 +39,7 @@ impl WalletService {
     /// the field blank is not a guess.
     pub async fn default_wallet_name(&self) -> Result<String, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let used: std::collections::HashSet<String> = this
                 .wallet_state
                 .read()
@@ -66,7 +62,7 @@ impl WalletService {
         commit: crate::derivation::import::WalletImportCommit,
     ) -> Result<crate::derivation::import::WalletImportPreview, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let plan = plan_import(commit)?;
             let stored = this.wallet_state.read().await.wallets.clone();
             let placed = place_import(plan, &stored)?;
@@ -97,7 +93,7 @@ impl WalletService {
         commit: crate::derivation::import::WalletImportCommit,
     ) -> Result<crate::derivation::import::WalletImportOutcome, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             // `None` is the choice of no password; a blank `Some` is a request
             // for one that has none. Refused before anything is planned or
@@ -108,7 +104,7 @@ impl WalletService {
                 .as_deref()
                 .is_some_and(|p| p.trim().is_empty())
             {
-                return Err(crate::store::wallet_secrets::WalletSecretError::EmptyPassword.into());
+                return Err(crate::secrets::wallet::WalletSecretError::EmptyPassword.into());
             }
             let plan = plan_import(commit)?;
             // A named account is held only once the network confirms it.
@@ -184,7 +180,7 @@ impl WalletService {
                     if let (Some(store), Some(view)) = (&secrets, &scan_key) {
                         for wallet in &wallets {
                             store.save_secret(
-                                crate::store::secret_store::SecretClass::Generic,
+                                crate::secrets::store::SecretClass::Generic,
                                 format!("{}.scan-key", wallet.id),
                                 view.to_string(),
                             )?;
@@ -193,14 +189,14 @@ impl WalletService {
                     if let Some(store) = secrets.as_ref().filter(|_| !is_watch_only) {
                         for wallet in &wallets {
                             let result = if commit.request.kind == WalletImportKind::PrivateKey {
-                                crate::store::wallet_secrets::store_private_key(
+                                crate::secrets::wallet::store_private_key(
                                     &**store,
                                     &wallet.id,
                                     private_key.as_ref().unwrap().as_str(),
                                     password.as_ref().map(|s| s.as_str()),
                                 )
                             } else {
-                                crate::store::wallet_secrets::store_seed_phrase(
+                                crate::secrets::wallet::store_seed_phrase(
                                     &**store,
                                     &wallet.id,
                                     seed.as_ref().unwrap().as_str(),
@@ -220,16 +216,14 @@ impl WalletService {
                     let mut cleanup_errors = Vec::new();
                     if let Some(store) = &secrets {
                         for wallet in &wallets {
-                            if let Err(e) =
-                                crate::store::wallet_secrets::delete(&**store, &wallet.id)
-                            {
+                            if let Err(e) = crate::secrets::wallet::delete(&**store, &wallet.id) {
                                 cleanup_errors.push(format!("{}: {e}", wallet.id));
                             }
                             // A watched Monero wallet the import would have
                             // upgraded keeps its view key.
                             if let (Some(_), Some(view)) = (&upgrade, &scan_key)
                                 && let Err(e) = store.save_secret(
-                                    crate::store::secret_store::SecretClass::Generic,
+                                    crate::secrets::store::SecretClass::Generic,
                                     format!("{}.scan-key", wallet.id),
                                     view.to_string(),
                                 )
@@ -507,12 +501,12 @@ pub(super) fn plan_import(
     // Polyseed's birthday, else the chain's default (Monero's start,
     // Zcash's Sapling activation). A Zcash wallet without a phrase has no
     // shielded keys and scans nothing. No other chain scans.
-    let scans = crate::restore_heights::takes_restore_height(chain)
+    let scans = crate::catalog::restore_heights::takes_restore_height(chain)
         && (chain.mainnet_counterpart() == Chain::Monero || commit.seed_phrase.is_some());
     let restore_height = if scans {
         Some(match commit.restore_height {
             Some(height) => {
-                crate::restore_heights::check_restore_height(chain, height)?;
+                crate::catalog::restore_heights::check_restore_height(chain, height)?;
                 height
             }
             None => commit
@@ -520,8 +514,10 @@ pub(super) fn plan_import(
                 .as_deref()
                 .and_then(crate::derivation::phrase::polyseed_birthday)
                 .map_or(
-                    crate::restore_heights::default_restore_height(chain),
-                    |birthday| crate::restore_heights::height_at_or_before(chain, birthday),
+                    crate::catalog::restore_heights::default_restore_height(chain),
+                    |birthday| {
+                        crate::catalog::restore_heights::height_at_or_before(chain, birthday)
+                    },
                 ),
         })
     } else if commit.restore_height.is_some() {

@@ -5806,13 +5806,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spectra_core_ffi"
-version = "0.1.0"
-dependencies = [
- "spectra_core",
-]
-
-[[package]]
 name = "spectra_litecoin_mweb_fixture"
 version = "0.1.0"
 dependencies = [

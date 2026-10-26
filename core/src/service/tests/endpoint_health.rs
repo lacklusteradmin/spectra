@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::endpoint::EndpointCapability;
 use wiremock::matchers::{body_partial_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -8,13 +9,13 @@ fn record(chain: Chain, api: EndpointApi, endpoint: String) -> EndpointRecord {
         chain_id: chain,
         api,
         endpoint,
-        capabilities: vec![crate::EndpointCapability::History],
+        capabilities: vec![EndpointCapability::History],
     }
 }
 
 #[test]
 fn every_builtin_api_has_a_probe_on_its_own_origin() {
-    for record in &crate::endpoints::catalog().records {
+    for record in &crate::catalog::endpoints::catalog().records {
         let chain = record.chain_id;
         if record.api == EndpointApi::AptosIndexer {
             // This request is owned by the Indexer API adapter; its configured

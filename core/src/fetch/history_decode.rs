@@ -110,9 +110,9 @@ pub(crate) fn build_evm_transaction_records(
     let tokens = page.tokens.into_iter().map(|transfer| Transfer {
         status: TransactionStatus::Confirmed,
         deployment_id: if transfer.standard.is_empty() {
-            crate::tokens::deployment_id_for(chain, Some(&transfer.contract_address))
+            crate::catalog::tokens::deployment_id_for(chain, Some(&transfer.contract_address))
         } else {
-            crate::tokens::protocol_deployment_id(
+            crate::catalog::tokens::protocol_deployment_id(
                 chain,
                 &transfer.standard,
                 &transfer.contract_address,
@@ -132,17 +132,17 @@ pub(crate) fn build_evm_transaction_records(
     // token, price or holding shares its identity.
     let nfts = page.nfts.into_iter().map(|transfer| Transfer {
         status: TransactionStatus::Confirmed,
-        deployment_id: Some(crate::tokens::nft_deployment_id(
+        deployment_id: Some(crate::catalog::tokens::nft_deployment_id(
             chain,
             transfer.standard,
             &transfer.contract_address,
             &transfer.token_id,
         )),
-        asset_display_name: crate::tokens::nft_display_name(
+        asset_display_name: crate::catalog::tokens::nft_display_name(
             &transfer.collection,
             &transfer.token_id,
         ),
-        symbol: crate::tokens::nft_symbol(&transfer.symbol),
+        symbol: crate::catalog::tokens::nft_symbol(&transfer.symbol),
         amount: transfer.quantity,
         from_address: transfer.from_address,
         to_address: transfer.to_address,
@@ -153,7 +153,7 @@ pub(crate) fn build_evm_transaction_records(
     });
     let native = page.native.into_iter().map(|transfer| Transfer {
         status: transfer.status,
-        deployment_id: crate::tokens::deployment_id_for(chain, None),
+        deployment_id: crate::catalog::tokens::deployment_id_for(chain, None),
         asset_display_name: chain.coin_name().to_string(),
         symbol: chain.coin_symbol().to_string(),
         amount: transfer.amount_decimal,
@@ -170,7 +170,7 @@ pub(crate) fn build_evm_transaction_records(
         .chain(nfts)
         .chain(native)
         .filter_map(|mut transfer| {
-            transfer.amount = crate::decimal::canonical(&transfer.amount)?;
+            transfer.amount = crate::amount::decimal::canonical(&transfer.amount)?;
             Some(transfer)
         })
         .collect();

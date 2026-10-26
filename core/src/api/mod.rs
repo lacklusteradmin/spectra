@@ -10,6 +10,7 @@
 //! `staking` and `service` call it, never the other way round. Building and
 //! signing transactions is per chain and lives in `send`.
 
+pub mod endpoint;
 pub mod error;
 pub(crate) mod grpc;
 pub(crate) mod history_page;
@@ -17,6 +18,7 @@ pub mod http;
 pub(crate) mod json_rpc;
 pub(crate) mod tcp;
 pub mod time;
+pub mod tor;
 pub(crate) mod transaction_status;
 pub use history_page::HistoryPage;
 pub(crate) mod tron_metadata_cache;

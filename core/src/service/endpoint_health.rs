@@ -1,9 +1,9 @@
 //! Read-only protocol checks against the endpoint actually configured.
+use crate::api::endpoint::{EndpointApi, EndpointCapability};
 use crate::api::error::ApiError;
 use crate::api::http::{HttpClient, RetryProfile};
-use crate::endpoints::EndpointRecord;
+use crate::catalog::endpoints::EndpointRecord;
 use crate::registry::{Chain, EvmHistorySource};
-use crate::{EndpointApi, EndpointCapability};
 use serde_json::{Value, json};
 
 const ZERO_EVM: &str = "0x0000000000000000000000000000000000000000";

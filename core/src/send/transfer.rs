@@ -114,10 +114,10 @@ mod tests {
     fn tracked(chain: Chain, symbol: &str, contract: &str, decimals: u32) -> TokenPreferenceEntry {
         TokenPreferenceEntry {
             is_built_in: false,
-            token: crate::tokens::TokenDeploymentEntry {
+            token: crate::catalog::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
-                kind: crate::tokens::TokenKind::Protocol {
+                kind: crate::catalog::tokens::TokenKind::Protocol {
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },

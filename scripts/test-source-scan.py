@@ -75,14 +75,10 @@ class SourceSelectionTests(unittest.TestCase):
         self.assertIn('runtime', production_text(path, set()))
 
     def test_frontend_test_source_roots_do_not_produce_shipped_copy(self):
-        for name in ('swift/tests/Fixture.swift', 'kotlin/app/src/test/Fixture.kt',
-                     'kotlin/app/src/androidTest/Fixture.kt', 'kotlin/app/src/testFixtures/Fixture.kt',
-                     'kotlin/app/src/androidTest/res/values/strings.xml'):
-            with self.subTest(source=name):
-                path = self.write(name, 'fixture copy')
-                self.assertTrue(frontend_test(path))
-                self.assertEqual(production_text(path, set()), '')
-        path = self.write('kotlin/app/src/main/Screen.kt', 'production copy')
+        path = self.write('swift/tests/Fixture.swift', 'fixture copy')
+        self.assertTrue(frontend_test(path))
+        self.assertEqual(production_text(path, set()), '')
+        path = self.write('swift/app/Screen.swift', 'production copy')
         self.assertFalse(frontend_test(path))
         self.assertEqual(production_text(path, set()), 'production copy')
 

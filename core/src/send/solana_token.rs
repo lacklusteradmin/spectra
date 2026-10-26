@@ -224,8 +224,9 @@ impl PreparedSolanaTokenTransfer {
         if fee == 0 && self.hook.is_none() {
             return None;
         }
-        let units =
-            |amount: u64| crate::decimal::from_units(u128::from(amount), self.decimals.into());
+        let units = |amount: u64| {
+            crate::amount::decimal::from_units(u128::from(amount), self.decimals.into())
+        };
         Some(crate::send::stages::AssetTransferTerms {
             debited: units(self.amount),
             received: units(self.amount.saturating_sub(fee)),

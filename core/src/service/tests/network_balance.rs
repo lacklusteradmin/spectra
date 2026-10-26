@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::service::address_discovery::UtxoDerivation;
 use crate::store::state::WalletState;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -11,15 +12,15 @@ const SEED: &str =
 fn indexer_balance(chain: Chain, value: &str) -> serde_json::Value {
     let units: u64 = value.parse().unwrap();
     match chain.default_api().unwrap() {
-        crate::EndpointApi::Esplora => json!({
+        EndpointApi::Esplora => json!({
             "address": "",
             "chain_stats": {"funded_txo_sum": units, "spent_txo_sum": 0, "tx_count": 1},
             "mempool_stats": {"funded_txo_sum": 0, "spent_txo_sum": 0, "tx_count": 0},
         }),
-        crate::EndpointApi::Blockcypher => json!({"balance": units, "unconfirmed_balance": 0}),
-        crate::EndpointApi::Whatsonchain => json!({"confirmed": units, "unconfirmed": 0}),
-        crate::EndpointApi::Insight => json!({"balanceSat": units, "balance": 0}),
-        crate::EndpointApi::KaspaRest => json!({"address": "", "balance": units}),
+        EndpointApi::Blockcypher => json!({"balance": units, "unconfirmed_balance": 0}),
+        EndpointApi::Whatsonchain => json!({"confirmed": units, "unconfirmed": 0}),
+        EndpointApi::Insight => json!({"balanceSat": units, "balance": 0}),
+        EndpointApi::KaspaRest => json!({"address": "", "balance": units}),
         _ => json!({"balance": value, "unconfirmedBalance": "0"}),
     }
 }
@@ -122,7 +123,7 @@ async fn account_utxo_balances_include_rotated_receive_and_change_with_native_pr
             .unwrap();
         assert_eq!(
             native.amount,
-            crate::decimal::from_units(14_691_356, u32::from(chain.native_decimals()))
+            crate::amount::decimal::from_units(14_691_356, u32::from(chain.native_decimals()))
         );
         assert_eq!(native.chain_id, chain);
         assert_eq!(
@@ -159,13 +160,12 @@ async fn account_utxo_wallet_balance_refuses_integer_overflow() {
     for chain in Chain::all().filter(|chain| chain.uses_account_utxo()) {
         // Whatsonchain reports a balance as a signed integer, so its total
         // overflows across three addresses.
-        let (root, receive, change) =
-            if chain.default_api() == Some(crate::EndpointApi::Whatsonchain) {
-                let half = u64::try_from(i64::MAX).unwrap();
-                (2, half, half)
-            } else {
-                (0, u64::MAX, 1)
-            };
+        let (root, receive, change) = if chain.default_api() == Some(EndpointApi::Whatsonchain) {
+            let half = u64::try_from(i64::MAX).unwrap();
+            (2, half, half)
+        } else {
+            (0, u64::MAX, 1)
+        };
         let (service, directory, _server) =
             reopened_account_holding(chain, root, receive, change).await;
         let error = service

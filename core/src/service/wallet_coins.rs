@@ -71,7 +71,7 @@ impl WalletService {
     /// network. Refuses a network whose indexer counts no confirmations.
     pub async fn wallet_coins(&self, wallet_id: String) -> Result<WalletCoins, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let wallet = this.stored_wallet(&wallet_id).await?;
             let chain = wallet.chain_id;
             if !chain.lists_account_coins() {
@@ -165,7 +165,7 @@ impl WalletService {
                     branch: place.map(|(branch, _)| branch),
                     index: place.map(|(_, index)| index),
                     used,
-                    balance: crate::decimal::from_units(balance, decimals),
+                    balance: crate::amount::decimal::from_units(balance, decimals),
                 });
                 for (txid, vout, value, confirmations, spendable) in unspent {
                     if !spendable {
@@ -177,7 +177,7 @@ impl WalletService {
                             txid,
                             vout,
                             address: address.clone(),
-                            amount: crate::decimal::from_units(u128::from(value), decimals),
+                            amount: crate::amount::decimal::from_units(u128::from(value), decimals),
                             confirmations,
                             spendable,
                         },
@@ -230,7 +230,7 @@ impl WalletService {
                 addresses: owned,
                 next_receive_address,
                 outputs: outputs.into_iter().map(|(_, output)| output).collect(),
-                maturing: crate::decimal::from_units(maturing, decimals),
+                maturing: crate::amount::decimal::from_units(maturing, decimals),
                 tip_height,
             })
         })

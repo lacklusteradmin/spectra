@@ -1,6 +1,6 @@
 //! Network-specific addresses for raw signing keys and seeds, including Cardano extended keys.
 use super::types::DerivationResult;
-use crate::{SpectraBridgeError, registry::Chain};
+use crate::{error::SpectraBridgeError, registry::Chain};
 
 pub(super) fn derive(
     chain: Chain,

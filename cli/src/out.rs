@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use colored::Colorize;
-use spectra_core::chains::CatalogColor;
+use spectra_core::catalog::chains::CatalogColor;
 use spectra_core::registry::Chain;
 
 /// Set once a JSON document is written. `--json` prints exactly one document,

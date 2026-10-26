@@ -118,7 +118,7 @@ pub(crate) fn derive_bip39_seed(
         normalized_passphrase.as_str()
     ));
     let mut seed = Zeroizing::new([0u8; 64]);
-    crate::kdf::pbkdf2_sha512(
+    crate::secrets::kdf::pbkdf2_sha512(
         normalized_mnemonic.as_bytes(),
         salt.as_bytes(),
         iterations,
@@ -181,7 +181,7 @@ pub(crate) fn derive_substrate_mini_secret(
         iteration_count
     };
     let mut buf = Zeroizing::new([0u8; 64]);
-    crate::kdf::pbkdf2_sha512(&entropy, salt.as_bytes(), iterations, &mut *buf);
+    crate::secrets::kdf::pbkdf2_sha512(&entropy, salt.as_bytes(), iterations, &mut *buf);
     let mut out = Zeroizing::new([0u8; 32]);
     out.copy_from_slice(&buf[..32]);
     Ok(out)

@@ -126,7 +126,7 @@ impl FundsScan {
     /// Cancellation leaves this batch unconsumed; a caller may retry it.
     pub async fn next_batch(&self) -> FundsScanProgress {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let mut checked = this.checked.lock().await;
             let end = (*checked + 4).min(this.candidates.len());
@@ -375,7 +375,7 @@ mod scan_tests {
                 .custom_endpoints
                 .push(crate::service::CustomEndpoint {
                     chain_id: chain,
-                    api: crate::EndpointApi::Blockscout,
+                    api: crate::api::endpoint::EndpointApi::Blockscout,
                     endpoint: indexer.clone(),
                     capabilities: vec![EndpointCapability::History],
                 });
@@ -383,7 +383,7 @@ mod scan_tests {
         let candidates: Vec<_> = (1..=3)
             .map(|n| FundsFinderCandidate {
                 chain_id: chain,
-                profile: Some(crate::chains::DerivationProfile::Standard),
+                profile: Some(crate::catalog::chains::DerivationProfile::Standard),
                 account: u32::from(n) - 1,
                 ton_wallet_version: None,
                 derivation_path: format!("m/44'/60'/{}'/0/0", n - 1),

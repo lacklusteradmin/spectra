@@ -1,7 +1,7 @@
 //! Artwork is catalog metadata, addressed by token or network identity.
 #[uniffi::export]
 pub fn token_artwork_name(token_id: String) -> String {
-    crate::tokens::catalog()
+    crate::catalog::tokens::catalog()
         .iter()
         .find(|t| t.token_id == token_id)
         .map(|t| t.artwork_name.clone())
@@ -17,7 +17,7 @@ pub fn chain_artwork_name(chain_id: crate::registry::Chain) -> String {
 pub fn deployment_artwork_name(deployment_id: Option<String>) -> String {
     deployment_id
         .and_then(|id| {
-            crate::tokens::catalog()
+            crate::catalog::tokens::catalog()
                 .iter()
                 .find(|t| t.deployment_id == id)
         })
@@ -30,7 +30,7 @@ mod tests {
     use super::*;
     #[test]
     fn artwork_uses_identity_and_unknown_contracts_cannot_borrow_a_symbol() {
-        for token in crate::tokens::catalog() {
+        for token in crate::catalog::tokens::catalog() {
             assert_eq!(
                 token_artwork_name(token.token_id.clone()),
                 token.artwork_name
@@ -42,7 +42,7 @@ mod tests {
                 token.deployment_id
             );
         }
-        let mut impostor = crate::tokens::catalog()
+        let mut impostor = crate::catalog::tokens::catalog()
             .iter()
             .find(|t| t.symbol == "USDC" && !t.contract.is_empty())
             .unwrap()
@@ -55,12 +55,12 @@ mod tests {
     #[test]
     fn every_named_mark_ships_a_file() {
         let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../icons/crypto");
-        for token in crate::tokens::catalog() {
+        for token in crate::catalog::tokens::catalog() {
             if !token.artwork_name.is_empty() {
                 assert!(icons.join(format!("{}.svg", token.artwork_name)).is_file());
             }
         }
-        for chain in crate::chains::catalog() {
+        for chain in crate::catalog::chains::catalog() {
             assert!(!chain.artwork_name.is_empty());
             assert!(icons.join(format!("{}.svg", chain.artwork_name)).is_file());
         }

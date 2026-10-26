@@ -419,8 +419,10 @@ impl TronHttpClient {
                 .into_iter()
                 .find(|(asset_id, _)| asset_id == id)
                 .map_or(0, |(_, balance)| balance);
-            let balance_display =
-                crate::decimal::from_units(u128::from(balance_raw), u32::from(metadata.decimals));
+            let balance_display = crate::amount::decimal::from_units(
+                u128::from(balance_raw),
+                u32::from(metadata.decimals),
+            );
             Ok(Trc10Balance {
                 metadata,
                 balance_raw,
@@ -523,8 +525,10 @@ impl TronHttpClient {
                 ));
             }
             let recipient_balance = recipient.map_or(0, |(_, amount)| amount);
-            let balance_display =
-                crate::decimal::from_units(u128::from(balance_raw), u32::from(metadata.decimals));
+            let balance_display = crate::amount::decimal::from_units(
+                u128::from(balance_raw),
+                u32::from(metadata.decimals),
+            );
             Ok(Trc10TransferState {
                 token: Trc10Balance {
                     metadata,
@@ -726,7 +730,7 @@ impl TronHttpClient {
             .fetch_trc20_balance_of(contract_base58, holder_base58)
             .await?;
         let metadata = self.read_metadata(contract_base58).await?;
-        let balance_display = crate::decimal::from_units(raw, u32::from(metadata.decimals));
+        let balance_display = crate::amount::decimal::from_units(raw, u32::from(metadata.decimals));
         Ok(Trc20Balance {
             balance_raw: raw.to_string(),
             balance_display,

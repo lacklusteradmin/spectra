@@ -172,13 +172,15 @@ impl WalletService {
                     [chain.chain_display_name(), to],
                 )
             })?;
-        let amount =
-            crate::decimal::to_units(spend.amount.trim(), u32::from(chain.native_decimals()))
-                .filter(|units| *units > 0)
-                .filter(|units| {
-                    chain.substrate_balance_bytes() != Some(8) || *units <= u128::from(u64::MAX)
-                })
-                .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let amount = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .filter(|units| *units > 0)
+        .filter(|units| {
+            chain.substrate_balance_bytes() != Some(8) || *units <= u128::from(u64::MAX)
+        })
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         let account = policy.account_id();
         let (policy, account) = (&policy, &account);
         let body = crate::api::http::race(

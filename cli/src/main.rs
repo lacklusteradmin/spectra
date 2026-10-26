@@ -120,7 +120,7 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
                 ctx.rt.block_on(service.reconnect_tor());
                 ctx.rt.block_on(service.await_network_ready())?;
             }
-            out.emit(serde_json::json!({"status": spectra_core::tor::tor_status()}));
+            out.emit(serde_json::json!({"status": spectra_core::api::tor::tor_status()}));
             Ok(())
         }
         Command::Wallet(command) => cmd::wallet::run(ctx, out, command),

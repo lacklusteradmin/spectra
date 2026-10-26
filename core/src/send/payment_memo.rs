@@ -55,7 +55,7 @@ impl PaymentMemo {
     /// the protocol's length.
     pub(crate) fn validated(&self, chain: Chain) -> Result<Self, SendError> {
         if !chain.payment_memo_kinds().contains(&self.kind) {
-            return Err(SendError::Invalid(crate::LocalizableMessage::new(
+            return Err(SendError::Invalid(crate::error::LocalizableMessage::new(
                 "A %@ payment carries no such destination tag or memo.",
                 [chain.chain_display_name()],
             )));

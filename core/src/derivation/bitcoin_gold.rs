@@ -3,9 +3,9 @@
 
 pub(crate) const BTG_P2PKH_VERSION: u8 = 0x26;
 
-use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
+use crate::error::SpectraBridgeError;
 
 /// Derive Bitcoin Gold mainnet keys; only P2PKH script type is supported.
 pub fn derive_bitcoin_gold(

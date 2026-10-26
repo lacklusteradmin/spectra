@@ -22,20 +22,20 @@
 //! scan that found it, and what this device sent once its inputs are spent.
 
 use super::*;
-use crate::EndpointApi;
+use crate::api::endpoint::EndpointApi;
 use crate::api::litecoin_p2p::{
     self, BlockHeader, LeafOutput, Leafset, LitecoinP2pClient, MAX_UTXOS_PER_REQUEST, Session,
     display, parse_display,
 };
 use crate::api::utxo::UtxoClient;
+use crate::secrets::store::{SecretClass, SecretStoreError};
 use crate::send::litecoin_mweb::keys::{self, ViewKeys};
 use crate::send::litecoin_mweb::output::{self, OwnedOutput};
 use crate::send::litecoin_mweb::prepared::{self, PreparedMwebSpend};
 use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, SubmissionOutcome,
+    PreparedPayload, SendArtifact, SendArtifactReview, StoredSend, SubmissionOutcome,
     WalletOperation,
 };
-use crate::store::secret_store::{SecretClass, SecretStoreError};
 use crate::store::state::{WalletSigning, WalletState};
 use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 use sha2::{Digest, Sha256};
@@ -118,7 +118,7 @@ fn cache_key(wallet_id: &str, scan: &[u8]) -> Zeroizing<Vec<u8>> {
 }
 
 fn decimal(litoshis: u64) -> String {
-    crate::decimal::from_units(u128::from(litoshis), 8)
+    crate::amount::decimal::from_units(u128::from(litoshis), 8)
 }
 
 /// Whether `wallet` can hold MWEB funds: a Litecoin wallet restored from a
@@ -249,7 +249,7 @@ impl WalletService {
             .mweb_scan_secret(&wallet.id)?
             .ok_or_else(|| internal("The MWEB scan key is missing"))?;
         let scan = Zeroizing::new(hex::decode(scan.as_str())?);
-        let plaintext = Zeroizing::new(crate::store::seed_envelope::decrypt(
+        let plaintext = Zeroizing::new(crate::secrets::seed_envelope::decrypt(
             payload.as_bytes(),
             &cache_key(&wallet.id, &scan),
         )?);
@@ -276,7 +276,7 @@ impl WalletService {
         view: &ViewKeys,
     ) -> Result<(), SpectraBridgeError> {
         let plain = Zeroizing::new(serde_json::to_vec(cache)?);
-        let encrypted = String::from_utf8(crate::store::seed_envelope::encrypt(
+        let encrypted = String::from_utf8(crate::secrets::seed_envelope::encrypt(
             &plain,
             &cache_key(&cache.wallet_id, &view.scan.secret_bytes()),
         )?)
@@ -415,7 +415,10 @@ impl WalletService {
         };
         let (in_flight, _) = self.mweb_in_flight(&wallet, &cache, &view).await?;
         let status = cache.status(&in_flight, &view)?;
-        Ok(crate::decimal::add(&status.spendable, &status.pending))
+        Ok(crate::amount::decimal::add(
+            &status.spendable,
+            &status.pending,
+        ))
     }
 
     /// The headers from the indexer's tip to the node's, checked.
@@ -666,7 +669,7 @@ impl WalletService {
                     height: u64,
                     time: u64| {
             crate::fetch::history::NormalizedHistoryItem {
-                deployment_id: crate::tokens::deployment_id_for(chain, None),
+                deployment_id: crate::catalog::tokens::deployment_id_for(chain, None),
                 kind,
                 status: TransactionStatus::Confirmed,
                 asset_display_name: chain.coin_name().into(),
@@ -756,41 +759,18 @@ impl WalletService {
             WalletOperation::ShieldedPayment { .. } => self.staged_send_review(&request).await?,
             _ => SendArtifactReview::default(),
         };
-        let mut stored = StoredSend {
-            view: SendArtifact {
-                id: crate::store::new_transaction_id(),
-                revision: 0,
-                stage: SendStage::Prepared,
-                wallet_id: wallet.id.clone(),
-                chain_id: chain,
-                sender,
-                recipient: request.to_address.clone(),
-                amount: request.amount_str.clone(),
-                asset: chain.coin_symbol().into(),
-                symbol: chain.coin_symbol().into(),
-                staking: None,
-                operation: Some(operation),
-                created_at: crate::store::now_unix().floor(),
-                review_digest: String::new(),
-                review,
-                prepared_details: serde_json::to_string_pretty(&prepared)?,
-                signing_payload_hex: String::new(),
-                signed_payload: None,
-                transaction_hash: None,
-                attempts: Vec::new(),
-                selected_endpoints: Vec::new(),
-                memo: None,
-            },
+        self.save_prepared_send(crate::send::stages::NewArtifact {
+            sender,
+            asset: chain.coin_symbol().into(),
+            symbol: chain.coin_symbol().into(),
+            staking: None,
+            operation: Some(operation),
+            review,
+            signing_payload_hex: String::new(),
             request,
             prepared,
-            submission: None,
-            signed_digest: None,
-            substrate_verified_through: None,
-            icp_staking_receipts: vec![],
-        };
-        stored.view.review_digest = stored.digest()?;
-        self.save_send_artifact(&stored, &[]).await?;
-        Ok(stored.view)
+        })
+        .await
     }
 
     /// Sign a reviewed payment out of MWEB funds: each input still one of the
@@ -850,7 +830,6 @@ fn mweb_request(
         gas_budget: None,
         fee_amount: fee.map(decimal),
         evm_overrides: None,
-        sign_only: false,
         memo: None,
     }
 }
@@ -864,7 +843,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<LitecoinMwebStatus, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let wallet = this.mweb_wallet(&wallet_id).await?;
             let Some((_, cache, view)) = this.load_mweb(&wallet).await? else {
                 return Ok(LitecoinMwebStatus {
@@ -894,7 +873,7 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<LitecoinMwebStatus, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let password = password.map(Zeroizing::new);
             this.mweb_sync_batch(&wallet_id, password.as_ref().map(|p| p.as_str()))
                 .await
@@ -913,7 +892,7 @@ impl WalletService {
         amount: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let wallet = this.mweb_wallet(&wallet_id).await?;
             let chain = wallet.chain_id;
             let recipient = crate::send::flow::normalize_address(chain, &recipient);
@@ -922,7 +901,7 @@ impl WalletService {
                     "Not a Litecoin address on this network",
                 ));
             }
-            let litoshis = u64::try_from(crate::send::amount_input::parse_raw_amount(&amount, 8)?)
+            let litoshis = u64::try_from(crate::amount::input::parse_raw_amount(&amount, 8)?)
                 .map_err(|_| SpectraBridgeError::invalid("Invalid Litecoin amount"))?;
             let (_, cache, view) = this.load_mweb(&wallet).await?.ok_or_else(|| {
                 SpectraBridgeError::invalid("Sync the MWEB funds before sending from them.")
@@ -959,13 +938,13 @@ impl WalletService {
         amount: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let wallet = this.mweb_wallet(&wallet_id).await?;
             let chain = wallet.chain_id;
             let (_, _, view) = this.load_mweb(&wallet).await?.ok_or_else(|| {
                 SpectraBridgeError::invalid("Sync the MWEB funds before moving funds into them.")
             })?;
-            let litoshis = u64::try_from(crate::send::amount_input::parse_raw_amount(&amount, 8)?)
+            let litoshis = u64::try_from(crate::amount::input::parse_raw_amount(&amount, 8)?)
                 .map_err(|_| SpectraBridgeError::invalid("Invalid Litecoin amount"))?;
             let sender = wallet
                 .address_on(chain)

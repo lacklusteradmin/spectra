@@ -2,9 +2,9 @@
 //! (2-byte version prefix). Every Zcash address form, shielded ones too, is
 //! validated by `validation::address` through librustzcash.
 
-use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::{base58check_encode, derive_secp_keypair, hash160};
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::error::SpectraBridgeError;
 
 const ZCASH_MAINNET_VERSION: [u8; 2] = [0x1C, 0xB8];
 const ZCASH_TESTNET_VERSION: [u8; 2] = [0x1D, 0x25];

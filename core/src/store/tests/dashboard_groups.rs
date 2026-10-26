@@ -11,7 +11,7 @@ fn holding(symbol: &str, chain: crate::registry::Chain, amount: f64) -> AssetHol
         chain_id: chain,
         token_standard: "Native".to_string(),
         contract_address: None,
-        amount: crate::decimal::from_f64(amount).unwrap(),
+        amount: crate::amount::decimal::from_f64(amount).unwrap(),
     }
 }
 
@@ -66,7 +66,7 @@ async fn a_row_is_per_asset_and_breaks_down_by_chain() {
 
     let row = eth[0];
     let total = row.holdings.iter().fold("0".to_string(), |sum, h| {
-        crate::decimal::add(&sum, &h.coin.amount).unwrap()
+        crate::amount::decimal::add(&sum, &h.coin.amount).unwrap()
     });
     assert_eq!(total, "8", "both chains and both wallets summed");
     assert_eq!(row.holdings.len(), 2, "one breakdown entry per chain");

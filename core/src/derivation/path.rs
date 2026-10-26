@@ -2,7 +2,7 @@
 
 use crate::derivation::error::DerivationError;
 
-use crate::chains::DerivationProfile;
+use crate::catalog::chains::DerivationProfile;
 use crate::registry::Chain;
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,7 @@ pub struct DerivationPathSegment {
 pub(crate) fn resolve_derivation_path(
     chain: Chain,
     derivation_path: String,
-) -> Result<String, crate::SpectraBridgeError> {
+) -> Result<String, crate::error::SpectraBridgeError> {
     Ok(import_derivation_path(chain, Some(&derivation_path))?.unwrap_or_default())
 }
 
@@ -55,7 +55,7 @@ pub fn derivation_profile_path(
     chain: Chain,
     profile: DerivationProfile,
     account: u32,
-) -> Result<String, crate::SpectraBridgeError> {
+) -> Result<String, crate::error::SpectraBridgeError> {
     chain
         .derivation_profile_path(profile, account)
         .ok_or_else(|| {
@@ -206,7 +206,7 @@ pub(crate) fn import_derivation_path(
 }
 
 pub(crate) fn default_path_from_catalog(chain: Chain) -> Result<String, DerivationError> {
-    if let Some(template) = crate::chains::default_derivation_path_template(chain) {
+    if let Some(template) = crate::catalog::chains::default_derivation_path_template(chain) {
         return Ok(render_derivation_path_template(template, 0));
     }
     // A chain the registry knows and the catalog gives no path for derives

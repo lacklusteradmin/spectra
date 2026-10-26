@@ -1,3 +1,4 @@
+use crate::api::endpoint::{EndpointApi, endpoint_capability_options};
 use crate::store::state::{ResidentState, StateCommand, reduce_state_in_place};
 use crate::store::wallet_domain::PriceAlertCondition;
 use crate::wallet_db;
@@ -90,27 +91,27 @@ fn resetting_settings_restores_every_default() {
 
     for update in [
         U::AddCustomEndpoint {
-            capabilities: crate::endpoint_capability_options(
+            capabilities: endpoint_capability_options(
                 crate::registry::Chain::Base,
-                crate::EndpointApi::EvmJsonRpc,
+                EndpointApi::EvmJsonRpc,
             ),
             chain_id: crate::registry::Chain::Base,
             api: "evm-json-rpc".into(),
             endpoint: "https://x.example".into(),
         },
         U::AddCustomEndpoint {
-            capabilities: crate::endpoint_capability_options(
+            capabilities: endpoint_capability_options(
                 crate::registry::Chain::Monero,
-                crate::EndpointApi::MoneroDaemonRpc,
+                EndpointApi::MoneroDaemonRpc,
             ),
             chain_id: crate::registry::Chain::Monero,
             api: "monero-daemon-rpc".into(),
             endpoint: "https://xmr.example".into(),
         },
         U::AddCustomEndpoint {
-            capabilities: crate::endpoint_capability_options(
+            capabilities: endpoint_capability_options(
                 crate::registry::Chain::Bitcoin,
-                crate::EndpointApi::Esplora,
+                EndpointApi::Esplora,
             ),
             chain_id: crate::registry::Chain::Bitcoin,
             api: "esplora".into(),
@@ -160,9 +161,9 @@ fn every_settings_field_round_trips() {
     let mut state = ResidentState::default();
     let updates = vec![
         U::AddCustomEndpoint {
-            capabilities: crate::endpoint_capability_options(
+            capabilities: endpoint_capability_options(
                 crate::registry::Chain::Ethereum,
-                crate::EndpointApi::EvmJsonRpc,
+                EndpointApi::EvmJsonRpc,
             ),
             chain_id: crate::registry::Chain::Ethereum,
             api: "evm-json-rpc".into(),
@@ -170,27 +171,27 @@ fn every_settings_field_round_trips() {
         },
         // The second one is the point: each chain keeps its own override.
         U::AddCustomEndpoint {
-            capabilities: crate::endpoint_capability_options(
+            capabilities: endpoint_capability_options(
                 crate::registry::Chain::Base,
-                crate::EndpointApi::EvmJsonRpc,
+                EndpointApi::EvmJsonRpc,
             ),
             chain_id: crate::registry::Chain::Base,
             api: "evm-json-rpc".into(),
             endpoint: "https://base.example".into(),
         },
         U::AddCustomEndpoint {
-            capabilities: crate::endpoint_capability_options(
+            capabilities: endpoint_capability_options(
                 crate::registry::Chain::Monero,
-                crate::EndpointApi::MoneroDaemonRpc,
+                EndpointApi::MoneroDaemonRpc,
             ),
             chain_id: crate::registry::Chain::Monero,
             api: "monero-daemon-rpc".into(),
             endpoint: "https://xmr.example".into(),
         },
         U::AddCustomEndpoint {
-            capabilities: crate::endpoint_capability_options(
+            capabilities: endpoint_capability_options(
                 crate::registry::Chain::Bitcoin,
-                crate::EndpointApi::Esplora,
+                EndpointApi::Esplora,
             ),
             chain_id: crate::registry::Chain::Bitcoin,
             api: "esplora".into(),
@@ -260,9 +261,9 @@ fn a_setting_outside_its_range_is_bounded() {
     set(
         &mut state,
         U::AddCustomEndpoint {
-            capabilities: crate::endpoint_capability_options(
+            capabilities: endpoint_capability_options(
                 crate::registry::Chain::Monero,
-                crate::EndpointApi::MoneroDaemonRpc,
+                EndpointApi::MoneroDaemonRpc,
             ),
             chain_id: crate::registry::Chain::Monero,
             api: "monero-daemon-rpc".into(),

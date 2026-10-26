@@ -4,6 +4,7 @@
 //! neurons the wallet may act on.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::derivation::setup::WalletSetupMethod;
 use crate::send::icp_staking::IcpStakingCallKind;
 use crate::send::stages::SendArtifact;
@@ -96,11 +97,11 @@ impl Neurons {
         use EndpointCapability::*;
         for (api, capabilities) in [
             (
-                crate::EndpointApi::IcpReplica,
+                EndpointApi::IcpReplica,
                 &[Staking, Verification, Broadcast][..],
             ),
             (
-                crate::EndpointApi::IcpRosetta,
+                EndpointApi::IcpRosetta,
                 &[Balance, Fee, Verification, Broadcast],
             ),
         ] {

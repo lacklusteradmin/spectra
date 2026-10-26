@@ -27,7 +27,7 @@ struct StakingRenderTests: IsolatedAppStateSuite {
             return StakingTestSupport.artifact(stage: .signed, submitted: true)
         }
         let chain: Chain = [.queuedRewards, .recovery, .withdrawalFees, .repaired].contains(stage) ? .icp : .solana
-        let vm = StakingViewModel(chain: chain, bridge: bridge, operations: operations)
+        let vm = StakingState(chain: chain, bridge: bridge, operations: operations)
         vm.selectWallet("wallet")
         var artifact = StakingTestSupport.artifact(
             stage: [.prepared, .withdrawalFees, .repaired].contains(stage) ? .prepared : .signed,

@@ -206,7 +206,7 @@ impl WalletService {
         address: String,
     ) -> Result<Option<EndpointHolder>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let owned = this.known_wallet_addresses(wallet_id.clone()).await?;
             let known = this
@@ -223,7 +223,7 @@ impl WalletService {
         transaction_id: String,
     ) -> Result<Option<TransactionEndpoints>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let Some(record) = this.transaction(transaction_id).await? else {
                 return Ok(None);
@@ -254,7 +254,7 @@ impl WalletService {
         mut query: HistoryQuery,
     ) -> Result<HistoryPage, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             if query.limit == 0 {
                 return Err(SpectraBridgeError::failure(
@@ -280,7 +280,7 @@ impl WalletService {
     }
     pub async fn transaction_snapshot(&self) -> Result<TransactionSnapshot, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let database = this.bound_database().await?;
             let more = this.wallets_with_more_history_now().await;
@@ -311,7 +311,7 @@ impl WalletService {
         id: String,
     ) -> Result<Option<TransactionRecord>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let database = this.bound_database().await?;
             tokio::task::spawn_blocking(move || crate::wallet_db::history_find(&database, &id))

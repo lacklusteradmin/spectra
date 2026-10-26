@@ -1,9 +1,9 @@
 //! Bitcoin SV: BIP-39 + BIP-32 derivation, legacy P2PKH
 //! base58check encoding.
 
-use crate::SpectraBridgeError;
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
+use crate::error::SpectraBridgeError;
 use crate::registry::Chain;
 
 /// Derive Bitcoin SV mainnet keys (P2PKH only).

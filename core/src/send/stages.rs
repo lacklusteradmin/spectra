@@ -204,14 +204,14 @@ impl PreparedPayload {
                 registration_deposit: Some(deposit),
                 ..
             } => {
-                let sent = crate::decimal::from_units(*amount, token_decimals?);
+                let sent = crate::amount::decimal::from_units(*amount, token_decimals?);
                 Some(AssetTransferTerms {
                     debited: sent.clone(),
                     received: sent,
                     fee: "0".into(),
                     hook_program: None,
                     carried_native: None,
-                    recipient_registration: Some(crate::decimal::from_units(
+                    recipient_registration: Some(crate::amount::decimal::from_units(
                         deposit.parse().ok()?,
                         u32::from(crate::registry::Chain::Near.native_decimals()),
                     )),
@@ -382,7 +382,72 @@ pub(crate) struct StoredSend {
     pub icp_staking_receipts: Vec<super::icp_staking::IcpStakingReceipt>,
 }
 
+/// What a newly prepared artifact says beyond its request. The rest of its
+/// view — wallet, network, recipient, amount and memo — is the request's,
+/// which [`StoredSend::validate`] holds it to anyway.
+pub(crate) struct NewArtifact {
+    pub request: super::SendExecutionRequest,
+    pub prepared: PreparedPayload,
+    pub sender: String,
+    pub asset: String,
+    pub symbol: String,
+    pub staking: Option<crate::staking::StakingRequest>,
+    pub operation: Option<WalletOperation>,
+    pub review: SendArtifactReview,
+    pub signing_payload_hex: String,
+}
+
 impl StoredSend {
+    /// A prepared artifact nothing has signed or sent yet, its review digest
+    /// committing to everything it holds.
+    pub fn prepared(new: NewArtifact) -> Result<Self, SendError> {
+        let NewArtifact {
+            request,
+            prepared,
+            sender,
+            asset,
+            symbol,
+            staking,
+            operation,
+            review,
+            signing_payload_hex,
+        } = new;
+        let mut stored = Self {
+            view: SendArtifact {
+                id: crate::store::new_transaction_id(),
+                revision: 0,
+                stage: SendStage::Prepared,
+                wallet_id: request.wallet_id.clone(),
+                chain_id: request.chain_id,
+                sender,
+                recipient: request.to_address.clone(),
+                memo: request.memo.clone(),
+                amount: request.amount_str.clone(),
+                asset,
+                symbol,
+                staking,
+                operation,
+                created_at: crate::store::now_unix().floor(),
+                review_digest: String::new(),
+                review,
+                prepared_details: serde_json::to_string_pretty(&prepared)?,
+                signing_payload_hex,
+                signed_payload: None,
+                transaction_hash: None,
+                attempts: Vec::new(),
+                selected_endpoints: Vec::new(),
+            },
+            request,
+            prepared,
+            submission: None,
+            signed_digest: None,
+            substrate_verified_through: None,
+            icp_staking_receipts: Vec::new(),
+        };
+        stored.view.review_digest = stored.digest()?;
+        Ok(stored)
+    }
+
     pub fn digest(&self) -> Result<String, SendError> {
         use sha2::Digest;
         let bytes = serde_json::to_vec(&(
@@ -510,7 +575,7 @@ impl StoredSend {
             _ => return Ok(()),
         };
         if *recipient != self.view.recipient
-            || crate::decimal::from_units(u128::from(amount), 8) != self.view.amount
+            || crate::amount::decimal::from_units(u128::from(amount), 8) != self.view.amount
             || self.view.asset != chain.coin_symbol()
         {
             return Err(SendError::invalid("Transaction identity was altered"));
@@ -522,7 +587,7 @@ impl StoredSend {
     /// payload only an operation builds carries one.
     fn validate_operation(&self) -> Result<(), SendError> {
         let fee_is = |fee: &str, units: u128| {
-            fee == crate::decimal::from_units(
+            fee == crate::amount::decimal::from_units(
                 units,
                 u32::from(self.view.chain_id.native_decimals()),
             )
@@ -580,7 +645,11 @@ impl StoredSend {
                         && prepared.transparent_in_zat > 0
                         && prepared.shielded_in_zat == 0
                         && *amount == self.view.amount
-                        && *amount == crate::decimal::from_units(u128::from(prepared.change_zat), 8)
+                        && *amount
+                            == crate::amount::decimal::from_units(
+                                u128::from(prepared.change_zat),
+                                8,
+                            )
                         && fee_is(network_fee, u128::from(prepared.fee_zat))
                 }
                 // Transparent funds pegged into the wallet's own MWEB
@@ -614,7 +683,7 @@ impl StoredSend {
                         && matches!(prepared.payments.as_slice(), [payment]
                             if payment.address == self.view.recipient
                                 && payment.memo == *memo
-                                && crate::decimal::from_units(u128::from(payment.zatoshis), 8)
+                                && crate::amount::decimal::from_units(u128::from(payment.zatoshis), 8)
                                     == self.view.amount)
                         && fee_is(network_fee, u128::from(prepared.fee_zat))
                 }

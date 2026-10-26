@@ -87,7 +87,7 @@ impl RefreshEngine {
     /// networks. `wallet_id` scopes the rebuild; returns the entry count.
     pub async fn sync_entries(&self, wallet_id: Option<String>) -> u32 {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let state = this.inner.wallet_service.app_state().await;
             let mut entries = refresh_entries_for(&state);
@@ -106,7 +106,7 @@ impl RefreshEngine {
     /// loops. Other changes only reach the next maintenance tick.
     pub async fn set_device_conditions(&self, conditions: DeviceConditions) {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.forward_tor_status();
             let was_active = this.app_is_active();
@@ -134,7 +134,7 @@ impl RefreshEngine {
     /// while the fetches were still in flight. This is the same cycle, awaited.
     pub async fn refresh_now(&self) {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             this.inner.pending_trigger.store(true, Ordering::Release);
             Self::run_cycle(&this.inner).await;
@@ -300,7 +300,7 @@ impl RefreshEngine {
         }
         let inner = Arc::downgrade(&self.inner);
         tokio::spawn(async move {
-            let mut changes = crate::tor::subscribe_status();
+            let mut changes = crate::api::tor::subscribe_status();
             loop {
                 let status = changes.borrow_and_update().clone();
                 let Some(inner) = inner.upgrade() else { return };
@@ -595,7 +595,7 @@ pub trait RefreshObserver: Send + Sync {
 
     /// The embedded Tor client's status, sent once when the platform first
     /// reports conditions and then on every change.
-    fn on_tor_status_changed(&self, status: crate::tor::TorStatus);
+    fn on_tor_status_changed(&self, status: crate::api::tor::TorStatus);
 }
 
 /// What to refresh for the wallets in `state`, one entry per wallet that has an
@@ -787,7 +787,7 @@ mod refresh_entry_tests {
             fn on_refresh_complete(&self, _: AppRefreshResult) {
                 self.0.fetch_add(1, Ordering::SeqCst);
             }
-            fn on_tor_status_changed(&self, _: crate::tor::TorStatus) {
+            fn on_tor_status_changed(&self, _: crate::api::tor::TorStatus) {
                 self.1.fetch_add(1, Ordering::SeqCst);
             }
         }
@@ -979,7 +979,7 @@ impl RefreshEngine {
     /// waits for the sweep instead of spawning it.
     pub async fn trigger_immediate(&self) {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let inner = Arc::clone(&this.inner);
             tokio::spawn(async move {

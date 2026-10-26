@@ -6,6 +6,7 @@ use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::api::endpoint::EndpointApi;
 use crate::api::http::HttpClient;
 
 // ── Public result types
@@ -117,7 +118,7 @@ impl NearClient {
 
     pub(crate) async fn call(&self, method: &str, params: Value) -> Result<Value, ApiError> {
         crate::api::json_rpc::call(
-            crate::EndpointApi::NearJsonRpc,
+            EndpointApi::NearJsonRpc,
             &self.client,
             &self.endpoints,
             method,

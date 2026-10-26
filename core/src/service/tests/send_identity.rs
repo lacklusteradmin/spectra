@@ -1,7 +1,7 @@
 use super::*;
-use crate::store::secret_backends::InMemorySecretStore;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::{store_private_key, store_seed_phrase};
 use crate::store::state::WalletState;
-use crate::store::wallet_secrets::{store_private_key, store_seed_phrase};
 
 const SEED: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -104,7 +104,7 @@ async fn ambiguous_stored_material_is_refused_instead_of_preferring_a_key() {
 #[tokio::test]
 async fn private_key_wallet_needs_no_caller_or_stored_derivation_path() {
     let (service, secrets) = wallet(KEY_ADDRESS, None).await;
-    crate::store::wallet_secrets::delete(&*secrets, "w").unwrap();
+    crate::secrets::wallet::delete(&*secrets, "w").unwrap();
     store_private_key(&*secrets, "w", &format!("0x{:064x}", 1), None).unwrap();
     let mut stored = service.app_state().await.wallets[0].clone();
     stored.derivation_path = None;

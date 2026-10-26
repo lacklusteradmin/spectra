@@ -3,7 +3,7 @@ use crate::derivation::error::DerivationError;
 use serde::{Deserialize, Serialize};
 
 use crate::registry::Chain;
-use crate::validation::address::{AddressValidationRequest, validate_address};
+use crate::validation::address::validate_address;
 
 /// How an import supplies its wallet: from a secret the commit carries, or by
 /// watching addresses typed for the import's one chain.
@@ -242,10 +242,7 @@ pub(crate) fn normalized_import_address(chain: Chain, address: &str) -> Option<S
     if crate::send::litecoin_mweb::keys::StealthAddress::decode(chain, address).is_some() {
         return None;
     }
-    let result = validate_address(AddressValidationRequest {
-        kind: chain.address_validation_kind().to_string(),
-        value: address.to_string(),
-    });
+    let result = validate_address(chain, address);
     result.is_valid.then(|| {
         result
             .normalized_value

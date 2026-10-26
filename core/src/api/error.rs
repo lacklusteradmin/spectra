@@ -76,7 +76,7 @@ impl<T> OrDecode<T> for Option<T> {
     }
 }
 
-impl From<ApiError> for crate::SpectraBridgeError {
+impl From<ApiError> for crate::error::SpectraBridgeError {
     fn from(error: ApiError) -> Self {
         let message = error.to_string();
         match error {

@@ -6,6 +6,7 @@
 //! verified node each; the page that shows it is the wallet's Account.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 
 /// A TON account's lifecycle state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, uniffi::Enum)]
@@ -159,7 +160,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<WalletNetworkAccount, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let wallet = this.stored_wallet(&wallet_id).await?;
             let chain = wallet.chain_id;
             if !has_network_account(&wallet) {
@@ -179,7 +180,7 @@ impl WalletService {
                 })?
                 .to_string();
             let decimals = u32::from(chain.native_decimals());
-            let coin = |units: u128| crate::decimal::from_units(units, decimals);
+            let coin = |units: u128| crate::amount::decimal::from_units(units, decimals);
             let endpoints = this
                 .endpoints_for(chain, &[EndpointCapability::Verification])
                 .await;
@@ -309,7 +310,7 @@ impl WalletService {
                     let account = KoiosClient::new(Arc::new(
                         this.api_endpoints(
                             chain,
-                            crate::EndpointApi::Koios,
+                            EndpointApi::Koios,
                             &[EndpointCapability::Verification],
                         )
                         .await?,
@@ -350,7 +351,7 @@ fn reserve_account(
     per_object: u64,
     decimals: u32,
 ) -> NetworkAccount {
-    let coin = |units: u128| crate::decimal::from_units(units, decimals);
+    let coin = |units: u128| crate::amount::decimal::from_units(units, decimals);
     let object_reserve = u128::from(owned_objects) * u128::from(per_object);
     let total = base_reserve + object_reserve;
     NetworkAccount::Reserve {

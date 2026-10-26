@@ -1,4 +1,5 @@
 //! App-facing pure rules: semantic assertions at the exported boundary.
+use crate::api::endpoint::{EndpointApi, endpoint_capability_options};
 use crate::derivation::path::{format_derivation_path, parse_derivation_path};
 use crate::*;
 
@@ -55,9 +56,9 @@ fn applying_a_setting_is_the_reducers_rule() {
     let trimmed = app_settings_applying(
         defaults.clone(),
         AppSettingUpdate::AddCustomEndpoint {
-            capabilities: crate::endpoint_capability_options(
+            capabilities: endpoint_capability_options(
                 crate::registry::Chain::Monero,
-                crate::EndpointApi::MoneroDaemonRpc,
+                EndpointApi::MoneroDaemonRpc,
             ),
             chain_id: crate::registry::Chain::Monero,
             api: "monero-daemon-rpc".into(),

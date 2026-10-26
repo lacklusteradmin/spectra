@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::endpoint::{EndpointApi, endpoint_capability_options};
 
 fn database() -> String {
     std::env::temp_dir()
@@ -458,7 +459,7 @@ mod tor_and_rates {
             "socks5://127.0.0.1:9150"
         );
 
-        assert!(!crate::tor::kill_switch_engaged());
+        assert!(!crate::api::tor::kill_switch_engaged());
 
         let reopened = service();
         let state = reopened.open_state(db).await.unwrap();
@@ -468,7 +469,7 @@ mod tor_and_rates {
             state.settings.tor_custom_proxy_address,
             "socks5://127.0.0.1:9150"
         );
-        assert!(!crate::tor::kill_switch_engaged());
+        assert!(!crate::api::tor::kill_switch_engaged());
     }
 
     /// Requests are held back exactly when the user asked for Tor and Tor is
@@ -476,8 +477,8 @@ mod tor_and_rates {
     /// clear, with no setting to fall back to a direct connection.
     #[test]
     fn the_kill_switch_engages_only_while_tor_is_wanted_and_not_ready() {
-        use crate::tor::TorStatus;
-        use crate::tor::kill_switch_verdict;
+        use crate::api::tor::TorStatus;
+        use crate::api::tor::kill_switch_verdict;
         for (wanted, ready, expected) in [
             (true, false, true),
             (true, true, false),
@@ -646,11 +647,7 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     assert!(!original.is_empty());
     assert!(
         !service
-            .api_endpoints(
-                crate::registry::Chain::Ton,
-                crate::EndpointApi::ToncenterV3,
-                &[]
-            )
+            .api_endpoints(crate::registry::Chain::Ton, EndpointApi::ToncenterV3, &[])
             .await
             .unwrap()
             .is_empty()
@@ -658,9 +655,9 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
-                capabilities: crate::endpoint_capability_options(
+                capabilities: endpoint_capability_options(
                     crate::registry::Chain::Ethereum,
-                    crate::EndpointApi::EvmJsonRpc,
+                    EndpointApi::EvmJsonRpc,
                 ),
                 chain_id: crate::registry::Chain::Ethereum,
                 api: "evm-json-rpc".into(),

@@ -10,9 +10,7 @@
 //! [`WalletOperation::RemoveTrustLine`].
 
 use super::*;
-use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
-};
+use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, WalletOperation};
 
 /// One trust line of a wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
@@ -53,7 +51,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<WalletTrustLines, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this.trust_line_owner(&wallet_id).await?;
             let endpoints = this
                 .endpoints_for(chain, &[EndpointCapability::Verification])
@@ -89,7 +87,7 @@ impl WalletService {
                     .collect();
                 return Ok(WalletTrustLines {
                     lines,
-                    reserve_per_line: crate::decimal::from_units(
+                    reserve_per_line: crate::amount::decimal::from_units(
                         u128::from(reserve.reserve_increment),
                         decimals,
                     ),
@@ -108,8 +106,14 @@ impl WalletService {
                     asset: line.asset.identifier(),
                     code: line.asset.code.clone(),
                     issuer: line.asset.issuer.clone(),
-                    balance: crate::decimal::from_units(u128::from(line.balance.unsigned_abs()), 7),
-                    limit: crate::decimal::from_units(u128::from(line.limit.unsigned_abs()), 7),
+                    balance: crate::amount::decimal::from_units(
+                        u128::from(line.balance.unsigned_abs()),
+                        7,
+                    ),
+                    limit: crate::amount::decimal::from_units(
+                        u128::from(line.limit.unsigned_abs()),
+                        7,
+                    ),
                     authorized: line.authorized,
                     frozen: false,
                     removal_blocked: if line.balance != 0 {
@@ -123,7 +127,10 @@ impl WalletService {
                 .collect();
             Ok(WalletTrustLines {
                 lines,
-                reserve_per_line: crate::decimal::from_units(u128::from(base_reserve), decimals),
+                reserve_per_line: crate::amount::decimal::from_units(
+                    u128::from(base_reserve),
+                    decimals,
+                ),
             })
         })
         .await
@@ -138,9 +145,9 @@ impl WalletService {
         asset: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(
-            async move { this.build_trust_line_change(wallet_id, asset, false).await },
-        )
+        crate::service::worker::run(async move {
+            this.build_trust_line_change(wallet_id, asset, false).await
+        })
         .await
     }
 
@@ -152,9 +159,9 @@ impl WalletService {
         asset: String,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(
-            async move { this.build_trust_line_change(wallet_id, asset, true).await },
-        )
+        crate::service::worker::run(async move {
+            this.build_trust_line_change(wallet_id, asset, true).await
+        })
         .await
     }
 }
@@ -192,7 +199,7 @@ impl WalletService {
             ));
         }
         let standard = chain.token_standard_for_identifier(&asset);
-        let asset = crate::tokens::validate_protocol_identifier(chain, standard, &asset)?;
+        let asset = crate::catalog::tokens::validate_protocol_identifier(chain, standard, &asset)?;
         let endpoints = self
             .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
@@ -223,8 +230,8 @@ impl WalletService {
             (PreparedPayload::StellarChangeTrust(plan), fee, reserve)
         };
         let decimals = u32::from(chain.native_decimals());
-        let network_fee = crate::decimal::from_units(u128::from(fee), decimals);
-        let reserve = crate::decimal::from_units(u128::from(reserve), decimals);
+        let network_fee = crate::amount::decimal::from_units(u128::from(fee), decimals);
+        let reserve = crate::amount::decimal::from_units(u128::from(reserve), decimals);
         let operation = if remove {
             WalletOperation::RemoveTrustLine {
                 asset: asset.clone(),
@@ -252,45 +259,21 @@ impl WalletService {
             gas_budget: None,
             fee_amount: Some(network_fee),
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         };
         let state = self.app_state().await;
-        let mut stored = StoredSend {
-            view: SendArtifact {
-                id: crate::store::new_transaction_id(),
-                revision: 0,
-                stage: SendStage::Prepared,
-                wallet_id,
-                chain_id: chain,
-                sender: owner.clone(),
-                recipient: owner,
-                amount: "0".into(),
-                symbol: super::send_records::send_asset_names(&state, chain, Some(&asset)).0,
-                asset,
-                staking: None,
-                operation: Some(operation),
-                created_at: crate::store::now_unix().floor(),
-                review_digest: String::new(),
-                review: SendArtifactReview::default(),
-                prepared_details: serde_json::to_string_pretty(&prepared)?,
-                signing_payload_hex: String::new(),
-                signed_payload: None,
-                transaction_hash: None,
-                attempts: Vec::new(),
-                selected_endpoints: Vec::new(),
-                memo: None,
-            },
+        self.save_prepared_send(crate::send::stages::NewArtifact {
+            sender: owner.clone(),
+            symbol: super::send_records::send_asset_names(&state, chain, Some(&asset)).0,
+            asset,
+            staking: None,
+            operation: Some(operation),
+            review: SendArtifactReview::default(),
+            signing_payload_hex: String::new(),
             request,
             prepared,
-            submission: None,
-            signed_digest: None,
-            substrate_verified_through: None,
-            icp_staking_receipts: vec![],
-        };
-        stored.view.review_digest = stored.digest()?;
-        self.save_send_artifact(&stored, &[]).await?;
-        Ok(stored.view)
+        })
+        .await
     }
 }
 

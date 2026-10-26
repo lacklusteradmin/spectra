@@ -7,7 +7,7 @@
 # struct `x.field` writes, so this asks the compiler: it emits the MIR of core
 # and the CLI — production code only, with types resolved — and
 # `record_writers.py` looks for a write of each `uniffi::Record` field there or
-# a construction of the record in hand-written Swift or Kotlin. That file says
+# a construction of the record in hand-written Swift. That file says
 # what counts as a write.
 #
 # Exits non-zero when any field has no writer, so it can gate. Delete the

@@ -66,10 +66,6 @@ fn discover(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
             super::chain::EndpointCapability::History,
         ],
     )?;
-    service.set_secret_store(ctx.secrets.clone());
-    ctx.rt
-        .block_on(service.open_state(ctx.db_path()))
-        .map_err(crate::error::CliError::from)?;
 
     let addresses = ctx
         .rt
@@ -148,7 +144,6 @@ fn show(ctx: &Ctx, out: Out, args: SelectArgs) -> CliResult<()> {
 fn next(ctx: &Ctx, out: Out, args: SelectArgs, change: bool) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let service = ctx.service()?;
-    service.set_secret_store(ctx.secrets.clone());
     let reserved = ctx
         .rt
         .block_on(async {

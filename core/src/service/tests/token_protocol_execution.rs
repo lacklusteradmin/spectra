@@ -1,5 +1,6 @@
 //! Actual protocol identity routes metadata and transfer preparation.
 use super::*;
+use crate::api::endpoint::EndpointCapability;
 use crate::send::SendExecutionRequest;
 use crate::service::{ChainEndpoints, WalletService};
 use wiremock::{
@@ -22,7 +23,6 @@ fn request(chain_id: Chain, token_standard: Option<&str>) -> SendExecutionReques
         gas_budget: None,
         fee_amount: None,
         evm_overrides: None,
-        sign_only: true,
         memo: None,
     }
 }
@@ -31,7 +31,7 @@ fn service(server: &MockServer) -> std::sync::Arc<WalletService> {
     WalletService::new(vec![ChainEndpoints {
         chain_id: Chain::Tron,
         endpoints: vec![server.uri()],
-        capabilities: crate::EndpointCapability::ALL.to_vec(),
+        capabilities: EndpointCapability::ALL.to_vec(),
     }])
     .unwrap()
 }

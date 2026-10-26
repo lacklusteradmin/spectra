@@ -1,8 +1,8 @@
 use super::*;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::store_seed_phrase;
 use crate::send::{SendExecutionRequest, stages::SendStage};
-use crate::store::secret_backends::InMemorySecretStore;
 use crate::store::state::{WalletSigning, WalletState};
-use crate::store::wallet_secrets::store_seed_phrase;
 use bitcoin::{Amount, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness};
 use serde_json::json;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -74,7 +74,6 @@ fn request(chain: Chain, recipient: String) -> SendExecutionRequest {
         gas_budget: None,
         fee_amount: None,
         evm_overrides: None,
-        sign_only: false,
         memo: None,
     }
 }
@@ -246,7 +245,7 @@ async fn protected_peercoin_account_quotes_and_signs_all_sources_after_restart()
             assert_eq!(prepared.inputs.len() as i64, expected_inputs);
             assert_eq!(
                 preview.estimated_network_fee,
-                crate::decimal::from_units(prepared.fee.into(), 6)
+                crate::amount::decimal::from_units(prepared.fee.into(), 6)
             );
             assert!(
                 prepared
@@ -295,7 +294,7 @@ async fn protected_peercoin_account_quotes_and_signs_all_sources_after_restart()
             assert_eq!(tx.input.len() as i64, expected_inputs);
             assert_eq!(
                 tx.output[0].value.to_sat(),
-                crate::decimal::to_units(amount, 6).unwrap() as u64
+                crate::amount::decimal::to_units(amount, 6).unwrap() as u64
             );
             assert_eq!(signed.transaction_hash, Some(tx.compute_txid().to_string()));
             assert_eq!(
@@ -465,7 +464,10 @@ async fn an_owned_peercoin_build_pays_the_fee_its_preview_quoted() {
         panic!("wrong protocol");
     };
     assert_eq!(prepared.inputs.len(), 2);
-    assert_eq!(crate::decimal::from_units(prepared.fee.into(), 6), quoted);
+    assert_eq!(
+        crate::amount::decimal::from_units(prepared.fee.into(), 6),
+        quoted
+    );
     assert_eq!(built.review.network_fee.as_deref(), Some(quoted.as_str()));
 }
 

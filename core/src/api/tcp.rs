@@ -18,7 +18,7 @@ pub(crate) async fn connect(
     host: &str,
     port: u16,
 ) -> Result<tokio::net::TcpStream, ApiError> {
-    if crate::tor::kill_switch_engaged() {
+    if crate::api::tor::kill_switch_engaged() {
         return Err(ApiError::Transport(
             crate::api::http::KILL_SWITCH_MESSAGE.into(),
         ));
@@ -36,7 +36,7 @@ pub(crate) async fn connect(
 /// in force resolves at the far end. Refused as `connect` refuses, before
 /// anything is resolved.
 pub(crate) async fn peers(endpoint: &str, host: &str, port: u16) -> Result<Vec<String>, ApiError> {
-    if crate::tor::kill_switch_engaged() {
+    if crate::api::tor::kill_switch_engaged() {
         return Err(ApiError::Transport(
             crate::api::http::KILL_SWITCH_MESSAGE.into(),
         ));
@@ -45,7 +45,7 @@ pub(crate) async fn peers(endpoint: &str, host: &str, port: u16) -> Result<Vec<S
         crate::api::http::refuse_non_loopback(endpoint);
         return Err(ApiError::Transport("non-loopback endpoint refused".into()));
     }
-    let direct = crate::tor::with_routing_guard(|blocked| {
+    let direct = crate::api::tor::with_routing_guard(|blocked| {
         !blocked && crate::api::http::current_proxy().is_none()
     });
     if !direct || host.parse::<std::net::IpAddr>().is_ok() {
@@ -68,8 +68,9 @@ pub(crate) async fn peers(endpoint: &str, host: &str, port: u16) -> Result<Vec<S
 pub(crate) async fn dial(host: &str, port: u16) -> Result<tokio::net::TcpStream, ApiError> {
     // The routing decision and the proxy it names are read together, so a
     // concurrent Tor stop cannot leave a direct dial behind a blocked one.
-    let route =
-        crate::tor::with_routing_guard(|blocked| (!blocked).then(crate::api::http::current_proxy));
+    let route = crate::api::tor::with_routing_guard(|blocked| {
+        (!blocked).then(crate::api::http::current_proxy)
+    });
     let Some(proxy) = route else {
         return Err(ApiError::Transport(
             crate::api::http::KILL_SWITCH_MESSAGE.into(),

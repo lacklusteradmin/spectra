@@ -11,9 +11,7 @@
 
 use super::*;
 use crate::send::solana::{MAX_CLOSED_ACCOUNTS, PreparedSolanaAccountClosure};
-use crate::send::stages::{
-    PreparedPayload, SendArtifact, SendArtifactReview, SendStage, StoredSend, WalletOperation,
-};
+use crate::send::stages::{PreparedPayload, SendArtifact, SendArtifactReview, WalletOperation};
 
 /// One empty token account.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
@@ -74,7 +72,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<EmptyTokenAccounts, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this.solana_owner(&wallet_id).await?;
             let state = this.app_state().await;
             let decimals = u32::from(chain.native_decimals());
@@ -99,7 +97,10 @@ impl WalletService {
                         )
                         .0,
                         token_2022: account.program == crate::send::solana::TOKEN_PROGRAMS[1],
-                        rent: crate::decimal::from_units(u128::from(account.lamports), decimals),
+                        rent: crate::amount::decimal::from_units(
+                            u128::from(account.lamports),
+                            decimals,
+                        ),
                         blocked: blocked.map(str::to_string),
                         address: account.address,
                         mint: account.mint,
@@ -108,7 +109,7 @@ impl WalletService {
                 .collect();
             Ok(EmptyTokenAccounts {
                 accounts,
-                reclaimable: crate::decimal::from_units(reclaimable, decimals),
+                reclaimable: crate::amount::decimal::from_units(reclaimable, decimals),
             })
         })
         .await
@@ -125,7 +126,7 @@ impl WalletService {
         accounts: Vec<String>,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (chain, owner) = this.solana_owner(&wallet_id).await?;
             if this.stored_wallet(&wallet_id).await?.is_watch_only() {
                 return Err(SpectraBridgeError::invalid(
@@ -194,8 +195,8 @@ impl WalletService {
             }
             let prepared = PreparedSolanaAccountClosure::prepare(&owner, pairs, &blockhash, fee)?;
             let decimals = u32::from(chain.native_decimals());
-            let network_fee = crate::decimal::from_units(u128::from(fee), decimals);
-            let rent = crate::decimal::from_units(rent, decimals);
+            let network_fee = crate::amount::decimal::from_units(u128::from(fee), decimals);
+            let rent = crate::amount::decimal::from_units(rent, decimals);
             let request = crate::send::SendExecutionRequest {
                 chain_id: chain,
                 wallet_id: wallet_id.clone(),
@@ -210,7 +211,6 @@ impl WalletService {
                 gas_budget: None,
                 fee_amount: Some(network_fee.clone()),
                 evm_overrides: None,
-                sign_only: false,
                 memo: None,
             };
             let signing_payload_hex = hex::encode(&prepared.transaction.message);
@@ -220,45 +220,22 @@ impl WalletService {
                 .map(|(account, _)| account.clone())
                 .collect();
             let prepared = PreparedPayload::SolanaAccountClosure(prepared);
-            let mut stored = StoredSend {
-                view: SendArtifact {
-                    id: crate::store::new_transaction_id(),
-                    revision: 0,
-                    stage: SendStage::Prepared,
-                    wallet_id,
-                    chain_id: chain,
-                    sender: owner.clone(),
-                    recipient: owner,
-                    amount: rent.clone(),
-                    asset: chain.coin_symbol().into(),
-                    symbol: chain.coin_symbol().into(),
-                    staking: None,
-                    operation: Some(WalletOperation::CloseTokenAccounts {
-                        accounts: closed,
-                        rent,
-                        network_fee,
-                    }),
-                    created_at: crate::store::now_unix().floor(),
-                    review_digest: String::new(),
-                    review: SendArtifactReview::default(),
-                    prepared_details: serde_json::to_string_pretty(&prepared)?,
-                    signing_payload_hex,
-                    signed_payload: None,
-                    transaction_hash: None,
-                    attempts: Vec::new(),
-                    selected_endpoints: Vec::new(),
-                    memo: None,
-                },
+            this.save_prepared_send(crate::send::stages::NewArtifact {
+                sender: owner.clone(),
+                asset: chain.coin_symbol().into(),
+                symbol: chain.coin_symbol().into(),
+                staking: None,
+                operation: Some(WalletOperation::CloseTokenAccounts {
+                    accounts: closed,
+                    rent,
+                    network_fee,
+                }),
+                review: SendArtifactReview::default(),
+                signing_payload_hex,
                 request,
                 prepared,
-                submission: None,
-                signed_digest: None,
-                substrate_verified_through: None,
-                icp_staking_receipts: vec![],
-            };
-            stored.view.review_digest = stored.digest()?;
-            this.save_send_artifact(&stored, &[]).await?;
-            Ok(stored.view)
+            })
+            .await
         })
         .await
     }
@@ -419,7 +396,7 @@ mod tests {
         service
             .use_endpoint(
                 Chain::Solana,
-                crate::EndpointApi::SolanaJsonRpc,
+                crate::api::endpoint::EndpointApi::SolanaJsonRpc,
                 &[
                     EndpointCapability::Balance,
                     EndpointCapability::Fee,

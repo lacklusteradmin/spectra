@@ -15,11 +15,11 @@ pub enum SendError {
     /// The spendable balance does not cover the amount plus the fee. The
     /// message names what fell short where a chain has more than one balance.
     #[error("{0}")]
-    InsufficientFunds(crate::LocalizableMessage),
+    InsufficientFunds(crate::error::LocalizableMessage),
     /// The send as requested cannot be built: an amount, address, fee or
     /// reviewed plan that is out of range or no longer matches.
     #[error("{0}")]
-    Invalid(crate::LocalizableMessage),
+    Invalid(crate::error::LocalizableMessage),
     /// Building or signing failed on a valid request.
     #[error("{0}")]
     Internal(String),
@@ -35,7 +35,7 @@ impl SendError {
         template: &'static str,
         args: impl IntoIterator<Item = impl std::fmt::Display>,
     ) -> Self {
-        Self::Invalid(crate::LocalizableMessage::new(template, args))
+        Self::Invalid(crate::error::LocalizableMessage::new(template, args))
     }
 
     pub(crate) fn insufficient_funds() -> Self {
@@ -49,8 +49,8 @@ impl From<crate::registry::RegistryError> for SendError {
     }
 }
 
-impl From<crate::store::seed_envelope::EnvelopeError> for SendError {
-    fn from(error: crate::store::seed_envelope::EnvelopeError) -> Self {
+impl From<crate::secrets::seed_envelope::EnvelopeError> for SendError {
+    fn from(error: crate::secrets::seed_envelope::EnvelopeError) -> Self {
         Self::Internal(error.to_string())
     }
 }
@@ -67,7 +67,7 @@ impl From<hex::FromHexError> for SendError {
     }
 }
 
-impl From<SendError> for crate::SpectraBridgeError {
+impl From<SendError> for crate::error::SpectraBridgeError {
     fn from(error: SendError) -> Self {
         match error {
             SendError::Api(error) => error.into(),

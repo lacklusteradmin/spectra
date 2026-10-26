@@ -221,7 +221,7 @@ pub struct MultisigAccount {
     pub address: String,
     pub permissions: Vec<MultisigPermission>,
     /// What can move or block the account's funds beside its signers.
-    pub warnings: Vec<crate::LocalizableMessage>,
+    pub warnings: Vec<crate::error::LocalizableMessage>,
     pub submission: MultisigSubmission,
     /// The wallets on this device that may sign for it: the account wallet
     /// itself where it holds a cosigner's phrase, else wallets of the
@@ -542,7 +542,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<MultisigAccount, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (wallet, scheme) = this.multisig_wallet(&wallet_id).await?;
             let mut account = match scheme {
                 MultisigScheme::SortedMulti => super::multisig_psbt::account(&wallet)?,
@@ -612,7 +612,7 @@ impl WalletService {
         spend: MultisigSpend,
     ) -> Result<MultisigSession, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let (wallet, scheme) = this.multisig_wallet(&wallet_id).await?;
             // A memo only where the network's payments carry one.
@@ -654,7 +654,7 @@ impl WalletService {
         data: String,
     ) -> Result<MultisigSession, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let (wallet, scheme) = this.multisig_wallet(&wallet_id).await?;
             let open = this.multisig_open_sessions(&wallet_id).await?;
@@ -708,7 +708,7 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<MultisigSession, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let mut stored = this.multisig_load(&session_id).await?;
             if stored.submitted_txid.is_some() {
@@ -781,7 +781,7 @@ impl WalletService {
         session_id: String,
     ) -> Result<MultisigSession, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let stored = this.multisig_load(&session_id).await?;
             let (wallet, _) = this.multisig_wallet(&stored.wallet_id).await?;
             this.multisig_view(&wallet, &stored).await
@@ -795,7 +795,7 @@ impl WalletService {
         wallet_id: String,
     ) -> Result<Vec<MultisigSession>, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let (wallet, _) = this.multisig_wallet(&wallet_id).await?;
             let mut sessions = Vec::new();
             for stored in this.multisig_stored_for_wallet(&wallet_id).await? {
@@ -813,7 +813,7 @@ impl WalletService {
         session_id: String,
     ) -> Result<String, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let stored = this.multisig_load(&session_id).await?;
             let (wallet, _) = this.multisig_wallet(&stored.wallet_id).await?;
             match &stored.body {
@@ -857,7 +857,7 @@ impl WalletService {
         password: Option<String>,
     ) -> Result<MultisigSession, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let mut stored = this.multisig_load(&session_id).await?;
             if stored.submitted_txid.is_some() {
@@ -917,7 +917,7 @@ impl WalletService {
     /// Forget a session; what it would spend is free for another.
     pub async fn discard_multisig(&self, session_id: String) -> Result<(), SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let db = this.bound_database().await?;
             tokio::task::spawn_blocking(move || {
                 crate::wallet_db::multisig_session_delete(&db, &session_id)

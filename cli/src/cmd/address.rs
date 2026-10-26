@@ -5,7 +5,7 @@
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use spectra_core::store::state::{AddressBookRejection, StateCommand, StateEvent, StateTransition};
-use spectra_core::validation::address::{AddressValidationRequest, validate_address};
+use spectra_core::validation::address::validate_address;
 
 use super::resolve_chain;
 use crate::ctx::Ctx;
@@ -148,10 +148,7 @@ fn holder(ctx: &Ctx, out: Out, args: HolderArgs) -> CliResult<()> {
 /// Exit 3 on a refusal, so a script can assert it rather than parse a message.
 fn validate(out: Out, args: ValidateArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
-    let result = validate_address(AddressValidationRequest {
-        kind: chain.address_validation_kind().to_string(),
-        value: args.address.trim().to_string(),
-    });
+    let result = validate_address(chain, args.address.trim());
 
     if !result.is_valid {
         return Err(CliError::rejected(format!(

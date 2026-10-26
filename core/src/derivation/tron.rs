@@ -89,9 +89,9 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::SpectraBridgeError;
 use crate::derivation::primitives::ExtendedPrivateKey;
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::error::SpectraBridgeError;
 
 // Shared derivation logic for all Tron networks.
 fn tron_internal(

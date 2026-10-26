@@ -67,7 +67,7 @@ pub(crate) fn quote_inputs(
     } else {
         maximum
     };
-    let coins = |value| crate::decimal::from_units(u128::from(value), 8);
+    let coins = |value| crate::amount::decimal::from_units(u128::from(value), 8);
     Ok(Some(SendPreview {
         estimated_network_fee: coins(actual_fee),
         spendable_balance: coins(total),
@@ -113,7 +113,7 @@ mod tests {
     }
 
     fn units(display: &str) -> u64 {
-        u64::try_from(crate::send::amount_input::parse_raw_amount(display, 8).unwrap()).unwrap()
+        u64::try_from(crate::amount::input::parse_raw_amount(display, 8).unwrap()).unwrap()
     }
 
     #[test]

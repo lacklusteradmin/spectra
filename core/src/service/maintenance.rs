@@ -7,7 +7,7 @@ impl WalletService {
     /// What to do this tick, and how long to wait for the next one.
     pub async fn maintenance_plan(&self, conditions: DeviceConditions) -> MaintenancePlan {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let settings = this.wallet_state.read().await.settings.clone();
             let has_pending_work = this.has_pending_transaction_work().await;

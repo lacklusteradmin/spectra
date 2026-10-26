@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::endpoint::EndpointCapability;
 use crate::store::state::{WalletAddress, WalletState};
 
 fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
@@ -279,10 +280,10 @@ fn descriptors_are_the_known_tokens_for_the_chain() {
     use crate::store::wallet_domain::TokenPreferenceEntry;
     fn entry(chain: crate::registry::Chain, contract: &str) -> TokenPreferenceEntry {
         TokenPreferenceEntry {
-            token: crate::tokens::TokenDeploymentEntry {
+            token: crate::catalog::tokens::TokenDeploymentEntry {
                 deployment_id: "fixture:token".into(),
                 token_id: "fixture:token".into(),
-                kind: crate::tokens::TokenKind::Protocol {
+                kind: crate::catalog::tokens::TokenKind::Protocol {
                     standard: "fixture".into(),
                     identifier: "fixture".into(),
                 },
@@ -453,7 +454,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
         .await;
 
     let service = WalletService::new(vec![crate::service::ChainEndpoints {
-        capabilities: crate::EndpointCapability::ALL.to_vec(),
+        capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Litecoin,
         endpoints: vec![server.uri()],
     }])
@@ -772,7 +773,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
     );
     // The response was fetched before deletion and is submitted after the wallet transaction commits.
     service.set_secret_store(std::sync::Arc::new(
-        crate::store::secret_backends::InMemorySecretStore::new(),
+        crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
         .apply_state_command(crate::store::state::StateCommand::RemoveWallet {
@@ -795,7 +796,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
 #[test]
 fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
     assert_eq!(
-        crate::tokens::deployment_id_for(
+        crate::catalog::tokens::deployment_id_for(
             Chain::EthereumSepolia,
             Some("0x1111111111111111111111111111111111111111")
         )
@@ -911,8 +912,8 @@ async fn a_full_token_page_of_unknown_contracts_is_not_the_end_of_the_history() 
     for update in [
         AppSettingUpdate::AddCustomEndpoint {
             capabilities: vec![
-                crate::EndpointCapability::History,
-                crate::EndpointCapability::TokenHistory,
+                EndpointCapability::History,
+                EndpointCapability::TokenHistory,
             ],
             chain_id: Chain::EthereumSepolia,
             api: "blockscout".into(),
@@ -1036,7 +1037,7 @@ async fn a_solana_page_that_stores_nothing_still_pages_on_from_its_last_signatur
             .await;
     }
     let service = opened(vec![crate::service::ChainEndpoints {
-        capabilities: crate::EndpointCapability::ALL.to_vec(),
+        capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Solana,
         endpoints: vec![server.uri()],
     }])

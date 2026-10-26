@@ -2,12 +2,12 @@
 //! when it is read back, and what signing and broadcasting check before
 //! anything leaves the device.
 use super::*;
+use crate::secrets::backends::InMemorySecretStore;
+use crate::secrets::wallet::store_seed_phrase;
 use crate::send::SendExecutionRequest;
 use crate::send::ethereum::{EvmCustomFeeConfiguration, EvmSendOverridesInput};
 use crate::send::stages::{SendStage, SubmissionOutcome};
-use crate::store::secret_backends::InMemorySecretStore;
 use crate::store::state::{WalletSigning, WalletState};
-use crate::store::wallet_secrets::store_seed_phrase;
 use serde_json::{Value, json};
 use sha3::Digest;
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -230,7 +230,6 @@ fn request(to: &str, amount: &str) -> SendExecutionRequest {
         gas_budget: None,
         fee_amount: None,
         evm_overrides: None,
-        sign_only: false,
         memo: None,
     }
 }
@@ -554,7 +553,7 @@ async fn only_an_explicit_nonce_with_higher_fees_replaces_a_signed_send() {
         panic!("not an EVM transaction")
     };
     assert_eq!(reviewed.nonce, 7);
-    let gwei = |wei: u128| crate::decimal::from_units(wei, 9);
+    let gwei = |wei: u128| crate::amount::decimal::from_units(wei, 9);
 
     let refused = sign(&service, &competing).await.unwrap_err();
     assert!(

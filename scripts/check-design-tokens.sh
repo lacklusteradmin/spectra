@@ -4,7 +4,7 @@
 #   scripts/check-design-tokens.sh
 #
 # docs/IOS-UI.md defines the spacing scale, the corner-radius scale and the two
-# Liquid Glass tints; swift/views/SpectraLayout.swift spells them in Swift. A
+# Liquid Glass tints; swift/app/Components/SpectraLayout.swift spells them in Swift. A
 # screen that writes the number instead of the token drifts silently, and no
 # review catches it by eye.
 #
@@ -14,8 +14,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-VIEWS="$REPO_ROOT/swift/views"
-TOKENS="$VIEWS/SpectraLayout.swift"
+VIEWS="$REPO_ROOT/swift/app"
+TOKENS="$VIEWS/Components/SpectraLayout.swift"
 
 fail=0
 report() {

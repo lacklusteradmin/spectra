@@ -58,7 +58,7 @@ impl RefreshObserver for Collector {
     fn on_refresh_complete(&self, _result: AppRefreshResult) {}
 
     /// Never called, for the same reason.
-    fn on_tor_status_changed(&self, _status: spectra_core::tor::TorStatus) {}
+    fn on_tor_status_changed(&self, _status: spectra_core::api::tor::TorStatus) {}
 }
 
 pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
@@ -76,7 +76,7 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
         let chain = wallets[0].chain_id;
         ctx.rt
             .block_on(service.update_endpoints(vec![ChainEndpoints {
-                capabilities: spectra_core::EndpointCapability::ALL.to_vec(),
+                capabilities: spectra_core::api::endpoint::EndpointCapability::ALL.to_vec(),
                 chain_id: chain,
                 endpoints: vec![endpoint],
             }]))

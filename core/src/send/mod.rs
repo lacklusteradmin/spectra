@@ -1,5 +1,4 @@
 use crate::send::error::SendError;
-pub mod amount_input;
 pub mod error;
 pub mod ethereum;
 mod evm_overrides;
@@ -91,7 +90,7 @@ pub struct SendPreflight {
     pub token_decimals: Option<u32>,
 }
 
-/// Unified request for `WalletService::execute_send`.
+/// A send request: what `WalletService::build_send` prepares as an artifact.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct SendExecutionRequest {
     /// Spectra chain ID string (e.g. "bitcoin", "ethereum").
@@ -128,36 +127,9 @@ pub struct SendExecutionRequest {
     /// The XRP destination tag or Stellar memo the payment carries.
     #[uniffi(default = None)]
     pub memo: Option<payment_memo::PaymentMemo>,
-    /// Sign the transaction and stop, without putting it on the chain.
-    ///
-    /// Everything a send does except the irreversible step: the stored
-    /// identity is resolved, the amount and fees are converted, the live nonce
-    /// or UTXO set is read, the transaction is built and signed, and the raw
-    /// payload comes back. It is how the send path is exercised end to end
-    /// without moving funds. The EVM builder already
-    /// had this behind `EvmSendOverridesInput::sign_only`; the Bitcoin builder
-    /// had it and the execution path hard-coded it to `false`.
-    #[uniffi(default = false)]
-    pub sign_only: bool,
 }
 
 impl SendExecutionRequest {
-    /// Whether this asks to sign and stop, by either route.
-    ///
-    /// One function rather than the expression written out wherever the
-    /// question came up: the refusal read both routes and the result field
-    /// read only `sign_only`, so a caller asking through the EVM overrides got
-    /// a signed transaction and a `None` where it should be. Four readers, one
-    /// answer, and they cannot drift apart again.
-    pub(crate) fn wants_sign_only(&self) -> bool {
-        self.sign_only
-            || self
-                .evm_overrides
-                .as_ref()
-                .and_then(|input| input.sign_only)
-                .unwrap_or(false)
-    }
-
     pub(crate) fn zeroize_sensitive_fields(&mut self) {
         if let Some(password) = &mut self.password {
             password.zeroize();
@@ -165,16 +137,13 @@ impl SendExecutionRequest {
     }
 }
 
-/// Result from `WalletService::execute_send`.
+/// What a send that built, signed and broadcast in one call produced.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SendExecutionResult {
     pub transaction_hash: String,
     /// EVM-specific details (nonce, raw_tx_hex, gas_limit), converted directly
     /// from the protocol result. `None` for non-EVM chains.
     pub evm: Option<crate::send::ethereum::EvmSendDetails>,
-    /// The signed transaction as its network takes it, when `sign_only` was
-    /// asked for.
-    pub signed_payload: Option<String>,
 }
 
 /// Why a send cannot land, once the fee is counted.
@@ -237,7 +206,7 @@ pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
         return SendAffordability::Unavailable;
     }
     let gas_symbol = input.chain_id.coin_symbol().to_string();
-    use crate::decimal::{add, compare};
+    use crate::amount::decimal::{add, compare};
     use std::cmp::Ordering::Greater;
     // An amount that is not a decimal cannot be judged, and is not sent.
     let exceeds = |a: &str, b: &str| compare(a, b).is_none_or(|o| o == Greater);
@@ -264,7 +233,8 @@ pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
         Some(gas_balance) if exceeds(&input.network_fee, &gas_balance) => {
             SendAffordability::FeeExceedsGasBalance {
                 gas_symbol,
-                fee: crate::decimal::canonical(&input.network_fee).unwrap_or(input.network_fee),
+                fee: crate::amount::decimal::canonical(&input.network_fee)
+                    .unwrap_or(input.network_fee),
                 chain_id: input.chain_id,
             }
         }
@@ -297,12 +267,12 @@ pub fn validate_send_preflight(
     }
 
     let amount_input = amount_input.trim();
-    let exact = crate::decimal::canonical(amount_input)
+    let exact = crate::amount::decimal::canonical(amount_input)
         .ok_or_else(|| SendError::Invalid("Enter a valid amount".into()))?;
-    if !asset.allows_zero_amount() && crate::decimal::is_zero(&exact) {
+    if !asset.allows_zero_amount() && crate::amount::decimal::is_zero(&exact) {
         return Err(SendError::Invalid("Enter a valid amount".into()));
     }
-    if crate::decimal::compare(&exact, available_balance)
+    if crate::amount::decimal::compare(&exact, available_balance)
         .is_none_or(|o| o == std::cmp::Ordering::Greater)
     {
         return Err(SendError::Invalid(
@@ -398,12 +368,8 @@ mod tests {
                 chain,
                 address.to_string()
             ));
-            let validated = crate::validation::address::validate_address(
-                crate::validation::address::AddressValidationRequest {
-                    kind: chain.address_validation_kind().into(),
-                    value: address.to_ascii_lowercase(),
-                },
-            );
+            let validated =
+                crate::validation::address::validate_address(chain, &address.to_ascii_lowercase());
             assert_eq!(validated.normalized_value.as_deref(), Some(address));
             assert!(
                 crate::derivation::stellar::decode_stellar_address(&(address.to_string() + "A"))
@@ -510,7 +476,6 @@ mod tests {
             gas_budget: None,
             fee_amount: None,
             evm_overrides: None,
-            sign_only: false,
             memo: None,
         };
         request.zeroize_sensitive_fields();
@@ -556,7 +521,7 @@ mod token_decimals_are_not_assumed {
     fn a_chain_can_host_tokens_of_different_decimals() {
         use std::collections::{HashMap, HashSet};
         let mut by_chain: HashMap<crate::registry::Chain, HashSet<u32>> = HashMap::new();
-        for token in crate::tokens::list_token_deployments(None) {
+        for token in crate::catalog::tokens::list_token_deployments(None) {
             by_chain
                 .entry(token.chain_id)
                 .or_default()

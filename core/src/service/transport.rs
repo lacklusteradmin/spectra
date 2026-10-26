@@ -6,42 +6,42 @@ impl WalletService {
     pub async fn configure_network_runtime(
         &self,
         cache_dir: String,
-    ) -> Result<crate::tor::TorStatus, SpectraBridgeError> {
+    ) -> Result<crate::api::tor::TorStatus, SpectraBridgeError> {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let _writer = this.state_writer.lock().await;
             this.bound_database().await?;
             let settings = this.wallet_state.read().await.settings.clone();
             *this.transport_cache_dir.lock() = Some(cache_dir);
             this.reconcile_transport(&settings, false);
-            Ok(crate::tor::tor_status())
+            Ok(crate::api::tor::tor_status())
         })
         .await
     }
 
-    pub async fn reconnect_tor(&self) -> crate::tor::TorStatus {
+    pub async fn reconnect_tor(&self) -> crate::api::tor::TorStatus {
         let this = self.clone();
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             let this = &this;
             let _writer = this.state_writer.lock().await;
             let settings = this.wallet_state.read().await.settings.clone();
             this.reconcile_transport(&settings, true);
-            crate::tor::tor_status()
+            crate::api::tor::tor_status()
         })
         .await
     }
 
     /// Short-lived clients must await bootstrap before their first network request.
     pub async fn await_network_ready(&self) -> Result<(), SpectraBridgeError> {
-        crate::worker::run(async move {
+        crate::service::worker::run(async move {
             tokio::time::timeout(std::time::Duration::from_secs(120), async {
                 loop {
-                    match crate::tor::tor_status() {
-                        crate::tor::TorStatus::Bootstrapping { .. } => {
+                    match crate::api::tor::tor_status() {
+                        crate::api::tor::TorStatus::Bootstrapping { .. } => {
                             tokio::time::sleep(std::time::Duration::from_millis(100)).await
                         }
-                        crate::tor::TorStatus::Error { message } => {
+                        crate::api::tor::TorStatus::Error { message } => {
                             return Err(SpectraBridgeError::Network { message });
                         }
                         _ => return Ok(()),
@@ -62,9 +62,9 @@ impl WalletService {
         restart: bool,
     ) {
         if let Some(dir) = self.transport_cache_dir.lock().as_ref() {
-            crate::tor::reconcile(settings, dir, restart);
+            crate::api::tor::reconcile(settings, dir, restart);
         } else {
-            crate::tor::apply_policy(settings.tor_enabled);
+            crate::api::tor::apply_policy(settings.tor_enabled);
         }
     }
 }

@@ -206,7 +206,7 @@ impl TrongridClient {
                 is_incoming: to == address,
                 from,
                 to,
-                amount_display: crate::decimal::from_units(
+                amount_display: crate::amount::decimal::from_units(
                     u128::from(raw),
                     u32::from(asset.decimals),
                 ),
@@ -304,7 +304,7 @@ fn native_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>
             is_incoming: to == address,
             from,
             to,
-            amount_display: crate::decimal::from_units(u128::from(sun), 6),
+            amount_display: crate::amount::decimal::from_units(u128::from(sun), 6),
         });
     }
     Ok(entries)
@@ -357,7 +357,7 @@ fn token_transfers(response: &Value, address: &str) -> Result<Vec<TronTransfer>,
             from: text("/from")?.to_string(),
             is_incoming: to == address,
             to,
-            amount_display: crate::decimal::from_units(raw, decimals),
+            amount_display: crate::amount::decimal::from_units(raw, decimals),
         });
     }
     Ok(entries)

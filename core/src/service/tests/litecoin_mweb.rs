@@ -1,11 +1,12 @@
 //! What a Litecoin wallet's MWEB funds refuse before any node is read.
 
 use super::*;
+use crate::api::endpoint::EndpointApi;
 use crate::derivation::setup::WalletSetupMethod;
 
 async fn litecoin_wallet(
     service: &crate::service::loopback_service::OpenService,
-    profile: crate::chains::DerivationProfile,
+    profile: crate::catalog::chains::DerivationProfile,
 ) -> String {
     let mut commit =
         crate::derivation::setup::tests::fixture(Chain::Litecoin, WalletSetupMethod::ImportPhrase);
@@ -29,7 +30,7 @@ fn only_mine(chain: Chain) -> StateCommand {
 #[tokio::test]
 async fn a_sync_with_no_litecoin_node_is_refused() {
     let service = crate::service::loopback_service::open().await;
-    let wallet = litecoin_wallet(&service, crate::chains::DerivationProfile::Legacy).await;
+    let wallet = litecoin_wallet(&service, crate::catalog::chains::DerivationProfile::Legacy).await;
     service
         .apply_state_command(only_mine(Chain::Litecoin))
         .await
@@ -52,7 +53,7 @@ async fn a_sync_with_no_litecoin_node_is_refused() {
 #[tokio::test]
 async fn an_unsynced_wallet_holds_no_mweb_funds_and_moves_none() {
     let service = crate::service::loopback_service::open().await;
-    let wallet = litecoin_wallet(&service, crate::chains::DerivationProfile::Legacy).await;
+    let wallet = litecoin_wallet(&service, crate::catalog::chains::DerivationProfile::Legacy).await;
     let status = service.litecoin_mweb_status(wallet.clone()).await.unwrap();
     assert_eq!(
         (
@@ -90,8 +91,12 @@ async fn an_unsynced_wallet_holds_no_mweb_funds_and_moves_none() {
 #[tokio::test]
 async fn a_second_wallet_of_one_phrase_is_refused_its_mweb_funds() {
     let service = crate::service::loopback_service::open().await;
-    let first = litecoin_wallet(&service, crate::chains::DerivationProfile::Legacy).await;
-    let second = litecoin_wallet(&service, crate::chains::DerivationProfile::NativeSegWit).await;
+    let first = litecoin_wallet(&service, crate::catalog::chains::DerivationProfile::Legacy).await;
+    let second = litecoin_wallet(
+        &service,
+        crate::catalog::chains::DerivationProfile::NativeSegWit,
+    )
+    .await;
     // A node that is not there: the first sync claims the keys, then fails
     // to connect.
     let closed = std::net::TcpListener::bind("127.0.0.1:0")
@@ -102,7 +107,7 @@ async fn a_second_wallet_of_one_phrase_is_refused_its_mweb_funds() {
     service
         .use_endpoint(
             Chain::Litecoin,
-            crate::EndpointApi::LitecoinP2p,
+            EndpointApi::LitecoinP2p,
             &[EndpointCapability::History],
             &format!("tcp://127.0.0.1:{closed}"),
         )

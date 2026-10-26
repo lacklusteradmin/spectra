@@ -1,4 +1,5 @@
-# Concrete network identities, operational rules and presentation. Mainnets and testnets are peers.
+# Concrete network identities, operational rules and presentation. Mainnets and testnets are peers;
+# a test network names the mainnet it tests with `mainnet`, and a mainnet writes nothing.
 # Each network declares its supported token protocols; deployments own their actual standard.
 # EVM membership is defined by registry::Chain, not configured here.
 # Native token metadata belongs to tokens.toml (testnet-tokens.toml for testnets);
@@ -14,8 +15,6 @@
 [[chains]]
 id = "bitcoin"
 name = "Bitcoin"
-family = "bitcoin"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "nativeSegWit", path = "m/84'/0'/{account}'/0/0", is_default = true },
@@ -33,8 +32,6 @@ address_prefix_hint = "bc1q…"
 [[chains]]
 id = "ethereum"
 name = "Ethereum"
-family = "ethereum"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -48,8 +45,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "solana"
 name = "Solana"
-family = "solana"
-environment = "mainnet"
 token_standards = ["SPL"]
 derivation_path = [
   { tag = "standard", path = "m/44'/501'/{account}'/0'", is_default = true },
@@ -64,8 +59,6 @@ address_prefix_hint = "So111…"
 [[chains]]
 id = "dogecoin"
 name = "Dogecoin"
-family = "dogecoin"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/3'/{account}'/0/0", is_default = true },
@@ -80,8 +73,6 @@ address_prefix_hint = "D…"
 [[chains]]
 id = "xrp"
 name = "XRP Ledger"
-family = "xrp"
-environment = "mainnet"
 token_standards = ["Trust Line Token"]
 derivation_path = [
   { tag = "standard", path = "m/44'/144'/{account}'/0/0", is_default = true },
@@ -96,8 +87,6 @@ address_prefix_hint = "r…"
 [[chains]]
 id = "litecoin"
 name = "Litecoin"
-family = "litecoin"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "legacy", path = "m/44'/2'/{account}'/0/0", is_default = true },
@@ -114,8 +103,6 @@ address_prefix_hint = "ltc1… / L… / M…"
 [[chains]]
 id = "bitcoin-cash"
 name = "Bitcoin Cash"
-family = "bitcoin-cash"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/145'/{account}'/0/0", is_default = true },
@@ -130,8 +117,6 @@ artwork_name = "bitcoincash"
 [[chains]]
 id = "tron"
 name = "Tron"
-family = "tron"
-environment = "mainnet"
 token_standards = ["TRC-10", "TRC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/195'/{account}'/0/0", is_default = true },
@@ -146,8 +131,6 @@ address_prefix_hint = "T…"
 [[chains]]
 id = "stellar"
 name = "Stellar"
-family = "stellar"
-environment = "mainnet"
 token_standards = ["Stellar Asset"]
 derivation_path = [
   { tag = "standard", path = "m/44'/148'/{account}'", is_default = true },
@@ -162,8 +145,6 @@ address_prefix_hint = "G…"
 [[chains]]
 id = "cardano"
 name = "Cardano"
-family = "cardano"
-environment = "mainnet"
 token_standards = ["Cardano Native Token"]
 derivation_path = [
   { tag = "standard", path = "m/1852'/1815'/{account}'/0/0", is_default = true },
@@ -178,8 +159,6 @@ address_prefix_hint = "addr1…"
 [[chains]]
 id = "polkadot"
 name = "Polkadot"
-family = "polkadot"
-environment = "mainnet"
 token_standards = []
 derivation_path = []
 search_keywords = ["Polkadot", "DOT"]
@@ -192,8 +171,6 @@ address_prefix_hint = "1…"
 [[chains]]
 id = "arbitrum"
 name = "Arbitrum One"
-family = "arbitrum"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -208,8 +185,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "optimism"
 name = "Optimism"
-family = "optimism"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -224,8 +199,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "avalanche"
 name = "Avalanche C"
-family = "avalanche"
-environment = "mainnet"
 token_standards = ["ERC-20", "ARC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -239,8 +212,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "sui"
 name = "Sui"
-family = "sui"
-environment = "mainnet"
 token_standards = ["Sui Coin"]
 derivation_path = [
   { tag = "standard", path = "m/44'/784'/{account}'/0'/0'", is_default = true },
@@ -255,8 +226,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "aptos"
 name = "Aptos"
-family = "aptos"
-environment = "mainnet"
 token_standards = ["Aptos Coin", "AIP-21"]
 derivation_path = [
   { tag = "standard", path = "m/44'/637'/{account}'/0'/0'", is_default = true },
@@ -271,8 +240,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "ton"
 name = "TON"
-family = "ton"
-environment = "mainnet"
 token_standards = ["TEP-74"]
 derivation_path = []
 search_keywords = ["TON", "Gram", "GRAM"]
@@ -284,8 +251,6 @@ address_prefix_hint = "UQ… / EQ…"
 [[chains]]
 id = "near"
 name = "NEAR"
-family = "near"
-environment = "mainnet"
 token_standards = ["NEP-141"]
 derivation_path = [
   { tag = "standard", path = "m/44'/397'/{account}'", is_default = true },
@@ -299,8 +264,6 @@ address_prefix_hint = "alice.near / 64-char hex"
 [[chains]]
 id = "internet-computer"
 name = "Internet Computer"
-family = "internet-computer"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/223'/{account}'/0/0", is_default = true },
@@ -314,8 +277,6 @@ address_prefix_hint = "64-char account identifier"
 [[chains]]
 id = "monero"
 name = "Monero"
-family = "monero"
-environment = "mainnet"
 token_standards = []
 derivation_path = []
 search_keywords = ["Monero", "XMR"]
@@ -328,8 +289,6 @@ address_prefix_hint = "4… / 8…"
 [[chains]]
 id = "base"
 name = "Base"
-family = "base"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -344,8 +303,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "ethereum-classic"
 name = "Ethereum Classic"
-family = "ethereum-classic"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/61'/{account}'/0/0", is_default = true },
@@ -360,8 +317,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "bitcoin-sv"
 name = "Bitcoin SV"
-family = "bitcoin-sv"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/236'/{account}'/0/0", is_default = true },
@@ -375,8 +330,6 @@ artwork_name = "bitcoinsv"
 [[chains]]
 id = "bnb"
 name = "BNB Smart Chain"
-family = "bnb"
-environment = "mainnet"
 token_standards = ["ERC-20", "BEP-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -390,8 +343,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "hyperliquid"
 name = "HyperEVM"
-family = "hyperliquid"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -405,8 +356,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "polygon"
 name = "Polygon PoS"
-family = "polygon"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -420,8 +369,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "linea"
 name = "Linea"
-family = "linea"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -436,8 +383,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "scroll"
 name = "Scroll"
-family = "scroll"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -452,8 +397,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "blast"
 name = "Blast"
-family = "blast"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -468,8 +411,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "mantle"
 name = "Mantle"
-family = "mantle"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -484,8 +425,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "zcash"
 name = "Zcash"
-family = "zcash"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/133'/{account}'/0/0", is_default = true },
@@ -499,8 +438,6 @@ artwork_name = "zcash"
 [[chains]]
 id = "bitcoin-gold"
 name = "Bitcoin Gold"
-family = "bitcoin-gold"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/156'/{account}'/0/0", is_default = true },
@@ -514,8 +451,6 @@ artwork_name = "bitcoingold"
 [[chains]]
 id = "decred"
 name = "Decred"
-family = "decred"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/42'/{account}'/0/0", is_default = true },
@@ -529,8 +464,6 @@ artwork_name = "decred"
 [[chains]]
 id = "kaspa"
 name = "Kaspa"
-family = "kaspa"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/111111'/{account}'/0/0", is_default = true },
@@ -544,8 +477,6 @@ artwork_name = "kaspa"
 [[chains]]
 id = "sei"
 name = "Sei"
-family = "sei"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -559,8 +490,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "celo"
 name = "Celo"
-family = "celo"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -575,8 +504,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "cronos"
 name = "Cronos EVM"
-family = "cronos"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -590,8 +517,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "opbnb"
 name = "opBNB"
-family = "opbnb"
-environment = "mainnet"
 token_standards = ["ERC-20", "BEP-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -606,8 +531,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "zksync-era"
 name = "ZKsync Era"
-family = "zksync-era"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -622,8 +545,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "sonic"
 name = "Sonic"
-family = "sonic"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -637,8 +558,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "berachain"
 name = "Berachain"
-family = "berachain"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -652,8 +571,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "unichain"
 name = "Unichain"
-family = "unichain"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -668,8 +585,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "ink"
 name = "Ink"
-family = "ink"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -684,8 +599,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "dash"
 name = "Dash"
-family = "dash"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/5'/{account}'/0/0", is_default = true },
@@ -699,8 +612,6 @@ artwork_name = "dash"
 [[chains]]
 id = "x-layer"
 name = "X Layer"
-family = "x-layer"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -715,8 +626,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "bittensor"
 name = "Bittensor"
-family = "bittensor"
-environment = "mainnet"
 token_standards = []
 derivation_path = []
 search_keywords = ["Bittensor", "TAO", "subtensor"]
@@ -728,8 +637,6 @@ artwork_name = "bittensor"
 [[chains]]
 id = "plasma"
 name = "Plasma"
-family = "plasma"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -744,8 +651,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "monad"
 name = "Monad"
-family = "monad"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -759,8 +664,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "world-chain"
 name = "World Chain"
-family = "world-chain"
-environment = "mainnet"
 token_standards = ["ERC-20"]
 derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
@@ -775,8 +678,6 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "peercoin"
 name = "Peercoin"
-family = "peercoin"
-environment = "mainnet"
 token_standards = []
 derivation_path = [
   { tag = "legacy", path = "m/44'/6'/{account}'/0/0", is_default = true },
@@ -794,8 +695,7 @@ address_prefix_hint = "P… / p… / pc1q… / pc1p…"
 [[chains]]
 id = "bitcoin-testnet"
 name = "Bitcoin Testnet 3"
-family = "bitcoin"
-environment = "testnet"
+mainnet = "bitcoin"
 faucet = "https://coinfaucet.eu/en/btc-testnet/"
 token_standards = []
 derivation_path = [
@@ -812,8 +712,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "bitcoin-testnet-4"
 name = "Bitcoin Testnet 4"
-family = "bitcoin"
-environment = "testnet"
+mainnet = "bitcoin"
 faucet = "https://coinfaucet.eu/en/btc-testnet4/"
 token_standards = []
 derivation_path = [
@@ -830,8 +729,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "bitcoin-signet"
 name = "Bitcoin Signet"
-family = "bitcoin"
-environment = "testnet"
+mainnet = "bitcoin"
 faucet = "https://alt.signetfaucet.com/"
 token_standards = []
 derivation_path = [
@@ -848,8 +746,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "litecoin-testnet"
 name = "Litecoin Testnet"
-family = "litecoin"
-environment = "testnet"
+mainnet = "litecoin"
 faucet = "https://cypherfaucet.com/ltc-testnet"
 token_standards = []
 derivation_path = [
@@ -865,8 +762,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "bitcoin-cash-testnet"
 name = "Bitcoin Cash Testnet"
-family = "bitcoin-cash"
-environment = "testnet"
+mainnet = "bitcoin-cash"
 faucet = "https://tbch.googol.cash/"
 token_standards = []
 derivation_path = [
@@ -880,8 +776,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "bitcoin-sv-testnet"
 name = "Bitcoin SV Testnet"
-family = "bitcoin-sv"
-environment = "testnet"
+mainnet = "bitcoin-sv"
 faucet = "https://bsvfaucet.com/"
 token_standards = []
 derivation_path = [
@@ -895,8 +790,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "dogecoin-testnet"
 name = "Dogecoin Testnet"
-family = "dogecoin"
-environment = "testnet"
+mainnet = "dogecoin"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
@@ -909,8 +803,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "zcash-testnet"
 name = "Zcash Testnet"
-family = "zcash"
-environment = "testnet"
+mainnet = "zcash"
 faucet = "https://faucet.testnet.valargroup.dev/"
 token_standards = []
 derivation_path = [
@@ -924,8 +817,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "decred-testnet"
 name = "Decred Testnet 3"
-family = "decred"
-environment = "testnet"
+mainnet = "decred"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/1'/{account}'/0/0", is_default = true },
@@ -938,8 +830,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "kaspa-testnet"
 name = "Kaspa Testnet 10"
-family = "kaspa"
-environment = "testnet"
+mainnet = "kaspa"
 token_standards = []
 derivation_path = [
   { tag = "standard", path = "m/44'/111111'/{account}'/0/0", is_default = true },
@@ -952,8 +843,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "dash-testnet"
 name = "Dash Testnet"
-family = "dash"
-environment = "testnet"
+mainnet = "dash"
 faucet = "https://faucet.testnet.networks.dash.org/"
 token_standards = []
 derivation_path = [
@@ -967,8 +857,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "peercoin-testnet"
 name = "Peercoin Testnet"
-family = "peercoin"
-environment = "testnet"
+mainnet = "peercoin"
 faucet = "https://faucet.peercoinexplorer.net/"
 token_standards = []
 derivation_path = [
@@ -985,8 +874,7 @@ address_prefix_hint = "m… / n… / 2… / tpc1q… / tpc1p…"
 [[chains]]
 id = "ethereum-sepolia"
 name = "Ethereum Sepolia"
-family = "ethereum"
-environment = "testnet"
+mainnet = "ethereum"
 faucet = "https://sepolia-faucet.pk910.de/"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1000,8 +888,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "ethereum-hoodi"
 name = "Ethereum Hoodi"
-family = "ethereum"
-environment = "testnet"
+mainnet = "ethereum"
 faucet = "https://hoodi-faucet.pk910.de/"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1015,8 +902,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "arbitrum-sepolia"
 name = "Arbitrum Sepolia"
-family = "arbitrum"
-environment = "testnet"
+mainnet = "arbitrum"
 faucet = "https://www.alchemy.com/faucets/arbitrum-sepolia"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1030,8 +916,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "optimism-sepolia"
 name = "Optimism Sepolia"
-family = "optimism"
-environment = "testnet"
+mainnet = "optimism"
 faucet = "https://console.optimism.io/faucet"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1045,8 +930,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "base-sepolia"
 name = "Base Sepolia"
-family = "base"
-environment = "testnet"
+mainnet = "base"
 faucet = "https://portal.cdp.coinbase.com/products/faucet"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1060,8 +944,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "bnb-testnet"
 name = "BNB Smart Chain Testnet"
-family = "bnb"
-environment = "testnet"
+mainnet = "bnb"
 faucet = "https://www.bnbchain.org/en/testnet-faucet"
 token_standards = ["ERC-20", "BEP-20"]
 derivation_path = [
@@ -1075,8 +958,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "avalanche-fuji"
 name = "Avalanche Fuji C"
-family = "avalanche"
-environment = "testnet"
+mainnet = "avalanche"
 faucet = "https://core.app/tools/testnet-faucet/?subnet=c&token=c"
 token_standards = ["ERC-20", "ARC-20"]
 derivation_path = [
@@ -1090,8 +972,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "polygon-amoy"
 name = "Polygon Amoy"
-family = "polygon"
-environment = "testnet"
+mainnet = "polygon"
 faucet = "https://www.alchemy.com/faucets/polygon-amoy"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1105,8 +986,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "hyperliquid-testnet"
 name = "HyperEVM Testnet"
-family = "hyperliquid"
-environment = "testnet"
+mainnet = "hyperliquid"
 faucet = "https://faucet.quicknode.com/hyperliquid/testnet"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1120,8 +1000,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "linea-sepolia"
 name = "Linea Sepolia"
-family = "linea"
-environment = "testnet"
+mainnet = "linea"
 faucet = "https://ethfaucet.com/networks/linea"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1135,8 +1014,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "celo-sepolia"
 name = "Celo Sepolia"
-family = "celo"
-environment = "testnet"
+mainnet = "celo"
 faucet = "https://faucet.celo.org/celo-sepolia"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1150,8 +1028,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "cronos-testnet"
 name = "Cronos EVM Testnet"
-family = "cronos"
-environment = "testnet"
+mainnet = "cronos"
 faucet = "https://faucet.cronos.com/"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1165,8 +1042,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "zksync-era-sepolia"
 name = "ZKsync Era Sepolia"
-family = "zksync-era"
-environment = "testnet"
+mainnet = "zksync-era"
 faucet = "https://www.alchemy.com/faucets/zksync-sepolia"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1180,8 +1056,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "sonic-testnet"
 name = "Sonic Testnet"
-family = "sonic"
-environment = "testnet"
+mainnet = "sonic"
 faucet = "https://testnet.soniclabs.com/account"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1195,8 +1070,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "ink-sepolia"
 name = "Ink Sepolia"
-family = "ink"
-environment = "testnet"
+mainnet = "ink"
 faucet = "https://console.optimism.io/faucet"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1210,8 +1084,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "x-layer-testnet"
 name = "X Layer Testnet"
-family = "x-layer"
-environment = "testnet"
+mainnet = "x-layer"
 faucet = "https://web3.okx.com/xlayer/faucet"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1225,8 +1098,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "ethereum-classic-mordor"
 name = "Ethereum Classic Mordor"
-family = "ethereum-classic"
-environment = "testnet"
+mainnet = "ethereum-classic"
 faucet = "https://faucet.etcmc-monitor.org/"
 token_standards = ["ERC-20"]
 derivation_path = [
@@ -1240,8 +1112,7 @@ address_prefix_hint = "0x…"
 [[chains]]
 id = "tron-nile"
 name = "Tron Nile"
-family = "tron"
-environment = "testnet"
+mainnet = "tron"
 faucet = "https://nileex.io/join/getJoinPage"
 token_standards = ["TRC-10", "TRC-20"]
 derivation_path = [
@@ -1255,8 +1126,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "solana-devnet"
 name = "Solana Devnet"
-family = "solana"
-environment = "testnet"
+mainnet = "solana"
 faucet = "https://faucet.solana.com/"
 token_standards = ["SPL"]
 derivation_path = [
@@ -1271,8 +1141,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "xrp-testnet"
 name = "XRP Ledger Testnet"
-family = "xrp"
-environment = "testnet"
+mainnet = "xrp"
 faucet = "https://xrpl.org/resources/dev-tools/xrp-faucets"
 token_standards = ["Trust Line Token"]
 derivation_path = [
@@ -1286,8 +1155,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "stellar-testnet"
 name = "Stellar Testnet"
-family = "stellar"
-environment = "testnet"
+mainnet = "stellar"
 faucet = "https://lab.stellar.org/account/fund"
 token_standards = ["Stellar Asset"]
 derivation_path = [
@@ -1301,8 +1169,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "cardano-preprod"
 name = "Cardano Preprod"
-family = "cardano"
-environment = "testnet"
+mainnet = "cardano"
 faucet = "https://docs.cardano.org/cardano-testnets/tools/faucet"
 token_standards = ["Cardano Native Token"]
 derivation_path = [
@@ -1316,8 +1183,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "sui-testnet"
 name = "Sui Testnet"
-family = "sui"
-environment = "testnet"
+mainnet = "sui"
 faucet = "https://faucet.sui.io/?network=testnet"
 token_standards = ["Sui Coin"]
 derivation_path = [
@@ -1331,8 +1197,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "aptos-testnet"
 name = "Aptos Testnet"
-family = "aptos"
-environment = "testnet"
+mainnet = "aptos"
 faucet = "https://aptos.dev/network/faucet"
 token_standards = ["Aptos Coin", "AIP-21"]
 derivation_path = [
@@ -1346,8 +1211,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "ton-testnet"
 name = "TON Testnet"
-family = "ton"
-environment = "testnet"
+mainnet = "ton"
 faucet = "https://t.me/testgiver_ton_bot"
 token_standards = ["TEP-74"]
 derivation_path = []
@@ -1359,8 +1223,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "near-testnet"
 name = "NEAR Testnet"
-family = "near"
-environment = "testnet"
+mainnet = "near"
 faucet = "https://docs.near.org/getting-started/faucet"
 token_standards = ["NEP-141"]
 derivation_path = [
@@ -1374,8 +1237,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "polkadot-westend"
 name = "Polkadot Westend"
-family = "polkadot"
-environment = "testnet"
+mainnet = "polkadot"
 faucet = "https://faucet.polkadot.io/westend?parachain=1000"
 token_standards = []
 derivation_path = []
@@ -1387,8 +1249,7 @@ address_prefix_hint = ""
 [[chains]]
 id = "monero-stagenet"
 name = "Monero Stagenet"
-family = "monero"
-environment = "testnet"
+mainnet = "monero"
 faucet = "https://cypherfaucet.com/xmr-stagenet"
 token_standards = []
 derivation_path = []

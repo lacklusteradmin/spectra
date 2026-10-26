@@ -26,7 +26,7 @@ LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
 
 # A literal that spells a chain word and means something else, with why.
 ALLOWED = {
-    ('swift/StaticContentCatalog.swift', 'Base'): "Xcode's base localization, not the Base chain",
+    ('swift/app/Models/StaticContentCatalog.swift', 'Base'): "Xcode's base localization, not the Base chain",
 }
 FIXED = re.compile(r'%\.\d+f(?!%%)')
 
