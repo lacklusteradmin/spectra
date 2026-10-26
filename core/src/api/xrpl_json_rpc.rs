@@ -211,13 +211,37 @@ impl XrplClient {
     }
 }
 
+/// `lsfDisableMaster`: the account's master key no longer signs.
+pub(crate) const LSF_DISABLE_MASTER: u32 = 0x0010_0000;
+/// The most entries a signer list holds.
+pub(crate) const MAX_SIGNERS: usize = 32;
+
+/// An account's signer list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct XrpSignerList {
+    pub quorum: u64,
+    /// `(classic address, weight)`, as the ledger lists them.
+    pub entries: Vec<(String, u64)>,
+}
+
+impl XrpSignerList {
+    pub(crate) fn weight_of(&self, address: &str) -> u64 {
+        self.entries
+            .iter()
+            .filter(|(entry, _)| entry == address)
+            .map(|(_, weight)| *weight)
+            .sum()
+    }
+}
+
 /// What an account's policy read finds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct XrpAccountPolicy {
     pub exists: bool,
     pub master_disabled: bool,
     pub regular_key: Option<String>,
-    pub signer_list: Option<crate::send::xrp_multisig::XrpSignerList>,
+    pub signer_list: Option<XrpSignerList>,
     /// The account's next sequence and its balance, when the node gave them
     /// as numbers in range.
     pub sequence: Option<u32>,
@@ -307,19 +331,19 @@ pub(crate) fn account_policy(
                 .filter(|quorum| *quorum > 0)
                 .or_decode("signer list: missing quorum")?;
             if entries.is_empty()
-                || entries.len() > crate::send::xrp_multisig::MAX_SIGNERS
+                || entries.len() > MAX_SIGNERS
                 || entries.iter().map(|(_, weight)| weight).sum::<u64>() < quorum
             {
                 return Err(ApiError::decode("signer list cannot meet its quorum"));
             }
-            Some(crate::send::xrp_multisig::XrpSignerList { quorum, entries })
+            Some(XrpSignerList { quorum, entries })
         }
         _ => return Err(ApiError::decode("account_info: more than one signer list")),
     };
     let flags = data.get("Flags").and_then(Value::as_u64).unwrap_or(0) as u32;
     Ok(XrpAccountPolicy {
         exists: true,
-        master_disabled: flags & crate::send::xrp_multisig::LSF_DISABLE_MASTER != 0,
+        master_disabled: flags & LSF_DISABLE_MASTER != 0,
         regular_key: data
             .get("RegularKey")
             .and_then(Value::as_str)

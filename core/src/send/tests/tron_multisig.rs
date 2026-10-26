@@ -2,7 +2,7 @@
 //! (`tron-multisig.json`, from tests/generate-tron-multisig-vectors.cjs).
 
 use super::*;
-use crate::api::tron_http::BlockReference;
+use crate::api::tron_http::{BlockReference, TronPermissions};
 
 fn fixture() -> serde_json::Value {
     serde_json::from_str(include_str!("../../../tests/fixtures/tron-multisig.json")).unwrap()

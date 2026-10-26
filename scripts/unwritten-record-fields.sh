@@ -18,18 +18,17 @@ cd "$(dirname "$0")/.."
 mir="$PWD/target/mir"
 mkdir -p "$mir"
 
-# Extra rustc arguments apply to the named target only; dependencies reuse
-# the ordinary debug build.
+# Its own profile, so the dev build stays fresh for the tests and the CLI;
+# the wrapper adds the MIR to core's library and the CLI's binary alone.
 emit() {
-    local package=$1 target=$2 output=$3
-    cargo rustc --quiet -p "$package" $target -- --emit=mir="$output"
-    if [[ ! -f $output ]]; then
-        # Cargo found the target fresh, so rustc did not run and could not
-        # replace MIR that was deleted. Only a rebuild writes it again.
-        cargo clean --quiet -p "$package"
-        cargo rustc --quiet -p "$package" $target -- --emit=mir="$output"
-    fi
+    SPECTRA_MIR_DIR="$mir" RUSTC_WORKSPACE_WRAPPER="$PWD/scripts/emit-mir.sh" \
+        cargo build --quiet --profile mir-scan -p spectra_cli --bin spectra
 }
-emit spectra_core --lib "$mir/core.mir"
-emit spectra_cli '--bin spectra' "$mir/cli.mir"
+emit
+if [[ ! -f $mir/core.mir || ! -f $mir/cli.mir ]]; then
+    # Cargo found the crates fresh, so rustc did not run and could not
+    # replace MIR that was deleted. Only a rebuild writes it again.
+    cargo clean --quiet --profile mir-scan -p spectra_core -p spectra_cli
+    emit
+fi
 python3 -B scripts/record_writers.py "$mir/core.mir" "$mir/cli.mir"

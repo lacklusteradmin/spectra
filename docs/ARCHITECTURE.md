@@ -286,7 +286,10 @@ panic when broken, since a broken embedded file is a build defect.
   `sui_multisig.rs`, `aptos_multikey.rs`, `cardano_multisig.rs`,
   `substrate_multisig.rs`, `ton_multisig.rs`); a policy the network keeps is
   read in `api/` (`evm_safe.rs`, `tron_http.rs`, `xrpl_json_rpc.rs`,
-  `horizon.rs`, `substrate_json_rpc/multisig.rs`, `toncenter_v2.rs`).
+  `horizon.rs`, `substrate_json_rpc/multisig.rs`, `toncenter_v2.rs`), which
+  defines the read model it returns (`SafeState`, `TronPermissions`,
+  `XrpSignerList`, `StellarSigners`); `send` builds against it, never the
+  other way round.
   `service/multisig.rs` owns the records, the `multisig_sessions` table and
   the dispatch; each scheme's rules are in its `service/multisig_<scheme>.rs`
   sibling, which reads the network again before a signature or a

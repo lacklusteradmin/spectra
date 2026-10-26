@@ -18,7 +18,7 @@ when tests finish. The environment must allow binding local ports.
 
 | File | Purpose |
 |---|---|
-| `cli-acceptance.sh` | Main entry point: builds or uses the supplied `spectra` binary, checks what only the binary shows (state across processes, the SQLite store and sealed secret files, exit codes, confirmation gates, the loopback network guard), then runs the Python suites below except `cli-monero-regtest.py`. Rules themselves are tested in core. |
+| `cli-acceptance.sh` | Main entry point: builds or uses the supplied `spectra` binary, checks what only the binary shows (state across processes, the SQLite store and sealed secret files, exit codes, confirmation gates, the loopback network guard), then reports the Python suites below except `cli-monero-regtest.py`, which it starts together at the outset since each owns its data directory and loopback nodes. Rules themselves are tested in core. |
 | `cli-send.py` | A password-protected owned send: `send owned-broadcast` is refused without `--yes`; with it and the password from the environment it broadcasts exactly once. |
 | `cli-endpoints.py` | The listing's built-in/custom source filter and the health verdict the CLI aggregates (networks without APIs, unreachable endpoints) against a loopback Blockbook node. |
 | `cli-send-stages.py` | An EVM send built, signed and broadcast in separate processes: nothing submitted before `broadcast-signed --yes`, an identical retry, and two processes racing to sign at one nonce, one refused as reserved. |

@@ -15,9 +15,9 @@
 //! the JSON that came with them.
 
 use secp256k1::{Message, Secp256k1, SecretKey};
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::api::tron_http::TronPermission;
 use crate::send::error::SendError;
 use crate::send::tron::{PreparedTronTransfer, RawReference, Transfer};
 
@@ -28,143 +28,6 @@ pub(crate) const TRIGGER_SMART_CONTRACT: u64 = 31;
 /// The longest a Tron transaction may wait between its timestamp and its
 /// expiration: java-tron refuses one that expires more than a day later.
 pub(crate) const MAX_LIFETIME_MS: u64 = 24 * 60 * 60 * 1000;
-/// The keys one permission may name.
-const MAX_KEYS: usize = 5;
-
-/// One key of a permission.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TronKey {
-    /// Base58, `T…`.
-    pub address: String,
-    pub weight: u64,
-}
-
-/// One of an account's permissions.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TronPermission {
-    /// 0 for the owner's, 2 and up for an active one.
-    pub id: u8,
-    pub name: String,
-    pub threshold: u64,
-    /// The contract types an active permission covers, as java-tron's
-    /// 32-byte bit set: type `n` is bit `n % 8` of byte `n / 8`. `None` for
-    /// the owner's, which covers every contract.
-    pub operations: Option<String>,
-    pub keys: Vec<TronKey>,
-}
-
-impl TronPermission {
-    /// Whether the permission authorizes a contract of `contract_type`.
-    pub(crate) fn covers(&self, contract_type: u64) -> bool {
-        let Some(operations) = &self.operations else {
-            return true;
-        };
-        let Ok(bits) = hex::decode(operations) else {
-            return false;
-        };
-        bits.get(contract_type as usize / 8)
-            .is_some_and(|byte| byte & (1 << (contract_type % 8)) != 0)
-    }
-
-    /// The weight `address` carries here, 0 when it is none of the keys.
-    pub(crate) fn weight_of(&self, address: &str) -> u64 {
-        self.keys
-            .iter()
-            .filter(|key| key.address == address)
-            .map(|key| key.weight)
-            .sum()
-    }
-
-    fn check(&self) -> Result<(), SendError> {
-        let total: u64 = self.keys.iter().map(|key| key.weight).sum();
-        if self.keys.is_empty()
-            || self.keys.len() > MAX_KEYS
-            || self.threshold == 0
-            || total < self.threshold
-        {
-            return Err(SendError::invalid(
-                "The account reports a permission its keys cannot meet.",
-            ));
-        }
-        Ok(())
-    }
-}
-
-/// An account's owner and active permissions, as `wallet/getaccount`
-/// reports them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct TronPermissions {
-    pub owner: TronPermission,
-    pub actives: Vec<TronPermission>,
-}
-
-impl TronPermissions {
-    /// An account that never changed its permissions: its own key alone,
-    /// under the owner's and the default active permission alike. What an
-    /// account not yet on the network has.
-    pub(crate) fn single(address: &str) -> Self {
-        let key = vec![TronKey {
-            address: address.to_string(),
-            weight: 1,
-        }];
-        Self {
-            owner: TronPermission {
-                id: 0,
-                name: "owner".into(),
-                threshold: 1,
-                operations: None,
-                keys: key.clone(),
-            },
-            actives: Vec::new(),
-        }
-    }
-
-    pub(crate) fn checked(self) -> Result<Self, SendError> {
-        self.owner.check()?;
-        for active in &self.actives {
-            active.check()?;
-            if active.id < 2 {
-                return Err(SendError::invalid(
-                    "The account reports an active permission with an owner's id.",
-                ));
-            }
-        }
-        Ok(self)
-    }
-
-    pub(crate) fn all(&self) -> impl Iterator<Item = &TronPermission> {
-        std::iter::once(&self.owner).chain(&self.actives)
-    }
-
-    pub(crate) fn by_id(&self, id: u8) -> Option<&TronPermission> {
-        self.all().find(|permission| permission.id == id)
-    }
-
-    /// The permission `address`'s key alone signs `contract_type` under:
-    /// the owner's where its weight meets that threshold, else the first
-    /// active permission covering the contract that it meets alone.
-    pub(crate) fn alone(&self, address: &str, contract_type: u64) -> Option<u8> {
-        self.all()
-            .find(|permission| {
-                permission.covers(contract_type)
-                    && permission.weight_of(address) >= permission.threshold
-            })
-            .map(|permission| permission.id)
-    }
-
-    /// The permission a spend of `contract_type` gathers signatures under:
-    /// the first active permission that covers it, else the owner's.
-    pub(crate) fn for_contract(&self, contract_type: u64) -> &TronPermission {
-        self.actives
-            .iter()
-            .find(|permission| permission.covers(contract_type))
-            .unwrap_or(&self.owner)
-    }
-}
-
 /// What a transaction pays, decoded from its contract.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TronPayment {

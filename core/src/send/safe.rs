@@ -18,10 +18,9 @@
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 
+use crate::api::evm_safe::{EvmAddress, SafeState, is_official_proxy};
 use crate::derivation::evm::keccak256;
 use crate::send::error::SendError;
-
-pub(crate) type EvmAddress = [u8; 20];
 
 /// The Safe versions accepted, each with its singletons: `Safe` and
 /// `SafeL2`, at every address `safe-deployments` 1.37.63 lists for them
@@ -39,17 +38,6 @@ const SINGLETONS: [(&str, &str); 10] = [
     ("1.4.1", "c35f063962328ac65ced5d4c3fc5def8dec68dfa"),
     ("1.4.1", "29fcb43b46531bca003ddc8fcb67ffe91900c762"),
     ("1.4.1", "610fca2e0279fa1f8c00c8c2f71df522ad469380"),
-];
-
-/// The runtime code of the proxies the 1.3.0 and 1.4.1 factories deploy,
-/// by hash: Keccak-256 of the code on an EVM network, and zkSync's own
-/// bytecode hash (`SafeProxy` as protocol-kit 6.1.2 lists it) on zkSync
-/// Era. A proxy from an older factory, upgraded or not, is none of these.
-const PROXY_CODE_HASHES: [&str; 4] = [
-    "b89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",
-    "d7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
-    "0100004124426fb9ebb25e27d670c068e52f9ba631bd383279a188be47e3f86d",
-    "0100003b6cfa15bd7d1cae1c9c022074524d7785d34859ad0576d8fab4305d4f",
 ];
 
 /// `keccak256("EIP712Domain(uint256 chainId,address verifyingContract)")`,
@@ -72,48 +60,6 @@ pub(crate) fn official_singleton(singleton: &EvmAddress) -> Option<&'static str>
         .map(|(version, _)| *version)
 }
 
-/// zkSync's hash of a contract's bytecode: SHA-256 with its first four
-/// bytes replaced by the version (1), a zero and the length in 32-byte
-/// words.
-fn zksync_bytecode_hash(code: &[u8]) -> Option<[u8; 32]> {
-    use sha2::Digest;
-    if code.is_empty() || !code.len().is_multiple_of(32) {
-        return None;
-    }
-    let words = u16::try_from(code.len() / 32).ok()?;
-    let mut hash: [u8; 32] = sha2::Sha256::digest(code).into();
-    hash[0] = 1;
-    hash[1] = 0;
-    hash[2..4].copy_from_slice(&words.to_be_bytes());
-    Some(hash)
-}
-
-/// Whether `code` is one of the official proxies' runtime code.
-pub(crate) fn is_official_proxy(code: &[u8]) -> bool {
-    let keccak = hex::encode(keccak256(code));
-    let zksync = zksync_bytecode_hash(code).map(hex::encode);
-    PROXY_CODE_HASHES
-        .iter()
-        .any(|hash| *hash == keccak || zksync.as_deref() == Some(*hash))
-}
-
-/// What a Safe's proxy and singleton say about it, as `api::evm_safe`
-/// reads it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct SafeState {
-    pub code: Vec<u8>,
-    pub singleton: EvmAddress,
-    pub version: String,
-    pub owners: Vec<EvmAddress>,
-    pub threshold: u64,
-    pub nonce: u64,
-    pub modules: Vec<EvmAddress>,
-    /// More modules are enabled than one page lists.
-    pub more_modules: bool,
-    pub guard: Option<EvmAddress>,
-    pub balance_wei: u128,
-}
-
 /// The policy a Safe enforces, once its proxy and singleton are official.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,67 +70,65 @@ pub(crate) struct SafePolicy {
     pub threshold: u64,
 }
 
-impl SafeState {
-    /// The Safe's policy, refused unless the account is an official proxy
-    /// delegating to an official singleton of a supported version, which
-    /// reports that version and a threshold its owners can meet.
-    pub(crate) fn policy(&self) -> Result<SafePolicy, SendError> {
-        if self.code.is_empty() {
-            return Err(SendError::invalid(
-                "This address holds no contract: it is not a Safe.",
-            ));
-        }
-        if !is_official_proxy(&self.code) {
-            return Err(SendError::invalid(
-                "This contract is not an official Safe proxy of version 1.3.0 or 1.4.1.",
-            ));
-        }
-        let version = official_singleton(&self.singleton).ok_or_else(|| {
-            SendError::invalid(
-                "This Safe runs a singleton that is not an official Safe 1.3.0 or 1.4.1 deployment.",
-            )
-        })?;
-        if self.version != version {
-            return Err(SendError::invalid(
-                "The Safe reports another version than its singleton's.",
-            ));
-        }
-        if self.threshold == 0 || self.threshold > self.owners.len() as u64 {
-            return Err(SendError::invalid(
-                "The Safe's threshold is not one its owners can meet.",
-            ));
-        }
-        Ok(SafePolicy {
-            version: version.to_string(),
-            owners: self.owners.iter().map(address_text).collect(),
-            threshold: self.threshold,
-        })
+/// The Safe's policy, refused unless the account is an official proxy
+/// delegating to an official singleton of a supported version, which
+/// reports that version and a threshold its owners can meet.
+pub(crate) fn policy(state: &SafeState) -> Result<SafePolicy, SendError> {
+    if state.code.is_empty() {
+        return Err(SendError::invalid(
+            "This address holds no contract: it is not a Safe.",
+        ));
     }
+    if !is_official_proxy(&state.code) {
+        return Err(SendError::invalid(
+            "This contract is not an official Safe proxy of version 1.3.0 or 1.4.1.",
+        ));
+    }
+    let version = official_singleton(&state.singleton).ok_or_else(|| {
+        SendError::invalid(
+            "This Safe runs a singleton that is not an official Safe 1.3.0 or 1.4.1 deployment.",
+        )
+    })?;
+    if state.version != version {
+        return Err(SendError::invalid(
+            "The Safe reports another version than its singleton's.",
+        ));
+    }
+    if state.threshold == 0 || state.threshold > state.owners.len() as u64 {
+        return Err(SendError::invalid(
+            "The Safe's threshold is not one its owners can meet.",
+        ));
+    }
+    Ok(SafePolicy {
+        version: version.to_string(),
+        owners: state.owners.iter().map(address_text).collect(),
+        threshold: state.threshold,
+    })
+}
 
-    /// What can move or block the Safe's funds beside its owners: each
-    /// enabled module and a guard.
-    pub(crate) fn warnings(&self) -> Vec<crate::error::LocalizableMessage> {
-        let mut warnings: Vec<crate::error::LocalizableMessage> = self
-            .modules
-            .iter()
-            .map(|module| {
-                crate::error::LocalizableMessage::new(
-                    "Module %@ can move this Safe's funds without its owners' signatures.",
-                    [address_text(module)],
-                )
-            })
-            .collect();
-        if self.more_modules {
-            warnings.push("More modules are enabled than were read.".into());
-        }
-        if let Some(guard) = self.guard {
-            warnings.push(crate::error::LocalizableMessage::new(
-                "Guard %@ checks every transaction and can block it.",
-                [address_text(&guard)],
-            ));
-        }
-        warnings
+/// What can move or block the Safe's funds beside its owners: each
+/// enabled module and a guard.
+pub(crate) fn warnings(state: &SafeState) -> Vec<crate::error::LocalizableMessage> {
+    let mut warnings: Vec<crate::error::LocalizableMessage> = state
+        .modules
+        .iter()
+        .map(|module| {
+            crate::error::LocalizableMessage::new(
+                "Module %@ can move this Safe's funds without its owners' signatures.",
+                [address_text(module)],
+            )
+        })
+        .collect();
+    if state.more_modules {
+        warnings.push("More modules are enabled than were read.".into());
     }
+    if let Some(guard) = state.guard {
+        warnings.push(crate::error::LocalizableMessage::new(
+            "Guard %@ checks every transaction and can block it.",
+            [address_text(&guard)],
+        ));
+    }
+    warnings
 }
 
 pub(crate) fn address_text(address: &EvmAddress) -> String {

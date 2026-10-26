@@ -5,6 +5,12 @@ use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+/// The SPL Token and Token-2022 programs, which own token accounts.
+pub(crate) const TOKEN_PROGRAMS: [&str; 2] = [
+    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+];
+
 use crate::api::endpoint::EndpointApi;
 use crate::api::http::HttpClient;
 
@@ -348,7 +354,7 @@ impl SolanaClient {
         owner: &str,
     ) -> Result<Vec<SolanaTokenAccount>, ApiError> {
         let mut out = Vec::new();
-        for program in crate::send::solana::TOKEN_PROGRAMS {
+        for program in TOKEN_PROGRAMS {
             let value = self
                 .call(
                     "getTokenAccountsByOwner",
@@ -1153,7 +1159,7 @@ fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, A
     let owner = account["owner"]
         .as_str()
         .or_decode("SPL mint: missing owner")?;
-    if !crate::send::solana::TOKEN_PROGRAMS.contains(&owner) {
+    if !TOKEN_PROGRAMS.contains(&owner) {
         return Err(ApiError::InvalidInput(
             "SPL mint: unsupported owner program".into(),
         ));

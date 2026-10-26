@@ -100,7 +100,8 @@ impl WalletService {
                             Some(&account.mint),
                         )
                         .0,
-                        token_2022: account.program == crate::send::solana::TOKEN_PROGRAMS[1],
+                        token_2022: account.program
+                            == crate::api::solana_json_rpc::TOKEN_PROGRAMS[1],
                         rent: crate::amount::decimal::from_units(
                             u128::from(account.lamports),
                             decimals,
@@ -268,7 +269,7 @@ mod tests {
     fn empty() -> SolanaTokenAccount {
         SolanaTokenAccount {
             address: "29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2".into(),
-            program: crate::send::solana::TOKEN_PROGRAMS[1].into(),
+            program: crate::api::solana_json_rpc::TOKEN_PROGRAMS[1].into(),
             mint: "3JF3sEqM796hk5WFqA6EtmEwJQ9quALszsfJyvXNQKy3".into(),
             owner: OWNER.into(),
             amount: 0,
@@ -422,7 +423,7 @@ mod tests {
 
     fn held(owner: &str) -> Vec<(&'static str, serde_json::Value)> {
         use serde_json::json;
-        let [spl, token_2022] = crate::send::solana::TOKEN_PROGRAMS;
+        let [spl, token_2022] = crate::api::solana_json_rpc::TOKEN_PROGRAMS;
         vec![
             (spl, parsed(0x11, owner, 0, 2_039_280, json!({}))),
             (spl, parsed(0x44, owner, 7, 2_039_280, json!({}))),

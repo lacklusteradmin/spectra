@@ -11,6 +11,23 @@ resolver = "3"
 [profile.dev.package."*"]
 opt-level = 3
 
+# Line tables, not full debug info: a panic's backtrace still names its file
+# and line, while full variable info doubled core's compile time and grew the
+# iOS static library to 1.8 GB, which every app link and simulator install
+# then carried. A debugger session that needs locals can build with
+# CARGO_PROFILE_DEV_DEBUG=true.
+[profile.dev]
+debug = "line-tables-only"
+
+# The MIR scan's build (scripts/unwritten-record-fields.sh), kept apart so
+# that emitting MIR never invalidates the dev build the tests and the CLI
+# use. MIR carries no debug info, and the binary is never run, so nothing
+# is stripped from it either.
+[profile.mir-scan]
+inherits = "dev"
+debug = false
+strip = false
+
 [profile.release]
 lto = true
 codegen-units = 1
