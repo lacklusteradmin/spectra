@@ -290,10 +290,45 @@ pub(crate) struct HorizonPaymentRecord {
     pub(crate) transaction_hash: String,
 }
 
+/// The most signers an account holds beside its master key.
+pub(crate) const MAX_SIGNERS: usize = 20;
+
+/// An account's signers and thresholds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct StellarSigners {
+    /// `(G… key, weight)` for every ed25519 signer, the master key among
+    /// them while its weight is above zero.
+    pub keys: Vec<(String, u64)>,
+    /// Signers that are not keys (a hash or a pre-authorized transaction),
+    /// by their Horizon key, with their weights: they count, but nothing
+    /// here signs as them.
+    pub other: Vec<(String, u64)>,
+    pub low: u64,
+    pub medium: u64,
+    pub high: u64,
+}
+
+impl StellarSigners {
+    pub(crate) fn weight_of(&self, address: &str) -> u64 {
+        self.keys
+            .iter()
+            .filter(|(key, _)| key == address)
+            .map(|(_, weight)| *weight)
+            .sum()
+    }
+
+    /// The weight a payment needs: the medium threshold, and at least one
+    /// signature's.
+    pub(crate) fn payment_threshold(&self) -> u64 {
+        self.medium.max(1)
+    }
+}
+
 /// What an account's signers read finds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StellarAccountSigners {
-    pub signers: crate::send::stellar_multisig::StellarSigners,
+    pub signers: StellarSigners,
     pub sequence: i64,
 }
 
@@ -354,13 +389,13 @@ pub(crate) fn account_signers(
             }
         }
     }
-    if keys.len() + other.len() > crate::send::stellar_multisig::MAX_SIGNERS + 1 {
+    if keys.len() + other.len() > MAX_SIGNERS + 1 {
         return Err(ApiError::decode(
             "account: more signers than an account holds",
         ));
     }
     Ok(StellarAccountSigners {
-        signers: crate::send::stellar_multisig::StellarSigners {
+        signers: StellarSigners {
             keys,
             other,
             low: threshold("low_threshold")?,

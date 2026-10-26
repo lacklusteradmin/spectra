@@ -61,7 +61,18 @@ cp "${CARGO_TARGET_DIR}/${TARGET}/${PROFILE}/libspectra_core.a" "${OUT}/libspect
 
 # The generator is always optimized: its profile cannot change the output, and
 # an optimized build generates faster on every Xcode build.
-mkdir -p "${BINDINGS_DIR}"
+#
+# It writes into a scratch directory, and a binding replaces the one in
+# swift/generated/ only when its text changed. Every Swift file depends on
+# spectra_core.swift, so a new modification time alone recompiles the whole
+# app, and most core edits leave the FFI surface as it was.
+GENERATED="${RUST_BUILD_ROOT}/bindings"
+rm -rf "${GENERATED}"
+mkdir -p "${GENERATED}" "${BINDINGS_DIR}"
 cargo run --release --manifest-path "${REPO_ROOT}/tools/uniffi-bindgen/Cargo.toml" \
-  -- generate --language swift --library "${OUT}/libspectra_core.a" --out-dir "${BINDINGS_DIR}"
-cp "${BINDINGS_DIR}/spectra_coreFFI.modulemap" "${BINDINGS_DIR}/module.modulemap"
+  -- generate --language swift --library "${OUT}/libspectra_core.a" --out-dir "${GENERATED}"
+cp "${GENERATED}/spectra_coreFFI.modulemap" "${GENERATED}/module.modulemap"
+for generated in "${GENERATED}"/*; do
+  binding="${BINDINGS_DIR}/$(basename "${generated}")"
+  cmp -s "${generated}" "${binding}" || cp "${generated}" "${binding}"
+done

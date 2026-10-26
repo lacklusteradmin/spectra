@@ -8,7 +8,61 @@ use serde_json::{Value, json};
 
 use crate::api::error::ApiError;
 use crate::api::evm_json_rpc::{EvmClient, decode_hex, parse_hex_u128};
-use crate::send::safe::{EvmAddress, SafeState};
+use crate::derivation::evm::keccak256;
+
+pub(crate) type EvmAddress = [u8; 20];
+
+/// The runtime code of the proxies the 1.3.0 and 1.4.1 factories deploy,
+/// by hash: Keccak-256 of the code on an EVM network, and zkSync's own
+/// bytecode hash (`SafeProxy` as protocol-kit 6.1.2 lists it) on zkSync
+/// Era. A proxy from an older factory, upgraded or not, is none of these.
+const PROXY_CODE_HASHES: [&str; 4] = [
+    "b89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",
+    "d7d408ebcd99b2b70be43e20253d6d92a8ea8fab29bd3be7f55b10032331fb4c",
+    "0100004124426fb9ebb25e27d670c068e52f9ba631bd383279a188be47e3f86d",
+    "0100003b6cfa15bd7d1cae1c9c022074524d7785d34859ad0576d8fab4305d4f",
+];
+
+/// zkSync's hash of a contract's bytecode: SHA-256 with its first four
+/// bytes replaced by the version (1), a zero and the length in 32-byte
+/// words.
+fn zksync_bytecode_hash(code: &[u8]) -> Option<[u8; 32]> {
+    use sha2::Digest;
+    if code.is_empty() || !code.len().is_multiple_of(32) {
+        return None;
+    }
+    let words = u16::try_from(code.len() / 32).ok()?;
+    let mut hash: [u8; 32] = sha2::Sha256::digest(code).into();
+    hash[0] = 1;
+    hash[1] = 0;
+    hash[2..4].copy_from_slice(&words.to_be_bytes());
+    Some(hash)
+}
+
+/// Whether `code` is one of the official proxies' runtime code.
+pub(crate) fn is_official_proxy(code: &[u8]) -> bool {
+    let keccak = hex::encode(keccak256(code));
+    let zksync = zksync_bytecode_hash(code).map(hex::encode);
+    PROXY_CODE_HASHES
+        .iter()
+        .any(|hash| *hash == keccak || zksync.as_deref() == Some(*hash))
+}
+
+/// What a Safe's proxy and singleton say about it, as read here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SafeState {
+    pub code: Vec<u8>,
+    pub singleton: EvmAddress,
+    pub version: String,
+    pub owners: Vec<EvmAddress>,
+    pub threshold: u64,
+    pub nonce: u64,
+    pub modules: Vec<EvmAddress>,
+    /// More modules are enabled than one page lists.
+    pub more_modules: bool,
+    pub guard: Option<EvmAddress>,
+    pub balance_wei: u128,
+}
 
 /// `keccak256("guard_manager.guard.address")`.
 const GUARD_SLOT: &str = "0x4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8";
@@ -137,7 +191,7 @@ impl EvmClient {
         ] = <[Result<Value, ApiError>; 9]>::try_from(answers)
             .map_err(|_| ApiError::decode("Safe read: answers missing"))?;
         let code = decode_hex(text(&code)?)?;
-        if !crate::send::safe::is_official_proxy(&code) {
+        if !is_official_proxy(&code) {
             // Only an official proxy's answers mean what a Safe's do: report
             // the code alone and let the policy refuse it.
             return Ok(SafeState {

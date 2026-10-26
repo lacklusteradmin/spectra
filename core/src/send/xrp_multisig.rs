@@ -16,16 +16,11 @@
 //! signer's master key is accepted.
 
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey, ecdsa::Signature};
-use serde::{Deserialize, Serialize};
 
+use crate::api::xrpl_json_rpc::XrpSignerList;
 use crate::derivation::xrp::{account_id_of_key, address_of_account_id, decode_xrp_address};
 use crate::send::error::SendError;
 use crate::send::xrp::{push_vl, sha512_half};
-
-/// `lsfDisableMaster`: the account's master key no longer signs.
-pub(crate) const LSF_DISABLE_MASTER: u32 = 0x0010_0000;
-/// The most entries a signer list holds.
-pub(crate) const MAX_SIGNERS: usize = 32;
 
 /// A Payment of XRP, every field but the signatures.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,25 +40,6 @@ pub(crate) struct XrpSigner {
     pub account: [u8; 20],
     pub public_key: Vec<u8>,
     pub signature: Vec<u8>,
-}
-
-/// An account's signer list.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct XrpSignerList {
-    pub quorum: u64,
-    /// `(classic address, weight)`, as the ledger lists them.
-    pub entries: Vec<(String, u64)>,
-}
-
-impl XrpSignerList {
-    pub(crate) fn weight_of(&self, address: &str) -> u64 {
-        self.entries
-            .iter()
-            .filter(|(entry, _)| entry == address)
-            .map(|(_, weight)| *weight)
-            .sum()
-    }
 }
 
 fn drops(out: &mut Vec<u8>, header: u8, value: u64) -> Result<(), SendError> {

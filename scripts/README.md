@@ -13,7 +13,7 @@ make check-ui     # UI design tokens and SVG formatting
 
 | File | Purpose |
 |---|---|
-| `build-ios.sh` | Run by the Xcode “Build Rust Core” phase: compiles core as a static library for the device or the arm64 simulator and generates the Swift bindings from it. |
+| `build-ios.sh` | Run by the Xcode “Build Rust Core” phase: compiles core as a static library for the device or the arm64 simulator and generates the Swift bindings from it, replacing a binding only when its text changed so an edit that leaves the FFI as it was recompiles no Swift. |
 | `ios-rust-build-env.sh` | Sourced by build scripts to set a consistent minimum iOS version and clear incompatible iOS build caches when that version changes. |
 
 ## Code and resource checks
@@ -26,7 +26,8 @@ other cases a scan cannot resolve. `make lint` and CI run every scan below excep
 |---|---|
 | `unreachable-exports.sh` | Finds exported Rust interfaces with no detected Swift or CLI callers. |
 | `uncalled-core-fns.sh` | Finds public Rust core functions with no detected callers. |
-| `unwritten-record-fields.sh` | Finds `uniffi::Record` fields no production code writes. Builds core and the CLI with `--emit=mir` into `target/mir/` and runs `record_writers.py` on the result. |
+| `unwritten-record-fields.sh` | Finds `uniffi::Record` fields no production code writes. Builds the CLI in the `mir-scan` profile, with `emit-mir.sh` as the workspace wrapper writing core's and the CLI's MIR into `target/mir/`, and runs `record_writers.py` on the result. Its own profile keeps the dev build fresh. |
+| `emit-mir.sh` | `RUSTC_WORKSPACE_WRAPPER` for that scan: adds `--emit=mir` to core's library and the CLI's binary, and passes every other crate through. |
 | `record_writers.py` | Reads rustc's MIR, where every place carries its type, to find each record field's writes; its docstring says what counts as one. |
 | `test-record-writers.py` | Compiles a fixture with the pinned rustc and checks what the MIR reader reports, so a toolchain that prints MIR differently fails there first. |
 | `unused-strings.sh` | Finds unused text and inconsistent translation keys across locales. |

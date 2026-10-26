@@ -6,7 +6,7 @@ use crate::send::error::SendError;
 
 use crate::send::keys::Ed25519Seed;
 
-use crate::api::solana_json_rpc::SolanaClient;
+use crate::api::solana_json_rpc::{SolanaClient, TOKEN_PROGRAMS};
 use crate::derivation::solana::decode_b58_32;
 
 // ── Transaction builder
@@ -356,11 +356,6 @@ pub(crate) fn token_transfer_data(amount: u64, decimals: u8, fee: Option<u64>) -
     data
 }
 
-/// The SPL Token and Token-2022 programs, which own token accounts.
-pub(crate) const TOKEN_PROGRAMS: [&str; 2] = [
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-];
 /// The most token accounts one transaction closes, well inside a legacy
 /// transaction's 1232 bytes.
 pub(crate) const MAX_CLOSED_ACCOUNTS: usize = 20;

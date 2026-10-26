@@ -94,7 +94,8 @@ make ios
 Change the Rust API, then build: in Xcode, or with `make ios`. Never edit
 `swift/generated/` by hand. The Xcode “Build Rust Core” phase runs
 `scripts/build-ios.sh`, which builds the iOS library and generates the bindings
-from that same library. It is the only writer of the generated sources and
+from that same library, replacing a file only when its text changed. It is the
+only writer of the generated sources and
 post-processes nothing, so a Swift 6 problem in them is a UniFFI version or
 API-shape problem, not something to patch downstream. 0.31.2 is the floor
 because it is the release that emits `nonisolated(unsafe)` on the

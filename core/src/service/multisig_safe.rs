@@ -10,7 +10,8 @@ use super::multisig::{
     MultisigSpend, SessionBody, SessionReview, StoredSession,
 };
 use super::*;
-use crate::send::safe::{self, EvmAddress, SafePolicy, SafeSessionData, SafeState, SafeTx};
+use crate::api::evm_safe::{EvmAddress, SafeState};
+use crate::send::safe::{self, SafePolicy, SafeSessionData, SafeTx};
 use crate::store::state::WalletState;
 use zeroize::Zeroizing;
 
@@ -155,7 +156,7 @@ impl WalletService {
         let state = self
             .safe_state(wallet.chain_id, &safe_address(wallet)?)
             .await?;
-        if state.policy()? != session.policy {
+        if safe::policy(&state)? != session.policy {
             return Err(SpectraBridgeError::invalid(
                 "The Safe's owners, threshold or version changed since this session was built; build it again.",
             ));
@@ -169,7 +170,7 @@ impl WalletService {
     ) -> Result<MultisigAccount, SpectraBridgeError> {
         let safe = safe_address(wallet)?;
         let state = self.safe_state(wallet.chain_id, &safe).await?;
-        let policy = state.policy()?;
+        let policy = safe::policy(&state)?;
         Ok(MultisigAccount {
             wallet_id: wallet.id.clone(),
             chain: wallet.chain_id,
@@ -181,7 +182,7 @@ impl WalletService {
                 signers: signers(&policy, &[]),
                 covers: Vec::new(),
             }],
-            warnings: state.warnings(),
+            warnings: safe::warnings(&state),
             submission: MultisigScheme::Safe.submission(),
             signer_wallet_ids: Vec::new(),
         })
@@ -210,7 +211,7 @@ impl WalletService {
         .filter(|value| *value > 0)
         .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         let state = self.safe_state(chain, &safe).await?;
-        let policy = state.policy()?;
+        let policy = safe::policy(&state)?;
         let open = self.open_safe_sessions(wallet).await?;
         let committed: u128 = open
             .iter()
@@ -263,7 +264,7 @@ impl WalletService {
         let imported: SafeSessionData = serde_json::from_str(data)
             .map_err(|_| SpectraBridgeError::invalid("Not a Safe transaction."))?;
         let state = self.safe_state(chain, &safe).await?;
-        let policy = state.policy()?;
+        let policy = safe::policy(&state)?;
         let reviewed = safe::review(&policy, &safe, chain_id, &imported)?;
         if reviewed.tx.nonce < state.nonce {
             return Err(SpectraBridgeError::invalid(

@@ -15,7 +15,8 @@ use super::multisig::{
 };
 use super::*;
 use crate::api::xrpl_json_rpc::XrpAccountPolicy;
-use crate::send::xrp_multisig::{self as xrp, XrpPayment, XrpSignerList};
+use crate::api::xrpl_json_rpc::XrpSignerList;
+use crate::send::xrp_multisig::{self as xrp, XrpPayment};
 use crate::store::state::WalletState;
 
 /// How long a session gathers signatures unless asked otherwise.

@@ -20,7 +20,8 @@ use super::multisig::{
 };
 use super::*;
 use crate::api::tron_http::TronAccountPolicy;
-use crate::send::tron_multisig::{self as tron, TRANSFER_CONTRACT, TronPayment, TronPermission};
+use crate::api::tron_http::TronPermission;
+use crate::send::tron_multisig::{self as tron, TRANSFER_CONTRACT, TronPayment};
 use crate::store::state::WalletState;
 
 /// How long a session gathers signatures unless asked otherwise.

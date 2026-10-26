@@ -25,8 +25,6 @@ symptom, and delete the item with the change.
 
 ### Core
 
-- [ ] **`api` depends on `send`** for Safe, Stellar, XRP and Tron multisig
-  read models and Solana's token programs. Move those types into `api/`.
 - [ ] **Duplicated primitives.** Three BIP-32 implementations with path
   parsers that disagree (`derivation/bitcoin.rs`, `derivation/primitives.rs`,
   `bitcoin::bip32`); two Blake2b crates; three LEB128 encoders; two

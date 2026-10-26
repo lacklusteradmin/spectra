@@ -19,7 +19,8 @@ use super::multisig::{
 };
 use super::*;
 use crate::api::horizon::StellarAccountSigners;
-use crate::send::stellar_multisig::{self as stellar, OwnedMemo, StellarPayment, StellarSigners};
+use crate::api::horizon::StellarSigners;
+use crate::send::stellar_multisig::{self as stellar, OwnedMemo, StellarPayment};
 use crate::store::state::WalletState;
 use base64::{Engine, engine::general_purpose::STANDARD};
 

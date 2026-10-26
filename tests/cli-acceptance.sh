@@ -29,7 +29,8 @@ TESTS_DIR="$(cd "$(dirname "$0")" && pwd)"
 DATA_DIR="$(mktemp -d)"
 NETWORK_JOURNAL="$(mktemp)"
 CANARY_JOURNAL="$(mktemp)"
-trap 'rm -rf "$DATA_DIR" "$NETWORK_JOURNAL" "$CANARY_JOURNAL"' EXIT
+SUITE_OUTPUT="$(mktemp -d)"
+trap 'rm -rf "$DATA_DIR" "$NETWORK_JOURNAL" "$CANARY_JOURNAL" "$SUITE_OUTPUT"' EXIT
 # Inherited by every `spectra` process, the Python suites' included.
 export SPECTRA_LOOPBACK_ONLY="$NETWORK_JOURNAL"
 
@@ -66,6 +67,49 @@ pass_if() {
 readonly OK=0 USAGE=2 REJECTED=3
 
 readonly SEED="legal winner thank year wave sausage worth useful legal winner thank yellow"
+
+# ── Loopback suites, started now ────────────────────────────────────────────
+#
+# Each suite owns its data directory and its local nodes, so they all run at
+# once, beside the checks below, and the slowest sets the pace instead of
+# their sum. Each writes its output and exit status to SUITE_OUTPUT; the
+# "loopback suites" section reports them in this order.
+SUITES=(
+    "cli-send-stages.py|staged EVM sends across processes"
+    "cli-send-polkadot.py|Polkadot Asset Hub staged sends and finalized outcomes"
+    "cli-send-cardano.py|Cardano staged send broadcast once as signed"
+    "cli-multisig-psbt.py|a 2-of-3 Bitcoin PSBT across three data directories"
+    "cli-multisig-safe.py|Safe owners sign, join and execute a Safe transaction"
+    "cli-multisig-tron.py|Tron active-permission spends signed in two data directories"
+    "cli-multisig-xrp.py|XRP signer-list payments signed across data directories"
+    "cli-multisig-stellar.py|Stellar payments signed across data directories"
+    "cli-multisig-aptos.py|Aptos MultiKey transfers signed across data directories"
+    "cli-multisig-cardano.py|Cardano native scripts witnessed by CIP-1854 keys"
+    "cli-multisig-substrate.py|Asset Hub pallet-multisig approvals execute a transfer"
+    "cli-multisig-ton.py|TON multisig v2 orders proposed and approved by signers"
+    "cli-wallet-operations.py|wallet operations: closing accounts, deleting keys"
+    "cli-issued-assets.py|XRP Ledger and Stellar trust lines opened, paid and removed"
+    "cli-nfts.py|ERC-721 and ERC-1155 transfers broadcast as signed"
+    "cli-zcash-shielded.py|Zcash shielded scanning, transfers and recovery"
+    "cli-litecoin-mweb.py|Litecoin MWEB scanning, peg-ins, peg-outs and recovery"
+    "cli-trc10.py|TRC-10 staged send, broadcast and confirmation"
+    "cli-staking.py|staking signed, retried and recovered across processes"
+    "cli-icp-staking.py|ICP neuron staking reopened and refused on a forged certificate"
+    "cli-send-near.py|NEAR durable retries and final status recovery"
+    "cli-send.py|send integration checks"
+    "cli-send-tokens.py|send-tokens integration checks"
+    "cli-send-icp-zcash.py|send-icp-zcash integration checks"
+    "cli-endpoints.py|endpoints integration checks"
+)
+for entry in "${SUITES[@]}"; do
+    file="${entry%%|*}"
+    (
+        python3 -B "$TESTS_DIR/$file" "$BIN" > "$SUITE_OUTPUT/$file.log" 2>&1
+        echo $? > "$SUITE_OUTPUT/$file.status"
+    ) &
+done
+# A suite's result, as if it had just run: its output and its exit status.
+suite_result() { cat "$SUITE_OUTPUT/$1.log"; return "$(cat "$SUITE_OUTPUT/$1.status")"; }
 
 check "assertions reject failed commands and wrong output" $OK bash "$TESTS_DIR/test-cli-assertions.sh"
 
@@ -172,34 +216,11 @@ check "its sealed seed went with it"        1 test -e "$SEED_FILE"
 check "its sealed key went with it"         1 test -e "$KEY_FILE"
 
 # ── Loopback suites ─────────────────────────────────────────────────────────
-#
-# Each suite owns its data directory and its local nodes.
 
 section "loopback suites"
-suite() { local name="$1"; shift; check "$name" $OK python3 -B "$TESTS_DIR/$1" "$BIN" "${@:2}"; }
-suite "staged EVM sends across processes"                        cli-send-stages.py
-suite "Polkadot Asset Hub staged sends and finalized outcomes"   cli-send-polkadot.py
-suite "Cardano staged send broadcast once as signed"             cli-send-cardano.py
-suite "a 2-of-3 Bitcoin PSBT across three data directories"       cli-multisig-psbt.py
-suite "Safe owners sign, join and execute a Safe transaction"      cli-multisig-safe.py
-suite "Tron active-permission spends signed in two data directories" cli-multisig-tron.py
-suite "XRP signer-list payments signed across data directories"  cli-multisig-xrp.py
-suite "Stellar payments signed across data directories"           cli-multisig-stellar.py
-suite "Aptos MultiKey transfers signed across data directories"   cli-multisig-aptos.py
-suite "Cardano native scripts witnessed by CIP-1854 keys"         cli-multisig-cardano.py
-suite "Asset Hub pallet-multisig approvals execute a transfer"     cli-multisig-substrate.py
-suite "TON multisig v2 orders proposed and approved by signers"     cli-multisig-ton.py
-suite "wallet operations: closing accounts, deleting keys"         cli-wallet-operations.py
-suite "XRP Ledger and Stellar trust lines opened, paid and removed" cli-issued-assets.py
-suite "ERC-721 and ERC-1155 transfers broadcast as signed"        cli-nfts.py
-suite "Zcash shielded scanning, transfers and recovery"          cli-zcash-shielded.py
-suite "Litecoin MWEB scanning, peg-ins, peg-outs and recovery"   cli-litecoin-mweb.py
-suite "TRC-10 staged send, broadcast and confirmation"           cli-trc10.py
-suite "staking signed, retried and recovered across processes"   cli-staking.py
-suite "ICP neuron staking reopened and refused on a forged certificate" cli-icp-staking.py
-suite "NEAR durable retries and final status recovery"          cli-send-near.py
-for domain in send send-tokens send-icp-zcash endpoints; do
-    suite "$domain integration checks" "cli-$domain.py"
+wait
+for entry in "${SUITES[@]}"; do
+    check "${entry#*|}" $OK suite_result "${entry%%|*}"
 done
 
 section "no external network"

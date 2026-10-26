@@ -13,15 +13,12 @@
 //! something no review here shows, and is refused.
 
 use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::api::horizon::{MAX_SIGNERS, StellarSigners};
 use crate::derivation::stellar::{address_from_public_key, decode_stellar_address};
 use crate::send::error::SendError;
 use crate::send::payment_memo::StellarMemo;
-
-/// The most signers an account holds beside its master key.
-pub(crate) const MAX_SIGNERS: usize = 20;
 
 /// A payment of lumens, every field but the signatures.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,38 +61,6 @@ impl OwnedMemo {
 pub(crate) struct StellarSignature {
     pub hint: [u8; 4],
     pub signature: Vec<u8>,
-}
-
-/// An account's signers and thresholds.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct StellarSigners {
-    /// `(G… key, weight)` for every ed25519 signer, the master key among
-    /// them while its weight is above zero.
-    pub keys: Vec<(String, u64)>,
-    /// Signers that are not keys (a hash or a pre-authorized transaction),
-    /// by their Horizon key, with their weights: they count, but nothing
-    /// here signs as them.
-    pub other: Vec<(String, u64)>,
-    pub low: u64,
-    pub medium: u64,
-    pub high: u64,
-}
-
-impl StellarSigners {
-    pub(crate) fn weight_of(&self, address: &str) -> u64 {
-        self.keys
-            .iter()
-            .filter(|(key, _)| key == address)
-            .map(|(_, weight)| *weight)
-            .sum()
-    }
-
-    /// The weight a payment needs: the medium threshold, and at least one
-    /// signature's.
-    pub(crate) fn payment_threshold(&self) -> u64 {
-        self.medium.max(1)
-    }
 }
 
 fn xdr_bytes(out: &mut Vec<u8>, data: &[u8]) {
