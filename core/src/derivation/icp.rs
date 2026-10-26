@@ -1,20 +1,30 @@
-//! ICP Ed25519 self-authenticating principal and default ledger account.
+//! ICP secp256k1 self-authenticating principal and default ledger account.
+//! A phrase's key is the BIP-32 secp256k1 key at `m/44'/223'/account'/0/0`,
+//! the one quill, dfx and DFINITY's agent libraries derive.
 //! Account identifier: CRC32(SHA224(domain || principal || subaccount)) || hash.
 
 use crate::derivation::error::DerivationError;
-use crate::derivation::primitives::derive_bip39_seed;
-use ed25519_dalek::SigningKey;
+use crate::derivation::primitives::{ExtendedPrivateKey, derive_bip39_seed, parse_bip32_path};
+use secp256k1::PublicKey;
 use sha2::{Digest, Sha224};
 
-pub(crate) fn public_key_der(public_key: &[u8; 32]) -> Vec<u8> {
-    let mut der = vec![
-        0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
-    ];
-    der.extend(public_key);
+/// SubjectPublicKeyInfo up to the point: `id-ecPublicKey` on the
+/// `secp256k1` curve, then a 65-byte bit string.
+const SECP256K1_SPKI_PREFIX: [u8; 23] = [
+    0x30, 0x56, 0x30, 0x10, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x05, 0x2b,
+    0x81, 0x04, 0x00, 0x0a, 0x03, 0x42, 0x00,
+];
+
+/// The DER key an ingress message names its sender by: the uncompressed
+/// point, as the agent libraries encode it. The principal hashes these
+/// bytes, so the compressed point would name another identity.
+pub(crate) fn public_key_der(public_key: &PublicKey) -> Vec<u8> {
+    let mut der = SECP256K1_SPKI_PREFIX.to_vec();
+    der.extend(public_key.serialize_uncompressed());
     der
 }
 
-pub(crate) fn principal(public_key: &[u8; 32]) -> Vec<u8> {
+pub(crate) fn principal(public_key: &PublicKey) -> Vec<u8> {
     let mut result = Sha224::digest(public_key_der(public_key)).to_vec();
     result.push(2); // Self-authenticating principal class.
     result
@@ -65,24 +75,23 @@ pub(crate) fn derive_from_seed_phrase(
     want_private_key: bool,
 ) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
-    let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, None)?;
-    let signing_key = SigningKey::from_bytes(&private_key);
-    let public_key = signing_key.verifying_key().to_bytes();
+    let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
+    let xpriv = master.derive_path(secp256k1::SECP256K1, &parse_bip32_path(derivation_path)?)?;
+    let public_key = PublicKey::from_secret_key(secp256k1::SECP256K1, &xpriv.private_key);
 
     let address =
         want_address.then(|| hex::encode(account_from_principal(&principal(&public_key))));
 
     Ok((
         address,
-        want_public_key.then(|| hex::encode(public_key)),
-        want_private_key.then(|| hex::encode(*private_key)),
+        want_public_key.then(|| hex::encode(public_key.serialize())),
+        want_private_key.then(|| hex::encode(xpriv.private_key.secret_bytes())),
     ))
 }
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
 use crate::SpectraBridgeError;
-use crate::derivation::primitives::derive_slip10_ed25519_key;
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 
 /// Derive Internet Computer keys from a BIP-39 seed phrase.
@@ -127,9 +136,10 @@ mod tests {
             b[i] ^= 1;
             assert!(validate_account(&hex::encode(b)).is_err());
         }
-        let key = SigningKey::from_bytes(&[1; 32]);
-        let id = account_from_principal(&principal(&key.verifying_key().to_bytes()));
+        let key = crate::send::keys::Secp256k1Key::from_hex(&"01".repeat(32)).unwrap();
+        let id = account_from_principal(&principal(&key.public_key()));
         assert_eq!(validate_account(&hex::encode(id)).unwrap(), id);
-        assert_eq!(principal(&key.verifying_key().to_bytes()).len(), 29);
+        assert_eq!(principal(&key.public_key()).len(), 29);
+        assert_eq!(public_key_der(&key.public_key()).len(), 88);
     }
 }

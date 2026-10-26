@@ -6,16 +6,16 @@ use crate::api::icp_replica::*;
 use crate::send::icp_staking::{
     self, IcpStakingCall, IcpStakingCallKind, PreparedIcpStaking, SignedIcpStakingCall,
 };
-use crate::send::keys::Ed25519Seed;
+use crate::send::keys::Secp256k1Key;
 use crate::send::stages::{PreparedPayload, StoredSend};
 use crate::staking::{
     StakingAction, StakingPosition, StakingPositionStatus, StakingRequest, StakingValidator,
 };
 
-fn key(identity: &ResolvedSendIdentity) -> Result<Ed25519Seed, SpectraBridgeError> {
-    Ok(Ed25519Seed::from_hex(&identity.private_key_hex)?)
+fn key(identity: &ResolvedSendIdentity) -> Result<Secp256k1Key, SpectraBridgeError> {
+    Ok(Secp256k1Key::from_hex(&identity.private_key_hex)?)
 }
-fn controller(key: &Ed25519Seed) -> candid::Principal {
+fn controller(key: &Secp256k1Key) -> candid::Principal {
     candid::Principal::from_slice(&crate::derivation::icp::principal(&key.public_key()))
 }
 fn fail(message: impl std::fmt::Display) -> SpectraBridgeError {
@@ -326,7 +326,7 @@ impl WalletService {
     pub(super) async fn icp_staking_receipts(
         &self,
         stored: &StoredSend,
-        key: Option<&Ed25519Seed>,
+        key: Option<&Secp256k1Key>,
     ) -> Result<crate::api::transaction_status::TransactionStatus, SpectraBridgeError> {
         use crate::api::transaction_status::TransactionStatus;
         let PreparedPayload::IcpStaking(prepared) = &stored.prepared else {
@@ -413,7 +413,7 @@ impl WalletService {
         &self,
         method: &str,
         argument: Vec<u8>,
-        key: &Ed25519Seed,
+        key: &Secp256k1Key,
     ) -> Result<T, SpectraBridgeError> {
         let body = icp_staking::signed_query(method, &argument, key)?;
         let reply = self.icp_replica().await?.query(&body).await?;
@@ -421,7 +421,7 @@ impl WalletService {
     }
     async fn icp_economics(
         &self,
-        key: &Ed25519Seed,
+        key: &Secp256k1Key,
     ) -> Result<NetworkEconomics, SpectraBridgeError> {
         self.icp_query(
             "get_network_economics_parameters",
@@ -432,7 +432,7 @@ impl WalletService {
     }
     async fn owned_icp_neurons(
         &self,
-        key: &Ed25519Seed,
+        key: &Secp256k1Key,
     ) -> Result<Vec<Neuron>, SpectraBridgeError> {
         let controller = controller(key);
         let mut neurons = Vec::new();

@@ -358,7 +358,7 @@
   "Built-In": "Built-In",
   "Built-in tokens cannot be edited or removed.": "Built-in tokens cannot be edited or removed.",
   "CIP-8 data signature": "CIP-8 data signature",
-  "Calls `0x1::delegation_pool::add_stake` against a pool address. Stake activates at the next epoch. Unlock moves it to a pending-inactive bucket; after the lockup cycle (typically 30 days) it becomes withdrawable.": "Calls `0x1::delegation_pool::add_stake` against a pool address. Stake activates at the next epoch. Unlock moves it to a pending-inactive bucket; after the lockup cycle (typically 30 days) it becomes withdrawable.",
+  "Calls `0x1::delegation_pool::add_stake` against a pool address. Stake activates at the next epoch. Unlock moves it to a pending-inactive bucket; after the lockup cycle (14 days on mainnet) it becomes withdrawable.": "Calls `0x1::delegation_pool::add_stake` against a pool address. Stake activates at the next epoch. Unlock moves it to a pending-inactive bucket; after the lockup cycle (14 days on mainnet) it becomes withdrawable.",
   "Cancel": "Cancel",
   "Cancel This Transaction": "Cancel This Transaction",
   "Cannot Reveal Seed Phrase": "Cannot Reveal Seed Phrase",
@@ -536,7 +536,7 @@
   "Each signer's approval is a transaction of its own; the one that meets the threshold executes the transfer.": "Each signer's approval is a transaction of its own; the one that meets the threshold executes the transfer.",
   "Each token this address has held keeps an account with rent in it, even after the tokens are gone. Closing an empty one returns its rent.": "Each token this address has held keeps an account with rent in it, even after the tokens are gone. Closing an empty one returns its rent.",
   "Each trust line locks %@ %@ of reserve while it exists.": "Each trust line locks %@ %@ of reserve while it exists.",
-  "Each validator runs its own staking-pool contract; staking calls `deposit_and_stake` with NEAR attached. Unstake places funds into a pending bucket; after 4 epochs (~52h) they're withdrawable via `withdraw`.": "Each validator runs its own staking-pool contract; staking calls `deposit_and_stake` with NEAR attached. Unstake places funds into a pending bucket; after 4 epochs (~52h) they're withdrawable via `withdraw`.",
+  "Each validator runs its own staking-pool contract; staking calls `deposit_and_stake` with NEAR attached. Unstake places funds into a pending bucket; after 4 epochs (about 1–1.5 days) they're withdrawable via `withdraw`.": "Each validator runs its own staking-pool contract; staking calls `deposit_and_stake` with NEAR attached. Unstake places funds into a pending bucket; after 4 epochs (about 1–1.5 days) they're withdrawable via `withdraw`.",
   "Each version is a different address for the same key. Wallets created before 2024 usually use v4R2.": "Each version is a different address for the same key. Wallets created before 2024 usually use v4R2.",
   "Each wallet has its own address on its network.": "Each wallet has its own address on its network.",
   "Edit": "Edit",
@@ -2220,7 +2220,7 @@
   "wallet.detail.chainPath": "%@: %@",
   "wiki.asset.onChains": "On %@ chains",
   "word %lld": "word %lld",
-  "~30-day lockup cycle": "~30-day lockup cycle",
-  "~52h (4 epochs)": "~52h (4 epochs)",
+  "~14-day lockup cycle": "~14-day lockup cycle",
+  "~1–1.5 days (4 epochs)": "~1–1.5 days (4 epochs)",
   "“%@” does not hold this key as a full-access key.": "“%@” does not hold this key as a full-access key."
 }

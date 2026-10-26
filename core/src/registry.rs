@@ -278,7 +278,7 @@ const ALL_CHAINS: &[Chain] = &[
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyScheme {
     /// A secp256k1 scalar: the Bitcoin family, every EVM network, Tron, XRP,
-    /// Kaspa and Decred.
+    /// Kaspa, Decred and the Internet Computer.
     Secp256k1,
     /// A 32-byte Ed25519 seed.
     Ed25519,
@@ -373,13 +373,9 @@ impl Chain {
         Some(match self.mainnet_counterpart() {
             Self::Cardano => KeyScheme::Ed25519Extended,
             Self::Polkadot | Self::Bittensor => KeyScheme::Sr25519,
-            Self::Solana
-            | Self::Stellar
-            | Self::Sui
-            | Self::Aptos
-            | Self::Ton
-            | Self::Near
-            | Self::Icp => KeyScheme::Ed25519,
+            Self::Solana | Self::Stellar | Self::Sui | Self::Aptos | Self::Ton | Self::Near => {
+                KeyScheme::Ed25519
+            }
             _ => KeyScheme::Secp256k1,
         })
     }
@@ -1003,14 +999,15 @@ impl Chain {
         }
     }
 
-    /// Minimum retained change for the legacy-format P2PKH networks.
+    /// The smallest output the legacy-format P2PKH networks relay: 546
+    /// units at Bitcoin Core's dust relay rate, and Dogecoin Core's dust
+    /// limit of 0.01 DOGE (policy.h `DEFAULT_DUST_LIMIT`), below which an
+    /// output pays that much again in fee and, below a tenth of it, is not
+    /// relayed at all.
     pub(crate) fn legacy_change_dust(self) -> Result<u64, RegistryError> {
         match self.mainnet_counterpart() {
-            Self::BitcoinCash
-            | Self::BitcoinSV
-            | Self::BitcoinGold
-            | Self::Dogecoin
-            | Self::Dash => Ok(546),
+            Self::BitcoinCash | Self::BitcoinSV | Self::BitcoinGold | Self::Dash => Ok(546),
+            Self::Dogecoin => Ok(1_000_000),
             _ => Err(self.not_in("fixed-fee P2PKH")),
         }
     }

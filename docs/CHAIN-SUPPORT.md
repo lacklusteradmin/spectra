@@ -51,7 +51,10 @@ native and nested SegWit; Peercoin all four; Bitcoin Cash its BIP-44 coin type
 and the older coin type 0; Solana `m/44'/501'/{account}'/0'` and the older
 `m/44'/501'/{account}'`; every other chain with a path its one standard
 profile. NEAR walks SLIP-10 along `m/44'/397'/{account}'` as near-seed-phrase
-does. Monero and TON derive without a path and refuse one. Polkadot, its
+does. The Internet Computer derives the BIP-32 secp256k1 key at
+`m/44'/223'/{account}'/0/0`, as quill, dfx and DFINITY's agent libraries do:
+its principal is the self-authenticating one of the key's DER encoding with
+the uncompressed point, and every ingress is signed with ECDSA over SHA-256. Monero and TON derive without a path and refuse one. Polkadot, its
 Westend testnet and Bittensor derive along a Substrate path of hard (`//`)
 and soft (`/`) junctions under the phrase's sr25519 root, as subkey and
 polkadot.js read a secret URI (none is the root key), checked against
@@ -160,7 +163,15 @@ kilobyte, the network's static fee for each started kilobyte on Bitcoin
 Cash, Bitcoin SV, Dogecoin, Dash and Bitcoin Gold, ZIP-317's 5,000 zatoshis
 per logical action (at least two) on Zcash, at least dcrd's 10 atoms a byte
 on Decred and at least the transaction's mass on Kaspa, each never below the
-network's static fee.
+network's static fee. A recipient amount below the network's dust threshold
+is refused, and change below it joins the fee: 546 units, Decred's 6,030
+atoms, Kaspa's 1,000 sompi, and Dogecoin Core's dust limit of 0.01 DOGE, below
+which an output pays that much again in fee and below a tenth of which it is
+not relayed. A Kaspa spend also keeps within the 100,000-gram standard limit
+on its KIP-9 storage mass, which charges an output small beside the coins it
+spends: selection takes more coins while its change is too small to stand,
+and a send no selection fits, such as a tenth of a kaspa or less from a large
+coin, is refused.
 
 A Decred send pays the script its recipient names on the wallet's own
 network: a secp256k1 pubkey hash (`Ds…`, `Ts…`) or a script hash (`Dc…`,

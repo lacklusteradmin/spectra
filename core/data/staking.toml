@@ -30,16 +30,16 @@ explanation = "Staking creates a `StakedSui` object owned by your wallet. To uns
 [[chains]]
 chain = "aptos"
 short_mechanic = "Add stake to a delegation pool; epoch ~2h."
-unbonding_period = "~30-day lockup cycle"
+unbonding_period = "~14-day lockup cycle"
 minimum_stake = "Current delegation-pool minimum after commission"
-explanation = "Calls `0x1::delegation_pool::add_stake` against a pool address. Stake activates at the next epoch. Unlock moves it to a pending-inactive bucket; after the lockup cycle (typically 30 days) it becomes withdrawable."
+explanation = "Calls `0x1::delegation_pool::add_stake` against a pool address. Stake activates at the next epoch. Unlock moves it to a pending-inactive bucket; after the lockup cycle (14 days on mainnet) it becomes withdrawable."
 
 [[chains]]
 chain = "near"
 short_mechanic = "`deposit_and_stake` on a verified staking-pool contract."
-unbonding_period = "~52h (4 epochs)"
+unbonding_period = "~1–1.5 days (4 epochs)"
 minimum_stake = "Pool-dependent"
-explanation = "Each validator runs its own staking-pool contract; staking calls `deposit_and_stake` with NEAR attached. Unstake places funds into a pending bucket; after 4 epochs (~52h) they're withdrawable via `withdraw`."
+explanation = "Each validator runs its own staking-pool contract; staking calls `deposit_and_stake` with NEAR attached. Unstake places funds into a pending bucket; after 4 epochs (about 1–1.5 days) they're withdrawable via `withdraw`."
 
 
 [[chains]]

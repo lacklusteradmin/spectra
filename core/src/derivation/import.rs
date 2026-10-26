@@ -364,7 +364,7 @@ fn icp_principal_for(commit: &WalletImportCommit) -> Option<String> {
         }
         _ => None,
     }?;
-    let public: [u8; 32] = hex::decode(public_hex).ok()?.try_into().ok()?;
+    let public = secp256k1::PublicKey::from_slice(&hex::decode(public_hex).ok()?).ok()?;
     Some(candid::Principal::from_slice(&crate::derivation::icp::principal(&public)).to_text())
 }
 
@@ -424,7 +424,7 @@ pub(crate) fn wallets_for_import(
 mod tests {
     use super::*;
 
-    /// The principal and account @dfinity/identity give the key of 32 0x01
+    /// The principal and account @dfinity/identity-secp256k1 give the key of 32 0x01
     /// bytes (`icp-staking-vectors.json`); a phrase records its own; a watch
     /// records none.
     #[test]

@@ -358,7 +358,7 @@
   "Built-In": "内置",
   "Built-in tokens cannot be edited or removed.": "内置代币无法编辑或删除。",
   "CIP-8 data signature": "CIP-8 数据签名",
-  "Calls `0x1::delegation_pool::add_stake` against a pool address. Stake activates at the next epoch. Unlock moves it to a pending-inactive bucket; after the lockup cycle (typically 30 days) it becomes withdrawable.": "对池地址调用 `0x1::delegation_pool::add_stake`。质押在下一个 epoch 生效。解锁后进入待失效状态；锁定周期（通常 30 天）结束后即可提取。",
+  "Calls `0x1::delegation_pool::add_stake` against a pool address. Stake activates at the next epoch. Unlock moves it to a pending-inactive bucket; after the lockup cycle (14 days on mainnet) it becomes withdrawable.": "对池地址调用 `0x1::delegation_pool::add_stake`。质押在下一个 epoch 生效。解锁后进入待失效状态；锁定周期（主网为 14 天）结束后即可提取。",
   "Cancel": "取消",
   "Cancel This Transaction": "取消这笔交易",
   "Cannot Reveal Seed Phrase": "无法显示助记词",
@@ -536,7 +536,7 @@
   "Each signer's approval is a transaction of its own; the one that meets the threshold executes the transfer.": "每位签名者的批准都是一笔独立的交易；达到门限的那一笔会执行转账。",
   "Each token this address has held keeps an account with rent in it, even after the tokens are gone. Closing an empty one returns its rent.": "此地址持有过的每种代币都有一个存有租金的账户，即使代币已转走也仍保留。关闭空账户即可取回租金。",
   "Each trust line locks %@ %@ of reserve while it exists.": "每条信任线存在期间会锁定 %@ %@ 的储备金。",
-  "Each validator runs its own staking-pool contract; staking calls `deposit_and_stake` with NEAR attached. Unstake places funds into a pending bucket; after 4 epochs (~52h) they're withdrawable via `withdraw`.": "每个验证者都运行自己的质押池合约；质押时附带 NEAR 调用 `deposit_and_stake`。取消质押后资金进入待处理状态；4 个 epoch（约 52 小时）后可通过 `withdraw` 提取。",
+  "Each validator runs its own staking-pool contract; staking calls `deposit_and_stake` with NEAR attached. Unstake places funds into a pending bucket; after 4 epochs (about 1–1.5 days) they're withdrawable via `withdraw`.": "每个验证者都运行自己的质押池合约；质押时附带 NEAR 调用 `deposit_and_stake`。取消质押后资金进入待处理状态；4 个 epoch（约 1–1.5 天）后可通过 `withdraw` 提取。",
   "Each version is a different address for the same key. Wallets created before 2024 usually use v4R2.": "同一个密钥在每个版本下是不同的地址。2024 年以前创建的钱包通常使用 v4R2。",
   "Each wallet has its own address on its network.": "每个钱包在自己的网络上都有专属地址。",
   "Edit": "编辑",
@@ -2220,7 +2220,7 @@
   "wallet.detail.chainPath": "%@: %@",
   "wiki.asset.onChains": "在 %@ 条链上",
   "word %lld": "单词 %lld",
-  "~30-day lockup cycle": "约 30 天锁定周期",
-  "~52h (4 epochs)": "约 52 小时（4 个 epoch）",
+  "~14-day lockup cycle": "约 14 天锁定周期",
+  "~1–1.5 days (4 epochs)": "约 1–1.5 天（4 个 epoch）",
   "“%@” does not hold this key as a full-access key.": "“%@”没有将此密钥作为完全访问密钥。"
 }

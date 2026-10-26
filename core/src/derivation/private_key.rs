@@ -45,17 +45,13 @@ pub(super) fn derive(
                 .public
                 .to_bytes(),
         ),
-        Chain::Solana
-        | Chain::Stellar
-        | Chain::Sui
-        | Chain::Aptos
-        | Chain::Ton
-        | Chain::Near
-        | Chain::Icp => Some(
-            ed25519_dalek::SigningKey::from_bytes(seed)
-                .verifying_key()
-                .to_bytes(),
-        ),
+        Chain::Solana | Chain::Stellar | Chain::Sui | Chain::Aptos | Chain::Ton | Chain::Near => {
+            Some(
+                ed25519_dalek::SigningKey::from_bytes(seed)
+                    .verifying_key()
+                    .to_bytes(),
+            )
+        }
         _ => None,
     };
     if let Some(public) = public {
@@ -67,9 +63,6 @@ pub(super) fn derive(
                 Chain::Aptos => super::aptos::address_from_public_key(&public),
                 Chain::Ton => super::ton::TonWalletVersion::default().address(&public, chain)?,
                 Chain::Near => hex::encode(public),
-                Chain::Icp => hex::encode(super::icp::account_from_principal(
-                    &super::icp::principal(&public),
-                )),
                 Chain::Polkadot | Chain::Bittensor => super::primitives::encode_ss58(
                     &public,
                     chain.ss58_prefix().expect("a Substrate network"),
@@ -93,6 +86,9 @@ pub(super) fn derive(
     let address = if want_address {
         Some(match chain.mainnet_counterpart() {
             Chain::Tron => super::tron::address_from_public_key(&key),
+            Chain::Icp => hex::encode(super::icp::account_from_principal(&super::icp::principal(
+                &key,
+            ))),
             Chain::Xrp => super::xrp::address_from_public_key(&key)?,
             _ => {
                 let path = super::path::default_path_from_catalog(chain)?;

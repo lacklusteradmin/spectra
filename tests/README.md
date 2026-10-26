@@ -86,7 +86,7 @@ also use the helper source in this directory.
 | `generate-trc10-send-vectors.cjs` | Independent TronWeb 6.0.4 TRC-10 protobuf, digest and signature references. |
 | `generate-account-staking-vectors.cjs` | Independent Solana, Sui, Aptos and NEAR staking transaction references. |
 | `generate-polkadot-staking-vectors.cjs` | Independent @polkadot/types 17.0.2 metadata, storage values and nomination-pool call references. |
-| `generate-icp-staking-vectors.cjs` | DFINITY 3.4.3 Candid, ingress IDs and update/read-state signatures; owned and queued-maturity responses. |
+| `generate-icp-staking-vectors.cjs` | DFINITY 3.4.3 Candid, ingress IDs and secp256k1 update/read-state signatures; owned and queued-maturity responses. |
 | `generate-protocol-vectors.cjs` | Generates protocol reference data using the TON and NEAR SDKs. |
 | `generate-send-audit-vectors.cjs` | Generates address, transaction and signature reference data using Sui, Aptos, Solana, Tron and related SDKs. |
 | `generate-token-send-vectors.cjs` | Sui, Aptos and TON (v4R2 jetton) token-transfer references from the official SDKs. |
