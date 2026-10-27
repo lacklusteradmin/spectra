@@ -56,17 +56,22 @@ fn stored(shielding: bool) -> StoredSend {
             operation: Some(if shielding {
                 WalletOperation::ShieldTransparent {
                     amount: amount.into(),
-                    network_fee: "0.00015".into(),
                 }
             } else {
                 WalletOperation::ShieldedPayment {
                     memo: Some("thanks".into()),
-                    network_fee: "0.0001".into(),
                 }
             }),
             created_at: 1.0,
             review_digest: String::new(),
-            review: SendArtifactReview::default(),
+            review: SendArtifactReview {
+                network_fee: Some(NetworkFee {
+                    amount: (if shielding { "0.00015" } else { "0.0001" }).into(),
+                    bound: FeeBound::Exact,
+                    value: None,
+                }),
+                ..SendArtifactReview::default()
+            },
             prepared_details: String::new(),
             signing_payload_hex: String::new(),
             signed_payload: None,
@@ -158,7 +163,6 @@ fn a_shielded_payment_shows_what_it_pays() {
     refused(false, "named a shielding", |s| {
         s.view.operation = Some(WalletOperation::ShieldTransparent {
             amount: "0.3".into(),
-            network_fee: "0.0001".into(),
         })
     });
     refused(false, "unnamed", |s| s.view.operation = None);
@@ -191,9 +195,6 @@ fn shielding_moves_only_the_wallets_own_funds() {
         prepared(s).transparent_in_zat = 0
     });
     refused(true, "named a payment", |s| {
-        s.view.operation = Some(WalletOperation::ShieldedPayment {
-            memo: None,
-            network_fee: "0.00015".into(),
-        })
+        s.view.operation = Some(WalletOperation::ShieldedPayment { memo: None })
     });
 }

@@ -422,8 +422,12 @@ mod transfers {
         assert_eq!(
             serde_json::to_value(&built.operation).unwrap(),
             json!({"kind": "transfer_nft", "contract": apes, "standard": "ERC-721",
-                "token_id": "1234", "quantity": "1", "collection": "Apes",
-                "network_fee": "0.000432"})
+                "token_id": "1234", "quantity": "1", "collection": "Apes"})
+        );
+        let fee = built.review.network_fee.clone().unwrap();
+        assert_eq!(
+            (fee.amount.as_str(), fee.bound),
+            ("0.000432", crate::send::stages::FeeBound::AtMost)
         );
         assert_eq!(
             (

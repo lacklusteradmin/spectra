@@ -9,12 +9,6 @@ pub struct SuiStakingClient {
 
 // ── RPC response types ────────────────────────────────────────────────────────
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn short_id(id: &str) -> &str {
-    if id.len() >= 10 { &id[..10] } else { id }
-}
-
 impl SuiStakingClient {
     pub fn new(rpc_endpoints: Vec<String>) -> Self {
         Self { rpc_endpoints }
@@ -35,7 +29,7 @@ impl SuiStakingClient {
                 StakingValidator {
                     identifier: v.sui_address.clone(),
                     display_name: if v.name.is_empty() {
-                        format!("Validator {}", short_id(&v.sui_address))
+                        format!("Validator {}", super::short_id(&v.sui_address))
                     } else {
                         v.name.clone()
                     },

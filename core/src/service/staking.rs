@@ -151,13 +151,7 @@ impl WalletService {
             .unwrap_or_else(|| owner.clone());
             let amount = resolved_amount
                 .ok_or_else(|| SpectraBridgeError::invalid("Staking amount is required"))?;
-            let review = staking_review(&prepared, &request)?;
-            // The fee in the display currency too, as a send's review has it.
-            let network_fee_value = super::valuation::display_value_of(
-                &this.app_state().await,
-                &chain.native_holding_template(),
-                &review.network_fee,
-            );
+            let (review, network_fee) = staking_review(&prepared, &request)?;
             let send_request = crate::send::SendExecutionRequest {
                 wallet_id: request.wallet_id.clone(),
                 chain_id: chain,
@@ -194,8 +188,7 @@ impl WalletService {
                 staking: Some(request),
                 operation: None,
                 review: SendArtifactReview {
-                    network_fee: Some(review.network_fee.clone()),
-                    network_fee_value,
+                    network_fee: Some(network_fee),
                     staking: Some(review),
                     ..SendArtifactReview::default()
                 },
@@ -481,18 +474,27 @@ fn staking_model(chain: Chain) -> Result<StakingModel, SpectraBridgeError> {
         .ok_or_else(|| SpectraBridgeError::invalid("Staking is unavailable for this network"))
 }
 
+/// What a staking action's review says, and the fee it pays: the prepared
+/// payload's, at most its budget where the network charges what it uses.
 fn staking_review(
     prepared: &PreparedPayload,
     request: &StakingRequest,
-) -> Result<crate::staking::StakingReview, SpectraBridgeError> {
+) -> Result<
+    (
+        crate::staking::StakingReview,
+        crate::send::stages::NetworkFee,
+    ),
+    SpectraBridgeError,
+> {
+    use crate::send::stages::FeeBound::{AtMost, Exact};
     let invalid = || SpectraBridgeError::invalid("Missing reviewed staking network fee");
-    let (fee, upper, rent) = match prepared {
+    let (fee, bound, rent) = match prepared {
         PreparedPayload::Solana(p) => (
             u128::from(p.network_fee.ok_or_else(invalid)?),
-            false,
+            Exact,
             p.stake_rent.map(u128::from),
         ),
-        PreparedPayload::Sui(p) => (u128::from(p.gas_budget), true, None),
+        PreparedPayload::Sui(p) => (u128::from(p.gas_budget), AtMost, None),
         PreparedPayload::Aptos(p) => {
             let number = |field: &str| {
                 p.body[field]
@@ -504,7 +506,7 @@ fn staking_review(
                 number("gas_unit_price")?
                     .checked_mul(number("max_gas_amount")?)
                     .ok_or_else(invalid)?,
-                true,
+                AtMost,
                 None,
             )
         }
@@ -512,18 +514,16 @@ fn staking_review(
             p.fee_budget
                 .parse::<u128>()
                 .map_err(SpectraBridgeError::invalid)?,
-            true,
+            AtMost,
             None,
         ),
-        PreparedPayload::Substrate(p) => (p.fee, true, None),
-        PreparedPayload::IcpStaking(p) => (u128::from(p.fee), false, None),
+        PreparedPayload::Substrate(p) => (p.fee, AtMost, None),
+        PreparedPayload::IcpStaking(p) => (u128::from(p.fee), Exact, None),
         _ => return Err(invalid()),
     };
     let decimals = u32::from(request.chain_id.native_decimals());
     let neuron = request.chain_id.staking_model() == Some(StakingModel::Neuron);
-    Ok(crate::staking::StakingReview {
-        network_fee: crate::amount::decimal::from_units(fee, decimals),
-        fee_is_upper_bound: upper,
+    let review = crate::staking::StakingReview {
         fee_is_deducted_from_amount: neuron
             && request.action == crate::staking::StakingAction::Withdraw,
         funding_already_completed: false,
@@ -533,7 +533,11 @@ fn staking_review(
         lockup_seconds: request.lockup_seconds,
         reward_payout_is_delayed: neuron
             && request.action == crate::staking::StakingAction::ClaimRewards,
-    })
+    };
+    Ok((
+        review,
+        crate::send::stages::NetworkFee::of_units(request.chain_id, fee, bound),
+    ))
 }
 
 #[cfg(test)]

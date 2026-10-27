@@ -190,8 +190,12 @@ async fn a_new_neuron_is_funded_claimed_configured_and_set_to_follow() {
         .build(neurons.request(StakingAction::Stake, None, Some("2"), Some(600)))
         .await
         .unwrap();
+    let fee = built.review.network_fee.unwrap();
+    assert_eq!(
+        (fee.amount.as_str(), fee.bound),
+        ("0.0001", crate::send::stages::FeeBound::Exact)
+    );
     let review = built.review.staking.unwrap();
-    assert_eq!(review.network_fee, "0.0001");
     assert_eq!(review.lockup_seconds, Some(600));
     assert!(!review.reward_payout_is_delayed);
     let prepared: crate::send::stages::PreparedPayload =

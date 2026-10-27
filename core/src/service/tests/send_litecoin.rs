@@ -640,6 +640,13 @@ async fn an_owned_litecoin_build_pays_the_fee_its_preview_quoted() {
             quoted,
             "{purpose}"
         );
-        assert_eq!(built.review.network_fee.as_deref(), Some(quoted.as_str()));
+        assert_eq!(
+            built
+                .review
+                .network_fee
+                .as_ref()
+                .map(|fee| fee.amount.as_str()),
+            Some(quoted.as_str())
+        );
     }
 }

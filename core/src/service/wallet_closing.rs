@@ -218,7 +218,6 @@ impl WalletService {
                 destination: destination.clone(),
                 reserve: coin(reserve),
                 removed_objects,
-                network_fee: network_fee.clone(),
             };
             let amount = coin(u128::from(balance - fee));
             let request = crate::send::SendExecutionRequest {

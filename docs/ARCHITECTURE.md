@@ -68,6 +68,20 @@ Send previews carry their wallet, deployment and concrete network identity plus
 core-derived shortcut amounts and display details. Clients do not return previews
 with separately reconstructed metadata for reinterpretation. Destination activity
 is a core enum computed from raw smallest-unit balances, never formatted amounts.
+An empty amount is quoted provisionally, for a share of the holding core picks;
+the quote's own `amount` says what it priced.
+
+A staged transaction's review is one ordered list of `ReviewWarning`s and one
+`NetworkFee` marked as an estimate, exactly what is paid, or the most it can
+cost; a wallet operation's fee is read from, and validated against, its
+prepared payload. Every page that reviews an artifact words that list and that
+fee the same way. What may be done next is `send_progress`: the next step
+(sign, broadcast, rebroadcast or done) and whether a rebroadcast, a staking
+repair or a status recheck applies, read from the artifact and its history
+record together. Front ends adopt it with every artifact they take and never
+derive a step from the stage. The composer's requests — recipient resolution,
+quotes, that progress — start in `SendFlowState` when what they depend on
+changes; its views only render.
 
 The platform registers a cache directory with `configure_network_runtime`.
 Thereafter core reconciles Tor transports on committed settings changes and reset;

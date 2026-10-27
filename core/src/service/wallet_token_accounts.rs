@@ -235,7 +235,6 @@ impl WalletService {
                 operation: Some(WalletOperation::CloseTokenAccounts {
                     accounts: closed,
                     rent,
-                    network_fee,
                 }),
                 review: SendArtifactReview::default(),
                 signing_payload_hex,

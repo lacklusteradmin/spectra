@@ -109,8 +109,9 @@ class MwebTests(unittest.TestCase):
         # kept for it, and its weight's fee.
         built = data.run('wallet', 'send-mweb', 'MWEB', '--to', outsider['mweb'], '--amount', '0.4')['artifact']
         assert (built['recipient'], built['amount'], built['operation']) == \
-            (outsider['mweb'], '0.4', {'kind': 'shielded_payment', 'memo': None, 'network_fee': '0.000039'}), built
-        assert [w['code'] for w in built['review']['warnings']] == ['new_address'], built['review']
+            (outsider['mweb'], '0.4', {'kind': 'shielded_payment', 'memo': None}), built
+        assert built['review']['network_fee'] == {'amount': '0.000039', 'bound': 'exact', 'value': None}, built['review']
+        assert [w['warning']['code'] for w in built['review']['warnings']] == ['new_address'], built['review']
         prepared = json.loads(built['prepared_details'])['LitecoinMweb']
         assert ([i['value'] for i in prepared['inputs']], prepared['change'], prepared['fee']) == \
             ([150_000_000], 109_996_100, 3_900), prepared
@@ -131,7 +132,7 @@ class MwebTests(unittest.TestCase):
         # A peg-out: the amount leaves by the kernel to a transparent
         # address, with its bytes' fee beside the weight's.
         built = data.run('wallet', 'send-mweb', 'MWEB', '--to', outsider['legacy'], '--amount', '0.1')['artifact']
-        assert built['operation']['network_fee'] == '0.0000254', built['operation']
+        assert built['review']['network_fee']['amount'] == '0.0000254', built['review']
         mined = self.send(data, built)
         assert (mined['kernel_fee'], mined['pegouts']) == \
             (2_540, [{'address': outsider['legacy'], 'value': 10_000_000}]), mined
@@ -143,8 +144,8 @@ class MwebTests(unittest.TestCase):
         # its fee.
         built = data.run('wallet', 'mweb-pegin', 'MWEB', '--amount', '0.2')['artifact']
         assert (built['recipient'], built['amount'], built['operation']) == \
-            (wallet['pegin'], '0.2', {'kind': 'shield_transparent', 'amount': '0.2', 'network_fee': '0.000031'}), \
-            built
+            (wallet['pegin'], '0.2', {'kind': 'shield_transparent', 'amount': '0.2'}), built
+        assert built['review']['network_fee']['amount'] == '0.000031', built['review']
         mined = self.send(data, built)
         assert (mined['canonical_fee'], mined['kernel_fee'], mined['pegin']) == (1_000, 2_100, 20_002_100), mined
         assert mined['mweb_outputs'] == [{'owner': 'wallet', 'index': 1, 'value': 20_000_000}], mined

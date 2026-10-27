@@ -41,11 +41,17 @@ fn transfer(standard: NftStandard, token_id: &str, quantity: &str) -> StoredSend
                 token_id: token_id.into(),
                 quantity: quantity.into(),
                 collection: "Apes".into(),
-                network_fee: "0.00000000000027".into(),
             }),
             created_at: 1.0,
             review_digest: String::new(),
-            review: SendArtifactReview::default(),
+            review: SendArtifactReview {
+                network_fee: Some(NetworkFee {
+                    amount: "0.00000000000027".into(),
+                    bound: FeeBound::AtMost,
+                    value: None,
+                }),
+                ..SendArtifactReview::default()
+            },
             prepared_details: String::new(),
             signing_payload_hex: String::new(),
             signed_payload: None,

@@ -1041,8 +1041,14 @@ impl WalletService {
         if let PreparedPayload::IcpStaking(p) = &stored.prepared {
             stored.view.signing_payload_hex = hex::encode(serde_json::to_vec(&p.calls)?);
         }
+        // The calls left to make are free: the funding that paid the fee is
+        // already on chain.
+        stored.view.review.network_fee = Some(crate::send::stages::NetworkFee::of_units(
+            Chain::Icp,
+            0,
+            crate::send::stages::FeeBound::Exact,
+        ));
         if let Some(review) = &mut stored.view.review.staking {
-            review.network_fee = "0".into();
             review.funding_already_completed = true;
             if configured {
                 review.lockup_seconds = recovered_delay;

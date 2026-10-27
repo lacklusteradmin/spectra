@@ -9,16 +9,10 @@ pub struct SolanaStakingClient {
 
 // ── RPC response types ────────────────────────────────────────────────────────
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn short_id(id: &str) -> &str {
-    if id.len() >= 8 { &id[..8] } else { id }
-}
-
 fn vote_account_to_validator(v: VoteAccount, is_active: bool, minimum: u64) -> StakingValidator {
     StakingValidator {
         identifier: v.vote_pubkey.clone(),
-        display_name: format!("Validator {}", short_id(&v.vote_pubkey)),
+        display_name: format!("Validator {}", super::short_id(&v.vote_pubkey)),
         commission: Some(v.commission as f64 / 100.0),
         total_stake_smallest_unit: Some(v.activated_stake.to_string()),
         is_active,

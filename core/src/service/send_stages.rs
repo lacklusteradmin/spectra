@@ -9,6 +9,101 @@ use zeroize::Zeroizing;
 #[path = "tests/send_uncertain_recovery.rs"]
 mod uncertain_recovery_tests;
 
+#[cfg(test)]
+#[path = "tests/send_progress.rs"]
+mod progress_tests;
+
+/// The one action that moves a staged transaction on. A node's acceptance is
+/// not a confirmation, but it ends what the stages can do: the history
+/// record follows the transaction from there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, uniffi::Enum)]
+#[serde(rename_all = "snake_case")]
+pub enum SendNextStep {
+    /// Built, and waiting for its signature.
+    Sign,
+    /// Signed and never submitted: nodes are chosen and it is broadcast.
+    Broadcast,
+    /// Submitted, and no node accepted it: the same signed transaction goes
+    /// again, when `can_rebroadcast` allows.
+    Rebroadcast,
+    /// A node accepted it, or the chain has settled it.
+    Done,
+}
+
+/// A staged transaction as a front end acts on it: the artifact, its
+/// history record once it was submitted, and what core allows next.
+#[derive(Debug, Clone, Serialize, uniffi::Record)]
+pub struct SendProgress {
+    pub artifact: SendArtifact,
+    /// The history record, once the transaction was submitted.
+    pub transaction: Option<crate::store::persistence_models::TransactionRecord>,
+    pub next: SendNextStep,
+    /// The same signed transaction can go to nodes again: it was submitted,
+    /// and its record allows a rebroadcast.
+    pub can_rebroadcast: bool,
+    /// A submitted staking action that did not complete can be rebuilt from
+    /// its saved intent (`repair_staking`).
+    pub can_repair: bool,
+    /// A submitted staking action whose execution is not settled can have its
+    /// status read again (`recheck_staking`).
+    pub can_recheck: bool,
+}
+
+impl SendProgress {
+    pub(crate) fn of(
+        artifact: SendArtifact,
+        transaction: Option<crate::store::persistence_models::TransactionRecord>,
+    ) -> Self {
+        let submitted = !artifact.attempts.is_empty();
+        // A record speaks for what was submitted. A repaired staking action
+        // keeps its id but has been rebuilt since its record was written,
+        // and has no submission of its own yet.
+        let transaction = transaction.filter(|record| submitted && record.id == artifact.id);
+        let status = transaction.as_ref().map(|record| record.status);
+        let signed = artifact.stage == SendStage::Signed;
+        let next = if status.is_some_and(|status| status != TransactionStatus::Pending) {
+            SendNextStep::Done
+        } else if !signed {
+            SendNextStep::Sign
+        } else if artifact
+            .attempts
+            .iter()
+            .any(|attempt| attempt.outcome == SubmissionOutcome::Accepted)
+        {
+            SendNextStep::Done
+        } else if submitted {
+            SendNextStep::Rebroadcast
+        } else {
+            SendNextStep::Broadcast
+        };
+        let can_rebroadcast = signed
+            && submitted
+            && transaction
+                .as_ref()
+                .is_some_and(|record| record.actions.rebroadcast_unavailable_reason.is_none());
+        // Only an interrupted new ICP neuron is rebuilt: its funding is on
+        // chain, and repair completes the steps that follow it.
+        let can_repair = signed
+            && submitted
+            && status != Some(TransactionStatus::Confirmed)
+            && artifact.staking.as_ref().is_some_and(|intent| {
+                intent.chain_id == Chain::Icp
+                    && intent.action == crate::staking::StakingAction::Stake
+            });
+        let can_recheck = submitted
+            && artifact.staking.is_some()
+            && status.is_none_or(|status| status == TransactionStatus::Pending);
+        Self {
+            artifact,
+            transaction,
+            next,
+            can_rebroadcast,
+            can_repair,
+            can_recheck,
+        }
+    }
+}
+
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     pub async fn build_send(
@@ -34,34 +129,28 @@ impl WalletService {
             let review = this.review_owned_send(input).await?;
             // This operation completes the review itself; no unused confirmation remains.
             this.send_reviews.lock().await.remove(&review.id);
-            let chain = review.request.chain_id;
             // The quote already cut its fee to the gas asset's precision.
             let network_fee = review
                 .preview
                 .as_ref()
                 .map(|preview| preview.estimated_network_fee.clone());
-            let network_fee_value = match &network_fee {
-                Some(fee) => super::valuation::display_value_of(
-                    &this.app_state().await,
-                    &chain.native_holding_template(),
-                    fee,
-                ),
-                None => None,
-            };
             let total = super::owned_send::send_total(
                 review.request.contract_address.is_none(),
                 &review.request.amount_str,
                 network_fee.as_deref(),
             );
             let advisories = SendArtifactReview {
-                warnings: review.warnings,
-                recipient_warnings: review.recipient_warnings,
-                requires_self_send_confirmation: review.requires_self_send_confirmation,
-                staking: None,
-                transfer_terms: None,
-                network_fee,
-                network_fee_value,
+                network_fee: network_fee.map(|amount| NetworkFee {
+                    amount,
+                    bound: FeeBound::Estimate,
+                    value: None,
+                }),
                 total,
+                ..SendArtifactReview::of_transfer(
+                    review.warnings,
+                    review.recipient_warnings,
+                    review.requires_self_send_confirmation,
+                )
             };
             this.build_send_with_review(review.request, Some(advisories))
                 .await
@@ -86,6 +175,19 @@ impl WalletService {
         crate::service::worker::run(async move {
             let this = &this;
             Ok(this.load_send_artifact(id).await?.view)
+        })
+        .await
+    }
+
+    /// Where a staged transaction stands and what may be done with it now,
+    /// from its stored artifact and its history record read together.
+    pub async fn send_progress(&self, id: String) -> Result<SendProgress, SpectraBridgeError> {
+        let this = self.clone();
+        crate::service::worker::run(async move {
+            let this = &this;
+            let artifact = this.load_send_artifact(id.clone()).await?.view;
+            let transaction = this.transaction(id).await?;
+            Ok(SendProgress::of(artifact, transaction))
         })
         .await
     }
@@ -227,7 +329,11 @@ impl WalletService {
         &self,
         new: crate::send::stages::NewArtifact,
     ) -> Result<SendArtifact, SpectraBridgeError> {
-        let stored = StoredSend::prepared(new)?;
+        let state = self.app_state().await;
+        let fee_asset = new.request.chain_id.native_holding_template();
+        let stored = StoredSend::prepared(new, |fee| {
+            super::valuation::display_value_of(&state, &fee_asset, fee)
+        })?;
         self.save_send_artifact(&stored, &[]).await?;
         Ok(stored.view)
     }
@@ -795,7 +901,7 @@ impl WalletService {
             Some(review) => review,
             None => self.staged_send_review(&request).await?,
         };
-        review.transfer_terms = prepared.transfer_terms(request.token_decimals);
+        review.adopt_transfer_terms(prepared.transfer_terms(request.token_decimals));
         self.save_prepared_send(crate::send::stages::NewArtifact {
             sender,
             asset: request

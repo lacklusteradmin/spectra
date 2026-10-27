@@ -275,18 +275,12 @@ impl WalletService {
         } else {
             Vec::new()
         };
-        let requires_self_send_confirmation =
-            self.is_own_address(chain, &request.to_address).await?;
-        Ok(crate::send::stages::SendArtifactReview {
-            staking: None,
-            warnings: without_new_address_for_self_send(warnings, requires_self_send_confirmation),
+        let own_address = self.is_own_address(chain, &request.to_address).await?;
+        Ok(crate::send::stages::SendArtifactReview::of_transfer(
+            without_new_address_for_self_send(warnings, own_address),
             recipient_warnings,
-            requires_self_send_confirmation,
-            transfer_terms: None,
-            network_fee: None,
-            network_fee_value: None,
-            total: None,
-        })
+            own_address,
+        ))
     }
 }
 

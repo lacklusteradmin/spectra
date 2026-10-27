@@ -439,7 +439,6 @@ impl WalletService {
                     .payments
                     .first()
                     .and_then(|payment| payment.memo.clone()),
-                network_fee: crate::amount::decimal::from_units(u128::from(prepared.fee_zat), 8),
             };
             this.store_zcash_shielded(&wallet, recipient.trim(), &amount, prepared, operation)
                 .await
@@ -472,7 +471,6 @@ impl WalletService {
             let amount = crate::amount::decimal::from_units(u128::from(prepared.change_zat), 8);
             let operation = WalletOperation::ShieldTransparent {
                 amount: amount.clone(),
-                network_fee: crate::amount::decimal::from_units(u128::from(prepared.fee_zat), 8),
             };
             this.store_zcash_shielded(&wallet, &address, &amount, prepared, operation)
                 .await

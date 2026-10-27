@@ -135,7 +135,6 @@ mod exact_tests {
 /// A percentage of an exact balance as editable decimal input, floored at the
 /// asset's precision and again at the percentage: a shortcut never rounds up
 /// past what it was taken from.
-#[uniffi::export]
 pub fn send_amount_shortcut(maximum: String, decimals: u32, percentage: u32) -> Option<String> {
     let truncated = crate::amount::decimal::truncate(&maximum, decimals)?;
     shortcut_of_units(

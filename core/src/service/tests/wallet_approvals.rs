@@ -270,15 +270,19 @@ async fn standing_approvals_are_found_revoked_and_named() {
         .build_approval_revocation(approver.id.clone(), TOKEN.into(), UNLIMITED.into())
         .await
         .unwrap();
-    // 0xb000 gas and Ethereum's 20% margin, 54068, at twice the 1 gwei base
-    // fee plus the 2 gwei tip.
     assert_eq!(
         built.operation,
         Some(WalletOperation::RevokeApproval {
             token: TOKEN.into(),
             spender: UNLIMITED.into(),
-            network_fee: "0.000216272".into(),
         })
+    );
+    // 0xb000 gas and Ethereum's 20% margin, 54068, at twice the 1 gwei base
+    // fee plus the 2 gwei tip: the most the call can cost.
+    let fee = built.review.network_fee.clone().unwrap();
+    assert_eq!(
+        (fee.amount.as_str(), fee.bound),
+        ("0.000216272", crate::send::stages::FeeBound::AtMost)
     );
     let PreparedPayload::Evm(call) = serde_json::from_str(&built.prepared_details).unwrap() else {
         panic!("an EVM call: {}", built.prepared_details);

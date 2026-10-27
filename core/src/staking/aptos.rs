@@ -7,12 +7,6 @@ pub struct AptosStakingClient {
     rest_endpoints: Vec<String>,
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn short_id(id: &str) -> &str {
-    if id.len() >= 10 { &id[..10] } else { id }
-}
-
 impl AptosStakingClient {
     pub fn new(rest_endpoints: Vec<String>) -> Self {
         Self { rest_endpoints }
@@ -35,7 +29,10 @@ impl AptosStakingClient {
                         return Ok::<_, crate::api::error::ApiError>(None);
                     };
                     Ok(Some(StakingValidator {
-                        display_name: format!("Delegation pool {}", short_id(&validator.addr)),
+                        display_name: format!(
+                            "Delegation pool {}",
+                            super::short_id(&validator.addr)
+                        ),
                         identifier: validator.addr,
                         commission: Some(commission as f64 / 10_000.0),
                         total_stake_smallest_unit: Some(validator.voting_power),
