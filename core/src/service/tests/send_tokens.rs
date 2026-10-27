@@ -66,11 +66,11 @@ async fn nodes(contract: String, live: Arc<Mutex<Live>>) -> wiremock::MockServer
                 "eth_call" => {
                     let data = params[0]["data"].as_str().unwrap();
                     match &data[..10] {
-                        "0x313ce567" => json!(format!("0x{:x}", live.decimals)),
+                        "0x313ce567" => json!(format!("0x{:064x}", live.decimals)),
                         "0x95d89b41" => json!(format!("0x{:0<64}", hex::encode("TEST"))),
                         // No ERC-165: a fungible token, not a collection.
                         "0x01ffc9a7" => json!(format!("0x{}", "0".repeat(64))),
-                        _ => json!(format!("0x{:x}", live.token)),
+                        _ => json!(format!("0x{:064x}", live.token)),
                     }
                 }
                 "eth_chainId" => json!("0x3d"),

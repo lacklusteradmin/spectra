@@ -6,6 +6,7 @@
 pub(crate) mod account_key;
 pub mod aptos;
 pub(crate) mod aptos_multikey;
+pub(crate) mod bip32;
 pub mod bitcoin;
 pub mod bitcoin_cash;
 pub mod bitcoin_gold;
@@ -33,7 +34,7 @@ pub(crate) mod multisig_policy;
 pub mod near;
 pub mod path;
 pub mod peercoin;
-pub(crate) mod phrase;
+pub mod phrase;
 pub mod polkadot;
 pub(crate) mod polyseed;
 pub mod primitives;

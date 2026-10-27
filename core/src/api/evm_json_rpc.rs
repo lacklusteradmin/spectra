@@ -83,6 +83,23 @@ pub(crate) fn parse_hex_u128(s: &str) -> Result<u128, ApiError> {
     u128::from_str_radix(stripped, 16).map_err(|e| ApiError::Decode(format!("hex u128 parse: {e}")))
 }
 
+/// One uint256 ABI word, as `eth_call` (or Tron's constant call) returns
+/// it: exactly 32 bytes of hex, with nothing in the half above a u128, the
+/// widest amount core holds. A JSON-RPC quantity is read by
+/// [`parse_hex_u128`] instead.
+pub(crate) fn abi_u128(word: &str) -> Result<u128, ApiError> {
+    let word = word.strip_prefix("0x").unwrap_or(word);
+    if word.len() != 64 || !word.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(ApiError::Decode(
+            "ABI integer: expected one 32-byte hex word".into(),
+        ));
+    }
+    if !word[..32].bytes().all(|b| b == b'0') {
+        return Err(ApiError::Decode("ABI integer exceeds u128 range".into()));
+    }
+    u128::from_str_radix(&word[32..], 16).map_err(|e| ApiError::Decode(format!("ABI integer: {e}")))
+}
+
 /// Parse a `0x`-prefixed hex integer into u64.
 pub(crate) fn parse_hex_u64(s: &str) -> Result<u64, ApiError> {
     let stripped = s.strip_prefix("0x").unwrap_or(s);
@@ -529,9 +546,7 @@ impl EvmClient {
                         .map(|pair| {
                             let word = |answer: &Result<Value, ApiError>| {
                                 answer.clone().and_then(|value| {
-                                    parse_hex_u128(
-                                        value.as_str().or_decode("eth_call: expected string")?,
-                                    )
+                                    abi_u128(value.as_str().or_decode("eth_call: expected string")?)
                                 })
                             };
                             let raw = word(&pair[0])?;
@@ -572,7 +587,7 @@ impl EvmClient {
         let hex_str = result
             .as_str()
             .or_decode("eth_call balanceOf: expected string")?;
-        parse_hex_u128(hex_str)
+        abi_u128(hex_str)
     }
 
     /// `eth_call` at the latest block: the returned bytes, or `None` when
@@ -854,7 +869,7 @@ impl EvmClient {
         let results = results
             .into_iter()
             .collect::<Result<Vec<Value>, ApiError>>()?;
-        let decimals = crate::api::checked_token_decimals(parse_hex_u128(
+        let decimals = crate::api::checked_token_decimals(abi_u128(
             results[0]
                 .as_str()
                 .or_decode("eth_call decimals: expected string")?,
@@ -933,7 +948,7 @@ impl EvmClient {
                     .as_ref()
                     .ok()
                     .and_then(|value| value.as_str())
-                    .and_then(|hex| parse_hex_u128(hex).ok())
+                    .and_then(|hex| abi_u128(hex).ok())
                     .and_then(|raw| crate::api::checked_token_decimals(raw).ok());
                 let symbol = pair[1]
                     .as_ref()
@@ -1186,6 +1201,28 @@ mod fee_history_tests {
             json!({"baseFeePerGas": ["0x1"], "reward": [["0x1"], "nope"]}),
         ] {
             assert!(parse_fee_history(&body).is_err(), "{body}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod abi_word_tests {
+    use super::abi_u128;
+
+    #[test]
+    fn abi_integers_never_truncate_or_accept_malformed_words() {
+        assert_eq!(abi_u128(&format!("{:064x}", u128::MAX)).unwrap(), u128::MAX);
+        assert_eq!(abi_u128(&format!("0x{}", "0".repeat(64))).unwrap(), 0);
+        for bad in [
+            "01".into(),
+            "0x1".into(),
+            "0".repeat(63),
+            "0".repeat(65),
+            format!("1{}", "0".repeat(63)),
+            format!("{}z", "0".repeat(63)),
+            format!("{}é", "0".repeat(62)),
+        ] {
+            assert!(abi_u128(&bad).is_err(), "{bad}");
         }
     }
 }

@@ -72,6 +72,15 @@ impl AccountBalanceReader {
     }
 }
 
+/// Unified per-chain native balance projection used by `fetch_native_balance_summary`.
+/// `smallest_unit` is a base-10 integer string (sats, lamports, wei, yocto-NEAR, …);
+/// `amount_display` is the chain's human-readable native amount.
+#[derive(serde::Serialize, Debug, Clone, uniffi::Record)]
+pub struct NativeBalanceSummary {
+    pub smallest_unit: String,
+    pub amount_display: String,
+}
+
 #[cfg(test)]
 #[path = "tests/network_balance.rs"]
 mod tests;

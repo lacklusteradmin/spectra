@@ -136,11 +136,11 @@ impl WalletService {
     ) {
         use crate::service::DiagnosticCommand;
         let chain_id = chain;
-        crate::diagnostics::diagnostics_record_history_run(chain_id);
+        self.diagnostic_runs.record_history_run(chain_id);
         let command = match result {
             Ok(outcome) => {
                 for row in &outcome.diagnostics {
-                    crate::diagnostics::diagnostics_record(
+                    self.diagnostic_runs.record(
                         chain_id,
                         crate::diagnostics::HistoryDiagnostics {
                             wallet_id: row.wallet_id.clone(),

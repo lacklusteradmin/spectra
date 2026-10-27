@@ -60,9 +60,7 @@ impl Metadata {
                 self.decode_value(ty.id, key)?;
                 match hashers[0] {
                     StorageHasher::Blake2_128Concat => {
-                        use blake2::digest::consts::U16;
-                        use blake2::{Blake2b, Digest};
-                        prefix.extend(Blake2b::<U16>::digest(key));
+                        prefix.extend(crate::derivation::primitives::blake2b::<16>(&[key]));
                         prefix.extend(key);
                     }
                     StorageHasher::Twox64Concat => {

@@ -244,14 +244,7 @@ pub(crate) fn estimate_vsize<'a>(
     input_scripts: impl IntoIterator<Item = &'a [u8]>,
     output_script_lengths: impl IntoIterator<Item = usize>,
 ) -> Result<u64, SendError> {
-    let compact_size = |value: u64| -> u64 {
-        match value {
-            0..=0xfc => 1,
-            0xfd..=0xffff => 3,
-            0x1_0000..=0xffff_ffff => 5,
-            _ => 9,
-        }
-    };
+    let compact_size = |value: u64| bitcoin::consensus::encode::VarInt(value).size() as u64;
     let overflow = || SendError::Invalid("transaction size overflow".into());
     let mut input_count = 0u64;
     let mut inputs_size = 0u64;

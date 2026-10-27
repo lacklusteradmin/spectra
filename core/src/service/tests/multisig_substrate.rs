@@ -114,8 +114,8 @@ async fn node() -> (MockServer, Arc<Mutex<Pallet>>) {
                     Compact::<u32>::decode(&mut input).unwrap();
                     assert_eq!(input[..2], [0x84, 0x00]);
                     live.submitted.push(input[2..34].try_into().unwrap());
-                    use blake2::{Blake2b, Digest, digest::consts::U32};
-                    json!(format!("0x{}", hex::encode(Blake2b::<U32>::digest(&raw))))
+                    let hash = blake2b_simd::Params::new().hash_length(32).hash(&raw);
+                    json!(format!("0x{}", hex::encode(hash.as_bytes())))
                 }
                 other => panic!("unexpected {other}"),
             };

@@ -439,7 +439,9 @@ impl WalletService {
         // A P2SH network without a requested rate pays its static fee per
         // started kilobyte, as its ordinary sends do.
         let per_kilobyte = match (policy.script, &spend.fee_rate) {
-            (UtxoMultisigScript::Sh, None) => Some(super::helpers::fee_or_static(chain, None)?),
+            (UtxoMultisigScript::Sh, None) => {
+                Some(super::send_stage_utxo::fee_or_static(chain, None)?)
+            }
             _ => None,
         };
         let fee_for = |inputs: usize, change: bool| {

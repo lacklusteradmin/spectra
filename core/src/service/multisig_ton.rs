@@ -523,7 +523,7 @@ impl WalletService {
         let identity = self
             .resolve_send_identity(chain, &signer_wallet_id, password.as_deref())
             .await?;
-        let key = decode_secret_array::<32>(&identity.private_key_hex)?;
+        let key = identity.private_key_array::<32>()?;
         let public =
             crate::send::keys::Ed25519Seed::from_hex(&identity.private_key_hex)?.public_key();
         let wallet_signer = crate::send::ton::TonSigner::for_sender(chain, &sender, &key, &public)?;

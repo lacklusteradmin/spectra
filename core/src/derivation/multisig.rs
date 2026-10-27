@@ -310,18 +310,7 @@ fn parse_key(text: &str, network: NetworkKind) -> Option<Cosigner> {
     let mut steps = origin.split('/');
     let fingerprint = Fingerprint::from_str(steps.next()?).ok()?;
     let origin = steps
-        .map(|step| {
-            let (number, hardened) = match step.strip_suffix(['h', 'H', '\'']) {
-                Some(number) => (number, true),
-                None => (step, false),
-            };
-            let index: u32 = number.parse().ok()?;
-            if hardened {
-                ChildNumber::from_hardened_idx(index).ok()
-            } else {
-                ChildNumber::from_normal_idx(index).ok()
-            }
-        })
+        .map(|step| super::bip32::parse_step(step).ok())
         .collect::<Option<Vec<_>>>()?;
     let key = Xpub::from_str(key).ok()?;
     if key.network != network

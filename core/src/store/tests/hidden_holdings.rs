@@ -34,7 +34,7 @@ fn hide(deployment_id: &str, hidden: bool) -> StateCommand {
 
 #[tokio::test]
 async fn a_hidden_holding_counts_nowhere_but_stays_sendable() {
-    let token = crate::store::built_in_token_preferences()
+    let token = crate::store::state::built_in_token_preferences()
         .into_iter()
         .find(|preference| preference.token.chain_id == Chain::Ethereum)
         .unwrap()

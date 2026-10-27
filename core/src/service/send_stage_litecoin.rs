@@ -110,7 +110,7 @@ impl WalletService {
             }
             None => match rate_fee {
                 Some(fee) => fee,
-                None => fee_or_static(chain, None)?.max(vsize),
+                None => super::send_stage_utxo::fee_or_static(chain, None)?.max(vsize),
             },
         };
         let paid = amount

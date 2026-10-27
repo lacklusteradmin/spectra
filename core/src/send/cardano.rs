@@ -479,7 +479,9 @@ impl PreparedCardanoTransaction {
 
     /// The transaction's id: the hash of its body.
     pub(crate) fn transaction_hash(&self) -> Result<[u8; 32], SendError> {
-        Ok(blake2b_256(&self.encode_body()?))
+        Ok(crate::derivation::primitives::blake2b::<32>(&[
+            &self.encode_body()?
+        ]))
     }
 
     /// The signed transaction, as CBOR hex.
@@ -717,14 +719,6 @@ fn cbor_len_prefix(major: u8, len: usize) -> Vec<u8> {
         v.extend_from_slice(&(len as u32).to_be_bytes());
         v
     }
-}
-
-fn blake2b_256(data: &[u8]) -> [u8; 32] {
-    use blake2::digest::consts::U32;
-    use blake2::{Blake2b, Digest};
-    let mut h = Blake2b::<U32>::new();
-    h.update(data);
-    h.finalize().into()
 }
 
 #[cfg(test)]

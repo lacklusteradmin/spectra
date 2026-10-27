@@ -95,21 +95,20 @@ fn a_key_is_read_only_as_its_networks_account() {
         );
     }
     let account = parse(Chain::Bitcoin, &key("bitcoin", "xpub")).unwrap();
-    let secp = secp256k1::Secp256k1::new();
-    let child = account.key.derive_child(&secp, 0).unwrap();
+    let child = crate::derivation::bip32::derive_public(&account.key, &[0]).unwrap();
     assert!(
         refusal(
             Chain::Bitcoin,
-            &child.to_xpub_string(account.version.version)
+            &crate::derivation::bip32::encode_xpub(&child, account.version.version)
         )
         .contains("depth")
     );
-    let mut unhardened = account.key.clone();
-    unhardened.child_number = 0;
+    let mut unhardened = account.key;
+    unhardened.child_number = bitcoin::bip32::ChildNumber::Normal { index: 0 };
     assert!(
         refusal(
             Chain::Bitcoin,
-            &unhardened.to_xpub_string(account.version.version)
+            &crate::derivation::bip32::encode_xpub(&unhardened, account.version.version)
         )
         .contains("depth")
     );

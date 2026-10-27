@@ -67,7 +67,7 @@ pub fn send_amount_shortcut_percentages() -> Vec<u32> {
 pub struct RecipientCheck {
     /// Whether the destination has been used, from raw smallest-unit
     /// balances. `None` when its balance or history could not be read.
-    pub activity: Option<super::types::SendDestinationActivity>,
+    pub activity: Option<super::SendDestinationActivity>,
     /// The destination is an address of one of the user's own wallets on
     /// this network. Read from local state, so a failed activity read does
     /// not hide it; the build review asks for confirmation on the same fact.

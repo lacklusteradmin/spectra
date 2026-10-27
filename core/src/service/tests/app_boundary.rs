@@ -102,7 +102,7 @@ async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
 
 #[test]
 fn movement_alert_requires_both_thresholds_and_valid_observations() {
-    let evaluate = evaluate_large_movement;
+    let evaluate = crate::service::movement::evaluate_large_movement;
     assert!(!evaluate(100.0, 109.0, 10.0, 5.0).should_alert);
     assert!(!evaluate(1000.0, 1020.0, 10.0, 5.0).should_alert);
     let down = evaluate(100.0, 80.0, 10.0, 5.0);

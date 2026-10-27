@@ -2,14 +2,14 @@ use crate::derivation::types::{BitcoinScriptType, DerivationResult};
 use crate::error::SpectraBridgeError;
 
 pub fn script_type_for_path(path: &str) -> BitcoinScriptType {
-    let purpose = path
-        .split('/')
-        .find(|segment| *segment != "m" && *segment != "M")
-        .map(|segment| segment.trim_end_matches('\''));
+    let purpose = crate::derivation::bip32::parse_path(path)
+        .ok()
+        .and_then(|path| path.into_iter().next().copied())
+        .map(crate::derivation::bip32::step_number);
     match purpose {
-        Some("44") => BitcoinScriptType::P2pkh,
-        Some("49") => BitcoinScriptType::P2shP2wpkh,
-        Some("86") => BitcoinScriptType::P2tr,
+        Some(44) => BitcoinScriptType::P2pkh,
+        Some(49) => BitcoinScriptType::P2shP2wpkh,
+        Some(86) => BitcoinScriptType::P2tr,
         _ => BitcoinScriptType::P2wpkh,
     }
 }

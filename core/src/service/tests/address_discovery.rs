@@ -19,8 +19,9 @@ fn public_children_match_full_derivation_for_every_discovery_network() {
                 continue;
             }
             let default = crate::derivation::path::default_path_from_catalog(chain).unwrap();
-            let coin = crate::derivation::bitcoin::parse_bip32_path(&default).unwrap()[1]
-                - crate::derivation::primitives::HARDENED_OFFSET;
+            let coin = crate::derivation::bip32::indices(
+                &crate::derivation::bip32::parse_path(&default).unwrap(),
+            )[1] - crate::derivation::bip32::HARDENED_OFFSET;
             let context =
                 UtxoDerivation::new(chain, SEED, format!("m/{purpose}'/{coin}'/2'/1/9")).unwrap();
             for branch in [0, 1] {
@@ -579,8 +580,8 @@ async fn imported_litecoin_root_paths_raise_receive_and_change_floors() {
 
 #[test]
 fn public_utxo_accounts_match_seed_derivation_and_refuse_mismatched_identity() {
-    use crate::derivation::bitcoin::{
-        ExtendedPublicKey, XPUB_VERSION_MAINNET, XPUB_VERSION_TESTNET,
+    use crate::derivation::bip32::{
+        XPUB_VERSION_MAINNET, XPUB_VERSION_TESTNET, decode_xpub, encode_xpub,
     };
     let overrides = crate::store::wallet_domain::WalletDerivationOverrides {
         passphrase: Some("public account fixture".into()),
@@ -613,25 +614,28 @@ fn public_utxo_accounts_match_seed_derivation_and_refuse_mismatched_identity() {
                     );
                 }
             }
-            let (account, _) = ExtendedPublicKey::from_xpub_string(&xpub).unwrap();
-            let wrong_network = account.to_xpub_string(if chain.is_testnet() {
-                XPUB_VERSION_MAINNET
-            } else {
-                XPUB_VERSION_TESTNET
-            });
+            let (account, _) = decode_xpub(&xpub).unwrap();
+            let wrong_network = encode_xpub(
+                &account,
+                if chain.is_testnet() {
+                    XPUB_VERSION_MAINNET
+                } else {
+                    XPUB_VERSION_TESTNET
+                },
+            );
             assert!(
                 UtxoDerivation::from_account_xpub(chain, &wrong_network, base.clone(), &root)
                     .is_err()
             );
-            for (depth, child_number) in [(2, account.child_number), (3, account.child_number + 1)]
-            {
-                let mut altered = account.clone();
+            let next = bitcoin::bip32::ChildNumber::from(u32::from(account.child_number) + 1);
+            for (depth, child_number) in [(2, account.child_number), (3, next)] {
+                let mut altered = account;
                 altered.depth = depth;
                 altered.child_number = child_number;
                 assert!(
                     UtxoDerivation::from_account_xpub(
                         chain,
-                        &altered.to_xpub_string(version),
+                        &encode_xpub(&altered, version),
                         base.clone(),
                         &root
                     )

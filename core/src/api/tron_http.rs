@@ -905,7 +905,7 @@ impl TronHttpClient {
             .or_decode("triggerconstantcontract balanceOf: missing result")?;
 
         // The result is a 32-byte big-endian integer hex string.
-        parse_abi_u128(hex_str)
+        crate::api::evm_json_rpc::abi_u128(hex_str)
     }
 
     /// Fetch token symbol + decimals.
@@ -932,7 +932,8 @@ impl TronHttpClient {
             .and_then(|arr| arr.first())
             .and_then(|v| v.as_str())
             .or_decode("triggerconstantcontract decimals: missing result")?;
-        let decimals = crate::api::checked_token_decimals(parse_abi_u128(decimals_hex)?)?;
+        let decimals =
+            crate::api::checked_token_decimals(crate::api::evm_json_rpc::abi_u128(decimals_hex)?)?;
 
         // symbol()
         let resp = self
@@ -1025,23 +1026,6 @@ fn tron_transaction_status(
         succeeded: transaction_success && contract_success,
         block: Some(block),
     })
-}
-
-// ── TRC-20 helpers
-
-/// A uint256 ABI word must be complete and fit the core's u128 amount type.
-pub(crate) fn parse_abi_u128(hex_str: &str) -> Result<u128, ApiError> {
-    let word = hex_str.strip_prefix("0x").unwrap_or(hex_str);
-    if word.len() != 64 || !word.bytes().all(|b| b.is_ascii_hexdigit()) {
-        return Err(ApiError::Decode(
-            "TRC20 integer: expected one 32-byte hex ABI word".into(),
-        ));
-    }
-    if !word[..32].bytes().all(|b| b == b'0') {
-        return Err(ApiError::Decode("TRC20 integer exceeds u128 range".into()));
-    }
-    u128::from_str_radix(&word[32..], 16)
-        .map_err(|e| ApiError::Decode(format!("TRC20 integer: {e}")))
 }
 
 /// Only the block reference is supplied by the node, never a transaction/hash.
@@ -1273,25 +1257,6 @@ mod trc10_tests {
 #[cfg(test)]
 mod integer_tests {
     use super::*;
-    #[test]
-    fn abi_integers_never_truncate_or_accept_malformed_words() {
-        assert_eq!(
-            parse_abi_u128(&format!("{:064x}", u128::MAX)).unwrap(),
-            u128::MAX
-        );
-        assert_eq!(parse_abi_u128(&"0".repeat(64)).unwrap(), 0);
-        for bad in [
-            "01".into(),
-            "0".repeat(63),
-            "0".repeat(65),
-            format!("1{}", "0".repeat(63)),
-            format!("{}z", "0".repeat(63)),
-            format!("{}é", "0".repeat(62)),
-        ] {
-            assert!(parse_abi_u128(&bad).is_err(), "{bad}");
-        }
-    }
-
     #[tokio::test]
     async fn invalid_decimals_are_refused_before_reading_the_symbol() {
         use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};

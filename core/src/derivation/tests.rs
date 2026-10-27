@@ -1,6 +1,6 @@
 use crate::derivation::aptos::derive_aptos;
+use crate::derivation::bip32;
 use crate::derivation::bitcoin::derive_bitcoin;
-use crate::derivation::bitcoin::{ExtendedPrivateKey, derive_bip39_seed};
 use crate::derivation::bitcoin_cash::derive_bitcoin_cash;
 use crate::derivation::bitcoin_sv::derive_bitcoin_sv;
 use crate::derivation::cardano::derive_cardano;
@@ -13,6 +13,7 @@ use crate::derivation::monero::derive_monero;
 use crate::derivation::monero::monero_base58_encode;
 use crate::derivation::near::derive_near;
 use crate::derivation::polkadot::derive_polkadot;
+use crate::derivation::primitives::derive_bip39_seed;
 use crate::derivation::solana::derive_solana;
 use crate::derivation::stellar::derive_stellar;
 use crate::derivation::sui::derive_sui;
@@ -250,11 +251,11 @@ fn derives_all_supported_chains() {
 fn custom_hmac_key_changes_secp_derivation() {
     // Different HMAC keys produce different BIP-32 master keys from the same seed.
     let seed = derive_bip39_seed(MNEMONIC, "", 0, None, None).unwrap();
-    let btc = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())
+    let btc = bip32::master(seed.as_ref(), b"Bitcoin seed")
         .unwrap()
         .private_key
         .secret_bytes();
-    let nostr = ExtendedPrivateKey::master_from_seed(b"Nostr seed", seed.as_ref())
+    let nostr = bip32::master(seed.as_ref(), b"Nostr seed")
         .unwrap()
         .private_key
         .secret_bytes();
@@ -307,11 +308,11 @@ fn custom_iteration_count_changes_seed() {
 fn default_hmac_key_matches_standard_seed() {
     // Explicitly passing "Bitcoin seed" must match the hardcoded default path.
     let seed = derive_bip39_seed(MNEMONIC, "", 0, None, None).unwrap();
-    let k1 = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())
+    let k1 = bip32::master(seed.as_ref(), b"Bitcoin seed")
         .unwrap()
         .private_key
         .secret_bytes();
-    let k2 = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())
+    let k2 = bip32::master(seed.as_ref(), b"Bitcoin seed")
         .unwrap()
         .private_key
         .secret_bytes();
@@ -768,11 +769,6 @@ fn polkadot_substrate_diverges_from_bip39_seed_prefix() {
 #[test]
 fn polkadot_ss58_round_trip() {
     // Re-decode the SS58 address and verify the embedded pubkey + checksum.
-    use blake2::Blake2b;
-    use blake2::digest::Digest;
-    use blake2::digest::consts::U64;
-    type Blake2b512 = Blake2b<U64>;
-
     let result = derive_polkadot(
         MNEMONIC.into(),
         String::new(),
@@ -792,11 +788,13 @@ fn polkadot_ss58_round_trip() {
     assert_eq!(decoded[0], 0x00, "Polkadot mainnet prefix is 0");
     assert_eq!(hex::encode(&decoded[1..33]), pub_hex);
 
-    let mut hasher = Blake2b512::new();
-    hasher.update(b"SS58PRE");
-    hasher.update(&decoded[..33]);
-    let checksum = hasher.finalize();
-    assert_eq!(&decoded[33..35], &checksum[..2]);
+    let checksum = blake2b_simd::Params::new()
+        .hash_length(64)
+        .to_state()
+        .update(b"SS58PRE")
+        .update(&decoded[..33])
+        .finalize();
+    assert_eq!(&decoded[33..35], &checksum.as_bytes()[..2]);
 }
 
 #[test]

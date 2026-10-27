@@ -4,7 +4,7 @@
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::ResetPlan;
+use spectra_core::service::ResetPlan;
 use spectra_core::store::state::{
     AppSettingUpdate, AppSettings, BackgroundSyncProfile, ResetScope, StateCommand, StateEvent,
 };
@@ -243,7 +243,7 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
             .collect::<CliResult<Vec<_>>>()?
     };
     if !args.yes {
-        let plan = spectra_core::store::reset_dispatch(scopes);
+        let plan = spectra_core::service::reset_dispatch(scopes);
         return Err(CliError::usage(format!(
             "this resets {} — re-run with --yes",
             reset_description(&plan)

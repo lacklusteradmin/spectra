@@ -205,17 +205,13 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
          CREATE INDEX IF NOT EXISTS idx_hr_change_path ON history_records
              (wallet_id, chain_id, json_extract(payload, '$.changeDerivationPath'));
          CREATE TABLE IF NOT EXISTS wallets (
-             id                         TEXT    NOT NULL PRIMARY KEY,
-             name                       TEXT    NOT NULL,
-             chain_id                 TEXT    NOT NULL,
-             is_watch_only              INTEGER NOT NULL DEFAULT 0,
-             include_in_portfolio_total INTEGER NOT NULL DEFAULT 1,
-             sort_index                 INTEGER NOT NULL,  -- preserves ResidentState.wallets order
-             payload                    TEXT    NOT NULL,  -- full WalletState JSON
-             updated_at                 INTEGER NOT NULL
+             id         TEXT    NOT NULL PRIMARY KEY,
+             name       TEXT    NOT NULL,
+             sort_index INTEGER NOT NULL,  -- preserves ResidentState.wallets order
+             payload    TEXT    NOT NULL,  -- full WalletState JSON
+             updated_at INTEGER NOT NULL
          );
          CREATE INDEX IF NOT EXISTS idx_wallets_lower_id ON wallets(lower(id));
-         CREATE INDEX IF NOT EXISTS idx_wallets_chain ON wallets(chain_id);
          CREATE INDEX IF NOT EXISTS idx_wallets_order ON wallets(sort_index);
          CREATE TABLE IF NOT EXISTS wallet_secret_deletions (
              wallet_id TEXT PRIMARY KEY NOT NULL
@@ -226,13 +222,10 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
          );
          CREATE TABLE IF NOT EXISTS address_book (
              id         TEXT    NOT NULL PRIMARY KEY,
-             chain_id TEXT    NOT NULL,
-             address    TEXT    NOT NULL,
              sort_index INTEGER NOT NULL,  -- preserves ResidentState.address_book order
              payload    TEXT    NOT NULL,  -- full AddressBookEntry JSON
              updated_at INTEGER NOT NULL
          );
-         CREATE INDEX IF NOT EXISTS idx_ab_chain ON address_book(chain_id);
          CREATE INDEX IF NOT EXISTS idx_ab_order ON address_book(sort_index);",
     )
     .map_err(DbError::from)?;

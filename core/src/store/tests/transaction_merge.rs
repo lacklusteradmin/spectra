@@ -1,4 +1,4 @@
-use crate::service::{TransactionCommand, WalletService};
+use crate::service::WalletService;
 use crate::store::persistence_models::TransactionRecord;
 use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
@@ -17,6 +17,20 @@ async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
     let service = WalletService::new(Vec::new()).expect("service");
     let db = tmp_db(tag);
     service.open_state(db.clone()).await.expect("open");
+    // A fetched page is merged only for a wallet stored on its network.
+    service
+        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
+            wallet: crate::store::state::WalletState::single_address(
+                "w1",
+                "W",
+                crate::registry::Chain::Bitcoin,
+                "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+                None,
+                true,
+            ),
+        })
+        .await
+        .expect("wallet");
     (service, db)
 }
 
@@ -48,20 +62,9 @@ fn record(id: &str, hash: &str, confirmations: Option<i64>) -> TransactionRecord
         change_derivation_path: None,
         source_address: None,
         change_address: None,
-        signed_transaction_payload: None,
-        signed_transaction_payload_format: None,
         failure_reason: None,
         transaction_history_source: None,
         created_at_unix: 1_700_000_000.0,
-    }
-}
-
-fn merge(incoming: Vec<TransactionRecord>) -> TransactionCommand {
-    // Strategy comes from the registry now — "Bitcoin" implies StandardUtxo.
-    TransactionCommand::Merge {
-        incoming,
-        chain_id: crate::registry::Chain::Bitcoin,
-        preserve_created_at_sentinel_unix: None,
     }
 }
 
@@ -69,7 +72,7 @@ fn merge(incoming: Vec<TransactionRecord>) -> TransactionCommand {
 async fn a_first_merge_adds_everything() {
     let (service, db) = opened("first").await;
     let change = service
-        .apply_transaction_command(merge(vec![record("tx1", "hash1", Some(1))]))
+        .merge_fetched_history(vec![record("tx1", "hash1", Some(1))])
         .await
         .expect("merge");
     assert_eq!(change.added, vec!["tx1"]);
@@ -83,16 +86,16 @@ async fn a_first_merge_adds_everything() {
 async fn re_merging_identical_records_is_a_no_op() {
     let (service, db) = opened("noop").await;
     service
-        .apply_transaction_command(merge(vec![record("tx1", "hash1", Some(1))]))
+        .merge_fetched_history(vec![record("tx1", "hash1", Some(1))])
         .await
         .expect("merge");
 
     let again = service
-        .apply_transaction_command(merge(vec![record("tx1", "hash1", Some(1))]))
+        .merge_fetched_history(vec![record("tx1", "hash1", Some(1))])
         .await
         .expect("merge");
     assert!(
-        again.is_empty(),
+        again.added.is_empty() && again.updated.is_empty(),
         "unchanged records must not be rewritten: {again:?}"
     );
     let _ = std::fs::remove_file(&db);
@@ -103,19 +106,19 @@ async fn re_merging_identical_records_is_a_no_op() {
 async fn only_genuinely_changed_records_are_written() {
     let (service, db) = opened("changed").await;
     service
-        .apply_transaction_command(merge(vec![
+        .merge_fetched_history(vec![
             record("tx1", "hash1", Some(1)),
             record("tx2", "hash2", Some(1)),
-        ]))
+        ])
         .await
         .expect("merge");
 
     let change = service
-        .apply_transaction_command(merge(vec![
+        .merge_fetched_history(vec![
             record("tx1", "hash1", Some(1)), // unchanged
             record("tx2", "hash2", Some(6)), // confirmations advanced
             record("tx3", "hash3", Some(1)), // new
-        ]))
+        ])
         .await
         .expect("merge");
     assert_eq!(change.updated, vec!["tx2"]);
@@ -130,14 +133,12 @@ async fn only_genuinely_changed_records_are_written() {
 async fn merge_sees_records_written_by_other_commands() {
     let (service, db) = opened("crosstalk").await;
     service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![record("tx1", "hash1", Some(1))],
-        })
+        .upsert_history_records(vec![record("tx1", "hash1", Some(1))])
         .await
         .expect("upsert");
 
     let change = service
-        .apply_transaction_command(merge(vec![record("tx1", "hash1", Some(9))]))
+        .merge_fetched_history(vec![record("tx1", "hash1", Some(9))])
         .await
         .expect("merge");
     assert_eq!(change.updated, vec!["tx1"], "must not be treated as new");

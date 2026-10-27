@@ -34,11 +34,8 @@ mod fee_tests {
     }
 }
 
-/// The `signed_transaction_payload_format` of a stored [`PreparedSubmission`],
-/// the one form a send record keeps its signed transaction in.
-pub(crate) const SUBMISSION_FORMAT: &str = "core.submission_json";
-
-/// Exact input for submitting the same signed transaction again. Never include
+/// A signed transaction ready to submit, with the hash and nonce it will
+/// land under, as its send record keeps it for a rebroadcast. Never include
 /// the wallet seed or wallet signing keys.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedSubmission {

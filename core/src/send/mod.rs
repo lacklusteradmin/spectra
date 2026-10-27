@@ -33,6 +33,7 @@ pub mod evm;
 pub(crate) mod icp_stages;
 pub(crate) mod icp_staking;
 pub mod kaspa;
+pub(crate) mod leb128;
 pub(crate) mod legacy_p2pkh;
 pub mod litecoin;
 pub(crate) mod litecoin_mweb;

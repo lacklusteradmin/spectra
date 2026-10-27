@@ -38,8 +38,8 @@ async fn defaults_to_usd_before_anything_is_stored() {
     );
     assert_eq!(
         state.token_preferences,
-        crate::store::merge_built_in_token_preferences(
-            crate::store::built_in_token_preferences(),
+        crate::store::state::merge_built_in_token_preferences(
+            crate::store::state::built_in_token_preferences(),
             Vec::new()
         ),
         "opening seeds the catalog's own list, in the order the merge gives it"

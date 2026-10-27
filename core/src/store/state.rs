@@ -1,6 +1,8 @@
 use crate::api::endpoint::EndpointCapability;
 use serde::{Deserialize, Serialize};
 
+use super::wallet_domain;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletAddress {
@@ -590,7 +592,7 @@ pub struct ResidentState {
     pub fiat_rates_from_usd: std::collections::HashMap<String, f64>,
 }
 
-pub(crate) const APP_STATE_SCHEMA_VERSION: u32 = 2;
+pub(crate) const APP_STATE_SCHEMA_VERSION: u32 = 3;
 
 impl Default for ResidentState {
     fn default() -> Self {
@@ -1434,7 +1436,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                             },
                         },
                     );
-                    crate::store::sort_token_preferences(&mut state.token_preferences);
+                    sort_token_preferences(&mut state.token_preferences);
                     events.push(StateEvent::TokenPreferencesChanged {
                         symbol: Some(symbol),
                     });
@@ -1486,7 +1488,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                     .unwrap_or(decimals);
                 state.quotes.prices.remove(&token.deployment_id);
                 state.quotes.prices_attempt_at = None;
-                crate::store::sort_token_preferences(&mut state.token_preferences);
+                sort_token_preferences(&mut state.token_preferences);
                 events.push(StateEvent::TokenPreferencesChanged {
                     symbol: Some(symbol),
                 });
@@ -1532,8 +1534,8 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
             }
         },
         StateCommand::MergeBuiltInTokens => {
-            let merged = crate::store::merge_built_in_token_preferences(
-                crate::store::built_in_token_preferences(),
+            let merged = merge_built_in_token_preferences(
+                built_in_token_preferences(),
                 std::mem::take(&mut state.token_preferences),
             );
             if merged != state.token_preferences {
@@ -1544,10 +1546,10 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
             }
         }
         StateCommand::ResetTokenPreferences => {
-            let defaults = crate::store::built_in_token_preferences();
+            let defaults = built_in_token_preferences();
             if defaults != state.token_preferences {
                 state.token_preferences = defaults;
-                crate::store::sort_token_preferences(&mut state.token_preferences);
+                sort_token_preferences(&mut state.token_preferences);
                 events.push(StateEvent::TokenPreferencesChanged { symbol: None });
             }
         }
@@ -1572,6 +1574,70 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
     }
 
     events
+}
+
+/// The built-in token catalog, as preference entries.
+///
+/// Built from `tokens.toml` — the same catalog `list_all_builtin_token_deployments`
+/// serves.
+///
+/// `id` is derived from chain and contract rather than minted at random: a
+/// built-in's identity *is* its contract.
+pub fn built_in_token_preferences() -> Vec<wallet_domain::TokenPreferenceEntry> {
+    crate::catalog::tokens::catalog()
+        .iter()
+        .filter(|token| !token.is_native())
+        .filter_map(|token| {
+            // A catalog row on a chain that cannot host tokens is a data
+            // mistake, and skipping it is how it stays one.
+            Some(token.chain_id).filter(|c| c.hosts_tokens())?;
+            Some(wallet_domain::TokenPreferenceEntry {
+                is_built_in: true,
+                token: token.clone(),
+            })
+        })
+        .collect()
+}
+
+/// Merge the built-in catalog with persisted user preferences: the catalog's
+/// rows replace persisted copies and custom aliases of them. Each normalized
+/// network/identifier appears once, even when its protocol label differs.
+pub fn merge_built_in_token_preferences(
+    built_ins: Vec<wallet_domain::TokenPreferenceEntry>,
+    persisted: Vec<wallet_domain::TokenPreferenceEntry>,
+) -> Vec<wallet_domain::TokenPreferenceEntry> {
+    let mut merged = built_ins;
+    let key = |entry: &wallet_domain::TokenPreferenceEntry| {
+        (
+            entry.token.chain_id,
+            crate::catalog::tokens::normalize_token_identifier(
+                Some(entry.token.contract.clone()),
+                entry.token.chain_id,
+            ),
+        )
+    };
+    let mut seen: std::collections::HashSet<_> = merged.iter().map(key).collect();
+    merged.extend(
+        persisted
+            .into_iter()
+            .filter(|entry| !entry.is_built_in && seen.insert(key(entry))),
+    );
+    sort_token_preferences(&mut merged);
+    merged
+}
+
+/// The catalog's own rows before the user's, then symbol, then token, then
+/// chain: one token's deployments sit together, so a list grouped by token
+/// keeps this order without sorting again. Every writer of the list sorts
+/// with this, so an edited list matches the one a reload builds.
+pub(crate) fn sort_token_preferences(entries: &mut [wallet_domain::TokenPreferenceEntry]) {
+    entries.sort_by(|lhs, rhs| {
+        rhs.is_built_in
+            .cmp(&lhs.is_built_in)
+            .then_with(|| lhs.token.symbol.cmp(&rhs.token.symbol))
+            .then_with(|| lhs.token.token_id.cmp(&rhs.token.token_id))
+            .then_with(|| lhs.token.chain_id.str_id().cmp(rhs.token.chain_id.str_id()))
+    });
 }
 
 #[cfg(test)]

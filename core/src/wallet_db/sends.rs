@@ -261,6 +261,28 @@ pub(crate) fn send_exists(database: &WalletDatabase, id: &str) -> Result<bool, D
     })
 }
 
+/// Which of `ids` have a send record: the transactions this device signed.
+pub(crate) fn send_ids_among(
+    database: &WalletDatabase,
+    ids: &[&str],
+) -> Result<std::collections::HashSet<String>, DbError> {
+    with_conn(database, |conn| {
+        let mut statement = conn
+            .prepare_cached("SELECT EXISTS(SELECT 1 FROM send_artifacts WHERE id=?1)")
+            .map_err(DbError::from)?;
+        let mut found = std::collections::HashSet::new();
+        for id in ids {
+            if statement
+                .query_row([id], |row| row.get::<_, bool>(0))
+                .map_err(DbError::from)?
+            {
+                found.insert((*id).to_string());
+            }
+        }
+        Ok(found)
+    })
+}
+
 fn permits_evm_replacement(next: &StoredSend, prior: &StoredSend) -> bool {
     use crate::send::stages::PreparedPayload;
     let (PreparedPayload::Evm(next_tx), PreparedPayload::Evm(prior_tx)) =

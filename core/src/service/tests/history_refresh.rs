@@ -326,7 +326,7 @@ fn descriptors_are_the_known_tokens_for_the_chain() {
 #[test]
 fn descriptors_use_each_concrete_networks_token_deployments() {
     let state = ResidentState {
-        token_preferences: crate::store::built_in_token_preferences(),
+        token_preferences: crate::store::state::built_in_token_preferences(),
         ..Default::default()
     };
     for network in Chain::all().filter(|chain| chain.is_evm()) {
@@ -679,7 +679,6 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
 
 #[tokio::test]
 async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_wallets() {
-    use crate::service::TransactionCommand;
     use crate::service::history_decode::*;
     let service = WalletService::new(vec![]).unwrap();
     let path = std::env::temp_dir().join(format!(
@@ -738,12 +737,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
     let mut local = fetched.clone();
     local.id = "local-send".into();
     local.status = crate::store::wallet_domain::TransactionStatus::Pending;
-    service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![local],
-        })
-        .await
-        .unwrap();
+    service.upsert_history_records(vec![local]).await.unwrap();
     let change = service
         .merge_fetched_history(vec![fetched.clone()])
         .await

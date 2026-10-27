@@ -470,22 +470,10 @@ pub(crate) fn compile_message(
     Ok(msg)
 }
 
-/// Solana compact-u16 encoding.
+/// Solana's compact-u16: LEB128 of a count no transaction lets past
+/// `u16::MAX`.
 fn compact_u16(val: usize) -> Vec<u8> {
-    let mut out = Vec::new();
-    let mut v = val as u16;
-    loop {
-        let mut byte = (v & 0x7f) as u8;
-        v >>= 7;
-        if v != 0 {
-            byte |= 0x80;
-        }
-        out.push(byte);
-        if v == 0 {
-            break;
-        }
-    }
-    out
+    super::leb128::encode(u64::from(val as u16))
 }
 
 #[cfg(test)]

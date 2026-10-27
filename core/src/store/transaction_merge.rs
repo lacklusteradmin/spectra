@@ -58,8 +58,7 @@ pub fn history_source(source: String) -> Option<HistorySource> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionMergeStrategy {
-    StandardUtxo,
-    Dogecoin,
+    Utxo,
     AccountBased,
     Evm,
 }
@@ -182,8 +181,7 @@ fn incoming_is_relevant(
     }
 
     match strategy {
-        TransactionMergeStrategy::StandardUtxo => true,
-        TransactionMergeStrategy::Dogecoin
+        TransactionMergeStrategy::Utxo
         | TransactionMergeStrategy::AccountBased
         | TransactionMergeStrategy::Evm => incoming.wallet_id.is_some(),
     }
@@ -209,11 +207,7 @@ fn matches_identity(
     }
 
     match strategy {
-        TransactionMergeStrategy::StandardUtxo => existing.wallet_id == incoming.wallet_id,
-        TransactionMergeStrategy::Dogecoin => {
-            existing.wallet_id == incoming.wallet_id && incoming.wallet_id.is_some()
-        }
-        TransactionMergeStrategy::AccountBased => {
+        TransactionMergeStrategy::Utxo | TransactionMergeStrategy::AccountBased => {
             existing.wallet_id == incoming.wallet_id && incoming.wallet_id.is_some()
         }
         TransactionMergeStrategy::Evm => {
@@ -250,8 +244,7 @@ fn merge_record(
         incoming.address = existing.address.clone();
     }
     match strategy {
-        TransactionMergeStrategy::StandardUtxo => merge_standard_utxo(existing, incoming),
-        TransactionMergeStrategy::Dogecoin => merge_dogecoin(existing, incoming),
+        TransactionMergeStrategy::Utxo => merge_utxo(existing, incoming),
         TransactionMergeStrategy::AccountBased => {
             merge_account_based(existing, incoming, preserve_created_at_sentinel_unix)
         }
@@ -272,56 +265,9 @@ fn counterparty(existing: String, incoming: String) -> String {
     }
 }
 
-fn merge_standard_utxo(
-    existing: TransactionRecord,
-    incoming: TransactionRecord,
-) -> TransactionRecord {
-    TransactionRecord {
-        actions: Default::default(),
-        deployment_id: existing.deployment_id.or(incoming.deployment_id),
-        id: existing.id,
-        wallet_id: incoming.wallet_id.or(existing.wallet_id),
-        kind: incoming.kind,
-        status: incoming.status,
-        wallet_name: incoming.wallet_name,
-        asset_display_name: incoming.asset_display_name,
-        symbol: incoming.symbol,
-        chain_id: incoming.chain_id,
-        amount: incoming.amount,
-        address: counterparty(existing.address, incoming.address),
-        transaction_hash: incoming.transaction_hash,
-        nonce: incoming.nonce.or(existing.nonce),
-        receipt_block_number: incoming
-            .receipt_block_number
-            .or(existing.receipt_block_number),
-        receipt_gas_used: existing.receipt_gas_used,
-        receipt_effective_gas_price_gwei: existing.receipt_effective_gas_price_gwei,
-        receipt_network_fee: existing.receipt_network_fee,
-        fee_rate_description: incoming
-            .fee_rate_description
-            .or(existing.fee_rate_description),
-        confirmation_count: incoming.confirmation_count.or(existing.confirmation_count),
-        confirmed_network_fee: existing.confirmed_network_fee,
-        used_change_output: incoming.used_change_output.or(existing.used_change_output),
-        source_derivation_path: existing.source_derivation_path,
-        change_derivation_path: existing.change_derivation_path,
-        source_address: incoming.source_address.or(existing.source_address),
-        change_address: incoming.change_address.or(existing.change_address),
-        signed_transaction_payload: incoming
-            .signed_transaction_payload
-            .or(existing.signed_transaction_payload),
-        signed_transaction_payload_format: incoming
-            .signed_transaction_payload_format
-            .or(existing.signed_transaction_payload_format),
-        failure_reason: existing.failure_reason,
-        transaction_history_source: incoming
-            .transaction_history_source
-            .or(existing.transaction_history_source),
-        created_at_unix: incoming.created_at_unix,
-    }
-}
-
-fn merge_dogecoin(existing: TransactionRecord, incoming: TransactionRecord) -> TransactionRecord {
+/// A UTXO network's merge: what the provider newly reports wins, and what
+/// it leaves out — a fee, a derivation path, a failure — is kept.
+fn merge_utxo(existing: TransactionRecord, incoming: TransactionRecord) -> TransactionRecord {
     TransactionRecord {
         actions: Default::default(),
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
@@ -359,12 +305,6 @@ fn merge_dogecoin(existing: TransactionRecord, incoming: TransactionRecord) -> T
             .or(existing.change_derivation_path),
         source_address: incoming.source_address.or(existing.source_address),
         change_address: incoming.change_address.or(existing.change_address),
-        signed_transaction_payload: incoming
-            .signed_transaction_payload
-            .or(existing.signed_transaction_payload),
-        signed_transaction_payload_format: incoming
-            .signed_transaction_payload_format
-            .or(existing.signed_transaction_payload_format),
         failure_reason: incoming.failure_reason.or(existing.failure_reason),
         transaction_history_source: incoming
             .transaction_history_source
@@ -409,12 +349,6 @@ fn merge_account_based(
         change_derivation_path: existing.change_derivation_path,
         source_address: incoming.source_address.or(existing.source_address),
         change_address: incoming.change_address.or(existing.change_address),
-        signed_transaction_payload: incoming
-            .signed_transaction_payload
-            .or(existing.signed_transaction_payload),
-        signed_transaction_payload_format: incoming
-            .signed_transaction_payload_format
-            .or(existing.signed_transaction_payload_format),
         failure_reason: incoming.failure_reason.or(existing.failure_reason),
         transaction_history_source: incoming
             .transaction_history_source
@@ -467,12 +401,6 @@ fn merge_evm(
         change_derivation_path: existing.change_derivation_path,
         source_address: existing.source_address,
         change_address: existing.change_address,
-        signed_transaction_payload: incoming
-            .signed_transaction_payload
-            .or(existing.signed_transaction_payload),
-        signed_transaction_payload_format: incoming
-            .signed_transaction_payload_format
-            .or(existing.signed_transaction_payload_format),
         failure_reason: incoming.failure_reason.or(existing.failure_reason),
         transaction_history_source: incoming
             .transaction_history_source
@@ -536,8 +464,6 @@ mod tests {
             change_derivation_path: Some("m/1/0".to_string()),
             source_address: Some("source-old".to_string()),
             change_address: Some("change-old".to_string()),
-            signed_transaction_payload: Some("payload-old".to_string()),
-            signed_transaction_payload_format: Some("hex".to_string()),
             failure_reason: Some(
                 crate::store::persistence_models::TransactionFailure::Reported {
                     message: "old-failure".into(),
@@ -611,7 +537,7 @@ mod tests {
         let merged = merge_transactions(TransactionMergeRequest {
             existing_transactions: vec![existing],
             incoming_transactions: vec![incoming],
-            strategy: TransactionMergeStrategy::StandardUtxo,
+            strategy: TransactionMergeStrategy::Utxo,
             chain_id: crate::registry::Chain::Bitcoin,
             preserve_created_at_sentinel_unix: None,
         });
@@ -648,7 +574,7 @@ mod tests {
         let merged = merge_transactions(TransactionMergeRequest {
             existing_transactions: vec![sample_transaction(crate::registry::Chain::Bitcoin)],
             incoming_transactions: vec![unnamed],
-            strategy: TransactionMergeStrategy::StandardUtxo,
+            strategy: TransactionMergeStrategy::Utxo,
             chain_id: crate::registry::Chain::Bitcoin,
             preserve_created_at_sentinel_unix: None,
         });

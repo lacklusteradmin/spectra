@@ -37,7 +37,6 @@ pub(crate) fn keccak256(data: &[u8]) -> [u8; 32] {
 // chain — only on the public key. The chain identity matters elsewhere
 // (chain ID for signing, RPC endpoint selection) but not for derivation.
 
-use crate::derivation::primitives::{derive_bip39_seed, parse_bip32_path};
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
 // Derive an EVM address (EIP-55 checksummed), public key, and private key from a mnemonic.
@@ -50,12 +49,10 @@ pub(crate) fn derive_from_seed_phrase(
     want_private_key: bool,
 ) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let secp = Secp256k1::new();
-    let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
-    let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
-    let path = parse_bip32_path(derivation_path)?;
-    let xpriv = master.derive_path(&secp, &path)?;
-    let public_key = PublicKey::from_secret_key(&secp, &xpriv.private_key);
-    let private_bytes = xpriv.private_key.secret_bytes();
+    let private_key =
+        crate::derivation::bip32::phrase_key(seed_phrase, passphrase, derivation_path)?;
+    let public_key = PublicKey::from_secret_key(&secp, &private_key);
+    let private_bytes = private_key.secret_bytes();
 
     let address = if want_address {
         let uncompressed = public_key.serialize_uncompressed();
@@ -99,7 +96,6 @@ pub(crate) fn derive_from_private_key_bytes(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::derivation::primitives::ExtendedPrivateKey;
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::error::SpectraBridgeError;
 

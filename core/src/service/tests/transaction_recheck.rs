@@ -33,10 +33,7 @@ async fn service(chain: Chain, server: &MockServer) -> (std::sync::Arc<WalletSer
     (service, path)
 }
 async fn save(service: &WalletService, record: TransactionRecord) {
-    service
-        .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record)])
-        .await
-        .unwrap();
+    service.upsert_history_records(vec![record]).await.unwrap();
 }
 
 #[tokio::test]
@@ -75,16 +72,15 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
         let reopened = WalletService::new(vec![]).unwrap();
         reopened.open_state(path.clone()).await.unwrap();
         let rows = reopened.fetch_all_history_records().await.unwrap();
-        let target = rows.iter().find(|r| r.id == "target").unwrap();
-        assert_eq!(target.payload.receipt_block_number, Some(123));
-        assert_eq!(target.payload.failure_reason, None);
-        assert_eq!(target.created_at, 1234.0);
+        let target = rows
+            .iter()
+            .find(|r| r.id.eq_ignore_ascii_case("target"))
+            .unwrap();
+        assert_eq!(target.receipt_block_number, Some(123));
+        assert_eq!(target.failure_reason, None);
+        assert_eq!(target.created_at_unix, 1234.0);
         assert_eq!(
-            rows.iter()
-                .find(|r| r.id == "unrelated")
-                .unwrap()
-                .payload
-                .status,
+            rows.iter().find(|r| r.id == "unrelated").unwrap().status,
             TransactionStatus::Pending
         );
     }
@@ -279,9 +275,9 @@ async fn explicit_recheck_does_not_resurrect_deleted_or_overwrite_changed_transa
                     .unwrap()
                     .remove(0);
                     if action == "hash" {
-                        row.payload.transaction_hash = Some("cd".repeat(32));
+                        row.transaction_hash = Some("cd".repeat(32));
                     } else {
-                        row.payload.wallet_name = "Edited during read".into();
+                        row.wallet_name = "Edited during read".into();
                     }
                     crate::wallet_db::history_upsert_batch(
                         &crate::wallet_db::WalletDatabase::new(&path),

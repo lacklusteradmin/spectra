@@ -7,42 +7,30 @@ use crate::wallet_db::error::DbError;
 /// Use this for a single-wallet edit. To write a whole state snapshot use
 /// [`app_state_save`], which also prunes wallets that are no longer present.
 pub fn wallet_upsert(database: &WalletDatabase, wallet: &WalletState) -> Result<(), DbError> {
+    with_conn(database, |conn| write_wallet_row(conn, wallet, None))
+}
+
+/// The one statement that writes a wallet's row: at `sort_index`, or where
+/// it already stands (the end, for a new one) when that is `None`.
+pub(super) fn write_wallet_row(
+    conn: &rusqlite::Connection,
+    wallet: &WalletState,
+    sort_index: Option<i64>,
+) -> Result<(), DbError> {
     let payload = serde_json::to_string(wallet)
-        .map_err(|e| DbError::Corrupt(format!("wallet_upsert encode: {e}")))?;
-    with_conn(database, |conn| {
-        let next_index: i64 = conn
-            .query_row(
-                "SELECT COALESCE(MAX(sort_index) + 1, 0) FROM wallets",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(DbError::from)?;
-        conn.execute(
-            "INSERT INTO wallets
-                 (id, name, chain_id, is_watch_only, include_in_portfolio_total,
-                  sort_index, payload, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(id) DO UPDATE SET
-                 name                       = excluded.name,
-                 chain_id                 = excluded.chain_id,
-                 is_watch_only              = excluded.is_watch_only,
-                 include_in_portfolio_total = excluded.include_in_portfolio_total,
-                 payload                    = excluded.payload,
-                 updated_at                 = excluded.updated_at",
-            params![
-                wallet.id,
-                wallet.name,
-                wallet.chain_id,
-                wallet.is_watch_only(),
-                wallet.include_in_portfolio_total,
-                next_index,
-                payload,
-                now_secs(),
-            ],
-        )
-        .map_err(DbError::from)?;
-        Ok(())
-    })
+        .map_err(|e| DbError::Corrupt(format!("wallet {} encode: {e}", wallet.id)))?;
+    conn.execute(
+        "INSERT INTO wallets (id, name, sort_index, payload, updated_at)
+         VALUES (?1, ?2, coalesce(?3, (SELECT coalesce(max(sort_index) + 1, 0) FROM wallets)), ?4, ?5)
+         ON CONFLICT(id) DO UPDATE SET
+             name       = excluded.name,
+             sort_index = coalesce(?3, sort_index),
+             payload    = excluded.payload,
+             updated_at = excluded.updated_at",
+        params![wallet.id, wallet.name, sort_index, payload, now_secs()],
+    )
+    .map_err(DbError::from)?;
+    Ok(())
 }
 
 /// Load wallets in stored display order; refuse undecodable records without modifying them.

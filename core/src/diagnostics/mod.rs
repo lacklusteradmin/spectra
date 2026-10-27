@@ -2,7 +2,7 @@ pub mod types;
 pub use types::*;
 
 pub mod registry;
-pub use registry::*;
+pub(crate) use registry::*;
 
 pub mod export;
 pub use export::*;

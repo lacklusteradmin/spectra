@@ -152,3 +152,21 @@ impl WalletService {
             .collect()
     }
 }
+
+/// Decode a hex string of an exact byte length. Replaces repeated
+/// per-arm hex decoding and fixed-length conversion boilerplate. Includes
+/// the field name in both the
+/// "not hex" and "wrong length" error variants.
+pub(super) fn decode_hex_array<const N: usize>(
+    hex_str: &str,
+    field_name: &str,
+) -> Result<[u8; N], SpectraBridgeError> {
+    let bytes = hex::decode(hex_str)
+        .map_err(|e| SpectraBridgeError::failure(format!("{field_name} hex decode: {e}")))?;
+    bytes.try_into().map_err(|v: Vec<u8>| {
+        SpectraBridgeError::failure(format!(
+            "{field_name} wrong length: expected {N} bytes, got {}",
+            v.len()
+        ))
+    })
+}

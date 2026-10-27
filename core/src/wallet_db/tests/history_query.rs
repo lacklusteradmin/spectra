@@ -18,15 +18,15 @@ fn database_with(wallets: Vec<WalletState>) -> std::sync::Arc<WalletDatabase> {
 }
 
 /// A confirmed receive on `wallet_id`'s Ethereum account.
-fn receive(id: &str, wallet_id: &str, hash: &str, created_at: f64) -> HistoryRecord {
-    let mut payload = history_record_on(id, wallet_id, Chain::Ethereum).payload;
+fn receive(id: &str, wallet_id: &str, hash: &str, created_at: f64) -> TransactionRecord {
+    let mut payload = history_record_on(id, wallet_id, Chain::Ethereum);
     payload.kind = crate::store::wallet_domain::TransactionKind::Receive;
     payload.status = crate::store::wallet_domain::TransactionStatus::Confirmed;
     payload.wallet_name = "Éther 测试".into();
     payload.deployment_id = Some("ethereum:native".into());
     payload.transaction_hash = Some(hash.into());
     payload.created_at_unix = created_at;
-    history_record_from_payload(payload)
+    payload
 }
 
 /// Every id `query` pages through, following each page's cursor.
@@ -60,7 +60,7 @@ fn paged(db: &WalletDatabase, query: HistoryQuery) -> (Vec<String>, Vec<bool>) {
 #[test]
 fn each_transaction_is_one_row_in_pages_searches_and_the_summary() {
     let db = database_with(vec![wallet("w1", Chain::Ethereum)]);
-    let mut rows: Vec<HistoryRecord> = (0..55)
+    let mut rows: Vec<TransactionRecord> = (0..55)
         .map(|i| {
             receive(
                 &format!("tx-{i:03}"),
@@ -70,11 +70,11 @@ fn each_transaction_is_one_row_in_pages_searches_and_the_summary() {
             )
         })
         .collect();
-    let mut duplicate = rows[54].payload.clone();
+    let mut duplicate = rows[54].clone();
     duplicate.id = "duplicate".into();
     duplicate.kind = crate::store::wallet_domain::TransactionKind::Send;
     duplicate.status = crate::store::wallet_domain::TransactionStatus::Pending;
-    rows.push(history_record_from_payload(duplicate));
+    rows.push(duplicate);
     history_upsert_batch(&db, &rows).unwrap();
 
     let (ids, more) = paged(&db, HistoryQuery::default());
@@ -148,12 +148,12 @@ fn identities_keep_case_sensitive_hashes_and_unknown_assets_apart() {
     ]
     .into_iter()
     .map(|(id, hash, deployment)| {
-        let mut payload = history_record_on(id, "w1", Chain::Solana).payload;
+        let mut payload = history_record_on(id, "w1", Chain::Solana);
         payload.status = crate::store::wallet_domain::TransactionStatus::Confirmed;
         payload.transaction_hash = Some(hash);
         payload.deployment_id = deployment.map(str::to_string);
         payload.created_at_unix = 1.0;
-        history_record_from_payload(payload)
+        payload
     })
     .collect();
     history_upsert_batch(&db, &rows).unwrap();

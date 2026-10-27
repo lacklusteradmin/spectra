@@ -102,12 +102,10 @@ impl SubstrateMultisig {
     /// The account id: `blake2_256("modlpy/utilisuba" ‖ (signatories,
     /// threshold))`, SCALE-encoded, the signatories sorted.
     pub(crate) fn account_id(&self) -> [u8; 32] {
-        use blake2::digest::consts::U32;
-        use blake2::{Blake2b, Digest};
-        let mut hasher = Blake2b::<U32>::new();
-        hasher.update(b"modlpy/utilisuba");
-        hasher.update((&self.signatories, self.threshold).encode());
-        hasher.finalize().into()
+        crate::derivation::primitives::blake2b::<32>(&[
+            b"modlpy/utilisuba",
+            &(&self.signatories, self.threshold).encode(),
+        ])
     }
 
     pub(crate) fn address(&self) -> String {

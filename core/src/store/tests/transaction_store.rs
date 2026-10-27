@@ -1,4 +1,4 @@
-use crate::service::{TransactionCommand, WalletService};
+use crate::service::WalletService;
 use crate::store::persistence_models::TransactionRecord;
 
 fn tmp_db(tag: &str) -> String {
@@ -37,133 +37,23 @@ fn record(id: &str, wallet: &str, status: &str) -> TransactionRecord {
     .expect("fixture must match TransactionRecord")
 }
 
-/// The whole point: core decides what is new and what is an update.
-#[tokio::test]
-async fn upsert_reports_added_then_updated_for_the_same_id() {
-    let (service, db) = opened("delta").await;
-
-    let first = service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![record("tx1", "w1", "pending")],
-        })
-        .await
-        .expect("upsert");
-    assert_eq!(first.added, vec!["tx1"]);
-    assert!(first.updated.is_empty());
-
-    let second = service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![record("tx1", "w1", "confirmed")],
-        })
-        .await
-        .expect("upsert");
-    assert!(second.added.is_empty(), "same id is not a new record");
-    assert_eq!(second.updated, vec!["tx1"]);
-
-    // And the update actually landed — the failure mode a caller-computed
-    // delta produces is a silently dropped status change.
-    let stored = service.transactions().await.expect("read");
-    assert_eq!(stored.len(), 1);
-    assert_eq!(
-        serde_json::to_value(stored[0].status).unwrap().as_str(),
-        Some("confirmed")
-    );
-
-    let _ = std::fs::remove_file(&db);
-}
-
-#[tokio::test]
-async fn a_mixed_batch_is_split_into_added_and_updated() {
-    let (service, db) = opened("mixed").await;
-    service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![record("tx1", "w1", "pending")],
-        })
-        .await
-        .expect("upsert");
-
-    let change = service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![
-                record("tx1", "w1", "confirmed"),
-                record("tx2", "w1", "pending"),
-            ],
-        })
-        .await
-        .expect("upsert");
-    assert_eq!(change.updated, vec!["tx1"]);
-    assert_eq!(change.added, vec!["tx2"]);
-
-    let _ = std::fs::remove_file(&db);
-}
-
 #[tokio::test]
 async fn ids_are_matched_case_insensitively() {
     let (service, db) = opened("case").await;
     service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![record("ABC-123", "w1", "pending")],
-        })
+        .upsert_history_records(vec![record("ABC-123", "w1", "pending")])
         .await
         .expect("upsert");
-    let change = service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![record("abc-123", "w1", "confirmed")],
-        })
-        .await
-        .expect("upsert");
-    assert_eq!(change.updated, vec!["abc-123"], "not a second record");
-    assert_eq!(service.transactions().await.expect("read").len(), 1);
-
-    let _ = std::fs::remove_file(&db);
-}
-
-#[tokio::test]
-async fn removes_by_id_by_wallet_and_wholesale() {
-    let (service, db) = opened("remove").await;
     service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![
-                record("tx1", "w1", "confirmed"),
-                record("tx2", "w1", "confirmed"),
-                record("tx3", "w2", "confirmed"),
-            ],
-        })
+        .upsert_history_records(vec![record("abc-123", "w1", "confirmed")])
         .await
         .expect("upsert");
-
-    let removed = service
-        .apply_transaction_command(TransactionCommand::Remove {
-            ids: vec!["tx1".to_string()],
-        })
-        .await
-        .expect("remove");
-    assert_eq!(removed.removed, vec!["tx1"]);
-
+    let stored = service.transactions().await.expect("read");
+    assert_eq!(stored.len(), 1, "not a second record");
     assert_eq!(
-        service
-            .transactions_for_wallet("w1".to_string())
-            .await
-            .expect("read")
-            .len(),
-        1
+        serde_json::to_value(stored[0].status).unwrap().as_str(),
+        Some("confirmed")
     );
-
-    let by_wallet = service
-        .apply_transaction_command(TransactionCommand::RemoveForWallet {
-            wallet_id: "W1".to_string(),
-        })
-        .await
-        .expect("remove");
-    assert_eq!(by_wallet.removed, vec!["tx2"]);
-    assert_eq!(service.transactions().await.expect("read").len(), 1);
-
-    let cleared = service
-        .apply_transaction_command(TransactionCommand::Clear)
-        .await
-        .expect("clear");
-    assert_eq!(cleared.removed, vec!["tx3"]);
-    assert!(service.transactions().await.expect("read").is_empty());
 
     let _ = std::fs::remove_file(&db);
 }
@@ -186,60 +76,45 @@ async fn clearing_removes_records_this_build_cannot_read() {
         "fixture must not decode"
     );
 
-    let cleared = service
-        .apply_transaction_command(TransactionCommand::Clear)
-        .await
-        .expect("clear");
-    assert_eq!(cleared.removed, vec!["old"]);
+    crate::wallet_db::history_clear(&crate::wallet_db::WalletDatabase::new(&db)).expect("clear");
     assert!(service.transactions().await.expect("read").is_empty());
     let _ = std::fs::remove_file(&db);
 }
 
-#[tokio::test]
-async fn removing_what_is_absent_is_not_a_change() {
-    let (service, db) = opened("absent").await;
-    let change = service
-        .apply_transaction_command(TransactionCommand::Remove {
-            ids: vec!["nope".to_string()],
-        })
-        .await
-        .expect("remove");
-    assert!(change.is_empty());
-    let _ = std::fs::remove_file(&db);
-}
-
-/// Without a bound store the error says what to do, rather than writing
+/// Without a bound store the error says what to do, rather than reading
 /// somewhere nobody will look.
 #[tokio::test]
-async fn commands_require_an_opened_store() {
+async fn reads_require_an_opened_store() {
     let service = WalletService::new(Vec::new()).expect("service");
-    let error = service
-        .apply_transaction_command(TransactionCommand::Clear)
-        .await
-        .expect_err("must refuse");
+    let error = service.transactions().await.expect_err("must refuse");
     assert!(
         error.to_string().contains("open_state"),
         "unhelpful error: {error}"
     );
 }
 
-/// Payload and index use the same Unix timestamp.
+/// A record is indexed under its own Unix time, which it keeps.
 #[tokio::test]
 async fn created_at_uses_unix_time_in_payload_and_index() {
     let (service, db) = opened("epoch").await;
+    let mut dated = record("tx1", "w1", "confirmed");
+    dated.created_at_unix = 1_700_000_000.0;
     service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![record("tx1", "w1", "confirmed")],
-        })
+        .upsert_history_records(vec![dated])
         .await
         .expect("upsert");
 
-    let rows = crate::wallet_db::history_fetch_all(&crate::wallet_db::WalletDatabase::new(&db))
-        .expect("rows");
-    // Unix zero remains zero in both representations.
-    assert_eq!(rows[0].created_at, 0.0);
-    // The payload preserves the same timestamp.
-    assert_eq!(rows[0].payload.created_at_unix, 0.0);
+    let index: f64 = rusqlite::Connection::open(&db)
+        .expect("open")
+        .query_row("SELECT created_at FROM history_records", [], |row| {
+            row.get(0)
+        })
+        .expect("index");
+    assert_eq!(index, 1_700_000_000.0);
+    assert_eq!(
+        service.transactions().await.expect("read")[0].created_at_unix,
+        1_700_000_000.0
+    );
 
     let _ = std::fs::remove_file(&db);
 }

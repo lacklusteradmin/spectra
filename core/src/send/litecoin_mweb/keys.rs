@@ -54,12 +54,8 @@ impl ViewKeys {
     /// spend secret beside the view keys.
     pub(crate) fn from_seed(seed: &[u8]) -> Result<(Self, Zeroizing<[u8; 32]>), SendError> {
         let derive = |path: &str| -> Result<SecretKey, SendError> {
-            let master = crate::derivation::bitcoin::ExtendedPrivateKey::master_from_seed(
-                b"Bitcoin seed",
-                seed,
-            )?;
-            let path = crate::derivation::bitcoin::parse_bip32_path(path)?;
-            Ok(master.derive_path(secp256k1::SECP256K1, &path)?.private_key)
+            let path = crate::derivation::bip32::parse_path(path)?;
+            Ok(crate::derivation::bip32::derive(seed, &path)?.private_key)
         };
         let scan = derive("m/1000'/0'")?;
         let spend = derive("m/1000'/1'")?;

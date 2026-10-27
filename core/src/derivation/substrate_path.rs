@@ -97,8 +97,7 @@ fn chain_code(code: &str) -> Result<[u8; 32], DerivationError> {
     }
     let encoded = parity_scale_codec::Encode::encode(code);
     if encoded.len() > chain_code.len() {
-        use blake2::Digest as _;
-        chain_code = blake2::Blake2b::<blake2::digest::consts::U32>::digest(&encoded).into();
+        chain_code = crate::derivation::primitives::blake2b::<32>(&[&encoded]);
     } else {
         chain_code[..encoded.len()].copy_from_slice(&encoded);
     }

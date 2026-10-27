@@ -179,11 +179,10 @@ impl WalletService {
                             )?;
                         (
                             WalletSecretFormat::AccountXpub,
-                            zeroize::Zeroizing::new(
-                                account
-                                    .to_neutered(&secp256k1::Secp256k1::new())
-                                    .to_xpub_string(version),
-                            ),
+                            zeroize::Zeroizing::new(crate::derivation::bip32::encode_xpub(
+                                &bitcoin::bip32::Xpub::from_priv(secp256k1::SECP256K1, &account),
+                                version,
+                            )),
                         )
                     }
                     WalletKeyKind::PrivateKey => {

@@ -11,6 +11,27 @@ pub(super) struct ResolvedSendIdentity {
     pub account_utxo_sources: Vec<super::send_utxo_sources::UtxoSigningSource>,
 }
 
+impl ResolvedSendIdentity {
+    /// The signing key's bytes, however long the network's keys are.
+    pub(super) fn private_key(&self) -> Result<Zeroizing<Vec<u8>>, SpectraBridgeError> {
+        hex::decode(self.private_key_hex.as_str())
+            .map(Zeroizing::new)
+            .map_err(|_| SpectraBridgeError::failure("invalid private key hex"))
+    }
+
+    /// The signing key as the `N` bytes its network's keys are.
+    pub(super) fn private_key_array<const N: usize>(
+        &self,
+    ) -> Result<Zeroizing<[u8; N]>, SpectraBridgeError> {
+        let bytes = self.private_key()?;
+        let array: &[u8; N] = bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| SpectraBridgeError::failure(format!("private key must be {N} bytes")))?;
+        Ok(Zeroizing::new(*array))
+    }
+}
+
 fn invalid(message: &str) -> SpectraBridgeError {
     SpectraBridgeError::InvalidInput {
         message: message.into(),

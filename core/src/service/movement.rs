@@ -94,6 +94,56 @@ impl WalletService {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct LargeMovementEvaluation {
+    pub should_alert: bool,
+    /// In `currency`: the display currency when its rate is known, else USD.
+    pub absolute_delta: f64,
+    pub ratio: f64,
+    pub direction_up: bool,
+    pub currency: crate::store::state::FiatCurrency,
+}
+
+/// Evaluate whether a portfolio-total swing crosses both an absolute USD
+/// threshold and a percent-change threshold (large-movement notifications).
+pub(crate) fn evaluate_large_movement(
+    previous_total_usd: f64,
+    current_total_usd: f64,
+    usd_threshold: f64,
+    percent_threshold: f64,
+) -> LargeMovementEvaluation {
+    if previous_total_usd <= 0.0
+        || [
+            previous_total_usd,
+            current_total_usd,
+            usd_threshold,
+            percent_threshold,
+        ]
+        .iter()
+        .any(|value| !value.is_finite() || *value < 0.0)
+    {
+        return LargeMovementEvaluation {
+            should_alert: false,
+            absolute_delta: 0.0,
+            ratio: 0.0,
+            direction_up: true,
+            currency: crate::store::state::FiatCurrency::Usd,
+        };
+    }
+    let delta = current_total_usd - previous_total_usd;
+    let absolute_delta = delta.abs();
+    let ratio = absolute_delta / previous_total_usd;
+    let should_alert = absolute_delta >= usd_threshold && ratio >= (percent_threshold / 100.0);
+    LargeMovementEvaluation {
+        should_alert,
+        absolute_delta,
+        ratio,
+        direction_up: delta >= 0.0,
+        currency: crate::store::state::FiatCurrency::Usd,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

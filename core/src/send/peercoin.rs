@@ -139,12 +139,7 @@ fn validate_inputs(chain: Chain, inputs: &[Input]) -> Result<u64, SendError> {
 }
 
 fn compact_size(value: u64) -> u64 {
-    match value {
-        0..=0xfc => 1,
-        0xfd..=0xffff => 3,
-        0x1_0000..=0xffff_ffff => 5,
-        _ => 9,
-    }
+    bitcoin::consensus::encode::VarInt(value).size() as u64
 }
 
 /// Maximum serialized size with a low-S DER signature plus SIGHASH byte

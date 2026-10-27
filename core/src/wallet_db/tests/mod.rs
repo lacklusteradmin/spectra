@@ -301,18 +301,23 @@ fn address_round_trip() {
     assert_eq!(records[0].branch.as_deref(), Some("external"));
 }
 
+use crate::store::persistence_models::TransactionRecord;
 use crate::store::state::{AppSettings, WalletAddress};
 
-/// Minimal history record. The payload is decoded from JSON rather than
-/// built field-by-field: `TransactionRecord` has ~30 fields of
-/// which only these are required, and going through serde keeps the helper
-/// honest about which ones those are.
-fn history_record(id: &str, wallet_id: &str) -> HistoryRecord {
+/// Minimal history record, decoded from JSON rather than built
+/// field-by-field: `TransactionRecord` has ~30 fields of which only these
+/// are required, and going through serde keeps the helper honest about
+/// which ones those are.
+fn history_record(id: &str, wallet_id: &str) -> TransactionRecord {
     history_record_on(id, wallet_id, crate::registry::Chain::Bitcoin)
 }
 
-fn history_record_on(id: &str, wallet_id: &str, chain_id: crate::registry::Chain) -> HistoryRecord {
-    let payload = serde_json::from_value(serde_json::json!({
+fn history_record_on(
+    id: &str,
+    wallet_id: &str,
+    chain_id: crate::registry::Chain,
+) -> TransactionRecord {
+    serde_json::from_value(serde_json::json!({
         "id": id,
         "walletId": wallet_id,
         "kind": "send",
@@ -323,17 +328,10 @@ fn history_record_on(id: &str, wallet_id: &str, chain_id: crate::registry::Chain
         "chainId": chain_id,
         "amount": "1",
         "address": "bc1qexample",
+        "transactionHash": format!("hash-{id}"),
         "createdAtUnix": 0.0,
     }))
-    .expect("history payload fixture must match TransactionRecord");
-    HistoryRecord {
-        id: id.to_string(),
-        wallet_id: Some(wallet_id.to_string()),
-        chain_id,
-        tx_hash: Some(format!("hash-{id}")),
-        created_at: 0.0,
-        payload,
-    }
+    .expect("history payload fixture must match TransactionRecord")
 }
 
 fn wallet(id: &str, chain: crate::registry::Chain) -> WalletState {
@@ -401,7 +399,7 @@ fn app_state_round_trips() {
         movement_baseline: None,
         diagnostics: Default::default(),
         quotes: Default::default(),
-        schema_version: 2,
+        schema_version: crate::store::state::APP_STATE_SCHEMA_VERSION,
         wallets: vec![
             wallet("w1", crate::registry::Chain::Bitcoin),
             wallet("w2", crate::registry::Chain::Ethereum),
@@ -667,9 +665,8 @@ fn history_id_lookup_uses_the_primary_key_and_normalizes_duplicates() {
         .map(|i| history_record(&format!("tx{i}"), "w"))
         .collect();
     history_upsert_batch(&db, &rows).unwrap();
-    let mut ids: Vec<_> = (0..1100).map(|i| format!("TX{i}")).collect();
-    ids.extend(["tx0".into(), "absent".into()]);
-    assert_eq!(history_existing_ids(&db, &ids).unwrap().len(), 1100);
+    assert!(history_find(&db, "TX1099").unwrap().is_some());
+    assert!(history_find(&db, "absent").unwrap().is_none());
     with_conn(&db, |conn| {
         let plan: String = conn
             .query_row(
@@ -682,8 +679,6 @@ fn history_id_lookup_uses_the_primary_key_and_normalizes_duplicates() {
         Ok::<_, DbError>(())
     })
     .unwrap();
-    history_delete_for_wallet(&db, "W").unwrap();
-    assert!(history_fetch_all(&db).unwrap().is_empty());
 }
 
 /// Stored metadata is read in the current format only: an unknown key, a
@@ -697,6 +692,8 @@ fn unknown_metadata_and_schema_versions_are_refused() {
         value.to_string()
     };
     let replace = "INSERT OR REPLACE INTO app_state_meta (key, value) VALUES (?1, ?2)";
+    let current = crate::store::state::APP_STATE_SCHEMA_VERSION;
+    let (older, newer) = ((current - 1).to_string(), (current + 1).to_string());
     for (statement, arguments, refusal) in [
         (
             replace,
@@ -705,13 +702,13 @@ fn unknown_metadata_and_schema_versions_are_refused() {
         ),
         (
             replace,
-            vec![META_SCHEMA_VERSION.into(), "1".into()],
-            "unsupported app state schema version: 1".into(),
+            vec![META_SCHEMA_VERSION.into(), older.clone()],
+            format!("unsupported app state schema version: {older}"),
         ),
         (
             replace,
-            vec![META_SCHEMA_VERSION.into(), "3".into()],
-            "unsupported app state schema version: 3".into(),
+            vec![META_SCHEMA_VERSION.into(), newer.clone()],
+            format!("unsupported app state schema version: {newer}"),
         ),
         (
             "DELETE FROM app_state_meta WHERE key = ?1",
@@ -845,22 +842,20 @@ fn history_batches_roll_back_partial_writes_and_leave_connection_usable() {
 fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
     let db = tmp_db();
     let mut pending = history_record_on("pending", "w1", crate::registry::Chain::Ethereum);
-    pending.payload.kind = crate::store::wallet_domain::TransactionKind::Send;
-    pending.payload.status = crate::store::wallet_domain::TransactionStatus::Pending;
-    pending.payload.source_address = Some("0xAbC".into());
-    pending.payload.nonce = Some(7);
+    pending.kind = crate::store::wallet_domain::TransactionKind::Send;
+    pending.status = crate::store::wallet_domain::TransactionStatus::Pending;
+    pending.source_address = Some("0xAbC".into());
+    pending.nonce = Some(7);
     let mut confirmed = pending.clone();
     confirmed.id = "confirmed".into();
-    confirmed.payload.id = confirmed.id.clone();
-    confirmed.payload.status = crate::store::wallet_domain::TransactionStatus::Confirmed;
+    confirmed.status = crate::store::wallet_domain::TransactionStatus::Confirmed;
     let mut other = pending.clone();
     other.id = "other".into();
-    other.payload.id = other.id.clone();
-    other.payload.source_address = Some("0xdef".into());
+    other.source_address = Some("0xdef".into());
     history_upsert_batch(&db, &[pending, confirmed, other]).unwrap();
     let rows = history_pending_for_sender(&db, crate::registry::Chain::Ethereum, "0xabc").unwrap();
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].payload.nonce, Some(7));
+    assert_eq!(rows[0].nonce, Some(7));
     assert!(
         history_pending_for_sender(&db, crate::registry::Chain::Base, "0xabc")
             .unwrap()
@@ -922,7 +917,7 @@ fn history_pages_can_hide_small_amounts() {
         },
     )
     .unwrap();
-    let rows: Vec<HistoryRecord> = [
+    let rows: Vec<TransactionRecord> = [
         ("zero", "0"),
         ("dust", "0.000009"),
         ("edge", "0.00001"),
@@ -932,9 +927,8 @@ fn history_pages_can_hide_small_amounts() {
     .enumerate()
     .map(|(i, (id, amount))| {
         let mut row = history_record(id, "w1");
-        row.created_at = i as f64;
-        row.payload.amount = amount.to_string();
-        row.payload.created_at_unix = i as f64;
+        row.amount = amount.to_string();
+        row.created_at_unix = (i + 1) as f64;
         row
     })
     .collect();
@@ -983,7 +977,7 @@ fn undated_pending_transactions_sort_as_the_newest() {
     )
     .unwrap();
     let unknown = -62_135_596_800.0;
-    let rows: Vec<HistoryRecord> = [
+    let rows: Vec<TransactionRecord> = [
         ("dated", "confirmed", 1_700_000_000.0),
         ("undated-pending", "pending", unknown),
         ("undated-confirmed", "confirmed", unknown),
@@ -991,10 +985,10 @@ fn undated_pending_transactions_sort_as_the_newest() {
     ]
     .iter()
     .map(|(id, status, time)| {
-        let mut payload = history_record(id, "w1").payload;
+        let mut payload = history_record(id, "w1");
         payload.status = serde_json::from_value(serde_json::json!(status)).unwrap();
         payload.created_at_unix = *time;
-        history_record_from_payload(payload)
+        payload
     })
     .collect();
     history_upsert_batch(&db, &rows).unwrap();
@@ -1053,15 +1047,15 @@ fn staking_history_roundtrips_and_reserves_all_submitted_pending_operations() {
     .enumerate()
     {
         let mut record = history_record_on(&format!("staking-{i}"), "wallet", Chain::Polkadot);
-        record.payload.kind = kind;
-        record.payload.source_address = Some("owner".into());
-        record.payload.status = S::Pending;
-        record.payload.amount = "0".into();
+        record.kind = kind;
+        record.source_address = Some("owner".into());
+        record.status = S::Pending;
+        record.amount = "0".into();
         history_upsert_batch(&db, &[record]).unwrap();
     }
     let records = history_fetch_all(&db).unwrap();
     assert_eq!(records.len(), 5);
     let pending = history_pending_for_sender(&db, Chain::Polkadot, "owner").unwrap();
     assert_eq!(pending.len(), 4);
-    assert!(pending.iter().all(|r| r.payload.kind.is_staking()));
+    assert!(pending.iter().all(|r| r.kind.is_staking()));
 }

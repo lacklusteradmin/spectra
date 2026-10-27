@@ -7,18 +7,12 @@
 
 use crate::derivation::error::DerivationError;
 
-pub(crate) use crate::derivation::primitives::{
-    HARDENED_OFFSET, derive_bip39_seed, parse_bip32_path,
-};
 use bech32::Hrp;
-use hmac::{Hmac, Mac};
 use ripemd::Ripemd160;
-use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
-use sha2::{Digest, Sha256, Sha512};
+use secp256k1::{All, PublicKey, Scalar, Secp256k1};
+use sha2::{Digest, Sha256};
 
 // ── Hashing primitives ───────────────────────────────────────────────────
-
-type HmacSha512 = Hmac<Sha512>;
 
 // SHA-256 of the input bytes; used internally by hash160 and the Taproot tweak.
 pub(crate) fn sha256(bytes: &[u8]) -> [u8; 32] {
@@ -52,253 +46,6 @@ pub(crate) fn base58check_decode(s: &str) -> Result<Vec<u8>, DerivationError> {
         .with_check(None)
         .into_vec()
         .map_err(|e| DerivationError::Invalid(format!("base58check decode: {e}").into()))
-}
-
-// ── BIP-32 extended keys ─────────────────────────────────────────────────
-
-pub(crate) const XPUB_VERSION_MAINNET: [u8; 4] = [0x04, 0x88, 0xB2, 0x1E];
-pub(crate) const XPUB_VERSION_TESTNET: [u8; 4] = [0x04, 0x35, 0x87, 0xCF];
-
-#[derive(Clone)]
-pub(crate) struct ExtendedPrivateKey {
-    pub depth: u8,
-    pub parent_fingerprint: [u8; 4],
-    pub child_number: u32,
-    pub private_key: SecretKey,
-    pub chain_code: [u8; 32],
-}
-
-#[derive(Clone)]
-pub(crate) struct ExtendedPublicKey {
-    pub depth: u8,
-    pub parent_fingerprint: [u8; 4],
-    pub child_number: u32,
-    pub public_key: PublicKey,
-    pub chain_code: [u8; 32],
-}
-
-impl ExtendedPrivateKey {
-    /// Master key from BIP-39 seed. `hmac_key` is usually `b"Bitcoin seed"` but
-    /// is caller-tunable so we can reuse this for SLIP-0010 if ever needed.
-    pub fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, DerivationError> {
-        let mut mac = HmacSha512::new_from_slice(hmac_key)
-            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
-        mac.update(seed);
-        let tag = mac.finalize().into_bytes();
-        let private_key = SecretKey::from_slice(&tag[..32]).map_err(|e| {
-            DerivationError::Internal(format!("Derived BIP-32 master key is invalid: {e}"))
-        })?;
-        let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self {
-            depth: 0,
-            parent_fingerprint: [0u8; 4],
-            child_number: 0,
-            private_key,
-            chain_code,
-        })
-    }
-
-    // Compute the 4-byte fingerprint of this key's public key (first 4 bytes of hash160(pubkey)).
-    pub fn fingerprint(&self, secp: &Secp256k1<All>) -> [u8; 4] {
-        let pk = PublicKey::from_secret_key(secp, &self.private_key);
-        let h = hash160(&pk.serialize());
-        let mut fp = [0u8; 4];
-        fp.copy_from_slice(&h[..4]);
-        fp
-    }
-
-    // Derive a BIP-32 child key; hardened indices use private key as input, non-hardened use public key.
-    pub fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, DerivationError> {
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
-        if index >= HARDENED_OFFSET {
-            mac.update(&[0x00]);
-            mac.update(&self.private_key.secret_bytes());
-        } else {
-            let pk = PublicKey::from_secret_key(secp, &self.private_key);
-            mac.update(&pk.serialize());
-        }
-        mac.update(&index.to_be_bytes());
-        let tag = mac.finalize().into_bytes();
-
-        let tweak = Scalar::from_be_bytes(
-            tag[..32]
-                .try_into()
-                .map_err(|_| DerivationError::Internal("BIP-32 tag slice".into()))?,
-        )
-        .map_err(|_| {
-            DerivationError::Internal("BIP-32 IL out of range — retry the derivation".into())
-        })?;
-        let private_key = self
-            .private_key
-            .add_tweak(&tweak)
-            .map_err(|e| DerivationError::Internal(format!("BIP-32 tweak failed: {e}")))?;
-        let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&tag[32..]);
-
-        let parent_fingerprint = self.fingerprint(secp);
-        Ok(Self {
-            depth: self.depth.saturating_add(1),
-            parent_fingerprint,
-            child_number: index,
-            private_key,
-            chain_code,
-        })
-    }
-
-    // Walk the full BIP-32 derivation path by applying derive_child for each index.
-    pub fn derive_path(
-        &self,
-        secp: &Secp256k1<All>,
-        path: &[u32],
-    ) -> Result<Self, DerivationError> {
-        let mut key = self.clone();
-        for &index in path {
-            key = key.derive_child(secp, index)?;
-        }
-        Ok(key)
-    }
-
-    // Convert this extended private key to its corresponding extended public key (neutered).
-    pub fn to_neutered(&self, secp: &Secp256k1<All>) -> ExtendedPublicKey {
-        ExtendedPublicKey {
-            depth: self.depth,
-            parent_fingerprint: self.parent_fingerprint,
-            child_number: self.child_number,
-            public_key: PublicKey::from_secret_key(secp, &self.private_key),
-            chain_code: self.chain_code,
-        }
-    }
-}
-
-impl ExtendedPublicKey {
-    // Compute the 4-byte fingerprint of this extended public key (first 4 bytes of hash160(pubkey)).
-    pub fn fingerprint(&self) -> [u8; 4] {
-        let h = hash160(&self.public_key.serialize());
-        let mut fp = [0u8; 4];
-        fp.copy_from_slice(&h[..4]);
-        fp
-    }
-
-    /// CKDpub for unhardened children. Hardened indices return an error — you
-    /// can't walk a hardened level from just a public key, by design.
-    pub fn derive_child(&self, secp: &Secp256k1<All>, index: u32) -> Result<Self, DerivationError> {
-        if index >= HARDENED_OFFSET {
-            return Err(DerivationError::Invalid(
-                "cannot derive a hardened child from an xpub".into(),
-            ));
-        }
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
-        mac.update(&self.public_key.serialize());
-        mac.update(&index.to_be_bytes());
-        let tag = mac.finalize().into_bytes();
-
-        let tweak = Scalar::from_be_bytes(
-            tag[..32]
-                .try_into()
-                .map_err(|_| DerivationError::Internal("BIP-32 tag slice".into()))?,
-        )
-        .map_err(|_| {
-            DerivationError::Internal("BIP-32 IL out of range — retry the derivation".into())
-        })?;
-        let public_key = self
-            .public_key
-            .add_exp_tweak(secp, &tweak)
-            .map_err(|e| DerivationError::Internal(format!("BIP-32 pubkey tweak failed: {e}")))?;
-        let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&tag[32..]);
-
-        Ok(Self {
-            depth: self.depth.saturating_add(1),
-            parent_fingerprint: self.fingerprint(),
-            child_number: index,
-            public_key,
-            chain_code,
-        })
-    }
-
-    // Serialize this extended public key to an xpub base58check string with the given version bytes.
-    pub fn to_xpub_string(&self, version: [u8; 4]) -> String {
-        encode_extended_key(
-            version,
-            self.depth,
-            self.parent_fingerprint,
-            self.child_number,
-            self.chain_code,
-            &self.public_key.serialize(),
-        )
-    }
-
-    /// Parse an xpub string and return the (key, observed version bytes). We
-    /// don't auto-resolve version bytes to a network here — the caller knows
-    /// which prefixes they accept.
-    pub fn from_xpub_string(s: &str) -> Result<(Self, [u8; 4]), DerivationError> {
-        let (version, depth, parent_fingerprint, child_number, chain_code, key_bytes) =
-            decode_extended_key(s)?;
-        let public_key = PublicKey::from_slice(&key_bytes)
-            .map_err(|e| DerivationError::Invalid(format!("xpub: invalid pubkey: {e}").into()))?;
-        Ok((
-            Self {
-                depth,
-                parent_fingerprint,
-                child_number,
-                public_key,
-                chain_code,
-            },
-            version,
-        ))
-    }
-}
-
-// Serialize a BIP-32 extended key into a 78-byte base58check payload with version, depth, and child metadata.
-fn encode_extended_key(
-    version: [u8; 4],
-    depth: u8,
-    parent_fingerprint: [u8; 4],
-    child_number: u32,
-    chain_code: [u8; 32],
-    key_bytes: &[u8],
-) -> String {
-    let mut payload = Vec::with_capacity(78);
-    payload.extend_from_slice(&version);
-    payload.push(depth);
-    payload.extend_from_slice(&parent_fingerprint);
-    payload.extend_from_slice(&child_number.to_be_bytes());
-    payload.extend_from_slice(&chain_code);
-    payload.extend_from_slice(key_bytes);
-    base58check_encode(&payload)
-}
-
-// Decode an xpub/xprv base58check string into its component fields (version, depth, fingerprint, child number, chain code, key).
-fn decode_extended_key(
-    s: &str,
-) -> Result<([u8; 4], u8, [u8; 4], u32, [u8; 32], [u8; 33]), DerivationError> {
-    let payload = base58check_decode(s)?;
-    if payload.len() != 78 {
-        return Err(DerivationError::Invalid(
-            format!("xpub/xprv payload must be 78 bytes, got {}", payload.len()).into(),
-        ));
-    }
-    let mut version = [0u8; 4];
-    version.copy_from_slice(&payload[0..4]);
-    let depth = payload[4];
-    let mut parent_fingerprint = [0u8; 4];
-    parent_fingerprint.copy_from_slice(&payload[5..9]);
-    let child_number = u32::from_be_bytes(payload[9..13].try_into().unwrap());
-    let mut chain_code = [0u8; 32];
-    chain_code.copy_from_slice(&payload[13..45]);
-    let mut key_bytes = [0u8; 33];
-    key_bytes.copy_from_slice(&payload[45..78]);
-    Ok((
-        version,
-        depth,
-        parent_fingerprint,
-        child_number,
-        chain_code,
-        key_bytes,
-    ))
 }
 
 // ── Address encoding ─────────────────────────────────────────────────────
@@ -395,12 +142,10 @@ pub(crate) fn derive_secp_keypair(
     passphrase: Option<&str>,
 ) -> Result<(PublicKey, [u8; 32]), DerivationError> {
     let secp = Secp256k1::new();
-    let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
-    let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
-    let path = parse_bip32_path(derivation_path)?;
-    let xpriv = master.derive_path(&secp, &path)?;
-    let public_key = PublicKey::from_secret_key(&secp, &xpriv.private_key);
-    Ok((public_key, xpriv.private_key.secret_bytes()))
+    let private_key =
+        crate::derivation::bip32::phrase_key(seed_phrase, passphrase, derivation_path)?;
+    let public_key = PublicKey::from_secret_key(&secp, &private_key);
+    Ok((public_key, private_key.secret_bytes()))
 }
 
 // Dispatch to the correct address encoder (P2PKH / P2SH-P2WPKH / P2WPKH / P2TR) by script type.

@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ResetOutcome {
     pub state: ResidentState,
-    pub plan: crate::store::ResetPlan,
+    pub plan: ResetPlan,
 }
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -17,7 +17,7 @@ impl WalletService {
         crate::service::worker::run(async move {
             let this = &this;
             this.bound_database().await?;
-            let plan = crate::store::reset_dispatch(scopes);
+            let plan = reset_dispatch(scopes);
             let mutation = plan.clone();
             this.mutate_persisted_state(move |state| {
                 if mutation.reset_wallets_and_secrets {
@@ -45,13 +45,15 @@ impl WalletService {
             })
             .await?;
             if plan.reset_history_and_cache {
-                this.apply_transaction_command(crate::service::types::TransactionCommand::Clear)
-                    .await?;
+                let database = this.bound_database().await?;
+                tokio::task::spawn_blocking(move || crate::wallet_db::history_clear(&database))
+                    .await
+                    .map_err(SpectraBridgeError::failure)??;
                 this.clear_operational_events(None).await?;
                 this.history_pagination.reset_all();
                 this.status_trackers.write().await.clear();
                 *this.refresh_clock.write().await = Default::default();
-                crate::diagnostics::diagnostics_clear_all();
+                this.diagnostic_runs.clear();
             }
             Ok(ResetOutcome {
                 state: this.app_state().await,
@@ -59,6 +61,34 @@ impl WalletService {
             })
         })
         .await
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetPlan {
+    pub reset_wallets_and_secrets: bool,
+    pub reset_history_and_cache: bool,
+    pub reset_alerts_and_contacts: bool,
+    pub reset_settings_and_endpoints: bool,
+    pub reset_dashboard_customization: bool,
+}
+
+/// Which sub-resets a set of user-chosen scopes implies.
+///
+/// Core applies the domain resets; the returned scope expansion also tells
+/// the platform which of its own flows and preferences to clear.
+pub fn reset_dispatch(scopes: Vec<crate::store::state::ResetScope>) -> ResetPlan {
+    use crate::store::state::ResetScope;
+    let has = |scope: ResetScope| scopes.contains(&scope);
+    let wallets_and_secrets = has(ResetScope::WalletsAndSecrets);
+    let history_and_cache = wallets_and_secrets || has(ResetScope::HistoryAndCache);
+    ResetPlan {
+        reset_wallets_and_secrets: wallets_and_secrets,
+        reset_history_and_cache: history_and_cache,
+        reset_alerts_and_contacts: has(ResetScope::AlertsAndContacts),
+        reset_settings_and_endpoints: has(ResetScope::SettingsAndEndpoints),
+        reset_dashboard_customization: has(ResetScope::DashboardCustomization),
     }
 }
 

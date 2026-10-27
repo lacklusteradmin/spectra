@@ -151,7 +151,7 @@ async fn trc10_history_is_read_through_each_fingerprint_until_none_is_left() {
         .await
         .unwrap()
         .into_iter()
-        .map(|row| (row.payload.transaction_hash.unwrap(), row.payload.amount))
+        .map(|row| (row.transaction_hash.unwrap(), row.amount))
         .collect();
     amounts.sort();
     assert_eq!(

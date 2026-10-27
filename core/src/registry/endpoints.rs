@@ -151,10 +151,8 @@ impl Chain {
         // differently from the chain it mirrors — listing them separately is
         // how `zcash-testnet` silently ended up account-based.
         match self.mainnet_counterpart() {
-            // Dogecoin's own variant: its explorer reports change outputs in a
-            // shape the shared UTXO merge mishandles.
-            Chain::Dogecoin => S::Dogecoin,
             Chain::Bitcoin
+            | Chain::Dogecoin
             | Chain::BitcoinCash
             | Chain::BitcoinSV
             | Chain::Litecoin
@@ -163,7 +161,7 @@ impl Chain {
             | Chain::Decred
             | Chain::Zcash
             | Chain::Kaspa
-            | Chain::Peercoin => S::StandardUtxo,
+            | Chain::Peercoin => S::Utxo,
             other if other.is_evm() => S::Evm,
             _ => S::AccountBased,
         }

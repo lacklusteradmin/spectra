@@ -139,12 +139,18 @@ pub(super) fn shielded_account(wallet: &WalletState) -> Result<u32, SpectraBridg
         .and_then(|address| address.derivation_path.as_deref())
         .or(wallet.derivation_path.as_deref())
         .unwrap_or("");
-    let parts: Vec<&str> = path.split('/').collect();
-    let account = match parts.as_slice() {
-        ["m", "44'", coin_part, account, "0", "0"] if *coin_part == format!("{coin}'") => account
-            .strip_suffix('\'')
-            .and_then(|index| index.parse::<u32>().ok())
-            .filter(|index| *index < (1 << 31)),
+    use bitcoin::bip32::ChildNumber::{Hardened, Normal};
+    let steps = crate::derivation::bip32::parse_path(path).ok();
+    let account = match steps.as_ref().map(|path| path.as_ref()) {
+        Some(
+            [
+                Hardened { index: 44 },
+                Hardened { index: coin_index },
+                Hardened { index: account },
+                Normal { index: 0 },
+                Normal { index: 0 },
+            ],
+        ) if *coin_index == coin => Some(*account),
         _ => None,
     };
     account.ok_or_else(|| {

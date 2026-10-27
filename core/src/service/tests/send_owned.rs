@@ -191,12 +191,10 @@ async fn transfer_ends_and_destinations_are_named_by_their_holder() {
         .await
         .unwrap();
     service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![
-                pending_send("to-other", OTHER, "1", &format!("0x{}", "aa".repeat(32))),
-                pending_send("to-alice", CONTACT, "1", &format!("0x{}", "bb".repeat(32))),
-            ],
-        })
+        .upsert_history_records(vec![
+            pending_send("to-other", OTHER, "1", &format!("0x{}", "aa".repeat(32))),
+            pending_send("to-alice", CONTACT, "1", &format!("0x{}", "bb".repeat(32))),
+        ])
         .await
         .unwrap();
     let wallet = |name: &str| Some(EndpointHolder::Wallet { name: name.into() });
@@ -252,14 +250,12 @@ async fn a_replacement_resends_the_exact_amount_and_a_cancellation_sends_nothing
     let server = node().await;
     let service = wallets(vec![server.uri()], &format!("0x{}", "44".repeat(20))).await;
     service
-        .apply_transaction_command(TransactionCommand::Upsert {
-            records: vec![pending_send(
-                "pending",
-                OTHER,
-                "0.123456789012",
-                &format!("0x{}", "aa".repeat(32)),
-            )],
-        })
+        .upsert_history_records(vec![pending_send(
+            "pending",
+            OTHER,
+            "0.123456789012",
+            &format!("0x{}", "aa".repeat(32)),
+        )])
         .await
         .unwrap();
     let speed_up = service

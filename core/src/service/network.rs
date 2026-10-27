@@ -2,6 +2,30 @@
 use super::*;
 use crate::api::endpoint::EndpointApi;
 
+/// One endpoint and whether it answered.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+pub struct EndpointProbe {
+    pub api: EndpointApi,
+    pub chain_id: crate::registry::Chain,
+    pub endpoint: String,
+    /// Operations the endpoint declares.
+    pub capabilities: Vec<EndpointCapability>,
+    /// False when nothing knows how to probe this endpoint. Not a pass.
+    pub checked: bool,
+    pub reachable: bool,
+    pub detail: String,
+}
+
+pub(super) fn evm_network(chain: Chain) -> Result<Chain, SpectraBridgeError> {
+    if chain.is_evm() {
+        Ok(chain)
+    } else {
+        Err(SpectraBridgeError::failure(format!(
+            "unsupported EVM chain_id: {chain}"
+        )))
+    }
+}
+
 #[cfg(test)]
 #[path = "tests/network_receipt.rs"]
 mod network_receipt;
@@ -68,7 +92,7 @@ impl WalletService {
                     detail,
                 });
             }
-            crate::diagnostics::diagnostics_record_endpoints(chain, out.clone());
+            this.diagnostic_runs.record_endpoints(chain, out.clone());
             Ok(out)
         })
         .await
@@ -301,12 +325,7 @@ mod receipt_cost_completeness {
                             "confirmedNetworkFee": "0.000000000000021"
                         }))
                         .unwrap();
-                    service
-                        .upsert_history_records(vec![
-                            crate::wallet_db::history_record_from_payload(old),
-                        ])
-                        .await
-                        .unwrap();
+                    service.upsert_history_records(vec![old]).await.unwrap();
                     let changes = service.poll_pending_transactions(chain).await.unwrap();
                     assert_eq!(changes.len(), 1);
                     let polled = service.transactions().await.unwrap().remove(0);

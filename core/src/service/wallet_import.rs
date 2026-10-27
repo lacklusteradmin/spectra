@@ -866,3 +866,18 @@ impl WalletService {
         }
     }
 }
+
+/// The answer to a seed-phrase reveal.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum SeedPhraseReveal {
+    Phrase {
+        phrase: String,
+    },
+    /// The wallet stores no phrase: watch-only, or a private key.
+    NotStored,
+    /// The phrase is sealed and no password was given.
+    PasswordRequired,
+    IncorrectPassword,
+    /// A password was given for a phrase that has none.
+    PasswordNotRequired,
+}

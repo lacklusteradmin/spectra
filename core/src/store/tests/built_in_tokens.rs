@@ -3,7 +3,7 @@ use crate::store::state::StateCommand;
 
 #[test]
 fn every_built_in_has_a_unique_id() {
-    let entries = crate::store::built_in_token_preferences();
+    let entries = crate::store::state::built_in_token_preferences();
     assert!(!entries.is_empty(), "the catalog produced nothing");
     let mut ids: Vec<&str> = entries
         .iter()
@@ -54,7 +54,7 @@ async fn merging_keeps_what_the_user_added() {
         .await
         .map(|transition| transition.state)
         .expect("merge");
-    let built_ins = crate::store::built_in_token_preferences();
+    let built_ins = crate::store::state::built_in_token_preferences();
     assert_eq!(
         after
             .token_preferences
@@ -110,7 +110,7 @@ fn a_built_in_cannot_be_removed() {
 /// needs no sort of its own.
 #[test]
 fn the_token_list_keeps_each_tokens_deployments_together() {
-    let mut custom = crate::store::built_in_token_preferences()
+    let mut custom = crate::store::state::built_in_token_preferences()
         .into_iter()
         .find(|entry| entry.token.chain_id == crate::registry::Chain::Ethereum)
         .unwrap();
@@ -124,8 +124,8 @@ fn the_token_list_keeps_each_tokens_deployments_together() {
         &custom.token.contract,
     )
     .unwrap();
-    let merged = crate::store::merge_built_in_token_preferences(
-        crate::store::built_in_token_preferences(),
+    let merged = crate::store::state::merge_built_in_token_preferences(
+        crate::store::state::built_in_token_preferences(),
         vec![custom],
     );
     assert!(!merged.last().unwrap().is_built_in, "built-ins come first");
@@ -152,7 +152,7 @@ fn the_token_list_keeps_each_tokens_deployments_together() {
 
 #[tokio::test]
 async fn reopening_prefers_catalog_identity_and_deduplicates_protocol_aliases() {
-    let built_in = crate::store::built_in_token_preferences()
+    let built_in = crate::store::state::built_in_token_preferences()
         .into_iter()
         .find(|entry| entry.token.chain_id == crate::registry::Chain::BnbChain)
         .unwrap();

@@ -84,7 +84,7 @@ impl WalletService {
                 let raw = prepared.sign(&key, public)?;
                 let hash = format!(
                     "0x{}",
-                    hex::encode(crate::send::substrate::blake2b_256(&raw))
+                    hex::encode(crate::derivation::primitives::blake2b::<32>(&[&raw]))
                 );
                 (
                     SignedPayload::Hex(format!("0x{}", hex::encode(raw))),

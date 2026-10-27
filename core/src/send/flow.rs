@@ -5,6 +5,7 @@
 
 use crate::registry::Chain;
 use crate::validation::address::validate_address;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct EvmReceiptClassification {
@@ -68,6 +69,79 @@ pub(crate) fn normalize_address(chain: Chain, address: &str) -> String {
 pub(crate) fn is_ens_name_candidate(value: &str) -> bool {
     let normalized = value.trim().to_lowercase();
     normalized.ends_with(".eth") && !normalized.contains(' ') && !normalized.starts_with("0x")
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EvmRecipientPreflightRequest {
+    pub chain_id: crate::registry::Chain,
+    pub holding_symbol: String,
+    pub token_symbol: Option<String>,
+    pub recipient_has_code: Option<bool>,
+    pub token_has_code: Option<bool>,
+}
+
+/// A reason an EVM send's recipient or token contract looks wrong. Front ends
+/// word each one.
+///
+/// A record with a free-string `code` before, which the app switched on with a
+/// `default` that dropped anything it did not know; see
+/// [`crate::send::flow::HighRiskSendWarning`] for why that is the wrong shape
+/// for a warning.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum EvmRecipientPreflightWarning {
+    /// The recipient has contract code, so it may not be able to receive
+    /// `symbol`.
+    RecipientIsContract {
+        chain_id: crate::registry::Chain,
+        symbol: String,
+    },
+    /// The recipient's code could not be read.
+    RecipientCodeUnknown { chain_id: crate::registry::Chain },
+    /// The token contract has no code on this chain.
+    TokenContractMissing {
+        chain_id: crate::registry::Chain,
+        token_symbol: String,
+    },
+    /// The token contract's code could not be read.
+    TokenCodeUnknown {
+        chain_id: crate::registry::Chain,
+        token_symbol: String,
+    },
+}
+
+/// Build warning codes for an EVM send's recipient + token contract checks.
+/// Swift localizes the codes into user-facing strings.
+/// Not exported: `WalletService::evm_recipient_preflight` is the entry point,
+/// because the two contract-code probes it needs are core's own network calls.
+pub fn evm_recipient_preflight_warnings(
+    request: EvmRecipientPreflightRequest,
+) -> Vec<EvmRecipientPreflightWarning> {
+    let mut warnings = Vec::new();
+    let chain_id = request.chain_id;
+    match request.recipient_has_code {
+        Some(true) => warnings.push(EvmRecipientPreflightWarning::RecipientIsContract {
+            chain_id,
+            symbol: request.holding_symbol,
+        }),
+        Some(false) => {}
+        None => warnings.push(EvmRecipientPreflightWarning::RecipientCodeUnknown { chain_id }),
+    }
+    if let Some(token_symbol) = request.token_symbol {
+        match request.token_has_code {
+            Some(false) => warnings.push(EvmRecipientPreflightWarning::TokenContractMissing {
+                chain_id,
+                token_symbol,
+            }),
+            None => warnings.push(EvmRecipientPreflightWarning::TokenCodeUnknown {
+                chain_id,
+                token_symbol,
+            }),
+            Some(true) => {}
+        }
+    }
+    warnings
 }
 
 #[cfg(test)]
@@ -295,23 +369,6 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
 }
 
 // ── Chain predicates ──────────────────────────────────────────────
-
-/// The chain whose derivation recipe `chain` uses, or `None` for a chain with
-/// no BIP-32 path. A testnet names itself.
-pub fn seed_derivation_chain_raw(chain: crate::registry::Chain) -> Option<String> {
-    if chain.is_testnet() {
-        return Some(chain.chain_display_name().to_string());
-    }
-    let mainnet = chain.mainnet_counterpart();
-    // Some EVM L1/L2/sidechains (BNB Chain, Optimism, etc.) reuse Ethereum's
-    // derivation path; the historical raw-name table preserved that
-    // collapsing. Mirror it here.
-    let raw = match mainnet {
-        crate::registry::Chain::BnbChain => "Ethereum",
-        c => c.chain_display_name(),
-    };
-    Some(raw.to_string())
-}
 
 // A nonempty `eth_getCode` result (anything other than "0x" or "0x0")
 // indicates deployed bytecode.

@@ -15,9 +15,6 @@
 //! | [`send_stages`] | prepared/signed artifacts and explicit submission |
 //! | [`send_broadcast`] | rebroadcast of signed payloads |
 //! | [`send_destination`] | resolution and review verification |
-//! | [`helpers`] | parsing, scaling and SQLite plumbing the three share |
-//! | [`types`] | the records and enums that cross the FFI |
-//! | [`standalone`] | exports that need no service state at all |
 //!
 //! Rust permits many `impl` blocks per type and UniFFI exports them as one, so
 //! a method's module says who owns it and nothing else.
@@ -80,13 +77,12 @@ pub use diagnostic_state::{
     DiagnosticState, DiagnosticsPlatformInfo,
 };
 mod funds_scan;
-mod helpers;
 mod history_cursor;
 pub(crate) mod history_derived;
 mod history_query;
 pub use history_query::{
     EndpointHolder, HISTORY_PAGE_MAX, HISTORY_SMALL_AMOUNT_THRESHOLD, HistoryPage, HistoryQuery,
-    HistoryQueryFilter, TransactionSnapshot,
+    HistoryQueryFilter, TransactionSnapshot, WalletEarliestTransactionDate,
 };
 mod history_refresh;
 pub use history_refresh::{HistoryRefreshOutcome, HistoryWalletDiagnostics};
@@ -107,6 +103,7 @@ mod pending_status;
 pub use pending_status::PendingMaintenanceResult;
 mod movement;
 mod reset;
+pub use reset::{ResetPlan, reset_dispatch};
 mod send_broadcast;
 mod send_destination;
 mod send_execution;
@@ -119,7 +116,6 @@ mod staking;
 mod staking_icp;
 mod staking_protocols;
 mod staking_substrate;
-mod standalone;
 mod valuation;
 pub use movement::PortfolioMovementBaseline;
 mod state;
@@ -128,7 +124,6 @@ mod transaction_recheck;
 pub use transaction_actions::TransactionActions;
 mod transactions;
 mod transport;
-mod types;
 mod wallet_actions;
 mod wallet_approvals;
 mod wallet_coins;
@@ -153,45 +148,23 @@ pub use zcash_shielded::ZcashShieldedStatus;
 mod litecoin_mweb;
 pub use litecoin_mweb::LitecoinMwebStatus;
 
-pub(crate) use helpers::*;
+use endpoint_directory::EndpointIndex;
+pub use endpoint_directory::{ChainEndpoints, catalog_endpoints};
 use keypool::keypool_key;
+pub use network::EndpointProbe;
+pub use network_balance::NativeBalanceSummary;
 pub(crate) use network_tokens::MetadataRead;
+pub use network_tokens::{TokenBalanceResult, TokenDescriptor};
+pub use send_destination::{
+    SendDestinationActivity, SendDestinationResolution, SendDestinationRisk,
+};
 #[cfg(test)]
 use send_destination::{resolve_destination, verify_reviewed_destination};
-pub use standalone::*;
+pub use state::{PortfolioHolding, WalletDerivedState};
 /// The confirmation-poll outcome, which lives with the trackers it updates.
 pub use transactions::StatusPollOutcome;
-pub use types::*;
 pub(crate) use wallet_actions::WalletAction;
-
-// ── Endpoint index (internal — pre-indexed for O(1) chain_id lookup) ──────
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct EndpointIndex {
-    capabilities: std::collections::HashMap<Chain, Vec<EndpointCapability>>,
-    endpoints: std::collections::HashMap<Chain, Arc<Vec<String>>>,
-}
-
-impl EndpointIndex {
-    fn from_list(list: Vec<ChainEndpoints>) -> Result<Self, SpectraBridgeError> {
-        for row in &list {
-            for url in &row.endpoints {
-                crate::api::endpoint::validate_configured_endpoint(row.chain_id, url)?;
-            }
-        }
-
-        let mut endpoints = std::collections::HashMap::with_capacity(list.len());
-        let mut capabilities = std::collections::HashMap::new();
-        for entry in list {
-            capabilities.insert(entry.chain_id, entry.capabilities);
-            endpoints.insert(entry.chain_id, Arc::new(entry.endpoints));
-        }
-        Ok(Self {
-            endpoints,
-            capabilities,
-        })
-    }
-}
+pub use wallet_import::SeedPhraseReveal;
 
 // ── WalletService — primary UniFFI-exported object ────────────────────────
 
@@ -206,6 +179,8 @@ pub struct WalletService {
     quote_refresh_lock: Arc<tokio::sync::Mutex<()>>,
     balance_refreshes: Arc<balance_refresh::BalanceRefreshes>,
     pub(crate) trc20_metadata: Arc<crate::api::tron_metadata_cache::MetadataCache>,
+    /// What this service's history runs and endpoint checks found.
+    pub(crate) diagnostic_runs: Arc<crate::diagnostics::DiagnosticRuns>,
 
     /// Serializes persistent mutations, including database binding.
     pub(crate) state_writer: Arc<tokio::sync::Mutex<()>>,
@@ -272,6 +247,7 @@ impl WalletService {
         Ok(Arc::new(Self {
             transport_cache_dir: Arc::new(parking_lot::Mutex::new(None)),
             trc20_metadata: Arc::new(crate::api::tron_metadata_cache::MetadataCache::default()),
+            diagnostic_runs: Default::default(),
             send_reviews: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             app_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             send_execute_lock: Arc::new(tokio::sync::Mutex::new(())),
@@ -314,133 +290,6 @@ impl WalletService {
     }
 }
 
-impl WalletService {
-    /// The API and URLs of a chain with one API. The UTXO family has several
-    /// and goes through `utxo_client` instead.
-    pub(crate) async fn fetch_endpoints(
-        &self,
-        chain: Chain,
-        required: &[EndpointCapability],
-    ) -> Result<(EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
-        let [api] = chain.endpoint_apis() else {
-            return Err(SpectraBridgeError::failure(format!(
-                "{} has no single fetch API",
-                chain.str_id()
-            )));
-        };
-        Ok((*api, self.endpoints_for(chain, required).await))
-    }
-
-    pub(crate) async fn configured_endpoint_urls(&self, chain: Chain) -> Arc<Vec<String>> {
-        let base = self
-            .endpoints
-            .read()
-            .await
-            .endpoints
-            .get(&chain)
-            .cloned()
-            .unwrap_or_default();
-        if self
-            .uses_catalog_endpoints
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            let mut custom = self
-                .custom_api_endpoints(chain, chain.endpoint_apis(), &[])
-                .await;
-            // The user's endpoints alone, when the user said so for this
-            // network: the catalog's are not contacted at all.
-            if self.uses_custom_endpoints_only(chain).await {
-                return Arc::new(custom);
-            }
-            if !custom.is_empty() {
-                for url in base.iter() {
-                    if !custom.contains(url) {
-                        custom.push(url.clone());
-                    }
-                }
-                return Arc::new(custom);
-            }
-        }
-        base
-    }
-}
-
-/// Catalog transport configuration for a non-platform front end: each
-/// chain's own list, every API it speaks included. Indexers and secondary
-/// services are asked for by API, through `WalletService::api_endpoints`.
-pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
-    let mut endpoints = Vec::new();
-    for chain in Chain::all() {
-        let apis = chain.endpoint_apis();
-        if apis.is_empty() {
-            continue;
-        }
-        endpoints.push(ChainEndpoints {
-            capabilities: vec![],
-            chain_id: chain,
-            endpoints: crate::catalog::endpoints::records_for_chain(chain, &[])
-                .into_iter()
-                .filter(|record| {
-                    apis.contains(&record.api)
-                        && record.capabilities.iter().any(|c| c.is_primary_read())
-                })
-                .map(|record| record.endpoint)
-                .collect(),
-        });
-    }
-    Ok(endpoints)
-}
-
-#[cfg(test)]
-mod a_primary_endpoint_can_serve_a_primary_read {
-    use super::*;
-
-    /// Operation URL prefixes and incompatible API families are never passed
-    /// to a primary client as base URLs, even when they share a chain.
-    #[test]
-    fn no_chain_is_offered_an_endpoint_that_answers_none_of_them() {
-        let mut checked = 0;
-        for row in catalog_endpoints().expect("catalog endpoints") {
-            for endpoint in &row.endpoints {
-                let chain = row.chain_id;
-                let record = crate::catalog::endpoints::records_for_chain(row.chain_id, &[])
-                    .into_iter()
-                    .find(|record| &record.endpoint == endpoint)
-                    .unwrap();
-                assert!(chain.endpoint_apis().contains(&record.api));
-                assert!(
-                    record.capabilities.iter().any(|c| c.is_primary_read()),
-                    "{} lists operation-only URL {endpoint} as a base",
-                    row.chain_id
-                );
-                checked += 1;
-            }
-        }
-        assert!(checked > 0, "no primary endpoint was checked at all");
-    }
-
-    /// Litecoin's Esplora and BlockCypher rows are both its own endpoints;
-    /// neither is set aside for the other.
-    #[test]
-    fn a_chain_uses_every_api_it_speaks() {
-        let litecoin = catalog_endpoints()
-            .unwrap()
-            .into_iter()
-            .find(|row| row.chain_id == crate::registry::Chain::Litecoin)
-            .unwrap();
-        assert!(
-            litecoin
-                .endpoints
-                .contains(&"https://litecoinspace.org/api".to_string())
-        );
-        assert!(
-            litecoin
-                .endpoints
-                .contains(&"https://api.blockcypher.com/v1/ltc/main".to_string())
-        );
-    }
-}
-
 #[cfg(test)]
 #[path = "tests/app_boundary.rs"]
 mod app_boundary_tests;
@@ -448,20 +297,6 @@ mod app_boundary_tests;
 #[cfg(test)]
 #[path = "tests/loopback_service.rs"]
 pub(crate) mod loopback_service;
-
-impl WalletService {
-    pub async fn update_endpoints(
-        &self,
-        endpoints: Vec<ChainEndpoints>,
-    ) -> Result<(), SpectraBridgeError> {
-        let index = EndpointIndex::from_list(endpoints)?;
-        self.uses_catalog_endpoints
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-        let mut guard = self.endpoints.write().await;
-        *guard = index;
-        Ok(())
-    }
-}
 
 pub mod app_refresh;
 mod owned_send;

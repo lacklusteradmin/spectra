@@ -443,8 +443,7 @@ mod transfers {
             .unwrap()
             .into_iter()
             .find(|row| row.id == built.id)
-            .unwrap()
-            .payload;
+            .unwrap();
         assert_eq!(
             (
                 record.deployment_id.as_deref(),

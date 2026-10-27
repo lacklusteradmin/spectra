@@ -1,16 +1,10 @@
 use crate::derivation::error::DerivationError;
 use bip39::{Language, Mnemonic};
-use blake2::Blake2b;
-use blake2::digest::Digest;
-use blake2::digest::consts::U64;
 use hmac::{Hmac, Mac};
-use secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
 use sha2::Sha512;
 use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
-pub(crate) const HARDENED_OFFSET: u32 = 0x80000000;
-type Blake2b512 = Blake2b<U64>;
 type HmacSha512 = Hmac<Sha512>;
 
 pub(crate) type OptionalKeyMaterial = (Option<String>, Option<String>, Option<String>);
@@ -127,38 +121,6 @@ pub(crate) fn derive_bip39_seed(
     Ok(seed)
 }
 
-/// Parse a BIP-32 derivation path string ("m/44'/0'/0'/0/0") into child indices.
-pub(crate) fn parse_bip32_path(path: &str) -> Result<Vec<u32>, DerivationError> {
-    let trimmed = path.trim().trim_start_matches('m').trim_start_matches('M');
-    let trimmed = trimmed.trim_start_matches('/');
-    if trimmed.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for segment in trimmed.split('/') {
-        let (value, hardened) = if let Some(stripped) = segment.strip_suffix('\'') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('h') {
-            (stripped, true)
-        } else if let Some(stripped) = segment.strip_suffix('H') {
-            (stripped, true)
-        } else {
-            (segment, false)
-        };
-        let raw: u32 = value.parse().map_err(|_| {
-            DerivationError::refused("Invalid derivation path segment: %@", [segment])
-        })?;
-        if raw >= HARDENED_OFFSET {
-            return Err(DerivationError::refused(
-                "Derivation path segment out of range: %@",
-                [segment],
-            ));
-        }
-        out.push(if hardened { raw | HARDENED_OFFSET } else { raw });
-    }
-    Ok(out)
-}
-
 pub(crate) fn derive_substrate_mini_secret(
     mnemonic: &str,
     passphrase: &str,
@@ -252,11 +214,23 @@ fn ss58_prefix_from_bytes(decoded: &[u8]) -> Result<(u16, usize), DerivationErro
 }
 
 fn ss58_checksum(payload_without_checksum: &[u8]) -> [u8; 2] {
-    let mut hasher = Blake2b512::new();
-    hasher.update(b"SS58PRE");
-    hasher.update(payload_without_checksum);
-    let checksum = hasher.finalize();
+    let checksum = blake2b::<64>(&[b"SS58PRE", payload_without_checksum]);
     [checksum[0], checksum[1]]
+}
+
+/// BLAKE2b with an `N`-byte digest of `chunks` in order: every plain BLAKE2b
+/// in core, from Substrate's storage keys to Cardano's key hashes. A keyed
+/// or personalized one names its parameters on `blake2b_simd` itself.
+pub(crate) fn blake2b<const N: usize>(chunks: &[&[u8]]) -> [u8; N] {
+    let mut state = blake2b_simd::Params::new().hash_length(N).to_state();
+    for chunk in chunks {
+        state.update(chunk);
+    }
+    state
+        .finalize()
+        .as_bytes()
+        .try_into()
+        .expect("the digest is N bytes")
 }
 
 pub(crate) fn encode_ss58(public_key: &[u8; 32], network_prefix: u16) -> String {
@@ -302,83 +276,6 @@ pub(crate) fn decode_ss58(
     Ok((prefix, key_bytes))
 }
 
-/// BIP-32 secp256k1 extended private key: the 32-byte scalar and its chain code.
-///
-/// One copy, not one per chain. Decred, EVM, Kaspa, Tron and XRP each carried a
-/// byte-identical 60-line version of this; the derivation is BIP-32's, not any
-/// of theirs, and five copies is five places for a fix to miss four. Bitcoin
-/// keeps its own in `bitcoin.rs` because it also serialises xpubs.
-#[derive(Clone)]
-pub(crate) struct ExtendedPrivateKey {
-    pub(crate) private_key: SecretKey,
-    pub(crate) chain_code: [u8; 32],
-}
-
-impl ExtendedPrivateKey {
-    /// BIP-32 master key: HMAC-SHA512(hmac_key, seed) → private key (IL) + chain code (IR).
-    pub(crate) fn master_from_seed(hmac_key: &[u8], seed: &[u8]) -> Result<Self, DerivationError> {
-        let mut mac = HmacSha512::new_from_slice(hmac_key)
-            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
-        mac.update(seed);
-        let tag = mac.finalize().into_bytes();
-        let private_key = SecretKey::from_slice(&tag[..32])
-            .map_err(|e| DerivationError::Internal(format!("Master key invalid: {e}")))?;
-        let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self {
-            private_key,
-            chain_code,
-        })
-    }
-
-    /// Hardened indices feed the private key into the HMAC, non-hardened the public key.
-    pub(crate) fn derive_child(
-        &self,
-        secp: &Secp256k1<All>,
-        index: u32,
-    ) -> Result<Self, DerivationError> {
-        let mut mac = HmacSha512::new_from_slice(&self.chain_code)
-            .map_err(|e| DerivationError::Internal(format!("HMAC init: {e}")))?;
-        if index >= HARDENED_OFFSET {
-            mac.update(&[0x00]);
-            mac.update(&self.private_key.secret_bytes());
-        } else {
-            let pk = PublicKey::from_secret_key(secp, &self.private_key);
-            mac.update(&pk.serialize());
-        }
-        mac.update(&index.to_be_bytes());
-        let tag = mac.finalize().into_bytes();
-        let tweak = Scalar::from_be_bytes(
-            tag[..32]
-                .try_into()
-                .map_err(|_| DerivationError::Internal("tag slice".into()))?,
-        )
-        .map_err(|_| DerivationError::Internal("BIP-32 IL out of range".into()))?;
-        let private_key = self
-            .private_key
-            .add_tweak(&tweak)
-            .map_err(|e| DerivationError::Internal(format!("BIP-32 tweak failed: {e}")))?;
-        let mut chain_code = [0u8; 32];
-        chain_code.copy_from_slice(&tag[32..]);
-        Ok(Self {
-            private_key,
-            chain_code,
-        })
-    }
-
-    pub(crate) fn derive_path(
-        &self,
-        secp: &Secp256k1<All>,
-        path: &[u32],
-    ) -> Result<Self, DerivationError> {
-        let mut key = self.clone();
-        for &index in path {
-            key = key.derive_child(secp, index)?;
-        }
-        Ok(key)
-    }
-}
-
 /// HMAC-SHA512 over concatenated chunks; returns a 64-byte `Zeroizing` buffer.
 ///
 /// Aptos, Cardano, Internet Computer, Solana, Stellar, Sui and TON each had a
@@ -398,40 +295,16 @@ pub(crate) fn hmac_sha512(
     Ok(out)
 }
 
-/// Parse a SLIP-10 derivation path and force every segment to hardened.
-///
-/// Separate from [`parse_bip32_path`] on purpose: SLIP-10 over ed25519 has no
-/// non-hardened derivation, so a path that omits the `'` still means hardened.
+/// A SLIP-10 path, every step hardened: SLIP-10 over ed25519 has no
+/// unhardened derivation, so a step written without `'` still means
+/// hardened. The notation is BIP-32's, read by its one reader.
 pub(crate) fn parse_slip10_ed25519_path(path: &str) -> Result<Vec<u32>, DerivationError> {
-    let trimmed = path.trim();
-    let body = trimmed
-        .strip_prefix("m/")
-        .or_else(|| trimmed.strip_prefix("M/"))
-        .unwrap_or_else(|| {
-            if trimmed == "m" || trimmed == "M" {
-                ""
-            } else {
-                trimmed
-            }
-        });
-    if body.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut indices = Vec::new();
-    for segment in body.split('/') {
-        let cleaned = segment.trim_end_matches('\'').trim_end_matches('h');
-        let raw: u32 = cleaned.parse().map_err(|_| {
-            DerivationError::refused("Invalid derivation path segment: %@", [segment])
-        })?;
-        if raw & 0x8000_0000 != 0 {
-            return Err(DerivationError::refused(
-                "Derivation path segment out of range: %@",
-                [segment],
-            ));
-        }
-        indices.push(raw | 0x8000_0000);
-    }
-    Ok(indices)
+    Ok(
+        crate::derivation::bip32::indices(&crate::derivation::bip32::parse_path(path)?)
+            .into_iter()
+            .map(|index| index | crate::derivation::bip32::HARDENED_OFFSET)
+            .collect(),
+    )
 }
 
 /// Walk SLIP-10 hardened child derivation from seed to a 32-byte ed25519 key.

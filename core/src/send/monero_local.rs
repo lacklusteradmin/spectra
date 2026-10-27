@@ -42,16 +42,7 @@ pub(crate) fn received_with_tx_key(
     for (index, output) in prefix.outputs.iter().enumerate() {
         let mut hashed = derivation.to_bytes().to_vec();
         // The output index as a Monero varint.
-        let mut value = index;
-        loop {
-            let byte = (value & 0x7f) as u8;
-            value >>= 7;
-            if value == 0 {
-                hashed.push(byte);
-                break;
-            }
-            hashed.push(byte | 0x80);
-        }
+        super::leb128::write(index as u64, &mut hashed);
         let shared = Dalek::from_bytes_mod_order(monero_wallet::primitives::keccak256(&hashed));
         let expected = (&shared * ED25519_BASEPOINT_TABLE + address.spend().into()).compress();
         if output.key.to_bytes() != expected.to_bytes() {

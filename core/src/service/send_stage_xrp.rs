@@ -175,7 +175,7 @@ impl WalletService {
                 "XRP sequence changed; build and review again",
             ));
         }
-        let key = decode_private_key(&signer.private_key_hex)?;
+        let key = signer.private_key()?;
         let public = signer
             .public_key_hex
             .as_deref()

@@ -16,10 +16,10 @@ fn derivation_editor_preserves_hardening_and_refuses_malformed_paths() {
 #[test]
 fn reset_scopes_do_not_expand_to_unrelated_data() {
     use store::state::ResetScope;
-    let wallets = store::reset_dispatch(vec![ResetScope::WalletsAndSecrets]);
+    let wallets = service::reset_dispatch(vec![ResetScope::WalletsAndSecrets]);
     assert!(wallets.reset_wallets_and_secrets && wallets.reset_history_and_cache);
     assert!(!wallets.reset_alerts_and_contacts && !wallets.reset_settings_and_endpoints);
-    let settings = store::reset_dispatch(vec![ResetScope::SettingsAndEndpoints]);
+    let settings = service::reset_dispatch(vec![ResetScope::SettingsAndEndpoints]);
     assert!(settings.reset_settings_and_endpoints);
     assert!(!settings.reset_wallets_and_secrets && !settings.reset_history_and_cache);
     assert_eq!(ResetScope::from_raw("typo"), None);

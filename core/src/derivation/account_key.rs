@@ -3,14 +3,14 @@
 //! write it (`Chain::account_key_versions`). Watching one watches the whole
 //! account; no private key is ever involved.
 
-use super::bitcoin::ExtendedPublicKey;
 use super::error::DerivationError;
 use crate::registry::{AccountKeyVersion, Chain};
+use bitcoin::bip32::Xpub;
 
 /// An account public key as a network reads it: the key and the encoding it
 /// was written in, which names the script its addresses pay.
 pub(crate) struct AccountKey {
-    pub key: ExtendedPublicKey,
+    pub key: Xpub,
     pub version: AccountKeyVersion,
 }
 
@@ -19,7 +19,7 @@ pub(crate) struct AccountKey {
 /// and sits at an account's depth under a hardened account index.
 pub(crate) fn parse(chain: Chain, text: &str) -> Result<AccountKey, DerivationError> {
     let text = text.trim();
-    let (key, version) = ExtendedPublicKey::from_xpub_string(text).map_err(|_| {
+    let (key, version) = super::bip32::decode_xpub(text).map_err(|_| {
         DerivationError::refused(
             "Not an account public key %@ reads.",
             [chain.chain_display_name()],
@@ -49,7 +49,7 @@ pub(crate) fn parse(chain: Chain, text: &str) -> Result<AccountKey, DerivationEr
             )
         });
     };
-    if key.depth != 3 || key.child_number < super::primitives::HARDENED_OFFSET {
+    if key.depth != 3 || key.child_number.is_normal() {
         return Err(DerivationError::invalid(
             "An account public key is the key at an account's depth: m/purpose'/coin'/account'.",
         ));
@@ -61,7 +61,7 @@ pub(crate) fn parse(chain: Chain, text: &str) -> Result<AccountKey, DerivationEr
 /// was written in: the same key and chain code at the same place.
 pub(crate) fn same_account(a: &str, b: &str) -> bool {
     let identity = |text: &str| {
-        ExtendedPublicKey::from_xpub_string(text.trim())
+        super::bip32::decode_xpub(text)
             .ok()
             .map(|(key, _)| (key.public_key, key.chain_code, key.depth, key.child_number))
     };
@@ -71,8 +71,7 @@ pub(crate) fn same_account(a: &str, b: &str) -> bool {
 /// The account's first receive address, `0/0`, as `chain` encodes it.
 pub(crate) fn first_receive_address(chain: Chain, text: &str) -> Result<String, DerivationError> {
     let account = parse(chain, text)?;
-    let secp = secp256k1::Secp256k1::new();
-    let child = account.key.derive_child(&secp, 0)?.derive_child(&secp, 0)?;
+    let child = super::bip32::derive_public(&account.key, &[0, 0])?;
     chain.encode_discovery_address(&child.public_key, account.version.script)
 }
 

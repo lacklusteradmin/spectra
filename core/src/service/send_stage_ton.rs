@@ -165,7 +165,7 @@ impl WalletService {
                 valid_until,
                 jetton,
             } => {
-                let key = decode_secret_array::<32>(&signer.private_key_hex)?;
+                let key = signer.private_key_array::<32>()?;
                 let public = seed()?.public_key();
                 // The stored sender names the wallet version this key signs as.
                 let wallet = crate::send::ton::TonSigner::for_sender(

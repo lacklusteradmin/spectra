@@ -206,9 +206,7 @@ mod service {
                 "deploymentId": "near:nep-141:history.near", "createdAtUnix": 1.0}))
             .unwrap();
         service
-            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(
-                received,
-            )])
+            .upsert_history_records(vec![received])
             .await
             .unwrap();
         (state, service, server, wallet, account)

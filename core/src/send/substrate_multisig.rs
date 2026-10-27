@@ -54,7 +54,7 @@ pub(crate) fn transfer_call(indices: (u8, u8), transfer: &MultisigTransfer) -> V
 
 /// A call's hash, which names its operation: `blake2_256(call)`.
 pub(crate) fn call_hash(call: &[u8]) -> [u8; 32] {
-    super::substrate::blake2b_256(call)
+    crate::derivation::primitives::blake2b::<32>(&[call])
 }
 
 fn approval_head(

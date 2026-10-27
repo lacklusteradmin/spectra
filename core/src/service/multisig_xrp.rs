@@ -395,7 +395,7 @@ impl WalletService {
                 "This signer already signed the session.",
             ));
         }
-        let key = super::decode_private_key(&identity.private_key_hex)?;
+        let key = identity.private_key()?;
         let signed = xrp::sign(&payment, &key)?;
         if signed.account != own || !xrp::verify(&payment, &signed) {
             return Err(SpectraBridgeError::failure("signature does not verify"));

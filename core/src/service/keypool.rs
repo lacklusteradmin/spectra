@@ -74,7 +74,7 @@ impl WalletService {
                 let baseline = service.chain_keypool_baseline(&wallet_id, chain_id).await?;
                 let key = keypool_key(&wallet_id, chain_id);
                 let mut tables = service.keypool.write().await;
-                let merged = crate::store::merge_chain_keypool_state(
+                let merged = merge_chain_keypool_state(
                     baseline,
                     tables.state(&key).map(record_from_keypool),
                 );
@@ -129,7 +129,7 @@ impl WalletService {
                 let baseline = service.chain_keypool_baseline(&wallet_id, chain_id).await?;
                 let key = keypool_key(&wallet_id, chain_id);
                 let mut tables = service.keypool.write().await;
-                let merged = crate::store::merge_chain_keypool_state(
+                let merged = merge_chain_keypool_state(
                     baseline,
                     tables.state(&key).map(record_from_keypool),
                 );
@@ -249,7 +249,7 @@ impl WalletService {
             .flatten()
             .collect();
         let owned = self.owned_addresses_for_wallet(wallet_id, None).await;
-        Ok(crate::store::aggregate_owned_addresses(
+        Ok(aggregate_owned_addresses(
             stored.into_iter().chain(sent).chain(owned),
         ))
     }
@@ -288,12 +288,10 @@ impl WalletService {
         let baseline = self.chain_keypool_baseline(&wallet_id, chain_id).await?;
         let key = keypool_key(&wallet_id, chain_id);
         let tables = self.keypool.read().await;
-        Ok(keypool_from_record(
-            &crate::store::merge_chain_keypool_state(
-                baseline,
-                tables.state(&key).map(record_from_keypool),
-            ),
-        ))
+        Ok(keypool_from_record(&merge_chain_keypool_state(
+            baseline,
+            tables.state(&key).map(record_from_keypool),
+        )))
     }
 
     /// Move the reserved receive index past `used`, an index an output has
@@ -309,7 +307,7 @@ impl WalletService {
             let baseline = service.chain_keypool_baseline(&wallet_id, chain_id).await?;
             let key = keypool_key(&wallet_id, chain_id);
             let mut tables = service.keypool.write().await;
-            let mut state = keypool_from_record(&crate::store::merge_chain_keypool_state(
+            let mut state = keypool_from_record(&merge_chain_keypool_state(
                 baseline,
                 tables.state(&key).map(record_from_keypool),
             ));
@@ -385,10 +383,10 @@ impl WalletService {
         &self,
         wallet_id: &str,
         chain: crate::registry::Chain,
-    ) -> Result<crate::store::ChainKeypoolStateRecord, SpectraBridgeError> {
+    ) -> Result<ChainKeypoolStateRecord, SpectraBridgeError> {
         let account = chain.uses_account_utxo();
 
-        let mut input = crate::store::ChainKeypoolBaselineInput {
+        let mut input = ChainKeypoolBaselineInput {
             uses_account_utxo: account,
             max_transaction_external_index: None,
             max_transaction_change_index: None,
@@ -405,7 +403,7 @@ impl WalletService {
                 .find(|w| w.id == wallet_id)
                 .and_then(|w| w.address_on(chain))
                 .is_some_and(|address| !address.trim().is_empty());
-            return Ok(crate::store::derive_chain_keypool_baseline(input));
+            return Ok(derive_chain_keypool_baseline(input));
         }
 
         if let Some(database) = self.state_binding.connection().await {
@@ -487,7 +485,7 @@ impl WalletService {
                 ));
             }
         }
-        Ok(crate::store::derive_chain_keypool_baseline(input))
+        Ok(derive_chain_keypool_baseline(input))
     }
 }
 
@@ -621,7 +619,7 @@ impl KeypoolTables {
 /// It is also exactly `i32::MAX`, which is what makes the narrowing below
 /// lossless: the keypool carries indices as `i64` in SQLite and as `i32`
 /// across the FFI.
-const MAX_KEYPOOL_INDEX: i64 = (crate::derivation::primitives::HARDENED_OFFSET - 1) as i64;
+const MAX_KEYPOOL_INDEX: i64 = (crate::derivation::bip32::HARDENED_OFFSET - 1) as i64;
 
 /// The index after `index`, or an error at the end of the keypool.
 ///
@@ -648,10 +646,8 @@ fn narrow_keypool_index(index: i64) -> i32 {
     index.clamp(0, MAX_KEYPOOL_INDEX) as i32
 }
 
-fn record_from_keypool(
-    state: &crate::wallet_db::KeypoolState,
-) -> crate::store::ChainKeypoolStateRecord {
-    crate::store::ChainKeypoolStateRecord {
+fn record_from_keypool(state: &crate::wallet_db::KeypoolState) -> ChainKeypoolStateRecord {
+    ChainKeypoolStateRecord {
         next_external_index: narrow_keypool_index(state.next_external_index),
         next_change_index: narrow_keypool_index(state.next_change_index),
         reserved_receive_index: state.reserved_receive_index.map(narrow_keypool_index),
@@ -690,7 +686,7 @@ async fn persist_keypool(
 }
 
 pub(super) fn keypool_from_record(
-    record: &crate::store::ChainKeypoolStateRecord,
+    record: &ChainKeypoolStateRecord,
 ) -> crate::wallet_db::KeypoolState {
     crate::wallet_db::KeypoolState {
         next_external_index: record.next_external_index as i64,
@@ -711,6 +707,97 @@ pub struct KeypoolDiagnostic {
 }
 
 /// A keypool index has to name a derivable child key.
+
+// ── Chain keypool state (baseline + merge with existing) ──
+//
+// The owning keypool service supplies maxima from persisted transactions and
+// addresses. These calculations keep allocation indices monotonic.
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainKeypoolStateRecord {
+    pub next_external_index: i32,
+    pub next_change_index: i32,
+    pub reserved_receive_index: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct ChainKeypoolBaselineInput {
+    pub uses_account_utxo: bool,
+    pub max_transaction_external_index: Option<i32>,
+    pub max_transaction_change_index: Option<i32>,
+    pub max_owned_external_index: Option<i32>,
+    pub max_owned_change_index: Option<i32>,
+    pub has_resolved_address: bool,
+}
+
+pub fn derive_chain_keypool_baseline(input: ChainKeypoolBaselineInput) -> ChainKeypoolStateRecord {
+    if input.uses_account_utxo {
+        let max_external = input.max_transaction_external_index.unwrap_or(-1);
+        let max_change = input.max_transaction_change_index.unwrap_or(-1);
+        let max_owned_external = input.max_owned_external_index.unwrap_or(0);
+        let max_owned_change = input.max_owned_change_index.unwrap_or(-1);
+        return ChainKeypoolStateRecord {
+            next_external_index: std::cmp::max(
+                std::cmp::max(max_external, max_owned_external) + 1,
+                1,
+            ),
+            next_change_index: std::cmp::max(std::cmp::max(max_change, max_owned_change) + 1, 0),
+            reserved_receive_index: None,
+        };
+    }
+    let next_external_index = if input.has_resolved_address { 1 } else { 0 };
+    ChainKeypoolStateRecord {
+        next_external_index,
+        next_change_index: 0,
+        reserved_receive_index: if input.has_resolved_address {
+            Some(0)
+        } else {
+            None
+        },
+    }
+}
+
+pub fn merge_chain_keypool_state(
+    baseline: ChainKeypoolStateRecord,
+    existing: Option<ChainKeypoolStateRecord>,
+) -> ChainKeypoolStateRecord {
+    let Some(mut state) = existing else {
+        return baseline;
+    };
+    state.next_external_index =
+        std::cmp::max(state.next_external_index, baseline.next_external_index);
+    state.next_change_index = std::cmp::max(state.next_change_index, baseline.next_change_index);
+    if state.reserved_receive_index.is_none() {
+        state.reserved_receive_index = baseline.reserved_receive_index;
+    }
+    if let Some(reserved) = state.reserved_receive_index {
+        state.next_external_index = std::cmp::max(state.next_external_index, reserved + 1);
+    }
+    state
+}
+
+/// Trimmed, blanks dropped, and each address once — compared case-folded, the
+/// first spelling kept.
+pub fn aggregate_owned_addresses(candidates: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut ordered = Vec::new();
+    let mut seen = std::collections::BTreeSet::<String>::new();
+
+    for candidate in candidates {
+        let trimmed = candidate.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let normalized = trimmed.to_lowercase();
+        if seen.insert(normalized) {
+            ordered.push(trimmed.to_string());
+        }
+    }
+
+    ordered
+}
+
 #[cfg(test)]
 mod the_keypool_stays_inside_the_non_hardened_range {
     use super::*;
@@ -721,7 +808,7 @@ mod the_keypool_stays_inside_the_non_hardened_range {
     fn the_ceiling_is_the_last_non_hardened_child() {
         assert_eq!(
             MAX_KEYPOOL_INDEX,
-            i64::from(crate::derivation::primitives::HARDENED_OFFSET - 1)
+            i64::from(crate::derivation::bip32::HARDENED_OFFSET - 1)
         );
         assert_eq!(MAX_KEYPOOL_INDEX, i64::from(i32::MAX));
     }

@@ -114,8 +114,7 @@ impl WalletService {
     pub async fn pending_maintenance_chains(&self) -> Result<Vec<Chain>, SpectraBridgeError> {
         let rows = self.fetch_all_history_records().await?;
         let mut chains = std::collections::BTreeSet::new();
-        for row in rows {
-            let r = row.payload;
+        for r in rows {
             let chain = r.chain_id;
             if needs_status_poll(
                 r.kind,
@@ -193,8 +192,7 @@ impl WalletService {
 
             let records = {
                 let stored = this.fetch_all_history_records().await?;
-                let all: Vec<_> = stored.into_iter().map(|row| row.payload).collect();
-                tracked(&all, chain, poll)
+                tracked(&stored, chain, poll)
             };
             if records.is_empty() {
                 return Ok(Vec::new());
@@ -761,21 +759,19 @@ mod tests {
             .await
             .unwrap();
         service
-            .apply_transaction_command(crate::service::TransactionCommand::Upsert {
-                records: vec![
-                    record(
-                        "eth-confirmed",
-                        Chain::Ethereum,
-                        json!({"status":"confirmed"}),
-                    ),
-                    record(
-                        "doge-confirmed",
-                        Chain::Dogecoin,
-                        json!({"status":"confirmed"}),
-                    ),
-                    record("btc-empty", Chain::Bitcoin, json!({"transactionHash":""})),
-                ],
-            })
+            .upsert_history_records(vec![
+                record(
+                    "eth-confirmed",
+                    Chain::Ethereum,
+                    json!({"status":"confirmed"}),
+                ),
+                record(
+                    "doge-confirmed",
+                    Chain::Dogecoin,
+                    json!({"status":"confirmed"}),
+                ),
+                record("btc-empty", Chain::Bitcoin, json!({"transactionHash":""})),
+            ])
             .await
             .unwrap();
         assert!(
@@ -817,9 +813,7 @@ mod tests {
             .collect();
         let rows = chains
             .iter()
-            .map(|c| {
-                crate::wallet_db::history_record_from_payload(record(c.str_id(), *c, json!({})))
-            })
+            .map(|c| record(c.str_id(), *c, json!({})))
             .collect();
         service.upsert_history_records(rows).await.unwrap();
         let ids: Vec<_> = chains.iter().map(|c| c.str_id().to_string()).collect();
@@ -873,11 +867,11 @@ mod tests {
             .await
             .unwrap();
         service
-            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
+            .upsert_history_records(vec![record(
                 "old",
                 Chain::Solana,
                 json!({"transactionHash":"1".repeat(64),"createdAtUnix":0.0}),
-            ))])
+            )])
             .await
             .unwrap();
         for _ in 0..6 {
@@ -956,13 +950,7 @@ mod tests {
                     ("healthy", bs58::encode([1u8; 64]).into_string()),
                 ]
                 .into_iter()
-                .map(|(id, hash)| {
-                    crate::wallet_db::history_record_from_payload(record(
-                        id,
-                        Chain::Solana,
-                        json!({"transactionHash":hash}),
-                    ))
-                })
+                .map(|(id, hash)| record(id, Chain::Solana, json!({"transactionHash":hash})))
                 .collect(),
             )
             .await
@@ -1025,11 +1013,7 @@ mod tests {
             .await
             .unwrap();
         service
-            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
-                "pending",
-                Chain::Ethereum,
-                json!({}),
-            ))])
+            .upsert_history_records(vec![record("pending", Chain::Ethereum, json!({}))])
             .await
             .unwrap();
         service
@@ -1063,11 +1047,7 @@ mod tests {
                 .is_empty()
         );
         service
-            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
-                "broken",
-                Chain::Ethereum,
-                json!({}),
-            ))])
+            .upsert_history_records(vec![record("broken", Chain::Ethereum, json!({}))])
             .await
             .unwrap();
         service
@@ -1145,19 +1125,15 @@ mod tests {
             .unwrap();
         Mock::given(any()).respond_with(ResponseTemplate::new(200).set_body_json(json!({"jsonrpc":"2.0","id":1,"result":{"status":"0x1","blockNumber":"0x7","gasUsed":"0x5208","effectiveGasPrice":"0x1"}}))).expect(1).mount(&sepolia).await;
         service
-            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
+            .upsert_history_records(vec![record(
                 "sepolia-pending",
                 Chain::EthereumSepolia,
                 json!({}),
-            ))])
+            )])
             .await
             .unwrap();
         service
-            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
-                "mainnet-backoff",
-                Chain::Ethereum,
-                json!({}),
-            ))])
+            .upsert_history_records(vec![record("mainnet-backoff", Chain::Ethereum, json!({}))])
             .await
             .unwrap();
         for _ in 0..2 {

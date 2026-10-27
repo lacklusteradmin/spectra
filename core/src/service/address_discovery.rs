@@ -449,7 +449,6 @@ impl WalletService {
 pub(crate) struct UtxoDerivation {
     chain: crate::registry::Chain,
     shape: AccountShape,
-    secp: secp256k1::Secp256k1<secp256k1::All>,
     /// A phrase wallet's root path, whose branch and index each derived
     /// address's path replaces: what a send derives the address's key
     /// along. `None` for a watched account key, which signs nothing.
@@ -461,7 +460,7 @@ enum AccountShape {
     /// One key per address: the receive and change branch keys, and the
     /// script every address pays.
     Single {
-        branches: [crate::derivation::bitcoin::ExtendedPublicKey; 2],
+        branches: [bitcoin::bip32::Xpub; 2],
         script: crate::derivation::types::BitcoinScriptType,
     },
     /// A multisig account's policy over its cosigners' keys.
@@ -487,11 +486,13 @@ impl UtxoDerivation {
         base_path: String,
         overrides: &crate::store::wallet_domain::WalletDerivationOverrides,
     ) -> Result<Self, SpectraBridgeError> {
-        let secp = secp256k1::Secp256k1::new();
-        let account = Self::account_private_key(chain, phrase, &base_path, overrides)?;
+        let account = bitcoin::bip32::Xpub::from_priv(
+            secp256k1::SECP256K1,
+            &Self::account_private_key(chain, phrase, &base_path, overrides)?,
+        );
         let branches = [
-            account.derive_child(&secp, 0)?.to_neutered(&secp),
-            account.derive_child(&secp, 1)?.to_neutered(&secp),
+            crate::derivation::bip32::derive_public(&account, &[0])?,
+            crate::derivation::bip32::derive_public(&account, &[1])?,
         ];
         let context = Self {
             chain,
@@ -499,7 +500,6 @@ impl UtxoDerivation {
                 branches,
                 script: crate::derivation::dispatch::script_type_for_path(&base_path),
             },
-            secp,
             base_path: Some(base_path),
         };
         context.derive_on_branch(0, 0)?;
@@ -507,14 +507,15 @@ impl UtxoDerivation {
     }
 
     fn path_indices(chain: Chain, base_path: &str) -> Result<Vec<u32>, SpectraBridgeError> {
-        let indices = crate::derivation::bitcoin::parse_bip32_path(base_path)?;
+        let indices =
+            crate::derivation::bip32::indices(&crate::derivation::bip32::parse_path(base_path)?);
         if indices.len() < 2 {
             return Err(SpectraBridgeError::failure(
                 "missing UTXO branch and address index",
             ));
         }
         let suffix = &indices[indices.len() - 2..];
-        if suffix[0] > 1 || suffix[1] >= crate::derivation::primitives::HARDENED_OFFSET {
+        if suffix[0] > 1 || suffix[1] >= crate::derivation::bip32::HARDENED_OFFSET {
             return Err(SpectraBridgeError::InvalidInput {
                 message:
                     "UTXO discovery requires a non-hardened receive/change branch and address index"
@@ -538,27 +539,33 @@ impl UtxoDerivation {
         phrase: &str,
         base_path: &str,
         overrides: &crate::store::wallet_domain::WalletDerivationOverrides,
-    ) -> Result<crate::derivation::bitcoin::ExtendedPrivateKey, SpectraBridgeError> {
+    ) -> Result<bitcoin::bip32::Xpriv, SpectraBridgeError> {
         overrides.validate_for_chain(chain)?;
         let mut indices = Self::path_indices(chain, base_path)?;
         indices.truncate(indices.len() - 2);
-        use crate::derivation::bitcoin::{ExtendedPrivateKey, derive_bip39_seed};
-        let seed = derive_bip39_seed(
+        let seed = crate::derivation::primitives::derive_bip39_seed(
             phrase,
             overrides.passphrase.as_deref().unwrap_or_default(),
             0,
             None,
             None,
         )?;
-        let master = ExtendedPrivateKey::master_from_seed(
+        let master = crate::derivation::bip32::master(
+            seed.as_ref(),
             overrides
                 .hmac_key
                 .as_deref()
                 .unwrap_or("Bitcoin seed")
                 .as_bytes(),
-            seed.as_ref(),
         )?;
-        Ok(master.derive_path(&secp256k1::Secp256k1::new(), &indices)?)
+        let path = indices
+            .into_iter()
+            .map(bitcoin::bip32::ChildNumber::from)
+            .collect::<Vec<_>>();
+        Ok(crate::derivation::bip32::derive_private(
+            &master,
+            &path.into(),
+        )?)
     }
 
     pub(crate) fn account_xpub(
@@ -569,13 +576,14 @@ impl UtxoDerivation {
     ) -> Result<String, SpectraBridgeError> {
         let account = Self::account_private_key(chain, phrase, base_path, overrides)?;
         let version = if chain.is_testnet() {
-            crate::derivation::bitcoin::XPUB_VERSION_TESTNET
+            crate::derivation::bip32::XPUB_VERSION_TESTNET
         } else {
-            crate::derivation::bitcoin::XPUB_VERSION_MAINNET
+            crate::derivation::bip32::XPUB_VERSION_MAINNET
         };
-        Ok(account
-            .to_neutered(&secp256k1::Secp256k1::new())
-            .to_xpub_string(version))
+        Ok(crate::derivation::bip32::encode_xpub(
+            &bitcoin::bip32::Xpub::from_priv(secp256k1::SECP256K1, &account),
+            version,
+        ))
     }
 
     /// A phrase wallet's account from the public key it stores, which must
@@ -592,22 +600,23 @@ impl UtxoDerivation {
             ));
         }
         let indices = Self::path_indices(chain, &base_path)?;
-        let (account, version) =
-            crate::derivation::bitcoin::ExtendedPublicKey::from_xpub_string(xpub)?;
+        let (account, version) = crate::derivation::bip32::decode_xpub(xpub)?;
         let expected_version = if chain.is_testnet() {
-            crate::derivation::bitcoin::XPUB_VERSION_TESTNET
+            crate::derivation::bip32::XPUB_VERSION_TESTNET
         } else {
-            crate::derivation::bitcoin::XPUB_VERSION_MAINNET
+            crate::derivation::bip32::XPUB_VERSION_MAINNET
         };
-        if version != expected_version || account.depth != 3 || account.child_number != indices[2] {
+        if version != expected_version
+            || account.depth != 3
+            || u32::from(account.child_number) != indices[2]
+        {
             return Err(SpectraBridgeError::invalid(
                 "UTXO account public key has the wrong network, depth or account",
             ));
         }
-        let secp = secp256k1::Secp256k1::new();
         let branches = [
-            account.derive_child(&secp, 0)?,
-            account.derive_child(&secp, 1)?,
+            crate::derivation::bip32::derive_public(&account, &[0])?,
+            crate::derivation::bip32::derive_public(&account, &[1])?,
         ];
         let context = Self {
             chain,
@@ -615,7 +624,6 @@ impl UtxoDerivation {
                 branches,
                 script: crate::derivation::dispatch::script_type_for_path(&base_path),
             },
-            secp,
             base_path: Some(base_path),
         };
         let (root, _) = context.derive_on_branch(indices[3], indices[4])?;
@@ -633,10 +641,9 @@ impl UtxoDerivation {
     /// encoding names on the key's own network.
     pub(crate) fn from_watched_xpub(chain: Chain, xpub: &str) -> Result<Self, SpectraBridgeError> {
         let account = crate::derivation::account_key::parse(chain, xpub)?;
-        let secp = secp256k1::Secp256k1::new();
         let branches = [
-            account.key.derive_child(&secp, 0)?,
-            account.key.derive_child(&secp, 1)?,
+            crate::derivation::bip32::derive_public(&account.key, &[0])?,
+            crate::derivation::bip32::derive_public(&account.key, &[1])?,
         ];
         Ok(Self {
             chain,
@@ -644,7 +651,6 @@ impl UtxoDerivation {
                 branches,
                 script: account.version.script,
             },
-            secp,
             base_path: None,
         })
     }
@@ -660,7 +666,6 @@ impl UtxoDerivation {
             shape: AccountShape::Multisig(crate::derivation::multisig::MultisigPolicy::parse(
                 chain, descriptor,
             )?),
-            secp: secp256k1::Secp256k1::new(),
             base_path: None,
         })
     }
@@ -684,7 +689,7 @@ impl UtxoDerivation {
                 "UTXO discovery branch must be receive or change",
             ));
         }
-        if index >= crate::derivation::primitives::HARDENED_OFFSET {
+        if index >= crate::derivation::bip32::HARDENED_OFFSET {
             return Err(SpectraBridgeError::failure(
                 "UTXO discovery index must be non-hardened",
             ));
@@ -699,7 +704,8 @@ impl UtxoDerivation {
         });
         let address = match &self.shape {
             AccountShape::Single { branches, script } => {
-                let child = branches[branch as usize].derive_child(&self.secp, index)?;
+                let child =
+                    crate::derivation::bip32::derive_public(&branches[branch as usize], &[index])?;
                 self.chain
                     .encode_discovery_address(&child.public_key, *script)?
             }

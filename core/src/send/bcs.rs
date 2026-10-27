@@ -1,15 +1,9 @@
 //! Small BCS primitives shared by the supported Aptos and Sui transfer layouts.
 
 use crate::send::error::SendError;
-pub(super) fn uleb(mut value: usize, out: &mut Vec<u8>) {
-    loop {
-        let b = (value & 127) as u8;
-        value >>= 7;
-        out.push(b | if value == 0 { 0 } else { 128 });
-        if value == 0 {
-            break;
-        }
-    }
+/// BCS's ULEB128 length or count.
+pub(super) fn uleb(value: usize, out: &mut Vec<u8>) {
+    super::leb128::write(value as u64, out);
 }
 pub(super) fn bytes(value: &[u8], out: &mut Vec<u8>) {
     uleb(value.len(), out);

@@ -518,7 +518,7 @@ impl WalletService {
             // wallet, and Bitcoin when its Esplora source changed.
             for id in &removed {
                 service.history_pagination.reset_all_for_wallet(id);
-                crate::diagnostics::diagnostics_forget_wallet(id.clone());
+                service.diagnostic_runs.forget_wallet(id);
             }
             if esplora_changed {
                 service
@@ -680,6 +680,26 @@ fn append_secret_cleanup_warning(diagnostics: &mut DiagnosticState, error: &Spec
         transaction_hash: None,
         source: Some("core".into()),
     });
+}
+
+/// A holding the portfolio counts, and the wallet that holds it.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+pub struct PortfolioHolding {
+    pub wallet_id: String,
+    pub coin: crate::store::wallet_domain::AssetHolding,
+}
+
+/// Everything the wallet list implies, with holdings already resolved.
+#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+pub struct WalletDerivedState {
+    pub included_portfolio_holdings: Vec<PortfolioHolding>,
+    pub unique_price_request_coins: Vec<crate::store::wallet_domain::AssetHolding>,
+    /// One entry per asset, amounts summed across wallets.
+    pub portfolio: Vec<crate::store::wallet_domain::AssetHolding>,
+    pub send_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>>,
+    pub receive_coins_by_wallet_id: HashMap<String, Vec<crate::store::wallet_domain::AssetHolding>>,
+    pub send_enabled_wallet_ids: Vec<String>,
+    pub receive_enabled_wallet_ids: Vec<String>,
 }
 
 #[cfg(test)]

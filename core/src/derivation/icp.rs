@@ -4,7 +4,6 @@
 //! Account identifier: CRC32(SHA224(domain || principal || subaccount)) || hash.
 
 use crate::derivation::error::DerivationError;
-use crate::derivation::primitives::{ExtendedPrivateKey, derive_bip39_seed, parse_bip32_path};
 use secp256k1::PublicKey;
 use sha2::{Digest, Sha224};
 
@@ -74,10 +73,9 @@ pub(crate) fn derive_from_seed_phrase(
     want_public_key: bool,
     want_private_key: bool,
 ) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
-    let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
-    let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
-    let xpriv = master.derive_path(secp256k1::SECP256K1, &parse_bip32_path(derivation_path)?)?;
-    let public_key = PublicKey::from_secret_key(secp256k1::SECP256K1, &xpriv.private_key);
+    let private_key =
+        crate::derivation::bip32::phrase_key(seed_phrase, passphrase, derivation_path)?;
+    let public_key = PublicKey::from_secret_key(secp256k1::SECP256K1, &private_key);
 
     let address =
         want_address.then(|| hex::encode(account_from_principal(&principal(&public_key))));
@@ -85,7 +83,7 @@ pub(crate) fn derive_from_seed_phrase(
     Ok((
         address,
         want_public_key.then(|| hex::encode(public_key.serialize())),
-        want_private_key.then(|| hex::encode(xpriv.private_key.secret_bytes())),
+        want_private_key.then(|| hex::encode(private_key.secret_bytes())),
     ))
 }
 
