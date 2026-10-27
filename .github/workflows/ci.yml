@@ -49,13 +49,10 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # The suite runs offline against a throwaway directory. `sqlite3` is
-      # optional — one case skips without it — but ubuntu-latest ships it, so
-      # a skipped case here would mean the runner image changed.
+      # The suite runs offline against throwaway directories, on Python's
+      # standard library alone.
       - name: Tool versions
-        run: |
-          python3 --version
-          sqlite3 --version
+        run: python3 --version
 
       # Builds the CLI and the Zcash and MWEB fixtures, then runs the suite.
       - name: Acceptance suite

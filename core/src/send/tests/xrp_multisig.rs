@@ -1,5 +1,5 @@
 //! Multi-signed XRP payments against xrpl.js's (`xrp-multisig.json`, from
-//! tests/generate-xrp-multisig-vectors.cjs).
+//! tests/vectors/generate-xrp-multisig-vectors.cjs).
 
 use super::*;
 

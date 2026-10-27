@@ -64,6 +64,15 @@ impl SecretSource {
 
 /// Where a wallet's password comes from: one definition, flattened into every
 /// command that opens a sealed wallet, so each reads it the same way.
+/// The one wallet a command is about, named by its first argument. Every
+/// command about one wallet takes it this way; `--wallet` only narrows a
+/// command over many.
+#[derive(clap::Args)]
+pub struct WalletArg {
+    /// Wallet id, name or address.
+    pub wallet: String,
+}
+
 #[derive(clap::Args, Debug, Clone)]
 pub struct PasswordArgs {
     /// Read the wallet password from this file; `-` means stdin.

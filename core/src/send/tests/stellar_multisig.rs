@@ -1,5 +1,5 @@
 //! Multisig Stellar payments against stellar-base's
-//! (`stellar-multisig.json`, from tests/generate-stellar-multisig-vectors.cjs).
+//! (`stellar-multisig.json`, from tests/vectors/generate-stellar-multisig-vectors.cjs).
 
 use super::*;
 use base64::Engine;

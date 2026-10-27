@@ -1,5 +1,5 @@
 {
-  "provenance": "ripple-binary-codec 2.7.0, ripple-keypairs 2.0.0, @scure/bip32 1.7.0, @scure/bip39 1.6.0",
+  "provenance": "ripple-binary-codec 2.11.0, ripple-keypairs 3.1.0, @scure/bip32 1.7.0, @scure/bip39 1.6.0",
   "transaction": {
     "TransactionType": "Payment",
     "Flags": 0,

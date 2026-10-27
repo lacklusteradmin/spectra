@@ -1,5 +1,5 @@
 {
-  "provenance": "@mysten/sui 1.45.2; @aptos-labs/ts-sdk 1.39.0; @ton/ton 16.3.0; @ton/core 0.63.1; @ton/crypto 3.3.0",
+  "provenance": "@mysten/sui 1.45.2; @aptos-labs/ts-sdk 5.1.1; @ton/ton 16.3.0; @ton/core 0.63.1; @ton/crypto 3.3.0",
   "aptos": [
     {
       "asset": "0x4444444444444444444444444444444444444444444444444444444444444444::coins::USD",

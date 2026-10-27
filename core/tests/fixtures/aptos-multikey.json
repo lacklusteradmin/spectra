@@ -1,5 +1,5 @@
 {
-  "provenance": "@aptos-labs/ts-sdk 1.39.0",
+  "provenance": "@aptos-labs/ts-sdk 5.1.1",
   "keys": [
     {
       "scheme": "ed25519",

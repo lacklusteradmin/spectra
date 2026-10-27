@@ -1,20 +1,28 @@
-//! Commands that talk to a chain: the supported list, balances and history.
+//! Commands about networks: the supported list, their endpoints, explorers
+//! and donation addresses, and a wallet's balance and history read from its
+//! network.
 //!
 //! Endpoint selection is core's — `endpoints::records_for_chain` picks
 //! them from the catalog by API and capability. The CLI names the capabilities
 //! it is about to use and nothing else.
 
-use clap::Args;
-use colored::Colorize as _;
-use spectra_core::catalog::chains::ChainTag;
-use spectra_core::registry::Chain;
-use spectra_core::service::WalletService;
 use std::sync::Arc;
 
+use clap::Args;
+use colored::Colorize as _;
+use serde::Serialize;
+use spectra_core::api::endpoint::EndpointApi;
+use spectra_core::catalog::chains::{ChainTag, ChainWikiEntry};
+use spectra_core::derivation::setup::WalletSetupMethod;
+use spectra_core::registry::{Chain, TokenStandard};
+use spectra_core::service::{CustomEndpoint, WalletService};
+use spectra_core::store::state::{AppSettingUpdate, StateCommand, StateEvent};
+use spectra_core::store::wallet_domain::TransactionKind;
+
 use super::resolve_chain;
-use crate::ctx::{Ctx, wallet_address};
+use crate::ctx::{Ctx, WalletArg, wallet_address};
 use crate::error::{CliError, CliResult};
-use crate::out::{self, Out};
+use crate::out::{self, Out, Report};
 
 pub use spectra_core::api::endpoint::EndpointCapability;
 
@@ -39,12 +47,6 @@ fn parse_tag(value: &str) -> Result<ChainTag, String> {
         let known: Vec<&str> = ChainTag::ALL.iter().map(|tag| tag.as_str()).collect();
         format!("unknown tag; expected one of {}", known.join(", "))
     })
-}
-
-#[derive(Args)]
-pub struct BalanceArgs {
-    /// Wallet id, name or address.
-    wallet: String,
 }
 
 #[derive(Args)]
@@ -88,6 +90,105 @@ pub fn service_for_chain(
     Ok(service)
 }
 
+// ─── chains ─────────────────────────────────────────────────────────────────
+
+/// A supported network, with the registry facts a picker and a script use.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChainRow {
+    id: &'static str,
+    name: &'static str,
+    native_symbol: &'static str,
+    native_deployment_id: String,
+    mainnet: Chain,
+    is_testnet: bool,
+    faucet: Option<&'static str>,
+    is_evm: bool,
+    token_standards: Vec<TokenStandard>,
+    /// The ways a wallet can be added on the network: the setup descriptor
+    /// the app's network page and `wallet methods` read.
+    setup_methods: Vec<WalletSetupMethod>,
+    /// Whether the staking tab offers this chain.
+    staking: bool,
+    supports_separate_signing: bool,
+    /// The picker's popular order and filters.
+    popular_rank: u16,
+    tags: Vec<&'static str>,
+    /// Explorer history source for EVM chains only. Other families use
+    /// different history routes.
+    history_source: Option<&'static str>,
+    #[serde(skip)]
+    chain: Chain,
+}
+
+impl From<Chain> for ChainRow {
+    fn from(chain: Chain) -> Self {
+        let entry = chain.entry();
+        Self {
+            id: chain.str_id(),
+            name: chain.chain_display_name(),
+            native_symbol: chain.coin_symbol(),
+            native_deployment_id: entry.native_deployment_id.clone(),
+            mainnet: chain.mainnet_counterpart(),
+            is_testnet: chain.is_testnet(),
+            faucet: chain.faucet_url(),
+            is_evm: chain.is_evm(),
+            token_standards: chain.token_standards().to_vec(),
+            setup_methods: spectra_core::derivation::setup::wallet_setup_descriptor(chain)
+                .options
+                .iter()
+                .map(|option| option.method)
+                .collect(),
+            staking: chain.supports_staking(),
+            supports_separate_signing: chain.supports_sign_only(),
+            popular_rank: entry.popular_rank,
+            tags: entry.tags.iter().map(|tag| tag.as_str()).collect(),
+            history_source: chain.is_evm().then(|| match chain.evm_history_source() {
+                spectra_core::registry::EvmHistorySource::Open(base) => base,
+                spectra_core::registry::EvmHistorySource::Unavailable => "none",
+            }),
+            chain,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct ChainsReport {
+    chains: Vec<ChainRow>,
+}
+
+impl Report for ChainsReport {
+    fn render(&self) {
+        println!();
+        for row in &self.chains {
+            println!(
+                "  {}  {:<22} {:<8} {}",
+                out::tint("●", row.chain).bold(),
+                out::chain(row.chain),
+                row.native_symbol,
+                out::hint(row.id),
+            );
+        }
+        println!();
+        println!("  {}", out::count(self.chains.len(), "chain"));
+    }
+}
+
+#[derive(Serialize)]
+struct WikiReport {
+    chains: Vec<ChainWikiEntry>,
+}
+
+impl Report for WikiReport {
+    fn render(&self) {
+        for row in &self.chains {
+            let tags: Vec<&str> = row.tags.iter().map(|tag| tag.as_str()).collect();
+            println!("  {}  {}", out::accent(&row.name).bold(), tags.join(" · "));
+            println!("    {}", row.comment);
+        }
+    }
+}
+
 pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
     let needle = args.filter.as_deref().map(str::to_lowercase);
     // The picker's popular order; a testnet shares its mainnet's rank and
@@ -106,77 +207,18 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
     listed.sort_by_key(|chain| chain.entry().popular_rank);
 
     if args.wiki {
-        let wiki: Vec<_> = spectra_core::catalog::chains::list_chain_wiki()
+        let chains = spectra_core::catalog::chains::list_chain_wiki()
             .into_iter()
             .filter(|row| listed.iter().any(|chain| chain.str_id() == row.id))
             .collect();
-        out.text(|| {
-            for row in &wiki {
-                let tags = row.tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>();
-                println!("  {}  {}", out::accent(&row.name).bold(), tags.join(" · "));
-                println!("    {}", row.comment);
-            }
-        });
-        out.emit(serde_json::json!({"ok": true, "chains": wiki}));
-        return Ok(());
+        return out.report(&WikiReport { chains });
     }
-
-    out.text(|| {
-        println!();
-        for chain in &listed {
-            println!(
-                "  {}  {:<22} {:<8} {}",
-                out::tint("●", *chain).bold(),
-                out::tint(chain.chain_display_name(), *chain),
-                chain.coin_symbol(),
-                out::hint(chain.str_id()),
-            );
-        }
-        println!();
-        println!(
-            "  {} {}",
-            out::accent(&listed.len().to_string()).bold(),
-            out::hint("chains")
-        );
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "chains": listed
-            .iter()
-            .map(|chain| serde_json::json!({
-                "id": chain.str_id(),
-                "name": chain.chain_display_name(),
-                "nativeSymbol": chain.coin_symbol(),
-                "nativeDeploymentId": chain.entry().native_deployment_id,
-                "mainnet": chain.mainnet_counterpart(),
-                "isTestnet": chain.is_testnet(),
-                "faucet": chain.faucet_url(),
-                "isEvm": chain.is_evm(),
-                "tokenStandards": chain.token_standards(),
-                // The ways a wallet can be added on the network: the setup
-                // descriptor the app's network page and `wallet methods` read.
-                "setupMethods": spectra_core::derivation::setup::wallet_setup_descriptor(*chain)
-                    .options
-                    .iter()
-                    .map(|option| option.method)
-                    .collect::<Vec<_>>(),
-                // Whether the staking tab offers this chain.
-                "staking": chain.supports_staking(),
-                "supportsSeparateSigning": chain.supports_sign_only(),
-                // The picker's popular order and filters.
-                "popularRank": chain.entry().popular_rank,
-                "tags": chain.entry().tags.iter().map(|tag| tag.as_str()).collect::<Vec<_>>(),
-                // Explorer history source for EVM chains only. Other families use
-                // different history routes.
-                "historySource": chain.is_evm().then(|| match chain.evm_history_source() {
-                    spectra_core::registry::EvmHistorySource::Open(base) => base,
-                    spectra_core::registry::EvmHistorySource::Unavailable => "none",
-                }),
-            }))
-            .collect::<Vec<_>>(),
-    }));
-    Ok(())
+    out.report(&ChainsReport {
+        chains: listed.into_iter().map(ChainRow::from).collect(),
+    })
 }
+
+// ─── endpoints ──────────────────────────────────────────────────────────────
 
 #[derive(Args)]
 pub struct EndpointsArgs {
@@ -212,41 +254,180 @@ pub struct EndpointsArgs {
     replace: Option<String>,
 }
 
+/// The endpoints of yours that are stored, after a change to them.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomEndpointsReport {
+    custom_endpoints: Vec<CustomEndpoint>,
+    custom_endpoints_only: Vec<Chain>,
+}
+
+impl Report for CustomEndpointsReport {
+    fn render(&self) {
+        println!();
+        if self.custom_endpoints.is_empty() {
+            println!("  {}", out::hint("no endpoints of yours"));
+        }
+        for endpoint in &self.custom_endpoints {
+            let only = if self.custom_endpoints_only.contains(&endpoint.chain_id) {
+                "  (only yours)"
+            } else {
+                ""
+            };
+            println!(
+                "  {}  {}  {}{only}",
+                out::chain(endpoint.chain_id),
+                endpoint.endpoint,
+                out::hint(endpoint.api.as_str())
+            );
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogRow {
+    chain: Chain,
+    endpoint: String,
+    api: EndpointApi,
+    capabilities: Vec<EndpointCapability>,
+    is_built_in: bool,
+    supported_capabilities: Vec<EndpointCapability>,
+}
+
+#[derive(Serialize)]
+struct SettingsGroupRow {
+    chain: Chain,
+    title: String,
+    endpoints: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct ConfiguredRow {
+    chain: Chain,
+    endpoints: Vec<String>,
+}
+
+/// The endpoint catalog, offline: what is registered, how the settings page
+/// groups it, and what each network is configured to use.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogReport {
+    settings_groups: Vec<SettingsGroupRow>,
+    configured: Vec<ConfiguredRow>,
+    total: usize,
+    endpoints: Vec<CatalogRow>,
+}
+
+impl Report for CatalogReport {
+    fn render(&self) {
+        for row in &self.endpoints {
+            println!(
+                "  {}  {}  {}",
+                out::chain(row.chain),
+                row.endpoint,
+                out::hint(if row.is_built_in {
+                    "built-in"
+                } else {
+                    "custom"
+                })
+            );
+            let capabilities: Vec<&str> = row.capabilities.iter().map(|c| c.as_str()).collect();
+            println!(
+                "     {} · {}",
+                row.api.as_str(),
+                out::hint(&capabilities.join(" · "))
+            );
+        }
+        println!();
+        println!("  {}", out::count(self.total, "endpoint"));
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProbeRow {
+    chain: Chain,
+    endpoint: String,
+    api: EndpointApi,
+    capabilities: Vec<EndpointCapability>,
+    checked: bool,
+    reachable: bool,
+    detail: String,
+}
+
+/// Which endpoints answered core's health probe.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HealthReport {
+    networks_without_apis: Vec<&'static str>,
+    unchecked_apis: usize,
+    total: usize,
+    unreachable: usize,
+    endpoints: Vec<ProbeRow>,
+}
+
+impl Report for HealthReport {
+    fn render(&self) {
+        println!();
+        for row in &self.endpoints {
+            let mark = if !row.checked {
+                out::hint("?")
+            } else if row.reachable {
+                out::ok_mark()
+            } else {
+                out::fail_mark()
+            };
+            println!(
+                "  {mark}  {:<18} {}",
+                row.chain.chain_display_name(),
+                row.endpoint
+            );
+            if row.checked && !row.reachable {
+                println!("       {}", out::hint(&row.detail));
+            }
+        }
+        for chain in &self.networks_without_apis {
+            println!(
+                "  {}  {chain}: no configured API endpoints",
+                out::fail_mark()
+            );
+        }
+        println!();
+        println!(
+            "  {} reachable, {} unreachable, {} with no probe",
+            self.total - self.unreachable - self.unchecked_apis,
+            self.unreachable,
+            self.unchecked_apis
+        );
+    }
+
+    fn ok(&self) -> bool {
+        self.unreachable == 0
+            && self.unchecked_apis == 0
+            && self.networks_without_apis.is_empty()
+            && self.total > 0
+    }
+}
+
 /// Check read methods for every API, including testnets and history indexers.
 /// Networks with no API at all are reported separately from unchecked ones.
 pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
     let chains: Vec<Chain> = match &args.chain {
-        Some(name) => vec![super::resolve_chain(name)?],
+        Some(name) => vec![resolve_chain(name)?],
         None => Chain::all().collect(),
     };
-    if let Some(value) = args.custom_only {
-        let transition = ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting {
-            update: spectra_core::store::state::AppSettingUpdate::CustomEndpointsOnly {
-                chain_id: chains[0],
-                value,
-            },
-        })?;
-        out.emit(serde_json::json!({
-            "ok": true,
-            "customEndpointsOnly": transition.state.settings.custom_endpoints_only,
-        }));
-        return Ok(());
-    }
-    if let Some(url) = args.remove {
-        let transition = ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting {
-            update: spectra_core::store::state::AppSettingUpdate::RemoveCustomEndpoint {
-                chain_id: chains[0],
-                endpoint: url,
-            },
-        })?;
-        out.emit(serde_json::json!({
-            "ok": true,
-            "customEndpoints": transition.state.settings.custom_endpoints,
-            "customEndpointsOnly": transition.state.settings.custom_endpoints_only,
-        }));
-        return Ok(());
-    }
-    if let Some(url) = args.add {
+    let update = if let Some(value) = args.custom_only {
+        Some(AppSettingUpdate::CustomEndpointsOnly {
+            chain_id: chains[0],
+            value,
+        })
+    } else if let Some(endpoint) = args.remove {
+        Some(AppSettingUpdate::RemoveCustomEndpoint {
+            chain_id: chains[0],
+            endpoint,
+        })
+    } else if let Some(url) = args.add {
         let capabilities = args
             .capabilities
             .iter()
@@ -257,99 +438,46 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
                     })
             })
             .collect::<CliResult<_>>()?;
-        let update = match args.replace {
-            Some(saved) => spectra_core::store::state::AppSettingUpdate::ReplaceCustomEndpoint {
+        let api = args.api.unwrap_or_default();
+        Some(match args.replace {
+            Some(saved) => AppSettingUpdate::ReplaceCustomEndpoint {
                 chain_id: chains[0],
                 endpoint: saved,
-                api: args.api.unwrap(),
+                api,
                 new_endpoint: url,
                 capabilities,
             },
-            None => spectra_core::store::state::AppSettingUpdate::AddCustomEndpoint {
+            None => AppSettingUpdate::AddCustomEndpoint {
                 chain_id: chains[0],
-                api: args.api.unwrap(),
+                api,
                 endpoint: url,
                 capabilities,
             },
-        };
-        let transition =
-            ctx.apply(spectra_core::store::state::StateCommand::SetAppSetting { update })?;
-        if transition
-            .events
-            .contains(&spectra_core::store::state::StateEvent::AppSettingRejected)
-        {
+        })
+    } else {
+        None
+    };
+    if let Some(update) = update {
+        let transition = ctx.apply(StateCommand::SetAppSetting { update })?;
+        if transition.events.contains(&StateEvent::AppSettingRejected) {
             return Err(CliError::rejected(
                 "Invalid or duplicate endpoint, or unsupported/empty capabilities for this adapter",
             ));
         }
-        out.emit(serde_json::json!({"ok":true,"customEndpoints":transition.state.settings.custom_endpoints}));
-        return Ok(());
+        let settings = transition.state.settings;
+        return out.report(&CustomEndpointsReport {
+            custom_endpoints: settings.custom_endpoints,
+            custom_endpoints_only: settings.custom_endpoints_only,
+        });
     }
     if args.catalog {
-        let service = ctx.offline_service()?;
-        let entries = ctx.rt.block_on(service.endpoint_directory())?;
-        let records: Vec<_> = entries
-            .into_iter()
-            .filter(|entry| {
-                (args.chain.is_none() || chains.contains(&entry.record.chain_id))
-                    && args
-                        .source
-                        .as_deref()
-                        .is_none_or(|source| entry.is_built_in == (source == "built-in"))
-            })
-            .collect();
-        out.text(|| {
-            for record in &records {
-                println!(
-                    "{}  {}  {}",
-                    record.record.chain_id,
-                    record.record.endpoint,
-                    if record.is_built_in {
-                        "built-in"
-                    } else {
-                        "custom"
-                    }
-                );
-                println!(
-                    "  {} · {}",
-                    record.record.api.as_str(),
-                    record
-                        .record
-                        .capabilities
-                        .iter()
-                        .map(|c| c.as_str())
-                        .collect::<Vec<_>>()
-                        .join(" · ")
-                );
-            }
-        });
-        out.emit(serde_json::json!({
-            "catalog": true,
-            "settingsGroups": spectra_core::catalog::endpoints::endpoint_settings().into_iter()
-                .filter(|row| chains.contains(&row.chain_id))
-                .flat_map(|row| row.groups)
-                .filter(|group| chains.contains(&group.chain_id))
-                .map(|group| serde_json::json!({
-                    "chainId": group.chain_id, "title": group.title, "endpoints": group.endpoints,
-                })).collect::<Vec<_>>(),
-            "configured": ctx.rt.block_on(service.configured_endpoints()).into_iter()
-                .filter(|row| chains.contains(&row.chain_id))
-                .map(|row| serde_json::json!({"chainId": row.chain_id, "endpoints": row.endpoints}))
-                .collect::<Vec<_>>(),
-            "total": records.len(),
-            "endpoints": records.iter().map(|r| serde_json::json!({
-                "chainId": r.record.chain_id, "endpoint": r.record.endpoint,
-                "api": r.record.api, "capabilities": r.record.capabilities, "isBuiltIn": r.is_built_in,
-                "supportedCapabilities": spectra_core::api::endpoint::endpoint_capability_options(r.record.chain_id, r.record.api),
-            })).collect::<Vec<_>>(),
-        }));
-        return Ok(());
+        return catalog(ctx, out, &chains, args.chain.is_some(), args.source);
     }
+
     let service = ctx.service()?;
     // Probe each network once however many times the request names it.
     let mut probed = std::collections::HashSet::new();
-
-    let mut rows = Vec::new();
+    let mut endpoints = Vec::new();
     let mut networks_without_apis = Vec::new();
     for network in chains {
         if !probed.insert(network) {
@@ -359,57 +487,86 @@ pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
         if probes.is_empty() {
             networks_without_apis.push(network.str_id());
         }
-        rows.extend(probes);
+        endpoints.extend(probes.into_iter().map(|probe| ProbeRow {
+            chain: probe.chain_id,
+            endpoint: probe.endpoint,
+            api: probe.api,
+            capabilities: probe.capabilities,
+            checked: probe.checked,
+            reachable: probe.reachable,
+            detail: probe.detail,
+        }));
     }
-
-    let unreachable = rows.iter().filter(|r| r.checked && !r.reachable).count();
-    let unchecked = rows.iter().filter(|r| !r.checked).count();
-
-    out.text(|| {
-        println!();
-        for r in &rows {
-            let mark = if !r.checked {
-                out::hint("?").to_string()
-            } else if r.reachable {
-                "✓".green().to_string()
-            } else {
-                "✗".red().to_string()
-            };
-            println!(
-                "  {mark}  {:<18} {}",
-                super::chain_name(r.chain_id),
-                r.endpoint
-            );
-            if r.checked && !r.reachable {
-                println!("       {}", out::hint(&r.detail));
-            }
-        }
-        for chain in &networks_without_apis {
-            println!("  {chain}: no configured API endpoints");
-        }
-        println!();
-        println!(
-            "  {} reachable, {} unreachable, {} with no probe",
-            rows.len() - unreachable - unchecked,
-            unreachable,
-            unchecked
-        );
-    });
-    out.emit(serde_json::json!({
-        "ok": unreachable == 0 && unchecked == 0 && !rows.is_empty(),
-        "networksWithoutApis": networks_without_apis,
-        "uncheckedApis": unchecked,
-        "total": rows.len(),
-        "unreachable": unreachable,
-        "unchecked": unchecked,
-        "endpoints": rows.iter().map(|r| serde_json::json!({
-            "chainId": r.chain_id, "chain": r.chain_id, "endpoint": r.endpoint,
-            "api": r.api, "capabilities": r.capabilities,
-            "checked": r.checked, "reachable": r.reachable, "detail": r.detail,
-        })).collect::<Vec<_>>(),
-    }));
-    Ok(())
+    out.report(&HealthReport {
+        networks_without_apis,
+        unchecked_apis: endpoints.iter().filter(|r| !r.checked).count(),
+        total: endpoints.len(),
+        unreachable: endpoints
+            .iter()
+            .filter(|r| r.checked && !r.reachable)
+            .count(),
+        endpoints,
+    })
 }
+
+fn catalog(
+    ctx: &Ctx,
+    out: Out,
+    chains: &[Chain],
+    named: bool,
+    source: Option<String>,
+) -> CliResult<()> {
+    let service = ctx.offline_service()?;
+    let endpoints: Vec<CatalogRow> = ctx
+        .rt
+        .block_on(service.endpoint_directory())?
+        .into_iter()
+        .filter(|entry| {
+            (!named || chains.contains(&entry.record.chain_id))
+                && source
+                    .as_deref()
+                    .is_none_or(|source| entry.is_built_in == (source == "built-in"))
+        })
+        .map(|entry| CatalogRow {
+            chain: entry.record.chain_id,
+            supported_capabilities: spectra_core::api::endpoint::endpoint_capability_options(
+                entry.record.chain_id,
+                entry.record.api,
+            ),
+            endpoint: entry.record.endpoint,
+            api: entry.record.api,
+            capabilities: entry.record.capabilities,
+            is_built_in: entry.is_built_in,
+        })
+        .collect();
+    out.report(&CatalogReport {
+        settings_groups: spectra_core::catalog::endpoints::endpoint_settings()
+            .into_iter()
+            .filter(|row| chains.contains(&row.chain_id))
+            .flat_map(|row| row.groups)
+            .filter(|group| chains.contains(&group.chain_id))
+            .map(|group| SettingsGroupRow {
+                chain: group.chain_id,
+                title: group.title,
+                endpoints: group.endpoints,
+            })
+            .collect(),
+        configured: ctx
+            .rt
+            .block_on(service.configured_endpoints())
+            .into_iter()
+            .filter(|row| chains.contains(&row.chain_id))
+            .map(|row| ConfiguredRow {
+                chain: row.chain_id,
+                endpoints: row.endpoints,
+            })
+            .collect(),
+        total: endpoints.len(),
+        endpoints,
+    })
+}
+
+// ─── explorers and donations ────────────────────────────────────────────────
 
 #[derive(Args)]
 pub struct ExplorersArgs {
@@ -422,6 +579,46 @@ pub struct ExplorersArgs {
     /// Print the explorer page for this address.
     #[arg(long, requires = "chain")]
     address: Option<String>,
+}
+
+#[derive(Serialize)]
+struct LinkReport {
+    chain: Chain,
+    url: String,
+}
+
+impl Report for LinkReport {
+    fn render(&self) {
+        println!("{}", self.url);
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExplorerRow {
+    chain: Chain,
+    name: String,
+    tx_url: String,
+    address_url: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ExplorersReport {
+    explorers: Vec<ExplorerRow>,
+}
+
+impl Report for ExplorersReport {
+    fn render(&self) {
+        println!();
+        for row in &self.explorers {
+            println!(
+                "  {:<22} {:<24} {}",
+                row.chain.chain_display_name(),
+                row.name,
+                out::hint(&row.tx_url)
+            );
+        }
+    }
 }
 
 /// The pages a transaction's detail screen and a wallet's page link to.
@@ -437,7 +634,7 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
                 chain.chain_display_name()
             )));
         };
-        let url = match (args.tx, args.address) {
+        let link = match (args.tx, args.address) {
             (Some(hash), _) => {
                 spectra_core::catalog::explorers::transaction_explorer_link(chain, hash)
                     .ok_or_else(|| CliError::usage("--tx needs a transaction hash"))?
@@ -453,58 +650,87 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
                     .ok_or_else(|| CliError::usage("--address needs an address"))?
             }
             (None, None) => unreachable!("one of --tx and --address is given"),
-        }
-        .url;
-        out.text(|| println!("{url}"));
-        out.emit(serde_json::json!({"ok": true, "chainId": chain.str_id(), "url": url}));
-        return Ok(());
+        };
+        return out.report(&LinkReport {
+            chain,
+            url: link.url,
+        });
     }
-    let explorers: Vec<_> = spectra_core::catalog::explorers::explorers()
-        .into_iter()
-        .filter(|e| chain.is_none_or(|chain| chain == e.chain_id))
-        .collect();
-    out.text(|| {
+    out.report(&ExplorersReport {
+        explorers: spectra_core::catalog::explorers::explorers()
+            .into_iter()
+            .filter(|e| chain.is_none_or(|chain| chain == e.chain_id))
+            .map(|e| ExplorerRow {
+                chain: e.chain_id,
+                name: e.name,
+                tx_url: e.tx_url,
+                address_url: e.address_url,
+            })
+            .collect(),
+    })
+}
+
+#[derive(Serialize)]
+struct DonationRow {
+    chain: Chain,
+    address: String,
+}
+
+#[derive(Serialize)]
+struct DonationsReport {
+    donations: Vec<DonationRow>,
+}
+
+impl Report for DonationsReport {
+    fn render(&self) {
         println!();
-        for e in &explorers {
-            println!(
-                "  {:<22} {:<24} {}",
-                super::chain_name(e.chain_id),
-                e.name,
-                out::hint(&e.tx_url)
-            );
+        for row in &self.donations {
+            println!("  {:<12} {}", row.chain.chain_display_name(), row.address);
         }
-        println!();
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "explorers": explorers.iter().map(|e| serde_json::json!({
-            "chainId": e.chain_id, "name": e.name, "txUrl": e.tx_url,
-            "addressUrl": e.address_url,
-        })).collect::<Vec<_>>(),
-    }));
-    Ok(())
+    }
 }
 
 /// The Donate screen's addresses, as core validated them.
 pub fn donations(out: Out) -> CliResult<()> {
-    let donations = spectra_core::catalog::donations::donation_destinations();
-    out.text(|| {
-        println!();
-        for d in &donations {
-            println!("  {:<12} {}", super::chain_name(d.chain_id), d.address);
-        }
-        println!();
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "donations": donations.iter().map(|d| serde_json::json!({
-            "chainId": d.chain_id, "address": d.address,
-        })).collect::<Vec<_>>(),
-    }));
-    Ok(())
+    out.report(&DonationsReport {
+        donations: spectra_core::catalog::donations::donation_destinations()
+            .into_iter()
+            .map(|d| DonationRow {
+                chain: d.chain_id,
+                address: d.address,
+            })
+            .collect(),
+    })
 }
 
-pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
+// ─── balance and history ────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BalanceReport {
+    wallet: String,
+    chain: Chain,
+    native_symbol: &'static str,
+    amount: String,
+    smallest_unit: String,
+    #[serde(skip)]
+    is_watch_only: bool,
+}
+
+impl Report for BalanceReport {
+    fn render(&self) {
+        println!();
+        println!(
+            "  {}  {} {}",
+            out::wallet_dot(self.chain, self.is_watch_only),
+            self.amount.bold(),
+            out::tint(self.native_symbol, self.chain).bold(),
+        );
+        out::field("raw", &out::hint(&self.smallest_unit).to_string());
+    }
+}
+
+pub fn balance(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = wallet.chain_id;
     let service = service_for_chain(ctx, chain, &[EndpointCapability::Balance])?;
@@ -532,34 +758,47 @@ pub fn balance(ctx: &Ctx, out: Out, args: BalanceArgs) -> CliResult<()> {
             service.fetch_native_balance_summary(chain, wallet_address(&wallet).to_string()),
         )?
     };
+    out.report(&BalanceReport {
+        wallet: wallet.id.clone(),
+        chain,
+        native_symbol: chain.coin_symbol(),
+        amount: summary.amount_display,
+        smallest_unit: summary.smallest_unit,
+        is_watch_only: wallet.is_watch_only(),
+    })
+}
 
-    out.text(|| {
+/// What one save of a wallet's history merged into the store.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SavedHistoryReport {
+    chain: Chain,
+    wallets_refreshed: u32,
+    wallets_failed: u32,
+    added: u32,
+    updated: u32,
+    pages: u32,
+    exhausted: bool,
+}
+
+impl Report for SavedHistoryReport {
+    fn render(&self) {
         println!();
         println!(
-            "  {}  {} {}",
-            out::wallet_dot(wallet.chain_id, wallet.is_watch_only()),
-            summary.amount_display.bold(),
-            out::tint(chain.coin_symbol(), wallet.chain_id).bold(),
+            "  {} {} added, {} updated",
+            out::ok_mark(),
+            self.added.to_string().bold(),
+            self.updated.to_string().bold()
         );
-        out::field("raw", &out::hint(&summary.smallest_unit).to_string());
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "wallet": wallet.id,
-        "chain": chain.str_id(),
-        "nativeSymbol": chain.coin_symbol(),
-                "nativeDeploymentId": chain.entry().native_deployment_id,
-                "mainnet": chain.mainnet_counterpart(),
-                "isTestnet": chain.is_testnet(),
-        "amount": summary.amount_display,
-        "smallestUnit": summary.smallest_unit,
-    }));
-    Ok(())
+        if self.wallets_failed > 0 {
+            println!("  {}", out::hint("a provider did not answer"));
+        }
+    }
 }
 
 /// Fetch this wallet's history and merge it into the store, the way the app
 /// does — one core operation that plans, fetches, builds the records and
-/// merges. The listing above is a read; this is the write.
+/// merges. The listing below is a read; this is the write.
 fn save_history(
     ctx: &Ctx,
     out: Out,
@@ -568,10 +807,7 @@ fn save_history(
     wallet_id: &str,
     args: &HistoryArgs,
 ) -> CliResult<()> {
-    let fetch = |load_more| -> Result<
-        spectra_core::service::HistoryRefreshOutcome,
-        spectra_core::error::SpectraBridgeError,
-    > {
+    let fetch = |load_more| -> CliResult<spectra_core::service::HistoryRefreshOutcome> {
         let mut results = ctx.rt.block_on(service.refresh_history(
             spectra_core::service::HistoryRefreshScope::Wallets {
                 wallet_ids: vec![wallet_id.into()],
@@ -580,55 +816,88 @@ fn save_history(
             Some(args.limit.min(100) as u32),
             0.0,
         ))?;
-        let row =
-            results
-                .pop()
-                .ok_or_else(|| spectra_core::error::SpectraBridgeError::InvalidInput {
-                    message: "No history wallet found".into(),
-                })?;
-        row.outcome.ok_or_else(|| {
-            spectra_core::error::SpectraBridgeError::failure(row.error.unwrap_or_default())
-        })
+        let row = results
+            .pop()
+            .ok_or_else(|| CliError::rejected("No history wallet found"))?;
+        row.outcome
+            .ok_or_else(|| CliError::failure(row.error.unwrap_or_default()))
     };
-    let mut outcome = fetch(args.load_more).map_err(CliError::from)?;
-    let mut fetched_pages = 1;
-    while fetched_pages < args.pages && !outcome.exhausted && outcome.wallets_failed == 0 {
-        let next = fetch(true).map_err(CliError::from)?;
+    let mut outcome = fetch(args.load_more)?;
+    let mut pages = 1;
+    while pages < args.pages && !outcome.exhausted && outcome.wallets_failed == 0 {
+        let next = fetch(true)?;
         outcome.added += next.added;
         outcome.updated += next.updated;
         outcome.wallets_failed += next.wallets_failed;
         outcome.exhausted = next.exhausted;
-        fetched_pages += 1;
+        pages += 1;
     }
+    out.report(&SavedHistoryReport {
+        chain,
+        wallets_refreshed: outcome.wallets_refreshed,
+        wallets_failed: outcome.wallets_failed,
+        added: outcome.added,
+        updated: outcome.updated,
+        pages,
+        exhausted: outcome.exhausted,
+    })
+}
 
-    out.text(|| {
+#[derive(Serialize)]
+struct HistoryRow {
+    hash: String,
+    kind: TransactionKind,
+    amount: String,
+    symbol: String,
+    counterparty: String,
+    timestamp: f64,
+}
+
+/// A wallet's history as its network reports it, newest first.
+#[derive(Serialize)]
+struct HistoryReport {
+    wallet: String,
+    count: usize,
+    transactions: Vec<HistoryRow>,
+    #[serde(skip)]
+    chain: Chain,
+}
+
+impl Report for HistoryReport {
+    fn render(&self) {
         println!();
-        println!(
-            "  {} {} added, {} updated",
-            out::ok_mark(),
-            outcome.added.to_string().bold(),
-            outcome.updated.to_string().bold()
-        );
-        if outcome.wallets_failed > 0 {
-            println!("  {}", out::hint("a provider did not answer"));
+        if self.transactions.is_empty() {
+            println!("  {}", out::hint("no transactions"));
+            return;
         }
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "chain": chain.str_id(),
-        "walletsRefreshed": outcome.wallets_refreshed,
-        "walletsFailed": outcome.wallets_failed,
-        "added": outcome.added,
-        "updated": outcome.updated,
-        "pages": fetched_pages,
-        "exhausted": outcome.exhausted,
-    }));
-    Ok(())
+        for row in &self.transactions {
+            let mark = if row.kind == TransactionKind::Receive {
+                out::up("↓")
+            } else {
+                out::down("↑")
+            };
+            println!(
+                "  {}  {:>14} {}  {}  {}",
+                mark.bold(),
+                row.amount,
+                out::tint(&row.symbol, self.chain),
+                out::info(&row.counterparty),
+                out::hint(&out::relative_time(row.timestamp as i64)),
+            );
+            println!("     {}", out::hint(&out::short_hash(&row.hash)));
+        }
+        if self.count > self.transactions.len() {
+            println!();
+            println!(
+                "  {}",
+                out::hint(&format!("+{} more", self.count - self.transactions.len()))
+            );
+        }
+    }
 }
 
 pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let chain = wallet.chain_id.mainnet_counterpart();
     let network = wallet.chain_id;
     let service = if let Some(endpoint) = &args.endpoint {
         ctx.service_with_endpoints(network, vec![endpoint.clone()])?
@@ -640,80 +909,37 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         )?
     };
     if args.save {
-        return save_history(ctx, out, &service, chain, &wallet.id, &args);
+        return save_history(
+            ctx,
+            out,
+            &service,
+            network.mainnet_counterpart(),
+            &wallet.id,
+            &args,
+        );
     }
-
+    let address = wallet
+        .active_address()
+        .ok_or_else(|| CliError::rejected("wallet has no address on selected network"))?
+        .to_string();
     let entries = ctx
         .rt
-        .block_on(
-            service.fetch_normalized_history(
-                network,
-                wallet
-                    .active_address()
-                    .ok_or_else(|| CliError::rejected("wallet has no address on selected network"))?
-                    .to_string(),
-            ),
-        )
-        .map_err(CliError::from)?;
-
-    out.text(|| {
-        println!();
-        if entries.is_empty() {
-            println!("  {}", out::hint("no transactions"));
-            return;
-        }
-        for entry in entries.iter().take(args.limit) {
-            let incoming =
-                entry.kind == spectra_core::store::wallet_domain::TransactionKind::Receive;
-            let (mark, amount) = if incoming {
-                (
-                    "↓",
-                    format!("{:>12.4}", entry.amount).truecolor(120, 230, 160),
-                )
-            } else {
-                (
-                    "↑",
-                    format!("{:>12.4}", entry.amount).truecolor(255, 110, 130),
-                )
-            };
-            println!(
-                "  {}  {} {}  {}  {}",
-                if incoming {
-                    mark.truecolor(120, 230, 160).bold()
-                } else {
-                    mark.truecolor(255, 110, 130).bold()
-                },
-                amount.bold(),
-                out::tint(&entry.symbol, wallet.chain_id),
-                out::info(&entry.counterparty),
-                out::hint(&out::relative_time(entry.timestamp as i64)),
-            );
-            println!("     {}", out::hint(&out::short_hash(&entry.tx_hash)));
-        }
-        if entries.len() > args.limit {
-            println!();
-            println!(
-                "  {}",
-                out::hint(&format!("+{} more", entries.len() - args.limit))
-            );
-        }
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "wallet": wallet.id,
-        "count": entries.len(),
-        "transactions": entries
-            .iter()
+        .block_on(service.fetch_normalized_history(network, address))?;
+    out.report(&HistoryReport {
+        wallet: wallet.id.clone(),
+        count: entries.len(),
+        transactions: entries
+            .into_iter()
             .take(args.limit)
-            .map(|entry| serde_json::json!({
-                "hash": entry.tx_hash,
-                "kind": entry.kind,
-                "amount": entry.amount,
-                "symbol": entry.symbol,
-                "counterparty": entry.counterparty,
-                "timestamp": entry.timestamp,
-            }))
-            .collect::<Vec<_>>(),
-    }));
-    Ok(())
+            .map(|entry| HistoryRow {
+                hash: entry.tx_hash,
+                kind: entry.kind,
+                amount: entry.amount,
+                symbol: entry.symbol,
+                counterparty: entry.counterparty,
+                timestamp: entry.timestamp,
+            })
+            .collect(),
+        chain: network,
+    })
 }

@@ -1,5 +1,5 @@
 {
-  "provenance": "@safe-global/protocol-kit 6.1.2, @safe-global/safe-deployments 1.37.63, @safe-global/types-kit 3.1.0, viem 2.56.9 (tests/generate-safe-multisig-vectors.cjs)",
+  "provenance": "@safe-global/protocol-kit 6.1.2, @safe-global/safe-deployments 1.37.63, @safe-global/types-kit 3.1.0, viem 2.56.9 (tests/vectors/generate-safe-multisig-vectors.cjs)",
   "phrases": [
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
     "legal winner thank year wave sausage worth useful legal winner thank yellow",

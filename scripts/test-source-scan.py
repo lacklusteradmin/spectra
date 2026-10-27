@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Regression checks for production/test source selection used by the scans."""
+"""Regression checks for what the source scans share."""
 
+import contextlib
+import io
 from pathlib import Path
 import tempfile
 import unittest
 
-from source_scan import frontend_test, production_text, test_modules
+from source_scan import (app_swift, calls_only, camel, frontend_test, production_text, report,
+                         strip_comments, test_modules)
+
+REPOSITORY = Path(__file__).resolve().parent.parent
 
 
 class SourceSelectionTests(unittest.TestCase):
@@ -48,9 +53,8 @@ class SourceSelectionTests(unittest.TestCase):
                     self.assertEqual(declared, {parent.parent / 'fixture_file.rs'})
 
     def test_actual_substrate_tests_are_declared(self):
-        repository = Path(__file__).resolve().parent.parent
-        parent = repository / 'core/src/api/substrate_json_rpc.rs'
-        child = repository / 'core/src/api/substrate_json_rpc/tests.rs'
+        parent = REPOSITORY / 'core/src/api/substrate_json_rpc.rs'
+        child = REPOSITORY / 'core/src/api/substrate_json_rpc/tests.rs'
         declared = test_modules([parent])
         self.assertIn(child, declared)
         self.assertEqual(production_text(child, declared), '')
@@ -81,6 +85,56 @@ class SourceSelectionTests(unittest.TestCase):
         path = self.write('swift/app/Screen.swift', 'production copy')
         self.assertFalse(frontend_test(path))
         self.assertEqual(production_text(path, set()), 'production copy')
+
+
+class AppSwiftTests(unittest.TestCase):
+    def test_lists_the_app_without_its_tests_or_generated_bindings(self):
+        with contextlib.chdir(REPOSITORY):
+            paths = app_swift()
+        self.assertIn(Path('swift/app/App/WalletServiceBridge.swift'), paths)
+        self.assertFalse([path for path in paths if path.parts[1] in {'tests', 'generated'}])
+        self.assertEqual(paths, sorted(paths))
+
+
+class CallTextTests(unittest.TestCase):
+    def test_camel_follows_uniffi(self):
+        self.assertEqual(camel('core_wallet_state'), 'coreWalletState')
+        self.assertEqual(camel('new'), 'new')
+
+    def test_comments_are_not_code(self):
+        text = 'a()\n  // b()\n/// c()\n/* d()\n e() */ f()\nlet x = 1 // g()\n'
+        stripped = strip_comments(text)
+        for gone in ('b()', 'c()', 'd()', 'e()'):
+            self.assertNotIn(gone, stripped)
+        # Only whole-line comments go: a trailing one stays.
+        for kept in ('a()', 'f()', 'g()'):
+            self.assertIn(kept, stripped)
+
+    def test_declarations_and_imports_are_not_calls(self):
+        rust = calls_only('use crate::wallet::load;\npub use x::y;\npub fn load() {}\n'
+                          'fn main() { load(); }\n', 'fn')
+        self.assertNotIn('wallet', rust)
+        self.assertNotIn('x::y', rust)
+        self.assertNotIn('fn load', rust)
+        self.assertNotIn('fn main', rust)
+        self.assertIn('load();', rust)
+        swift = calls_only('func refresh() { reload() }\n', 'func')
+        self.assertNotIn('refresh', swift)
+        self.assertIn('reload()', swift)
+
+
+class ReportTests(unittest.TestCase):
+    def report(self, findings):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            status = report(findings, f'{len(findings)} finding(s)')
+        return status, output.getvalue()
+
+    def test_findings_fail_the_scan(self):
+        self.assertEqual(self.report(['  a', '  b']), (1, '  a\n  b\n\n  2 finding(s)\n'))
+
+    def test_nothing_found_passes(self):
+        self.assertEqual(self.report([]), (0, '\n  0 finding(s)\n'))
 
 
 if __name__ == '__main__':

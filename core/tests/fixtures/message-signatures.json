@@ -1,5 +1,5 @@
 {
-  "provenance": "bitcoinjs-message 2.2.0, bip322-js 2.0.0, ethers 6.17.0, tronweb 6.0.4, @mysten/sui 1.38.0, @polkadot/keyring 13.5.6, node:crypto ed25519",
+  "provenance": "bitcoinjs-message 2.2.0, bip322-js 2.0.0, ethers 6.17.0, tronweb 6.0.4, @mysten/sui 1.45.2, @polkadot/keyring 14.0.3, node:crypto ed25519",
   "messages": [
     "",
     "Hello World",

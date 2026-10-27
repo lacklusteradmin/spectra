@@ -7,6 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use clap::Args;
 use colored::Colorize as _;
+use serde::Serialize;
+use spectra_core::registry::Chain;
 use spectra_core::service::ChainEndpoints;
 use spectra_core::service::app_refresh::AppRefreshResult;
 use spectra_core::service::refresh_engine::{RefreshEngine, RefreshObserver};
@@ -14,7 +16,7 @@ use spectra_core::store::state::WalletState;
 
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
-use crate::out::{self, Out};
+use crate::out::{self, Out, Report};
 
 #[derive(Args)]
 pub struct RefreshArgs {
@@ -94,39 +96,76 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
         return Err(CliError::rejected("no wallet has an address to refresh"));
     }
 
-    out.text(|| {
-        println!(
-            "  {} refreshing {} wallet{}…",
-            out::hint("→"),
-            entry_count as usize,
-            if entry_count as usize == 1 { "" } else { "s" }
-        )
-    });
+    out::progress(&format!(
+        "refreshing {}",
+        out::count(entry_count as usize, "wallet")
+    ));
     // One sweep, awaited: this process is about to exit, so a spawned
     // cycle would be abandoned mid-flight.
     ctx.rt.block_on(engine.refresh_now());
     engine.clear_observer();
 
     let collected = collector.0.lock().unwrap();
-    out.text(|| {
+    out.report(&RefreshReport {
+        refreshed: collected.refreshed,
+        errors: collected.errors,
+        cycle_completed: collected.complete,
+        skipped: wallets.len().saturating_sub(entry_count as usize),
+        wallets: collected
+            .updated
+            .iter()
+            .map(|(wallet_id, summary)| UpdatedWallet {
+                wallet: wallet_id.clone(),
+                updated: summary.is_some(),
+                name: wallets
+                    .iter()
+                    .find(|wallet| &wallet.id == wallet_id)
+                    .map_or_else(|| wallet_id.clone(), |wallet| wallet.name.clone()),
+                chain: summary.as_ref().map(|summary| summary.chain_id),
+                is_watch_only: summary.as_ref().is_some_and(WalletState::is_watch_only),
+            })
+            .collect(),
+    })
+}
+
+#[derive(Serialize)]
+struct UpdatedWallet {
+    wallet: String,
+    updated: bool,
+    #[serde(skip)]
+    name: String,
+    #[serde(skip)]
+    chain: Option<Chain>,
+    #[serde(skip)]
+    is_watch_only: bool,
+}
+
+/// What one sweep refreshed.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RefreshReport {
+    refreshed: u32,
+    errors: u32,
+    cycle_completed: bool,
+    skipped: usize,
+    wallets: Vec<UpdatedWallet>,
+}
+
+impl Report for RefreshReport {
+    fn render(&self) {
         println!();
-        for (wallet_id, summary) in &collected.updated {
-            let name = wallets
-                .iter()
-                .find(|wallet| &wallet.id == wallet_id)
-                .map(|wallet| wallet.name.clone())
-                .unwrap_or_else(|| wallet_id.clone());
-            match summary {
-                Some(summary) => println!(
+        for wallet in &self.wallets {
+            match wallet.chain {
+                Some(chain) => println!(
                     "  {}  {:<18} {}",
-                    out::wallet_dot(summary.chain_id, summary.is_watch_only()),
-                    name,
-                    out::hint(&super::chain_name(summary.chain_id)),
+                    out::wallet_dot(chain, wallet.is_watch_only),
+                    wallet.name,
+                    out::hint(chain.chain_display_name()),
                 ),
                 None => println!(
                     "  {}  {:<18} {}",
                     out::fail_mark(),
-                    name,
+                    wallet.name,
                     out::hint("no balance")
                 ),
             }
@@ -134,20 +173,16 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
         println!();
         println!(
             "  {} refreshed, {} errors",
-            out::accent(&collected.refreshed.to_string()).bold(),
-            if collected.errors == 0 {
-                collected.errors.to_string().normal()
+            out::accent(&self.refreshed.to_string()).bold(),
+            if self.errors == 0 {
+                self.errors.to_string().normal()
             } else {
-                collected.errors.to_string().red().bold()
+                self.errors.to_string().red().bold()
             },
         );
-    });
-    out.emit(serde_json::json!({
-        "ok": collected.errors == 0,
-        "refreshed": collected.refreshed,
-        "errors": collected.errors,
-        "cycleCompleted": collected.complete,
-        "skipped": wallets.len().saturating_sub(entry_count as usize),
-    }));
-    Ok(())
+    }
+
+    fn ok(&self) -> bool {
+        self.errors == 0
+    }
 }

@@ -1,5 +1,5 @@
 {
-  "provenance": "@emurgo/cardano-message-signing-nodejs 1.1.0, @emurgo/cardano-serialization-lib-nodejs 15.0.3, kaspa-wasm 0.13.0, monero-ts 0.11.20",
+  "provenance": "@emurgo/cardano-message-signing-nodejs 1.1.0, @emurgo/cardano-serialization-lib-nodejs 17.0.0, kaspa-wasm 0.13.0, monero-ts 0.11.20",
   "cardano": [
     {
       "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp",

@@ -9,19 +9,15 @@ pub mod market;
 pub mod multisig;
 pub mod refresh;
 pub mod rescan;
+pub mod send;
 pub mod settings;
 pub mod staking;
 pub mod token;
-pub mod tx;
+pub mod txs;
 pub mod wallet;
 
 use crate::error::{CliError, CliResult};
 use spectra_core::registry::Chain;
-
-/// The display name for a chain id, for text a person reads.
-pub fn chain_name(chain: Chain) -> String {
-    chain.chain_display_name().to_string()
-}
 
 pub fn resolve_chain(needle: &str) -> CliResult<Chain> {
     let trimmed = needle.trim();
@@ -100,5 +96,19 @@ pub fn seed_phrase_problem_text(problem: spectra_core::validation::SeedPhrasePro
         SeedPhraseProblem::UnsupportedPolyseed => {
             "this Polyseed uses features Spectra does not support".to_string()
         }
+    }
+}
+
+/// What core says a wallet on a network cannot do, worded for the terminal.
+pub fn limit_text(limit: &spectra_core::service::WalletSetupLimit) -> &'static str {
+    use spectra_core::service::WalletSetupLimit as Limit;
+    match limit {
+        Limit::AccountReserve => "an account opens only once it holds the network's reserve",
+        Limit::TokenBearingInputsUntouched => "coin held beside native assets cannot pay",
+        Limit::ShieldedScan => {
+            "shielded funds are found by scanning from the restore height, \
+             and only a wallet restored from its phrase holds them"
+        }
+        Limit::ScansOnDevice => "balance and history come from scanning blocks on this device",
     }
 }

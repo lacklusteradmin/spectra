@@ -11,13 +11,13 @@ authoritative copy, and the CLI can drive every domain operation.
 | Directory | Responsibility |
 |---|---|
 | `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the app's static library |
-| `cli/` | Argument parsing, terminal output and password prompting |
+| `cli/` | Argument parsing, password prompting and each command's report, as text or `--json` |
 | `swift/` | Native iOS UI and platform services |
 | `scripts/` | Build, source-check and runtime-data tools |
-| `tests/` | CLI acceptance suites, helpers and independent SDK test-data generators |
+| `tests/` | CLI acceptance suites on one harness (`tests/acceptance/`) and independent SDK test-data generators (`tests/vectors/`) |
 | `tools/uniffi-bindgen/` | Binding generation binary |
-| `tools/zcash-fixture/` | Loopback lightwalletd over a synthetic Zcash chain, for `tests/cli-zcash-shielded.py` |
-| `tools/litecoin-mweb-fixture/` | Loopback Litecoin node and Esplora indexer over a synthetic MWEB chain, for `tests/cli-litecoin-mweb.py`; shares no code with core |
+| `tools/zcash-fixture/` | Loopback lightwalletd over a synthetic Zcash chain, for `tests/acceptance/zcash_shielded.py` |
+| `tools/litecoin-mweb-fixture/` | Loopback Litecoin node and Esplora indexer over a synthetic MWEB chain, for `tests/acceptance/litecoin_mweb.py`; shares no code with core |
 
 Core stays one crate. A crate per domain would add Cargo overhead without an
 external consumer that needs the isolation. There are no published library APIs
@@ -33,7 +33,11 @@ Folder clears the Rust side too. Deleting `target/` does not affect Xcode.
 
 Rust owns wallets, settings, address rules, transaction history, persistence,
 network policy and signing. Front ends send intents and render the results.
-The CLI is the check that none of those operations depends on a phone.
+The CLI is the check that none of those operations depends on a phone. Each
+command ends in one report (`out::Report`): a `Serialize` value that `--json`
+writes as one document and the terminal renders as text, so neither form can
+go missing. A command about one wallet takes it as its first argument;
+`--wallet` only narrows a command over many.
 
 Swift owns navigation, sheets, text being edited, focus, animation and rendering
 caches. Keychain, biometrics, notifications, Live Activities and device signals
@@ -221,9 +225,9 @@ access without widening production visibility. Where a domain's tests need only
 crate-visible items, `tests/mod.rs` owns them as one module instead, as in
 `store/tests/` and `wallet_db/tests/`. Crate-root tests use `src/tests/`.
 Integration tests that need their own process sit in `core/tests/`, with shared
-test data in `core/tests/fixtures/`. CLI acceptance suites, their shared helpers
-and independent SDK generators for that data live in the repository's top-level
-`tests/`; their instructions are in
+test data in `core/tests/fixtures/`. The CLI acceptance suites and their shared
+harness live in `tests/acceptance/`, and the independent SDK generators for that
+data, with one `package.json`, in `tests/vectors/`; their instructions are in
 [`tests/README.md`](../tests/README.md).
 
 Each layer reports failures in its own `thiserror` enum, named in its

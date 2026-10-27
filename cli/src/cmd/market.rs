@@ -1,14 +1,21 @@
-//! Display currency and portfolio settings live in the selected CLI data store.
-//! Core applies the same rules for each front end.
+//! Prices, the portfolio's value and the display currency, all as core
+//! stores and values them: the CLI multiplies nothing.
+
+use std::collections::BTreeMap;
 
 use clap::Args;
 use colored::Colorize as _;
+use serde::Serialize;
+use spectra_core::amount::presentation::{AssetPrecisionCatalog, format_asset_amount};
+use spectra_core::registry::Chain;
+use spectra_core::service::{PortfolioValuation, QuoteRefreshState};
 use spectra_core::store::state::{AppSettingUpdate, FiatCurrency, StateCommand};
+use spectra_core::store::wallet_domain::{DashboardAssetGroup, DashboardPinOption};
 
 use super::resolve_chain;
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
-use crate::out::{self, Out};
+use crate::out::{self, Out, Report};
 
 #[derive(Args)]
 pub struct PriceArgs {
@@ -33,7 +40,6 @@ pub struct PortfolioArgs {
     /// List core-owned pin candidates without network.
     #[arg(long)]
     pin_options: bool,
-
     /// Render core dashboard groups using stored balances and quotes, without network.
     #[arg(long)]
     stored: bool,
@@ -54,6 +60,60 @@ pub struct CurrencyArgs {
     rates: bool,
 }
 
+// ─── price ──────────────────────────────────────────────────────────────────
+
+/// The quotes core holds, in USD by price id, and when they last moved.
+#[derive(Serialize)]
+struct QuotesReport {
+    quotes: QuoteRefreshState,
+}
+
+impl Report for QuotesReport {
+    fn render(&self) {
+        let quotes = &self.quotes;
+        println!();
+        let prices: BTreeMap<&String, &f64> = quotes.prices.iter().collect();
+        for (id, price) in prices {
+            out::wide_field(
+                22,
+                id,
+                &format!("{} USD", out::fiat(Some(*price), FiatCurrency::Usd)),
+            );
+        }
+        if let Some(failure) = &quotes.prices_error {
+            println!("  {} prices: {failure}", out::fail_mark());
+        }
+        if let Some(failure) = &quotes.fiat_error {
+            println!("  {} fiat rates: {failure}", out::fail_mark());
+        }
+    }
+}
+
+/// A chain's native asset, priced now in the display currency.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SpotReport {
+    chain: Chain,
+    symbol: String,
+    price_usd: Option<f64>,
+    price: Option<f64>,
+    currency: String,
+}
+
+impl Report for SpotReport {
+    fn render(&self) {
+        let currency = FiatCurrency::from_code(&self.currency).unwrap_or(FiatCurrency::Usd);
+        println!();
+        println!(
+            "  {}  {} {}  {}",
+            out::tint("●", self.chain).bold(),
+            out::fiat(self.price, currency).bold(),
+            out::hint(&self.currency),
+            out::tint(&self.symbol, self.chain).bold(),
+        );
+    }
+}
+
 pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
     if args.refresh || args.stored {
         let service = ctx.service()?;
@@ -62,9 +122,9 @@ pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
         } else {
             ctx.rt.block_on(service.app_state())
         };
-        out.text(|| println!("{:?}", state.quotes.prices));
-        out.emit(serde_json::json!({"quotes":state.quotes}));
-        return Ok(());
+        return out.report(&QuotesReport {
+            quotes: state.quotes,
+        });
     }
     let chain = resolve_chain(
         args.chain
@@ -73,66 +133,212 @@ pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
     )?;
     // Core fetches the quote and converts it with its own stored rate.
     let quote = ctx.rt.block_on(ctx.service()?.native_spot_price(chain))?;
+    out.report(&SpotReport {
+        chain: quote.chain_id,
+        symbol: quote.symbol,
+        price_usd: quote.price_usd,
+        price: quote.price,
+        currency: quote.currency,
+    })
+}
 
-    out.text(|| {
+// ─── portfolio ──────────────────────────────────────────────────────────────
+
+/// The assets the dashboard can pin, and which it does.
+#[derive(Serialize)]
+struct PinOptionsReport {
+    options: Vec<DashboardPinOption>,
+}
+
+impl Report for PinOptionsReport {
+    fn render(&self) {
         println!();
-        let price = quote
-            .price
-            .map(|price| format!("{price:.2}"))
-            .unwrap_or_else(|| "—".into());
+        for option in &self.options {
+            println!(
+                "  {}  {:<8} {}  {}",
+                if option.is_pinned {
+                    out::accent("●").bold()
+                } else {
+                    out::hint("○")
+                },
+                option.symbol.bold(),
+                option.name,
+                out::hint(&option.token_id)
+            );
+        }
+    }
+}
+
+/// The dashboard's groups as core builds them from stored balances and
+/// quotes.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredPortfolioReport {
+    groups: Vec<DashboardAssetGroup>,
+    valuation: PortfolioValuation,
+    revision: u64,
+    asset_precision: AssetPrecisionCatalog,
+}
+
+impl Report for StoredPortfolioReport {
+    fn render(&self) {
+        let currency = self.valuation.currency;
+        println!();
+        for group in &self.groups {
+            println!(
+                "  {}  {:>18} {:<8} {}",
+                if group.is_pinned {
+                    out::accent("●").bold()
+                } else {
+                    out::hint("·")
+                },
+                group.total_amount,
+                group.identity.symbol.bold(),
+                out::fiat(group.total_value, currency)
+            );
+        }
+        println!();
+        render_total(&self.valuation);
+    }
+}
+
+fn render_total(valuation: &PortfolioValuation) {
+    let unpriced = valuation.portfolio.unpriced_count;
+    println!(
+        "  {}  {} {}{}",
+        out::accent("Σ").bold(),
+        out::fiat(valuation.portfolio.fiat_total, valuation.currency).bold(),
+        out::hint(valuation.currency.code()),
+        if unpriced > 0 {
+            out::hint(&format!("  · {unpriced} without a price")).to_string()
+        } else {
+            String::new()
+        },
+    );
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HoldingValue {
+    deployment_id: String,
+    symbol: String,
+    amount: String,
+    value: Option<f64>,
+    /// The amount as a row shows it, cut to the asset's display places.
+    #[serde(skip)]
+    shown: String,
+}
+
+#[derive(Serialize)]
+struct WalletValue {
+    wallet: String,
+    chain: Chain,
+    total: Option<f64>,
+    holdings: Vec<HoldingValue>,
+    #[serde(skip)]
+    name: String,
+    #[serde(skip)]
+    is_watch_only: bool,
+}
+
+#[derive(Serialize)]
+struct Unavailable {
+    wallet: String,
+    error: String,
+    #[serde(skip)]
+    name: String,
+}
+
+/// The portfolio valued now: balances, prices and the display currency's
+/// rate refreshed, then valued by core.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PortfolioReport {
+    #[serde(skip)]
+    fiat: FiatCurrency,
+    currency: &'static str,
+    total: Option<f64>,
+    unpriced_count: u64,
+    wallets: Vec<WalletValue>,
+    unavailable: Vec<Unavailable>,
+    failures: Vec<String>,
+}
+
+impl Report for PortfolioReport {
+    fn render(&self) {
+        println!();
+        if self.wallets.is_empty() && self.unavailable.is_empty() {
+            println!("  {}", out::hint("no wallets"));
+            return;
+        }
+        for wallet in &self.wallets {
+            for holding in &wallet.holdings {
+                println!(
+                    "  {}  {:<14}  {:>18}  {}",
+                    out::wallet_dot(wallet.chain, wallet.is_watch_only),
+                    wallet.name,
+                    format!("{} {}", holding.shown, holding.symbol),
+                    out::fiat(holding.value, self.fiat).bold(),
+                );
+            }
+        }
+        for unavailable in &self.unavailable {
+            println!(
+                "  {}  {:<14}  {}",
+                out::fail_mark(),
+                unavailable.name,
+                out::hint(&format!("unavailable — {}", unavailable.error)),
+            );
+        }
+        println!();
+        let unpriced = self.unpriced_count;
         println!(
-            "  {}  {} {}  {}",
-            out::tint("●", chain).bold(),
-            price.bold(),
-            out::hint(&quote.currency),
-            out::tint(chain.coin_symbol(), chain).bold(),
+            "  {}  {} {}{}",
+            out::accent("Σ").bold(),
+            out::fiat(self.total, self.fiat).bold(),
+            out::hint(self.currency),
+            if unpriced > 0 {
+                out::hint(&format!("  · {unpriced} without a price")).to_string()
+            } else {
+                String::new()
+            },
         );
-    });
-    let mut json = serde_json::to_value(&quote).map_err(|e| CliError::failure(e.to_string()))?;
-    json["ok"] = true.into();
-    out.emit(json);
-    Ok(())
+        for failure in &self.failures {
+            println!("  {} {}", out::fail_mark(), out::hint(failure));
+        }
+    }
 }
 
 pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
     if !args.pin_token.is_empty() {
-        ctx.rt.block_on(ctx.service()?.apply_state_command(
-            spectra_core::store::state::StateCommand::SetPinnedDashboardAssets {
-                token_ids: args.pin_token,
-            },
-        ))?;
+        ctx.apply(StateCommand::SetPinnedDashboardAssets {
+            token_ids: args.pin_token,
+        })?;
     }
     for token_id in args.unpin_token {
-        ctx.rt.block_on(ctx.service()?.apply_state_command(
-            spectra_core::store::state::StateCommand::SetDashboardAssetPinned {
-                token_id,
-                is_pinned: false,
-            },
-        ))?;
+        ctx.apply(StateCommand::SetDashboardAssetPinned {
+            token_id,
+            is_pinned: false,
+        })?;
     }
     if args.pin_options {
         let options = ctx.rt.block_on(ctx.service()?.dashboard_pin_options())?;
-        out.text(|| println!("{options:?}"));
-        out.emit(serde_json::json!({"options":options}));
-        return Ok(());
+        return out.report(&PinOptionsReport { options });
     }
     if args.stored {
         let snapshot = ctx.rt.block_on(ctx.service()?.portfolio_snapshot())?;
-        out.text(|| println!("{:?}", snapshot.valuation));
-        out.emit(serde_json::json!({"groups":snapshot.groups,"valuation":snapshot.valuation,"revision":snapshot.revision,"assetPrecision":snapshot.asset_precision}));
-        return Ok(());
-    }
-    let service = ctx.service()?;
-    let wallets = ctx.rt.block_on(service.app_state()).wallets;
-    if wallets.is_empty() {
-        out.text(|| println!("  {}", out::hint("no wallets")));
-        out.emit(serde_json::json!({ "ok": true, "total": 0.0, "wallets": [] }));
-        return Ok(());
+        return out.report(&StoredPortfolioReport {
+            groups: snapshot.groups,
+            valuation: snapshot.valuation,
+            revision: snapshot.revision,
+            asset_precision: snapshot.asset_precision,
+        });
     }
 
     // Live means core refreshes what it values from — balances, prices and
-    // the display currency's rate — and then values it. The CLI multiplies
-    // nothing.
+    // the display currency's rate — and then values it.
+    let service = ctx.service()?;
+    let wallets = ctx.rt.block_on(service.app_state()).wallets;
     let mut unavailable = Vec::new();
     for wallet in &wallets {
         if let Err(error) = ctx
@@ -142,115 +348,109 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
             if !args.skip_unreachable {
                 return Err(error.into());
             }
-            unavailable.push(serde_json::json!({"wallet": wallet.id, "error": error.to_string()}));
-            out.text(|| {
-                println!(
-                    "  {}  {:<14}  {}",
-                    out::wallet_dot(wallet.chain_id, wallet.is_watch_only()),
-                    wallet.name,
-                    out::hint(&format!("unavailable — {error}")),
-                )
+            unavailable.push(Unavailable {
+                wallet: wallet.id.clone(),
+                error: error.to_string(),
+                name: wallet.name.clone(),
             });
         }
     }
     let mut failures = Vec::new();
-    let quotes = ctx.rt.block_on(service.refresh_owned_prices(false))?.quotes;
-    failures.extend(
-        quotes
-            .prices_error
-            .map(|failure| format!("prices: {failure}")),
-    );
-    let quotes = ctx
-        .rt
-        .block_on(service.refresh_owned_fiat_rates(false))?
-        .quotes;
-    failures.extend(
-        quotes
-            .fiat_error
-            .map(|failure| format!("fiat rates: {failure}")),
-    );
+    if !wallets.is_empty() {
+        let quotes = ctx.rt.block_on(service.refresh_owned_prices(false))?.quotes;
+        failures.extend(
+            quotes
+                .prices_error
+                .map(|failure| format!("prices: {failure}")),
+        );
+        let quotes = ctx
+            .rt
+            .block_on(service.refresh_owned_fiat_rates(false))?
+            .quotes;
+        failures.extend(
+            quotes
+                .fiat_error
+                .map(|failure| format!("fiat rates: {failure}")),
+        );
+    }
     let snapshot = ctx.rt.block_on(service.portfolio_snapshot())?;
     let valuation = &snapshot.valuation;
-    let code = valuation.currency.code();
-    let fiat = |value: Option<f64>| {
-        value
-            .map(|v| format!("{v:.2}"))
-            .unwrap_or_else(|| "—".into())
-    };
+    let precision = &snapshot.asset_precision;
+    out.report(&PortfolioReport {
+        fiat: valuation.currency,
+        currency: valuation.currency.code(),
+        total: valuation.portfolio.fiat_total,
+        unpriced_count: valuation.portfolio.unpriced_count,
+        wallets: snapshot
+            .wallets
+            .iter()
+            .map(|wallet| {
+                let values = valuation.holding_values.get(&wallet.id);
+                WalletValue {
+                    wallet: wallet.id.clone(),
+                    chain: wallet.chain_id,
+                    total: valuation.wallets.get(&wallet.id).and_then(|t| t.fiat_total),
+                    holdings: wallet
+                        .holdings
+                        .iter()
+                        .filter(|h| !spectra_core::amount::decimal::is_zero(&h.amount))
+                        .map(|holding| {
+                            let decimals = precision
+                                .by_deployment_id
+                                .get(&holding.id)
+                                .copied()
+                                .unwrap_or(precision.unknown_decimals);
+                            let shown = format_asset_amount(holding.amount.clone(), decimals)
+                                .map(|text| {
+                                    let below = if text.below_threshold { "<" } else { "" };
+                                    format!("{below}{}", text.value)
+                                })
+                                .unwrap_or_else(|| holding.amount.clone());
+                            HoldingValue {
+                                deployment_id: holding.id.clone(),
+                                symbol: holding.symbol.clone(),
+                                amount: holding.amount.clone(),
+                                value: values.and_then(|v| v.get(&holding.id)).copied(),
+                                shown,
+                            }
+                        })
+                        .collect(),
+                    name: wallet.name.clone(),
+                    is_watch_only: wallet.signing.is_watch_only(),
+                }
+            })
+            .collect(),
+        unavailable,
+        failures,
+    })
+}
 
-    out.text(|| {
-        println!();
-        for wallet in &snapshot.wallets {
-            let values = valuation.holding_values.get(&wallet.id);
-            for holding in wallet
-                .holdings
-                .iter()
-                .filter(|h| !spectra_core::amount::decimal::is_zero(&h.amount))
-            {
-                let decimals = snapshot
-                    .asset_precision
-                    .by_deployment_id
-                    .get(&holding.id)
-                    .copied()
-                    .unwrap_or(snapshot.asset_precision.unknown_decimals);
-                let amount = spectra_core::amount::presentation::format_asset_amount(
-                    holding.amount.clone(),
-                    decimals,
-                )
-                .map(|text| {
-                    format!(
-                        "{}{}",
-                        if text.below_threshold { "<" } else { "" },
-                        text.value
-                    )
-                })
-                .unwrap_or_else(|| holding.amount.clone());
-                println!(
-                    "  {}  {:<14}  {:>14}  {}",
-                    out::wallet_dot(wallet.chain_id, wallet.signing.is_watch_only()),
-                    wallet.name,
-                    format!("{amount} {}", holding.symbol),
-                    fiat(values.and_then(|v| v.get(&holding.id)).copied()).bold(),
-                );
+// ─── currency ───────────────────────────────────────────────────────────────
+
+/// The display currency, and the one it replaced when it changed.
+#[derive(Serialize)]
+struct CurrencyReport {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    from: Option<&'static str>,
+    currency: &'static str,
+}
+
+impl Report for CurrencyReport {
+    fn render(&self) {
+        match self.from {
+            None => out::field("currency", &self.currency.bold().to_string()),
+            Some(from) if from == self.currency => {
+                println!("  {} already {}", out::hint("·"), self.currency.bold())
             }
+            Some(from) => println!(
+                "  {} {} {} {}",
+                out::ok_mark(),
+                out::hint(from),
+                out::hint("→"),
+                self.currency.bold()
+            ),
         }
-        println!();
-        let unpriced = valuation.portfolio.unpriced_count;
-        println!(
-            "  {}  {} {}{}",
-            out::accent("Σ").bold(),
-            fiat(valuation.portfolio.fiat_total).bold(),
-            out::hint(code),
-            if unpriced > 0 {
-                out::hint(&format!("  · {unpriced} without a price"))
-            } else {
-                out::hint("")
-            },
-        );
-        for failure in &failures {
-            println!("  {} {}", out::fail_mark(), out::hint(failure));
-        }
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "currency": code,
-        "total": valuation.portfolio.fiat_total,
-        "unpricedCount": valuation.portfolio.unpriced_count,
-        "wallets": snapshot.wallets.iter().map(|wallet| serde_json::json!({
-            "wallet": wallet.id,
-            "chainId": wallet.chain_id,
-            "total": valuation.wallets.get(&wallet.id).and_then(|t| t.fiat_total),
-            "holdings": wallet.holdings.iter().map(|holding| serde_json::json!({
-                "deploymentId": holding.id,
-                "symbol": holding.symbol,
-                "amount": holding.amount,
-                "value": valuation.holding_values.get(&wallet.id).and_then(|v| v.get(&holding.id)),
-            })).collect::<Vec<_>>(),
-        })).collect::<Vec<_>>(),
-        "unavailable": unavailable,
-        "failures": failures,
-    }));
-    Ok(())
+    }
 }
 
 pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
@@ -259,14 +459,11 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
     }
     let current = ctx.state()?.settings.fiat_currency.code();
     let Some(requested) = args.code else {
-        out.text(|| {
-            println!();
-            out::field("currency", &current.bold().to_string());
+        return out.report(&CurrencyReport {
+            from: None,
+            currency: current,
         });
-        out.emit(serde_json::json!({ "ok": true, "currency": current }));
-        return Ok(());
     };
-
     // Reject currency codes absent from the rate table.
     let Some(currency) = FiatCurrency::from_code(&requested) else {
         return Err(CliError::rejected(format!(
@@ -276,64 +473,48 @@ pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
     let transition = ctx.apply(StateCommand::SetAppSetting {
         update: AppSettingUpdate::FiatCurrency { value: currency },
     })?;
-    let updated = transition.state.settings.fiat_currency.code();
-
-    out.text(|| {
-        if updated == current {
-            println!("  {} already {}", out::hint("·"), updated.bold());
-        } else {
-            println!(
-                "  {} {} {} {}",
-                out::ok_mark(),
-                out::hint(current),
-                out::hint("→"),
-                updated.bold()
-            );
-        }
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "from": current,
-        "currency": updated,
-    }));
-    Ok(())
+    out.report(&CurrencyReport {
+        from: Some(current),
+        currency: transition.state.settings.fiat_currency.code(),
+    })
 }
 
-/// The stored USD cross-rates, optionally refreshed first.
-///
-/// The rates are core's state, so this reads them from the same store the app
-/// does.
-fn rates(ctx: &Ctx, out: Out, refresh: bool) -> CliResult<()> {
-    let service = ctx.service()?;
-    if refresh {
-        ctx.rt
-            .block_on(service.refresh_fiat_rates())
-            .map_err(CliError::from)?;
-    }
-    let stored = ctx.state()?.fiat_rates_from_usd;
-    let mut rows: Vec<(String, f64)> = stored.into_iter().collect();
-    rows.sort_by(|a, b| a.0.cmp(&b.0));
+/// The stored USD cross-rates.
+#[derive(Serialize)]
+struct RatesReport {
+    base: &'static str,
+    count: usize,
+    rates: BTreeMap<String, f64>,
+}
 
-    out.text(|| {
+impl Report for RatesReport {
+    fn render(&self) {
         println!();
-        if rows.is_empty() {
+        if self.rates.is_empty() {
             println!(
                 "  {}",
                 out::hint("no rates stored — run with --refresh-rates")
             );
             return;
         }
-        for (code, rate) in &rows {
-            out::field(code, &format!("{rate:.6}"));
+        for (code, rate) in &self.rates {
+            out::field(code, &rate.to_string());
         }
         println!();
         println!("  {}", out::hint("per 1 USD"));
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "base": "USD",
-        "count": rows.len(),
-        "rates": rows.iter().cloned().collect::<std::collections::HashMap<String, f64>>(),
-    }));
-    Ok(())
+    }
+}
+
+/// The rates are core's state, so this reads them from the same store the
+/// app does, optionally refreshed first.
+fn rates(ctx: &Ctx, out: Out, refresh: bool) -> CliResult<()> {
+    if refresh {
+        ctx.rt.block_on(ctx.service()?.refresh_fiat_rates())?;
+    }
+    let rates: BTreeMap<String, f64> = ctx.state()?.fiat_rates_from_usd.into_iter().collect();
+    out.report(&RatesReport {
+        base: "USD",
+        count: rates.len(),
+        rates,
+    })
 }

@@ -198,7 +198,7 @@ mod tests {
 
     /// The search reads a Cardano phrase where its wallets hold it: each
     /// account's base address, as CSL derives it
-    /// (tests/generate-derivation-profile-vectors.cjs).
+    /// (tests/vectors/generate-derivation-profile-vectors.cjs).
     #[test]
     fn cardano_candidates_are_base_addresses() {
         let fixture: serde_json::Value = serde_json::from_str(include_str!(

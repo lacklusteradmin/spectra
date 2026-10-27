@@ -1,5 +1,5 @@
 //! Message signatures against each network's own SDK
-//! (`message-signatures.json`, from tests/generate-message-signature-vectors.cjs)
+//! (`message-signatures.json`, from tests/vectors/generate-message-signature-vectors.cjs)
 //! and BIP-322's own test vectors.
 
 use super::*;

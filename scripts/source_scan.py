@@ -1,8 +1,32 @@
-"""Shared source selection for the dead-code and localization scans."""
+"""What the source scans share: which files they read, what in a file is a
+call, and how a scan reports.
 
+Each scan is a script beside this one, run from any directory by
+`python3 -B scripts/<scan>.py`. It prints its findings and a count, and exits
+non-zero when it found anything, so it can gate.
+"""
+
+import os
 import pathlib
 import re
 import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def run(scan):
+    """Run `scan` from the repository root and exit with its status."""
+    os.chdir(ROOT)
+    sys.exit(scan())
+
+
+def report(findings, summary):
+    """Print each finding, then the summary; the scan's exit status."""
+    for line in findings:
+        print(line)
+    print(f'\n  {summary}')
+    return 1 if findings else 0
 
 
 def hand_written(root, suffix):
@@ -17,6 +41,35 @@ def hand_written(root, suffix):
 def frontend_test(path):
     """Swift test sources."""
     return 'tests' in path.parts
+
+
+def app_swift(root='swift'):
+    """The app's Swift outside its tests. The generated bindings are ignored
+    output, so `hand_written` never lists them."""
+    return [path for path in hand_written(root, '.swift') if not frontend_test(path)]
+
+
+def camel(name):
+    """The Swift spelling UniFFI gives a Rust `snake_case` name."""
+    head, *rest = name.split('_')
+    return head + ''.join(part[:1].upper() + part[1:] for part in rest)
+
+
+def strip_comments(text):
+    """Block comments and whole-line `//` comments, in Rust or Swift."""
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
+    return re.sub(r'(?m)^\s*//.*$', '', text)
+
+
+def calls_only(text, keyword):
+    """`text` with what only looks like a call removed.
+
+    Comments, `use` lines and the name a declaration introduces (after
+    `keyword`, `fn` or `func`) are not evidence of a call: a Swift helper may
+    share the camelCase name of an unused Rust export.
+    """
+    text = re.sub(r'(?m)^\s*(?:pub )?use .*$', '', strip_comments(text))
+    return re.sub(r'\b' + keyword + r'\s+\w+', keyword + ' __declaration__', text)
 
 
 ATTRIBUTE = re.compile(r'\s*#\[(cfg\(test\)|test|tokio::test)')

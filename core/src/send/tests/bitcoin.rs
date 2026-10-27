@@ -1,5 +1,5 @@
 //! The account signer against bitcoinjs-lib (`account-utxo-transactions.json`,
-//! from tests/generate-account-utxo-vectors.cjs).
+//! from tests/vectors/generate-account-utxo-vectors.cjs).
 
 use super::*;
 

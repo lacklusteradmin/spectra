@@ -2,8 +2,12 @@
 //! and when an alert fires, so the CLI reads and sets the same ones the app
 //! does.
 
+use std::collections::BTreeMap;
+
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
+use serde::Serialize;
+use spectra_core::api::tor::TorStatus;
 use spectra_core::service::ResetPlan;
 use spectra_core::store::state::{
     AppSettingUpdate, AppSettings, BackgroundSyncProfile, ResetScope, StateCommand, StateEvent,
@@ -11,7 +15,7 @@ use spectra_core::store::state::{
 
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
-use crate::out::{self, Out};
+use crate::out::{self, Done, Out, Report};
 
 #[derive(Subcommand)]
 pub enum SettingsCommand {
@@ -167,39 +171,61 @@ fn field(key: &str) -> CliResult<&'static Field> {
         .ok_or_else(|| CliError::rejected(format!("no setting named {key}")))
 }
 
-fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
-    let settings = ctx.state()?.settings;
-    out.text(|| {
+/// Every setting this command reads and writes, by key.
+#[derive(Serialize)]
+struct SettingsReport {
+    settings: BTreeMap<&'static str, String>,
+}
+
+impl Report for SettingsReport {
+    fn render(&self) {
         println!();
         for field in FIELDS {
             println!(
                 "  {:<34} {}",
                 field.key.bold(),
-                out::hint(&(field.read)(&settings))
+                out::hint(&self.settings[field.key])
             );
         }
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "settings": FIELDS
+    }
+}
+
+fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
+    let settings = ctx.state()?.settings;
+    out.report(&SettingsReport {
+        settings: FIELDS
             .iter()
-            .map(|field| {
-                (
-                    field.key.to_string(),
-                    serde_json::Value::String((field.read)(&settings)),
-                )
-            })
-            .collect::<serde_json::Map<String, serde_json::Value>>(),
-    }));
-    Ok(())
+            .map(|field| (field.key, (field.read)(&settings)))
+            .collect(),
+    })
+}
+
+/// One setting's value, as core stored it.
+#[derive(Serialize)]
+struct SettingReport {
+    key: &'static str,
+    value: String,
+    #[serde(skip)]
+    changed: bool,
+}
+
+impl Report for SettingReport {
+    fn render(&self) {
+        if self.changed {
+            println!("  {} {} = {}", out::ok_mark(), self.key, self.value.bold());
+        } else {
+            println!("  {}", self.value.bold());
+        }
+    }
 }
 
 fn get(ctx: &Ctx, out: Out, args: GetArgs) -> CliResult<()> {
     let field = field(&args.key)?;
-    let value = (field.read)(&ctx.state()?.settings);
-    out.text(|| println!("  {}", value.bold()));
-    out.emit(serde_json::json!({ "ok": true, "key": field.key, "value": value }));
-    Ok(())
+    out.report(&SettingReport {
+        key: field.key,
+        value: (field.read)(&ctx.state()?.settings),
+        changed: false,
+    })
 }
 
 fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
@@ -223,10 +249,11 @@ fn set(ctx: &Ctx, out: Out, args: SetArgs) -> CliResult<()> {
     }
     // Report what core stored, not what was asked for: it trims strings and
     // bounds numbers, so the two differ often enough to be worth showing.
-    let stored = (field.read)(&transition.state.settings);
-    out.text(|| println!("  {} {key} = {}", out::ok_mark(), stored.bold()));
-    out.emit(serde_json::json!({ "ok": true, "key": key, "value": stored }));
-    Ok(())
+    out.report(&SettingReport {
+        key,
+        value: (field.read)(&transition.state.settings),
+        changed: true,
+    })
 }
 
 /// Reset core-owned data and describe the effective plan, including implied scopes.
@@ -250,15 +277,23 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
         )));
     }
     let outcome = ctx.rt.block_on(ctx.service()?.reset_data(scopes))?;
-    out.text(|| {
+    out.report(&ResetReport { plan: outcome.plan })
+}
+
+/// What a reset cleared, implied scopes included.
+#[derive(Serialize)]
+struct ResetReport {
+    plan: ResetPlan,
+}
+
+impl Report for ResetReport {
+    fn render(&self) {
         println!(
             "  {} reset: {}",
             out::ok_mark(),
-            reset_description(&outcome.plan)
-        )
-    });
-    out.emit(serde_json::json!({ "ok": true, "plan": outcome.plan }));
-    Ok(())
+            reset_description(&self.plan)
+        );
+    }
 }
 
 /// Replace a store `open_state` cannot read. Only a store that will not open
@@ -271,9 +306,38 @@ fn discard(ctx: &Ctx, out: Out, args: DiscardArgs) -> CliResult<()> {
     }
     ctx.rt
         .block_on(ctx.unopened_service()?.discard_state(ctx.db_path()))?;
-    out.text(|| println!("  {} discarded the stored data", out::ok_mark()));
-    out.emit(serde_json::json!({ "ok": true }));
-    Ok(())
+    out.report(&Done::new("discarded the stored data"))
+}
+
+/// The configured transport's state, once it is ready or has failed.
+#[derive(Serialize)]
+struct TorReport {
+    status: TorStatus,
+}
+
+impl Report for TorReport {
+    fn render(&self) {
+        match &self.status {
+            TorStatus::Stopped => println!("  {}", out::hint("Tor is off")),
+            TorStatus::Bootstrapping { percent } => {
+                println!("  {} Tor bootstrapping, {percent}%", out::hint("…"))
+            }
+            TorStatus::Ready => println!("  {} Tor ready", out::ok_mark()),
+            TorStatus::Error { message } => println!("  {} Tor: {message}", out::fail_mark()),
+        }
+    }
+}
+
+/// Start the configured transport, await readiness and report its status.
+pub fn tor(ctx: &Ctx, out: Out, reconnect: bool) -> CliResult<()> {
+    let service = ctx.service()?;
+    if reconnect {
+        ctx.rt.block_on(service.reconnect_tor());
+        ctx.rt.block_on(service.await_network_ready())?;
+    }
+    out.report(&TorReport {
+        status: spectra_core::api::tor::tor_status(),
+    })
 }
 
 fn reset_description(plan: &ResetPlan) -> String {

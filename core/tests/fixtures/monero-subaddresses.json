@@ -1,5 +1,5 @@
 {
-  "provenance": "monero-ts 0.11.15, wallet2 compiled to WebAssembly (tests/generate-monero-subaddress-vectors.cjs)",
+  "provenance": "monero-ts 0.11.20, wallet2 compiled to WebAssembly (tests/vectors/generate-monero-subaddress-vectors.cjs)",
   "phrase": "syndrome portents apex vivid flippant dizzy bumper duplex enjoy deodorant bunch pigment wolf muppet tuition wept ailments kiwi roles against today morsel eternal excess wolf",
   "networks": [
     {

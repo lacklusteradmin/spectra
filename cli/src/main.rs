@@ -56,14 +56,14 @@ enum Command {
     /// Donation addresses, one per network.
     Donations,
     /// Fetch a wallet's on-chain balance.
-    Balance(cmd::chain::BalanceArgs),
+    Balance(ctx::WalletArg),
     /// Fetch a wallet's on-chain transaction history.
     History(cmd::chain::HistoryArgs),
     /// Transactions recorded in the local store.
-    Txs(cmd::tx::TxsArgs),
+    Txs(cmd::txs::TxsArgs),
     /// Build, review, sign and broadcast transfers.
     #[command(subcommand)]
-    Send(cmd::tx::SendCommand),
+    Send(cmd::send::SendCommand),
     /// Fetch native asset prices or read and refresh stored quotes.
     Price(cmd::market::PriceArgs),
     /// Value portfolio holdings and manage dashboard pins.
@@ -104,25 +104,14 @@ fn main() {
     let result = Ctx::new(cli.data_dir).and_then(|ctx| dispatch(&ctx, out, cli.command));
 
     if let Err(error) = result {
-        out.text(|| eprintln!("  {} {}", out::fail_mark(), error));
-        if !out.emitted() {
-            out.emit(serde_json::json!({ "ok": false, "error": error.message }));
-        }
+        out.fail(&error);
         std::process::exit(error.code);
     }
 }
 
 fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
     match command {
-        Command::Tor { reconnect } => {
-            let service = ctx.service()?;
-            if reconnect {
-                ctx.rt.block_on(service.reconnect_tor());
-                ctx.rt.block_on(service.await_network_ready())?;
-            }
-            out.emit(serde_json::json!({"status": spectra_core::api::tor::tor_status()}));
-            Ok(())
-        }
+        Command::Tor { reconnect } => cmd::settings::tor(ctx, out, reconnect),
         Command::Wallet(command) => cmd::wallet::run(ctx, out, command),
         Command::Address(command) => cmd::address::run(ctx, out, command),
         Command::Chains(args) => cmd::chain::chains(out, args),
@@ -131,8 +120,8 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Donations => cmd::chain::donations(out),
         Command::Balance(args) => cmd::chain::balance(ctx, out, args),
         Command::History(args) => cmd::chain::history(ctx, out, args),
-        Command::Txs(args) => cmd::tx::txs(ctx, out, args),
-        Command::Send(command) => cmd::tx::run(ctx, out, command),
+        Command::Txs(args) => cmd::txs::txs(ctx, out, args),
+        Command::Send(command) => cmd::send::run(ctx, out, command),
         Command::Price(args) => cmd::market::price(ctx, out, args),
         Command::Portfolio(args) => cmd::market::portfolio(ctx, out, args),
         Command::Currency(args) => cmd::market::currency(ctx, out, args),

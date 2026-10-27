@@ -65,6 +65,7 @@ pub(crate) use serde::{Deserialize, Serialize};
 use crate::api::endpoint::EndpointApi;
 
 pub(crate) mod address_discovery;
+pub use address_discovery::WalletAddressDiscovery;
 mod balance_refresh;
 pub(crate) mod bitcoin_history;
 mod diagnostic_state;
@@ -73,16 +74,17 @@ pub mod history_store;
 pub mod refresh_engine;
 pub mod refresh_policy;
 pub use diagnostic_state::{
-    ChainDegradation, DiagnosticCommand, DiagnosticLog, DiagnosticLogInput, DiagnosticLogLevel,
-    DiagnosticState, DiagnosticsPlatformInfo,
+    ChainDegradation, ConfiguredSelfTestReport, DiagnosticCommand, DiagnosticLog,
+    DiagnosticLogInput, DiagnosticLogLevel, DiagnosticState, DiagnosticsPlatformInfo,
 };
 mod funds_scan;
 mod history_cursor;
 pub(crate) mod history_derived;
+pub use history_derived::ReplaceableSend;
 mod history_query;
 pub use history_query::{
     EndpointHolder, HISTORY_PAGE_MAX, HISTORY_SMALL_AMOUNT_THRESHOLD, HistoryPage, HistoryQuery,
-    HistoryQueryFilter, TransactionSnapshot, WalletEarliestTransactionDate,
+    HistoryQueryFilter, TransactionEndpoints, TransactionSnapshot, WalletEarliestTransactionDate,
 };
 mod history_refresh;
 pub use history_refresh::{HistoryRefreshOutcome, HistoryWalletDiagnostics};
@@ -102,6 +104,7 @@ mod operational_events;
 mod pending_status;
 pub use pending_status::PendingMaintenanceResult;
 mod movement;
+pub use movement::LargeMovementEvaluation;
 mod reset;
 pub use reset::{ResetPlan, reset_dispatch};
 mod send_broadcast;
@@ -118,6 +121,7 @@ mod staking_protocols;
 mod staking_substrate;
 mod valuation;
 pub use movement::PortfolioMovementBaseline;
+pub use valuation::PortfolioValuation;
 mod state;
 mod transaction_actions;
 mod transaction_recheck;
@@ -125,9 +129,11 @@ pub use transaction_actions::TransactionActions;
 mod transactions;
 mod transport;
 mod wallet_actions;
+pub use wallet_actions::WalletActions;
 mod wallet_approvals;
+pub use wallet_approvals::TokenApprovals;
 mod wallet_coins;
-pub use wallet_coins::AddressBranch;
+pub use wallet_coins::{AddressBranch, WalletCoins};
 mod wallet_copy;
 pub use wallet_copy::WalletCopyCommit;
 mod wallet_keys;
@@ -136,12 +142,19 @@ mod wallet_closing;
 mod wallet_import;
 mod wallet_messages;
 mod wallet_near_keys;
+pub use wallet_near_keys::NearAccessKeys;
 mod wallet_near_storage;
+pub use wallet_near_storage::NearStorageDeposits;
 mod wallet_network_account;
+pub use wallet_network_account::WalletNetworkAccount;
 mod wallet_nfts;
+pub use wallet_nfts::WalletNfts;
 mod wallet_sui_coins;
+pub use wallet_sui_coins::SuiCoinType;
 mod wallet_token_accounts;
+pub use wallet_token_accounts::EmptyTokenAccounts;
 mod wallet_trust_lines;
+pub use wallet_trust_lines::WalletTrustLines;
 pub(crate) mod worker;
 mod zcash_shielded;
 pub use zcash_shielded::ZcashShieldedStatus;
@@ -160,7 +173,7 @@ pub use send_destination::{
 };
 #[cfg(test)]
 use send_destination::{resolve_destination, verify_reviewed_destination};
-pub use state::{PortfolioHolding, WalletDerivedState};
+pub use state::{PortfolioHolding, PortfolioSnapshot, WalletDerivedState};
 /// The confirmation-poll outcome, which lives with the trackers it updates.
 pub use transactions::StatusPollOutcome;
 pub(crate) use wallet_actions::WalletAction;
@@ -300,6 +313,7 @@ pub(crate) mod loopback_service;
 
 pub mod app_refresh;
 mod owned_send;
+pub use owned_send::{OwnedReplacementDraft, OwnedSendPreview};
 pub mod send_review;
 mod send_stage_aptos;
 mod send_stage_cardano;
@@ -319,7 +333,7 @@ mod send_stage_xrp;
 mod send_stages;
 mod send_utxo_sources;
 mod setup_summary;
-pub use setup_summary::{CapabilityCoverage, WalletSetupSummary};
+pub use setup_summary::{CapabilityCoverage, WalletSetupLimit, WalletSetupSummary};
 
 impl WalletService {
     pub(crate) fn secrets(&self) -> Result<Arc<dyn SecretStore>, SpectraBridgeError> {
@@ -332,8 +346,9 @@ impl WalletService {
 }
 
 mod monero_wallet;
+pub use monero_wallet::{MoneroPaymentProof, MoneroSyncStatus};
 mod multisig;
-pub use multisig::{MultisigSession, MultisigSigner, MultisigSpend};
+pub use multisig::{MultisigAccount, MultisigSession, MultisigSigner, MultisigSpend};
 mod multisig_aptos;
 mod multisig_cardano;
 mod multisig_psbt;

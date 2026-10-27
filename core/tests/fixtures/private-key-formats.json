@@ -1,5 +1,5 @@
 {
-  "provenance": "wif 5.0.0, @solana/web3.js 1.98.4, @stellar/stellar-base 14.0.1, @mysten/sui 1.38.0, @aptos-labs/ts-sdk 5.1.1, @near-js/crypto 2.5.1",
+  "provenance": "wif 5.0.0, @solana/web3.js 1.98.4, @stellar/stellar-base 14.1.0, @mysten/sui 1.45.2, @aptos-labs/ts-sdk 5.1.1, @near-js/crypto 2.5.1",
   "wif": [
     {
       "chain": "bitcoin",
