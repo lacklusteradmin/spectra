@@ -301,15 +301,9 @@ impl WalletService {
         if !stored.view.attempts.is_empty()
             && matches!(&stored.prepared, PreparedPayload::Substrate(_))
         {
-            let record = self
-                .fetch_all_history_records()
-                .await?
-                .into_iter()
-                .find(|r| r.id == stored.view.id)
-                .map(|r| r.payload)
-                .ok_or_else(|| {
-                    SpectraBridgeError::failure("Missing journaled submission record")
-                })?;
+            let record = self.history_record(&stored.view.id).await?.ok_or_else(|| {
+                SpectraBridgeError::failure("Missing journaled submission record")
+            })?;
             if record.status != TransactionStatus::Pending {
                 return Err(SpectraBridgeError::failure(
                     "Substrate operation is already final; do not rebroadcast",
@@ -370,15 +364,9 @@ impl WalletService {
                     "Missing exact transaction status reader",
                 ));
             };
-            let record = self
-                .fetch_all_history_records()
-                .await?
-                .into_iter()
-                .find(|row| row.id == stored.view.id)
-                .map(|row| row.payload)
-                .ok_or_else(|| {
-                    SpectraBridgeError::failure("Missing journaled submission record")
-                })?;
+            let record = self.history_record(&stored.view.id).await?.ok_or_else(|| {
+                SpectraBridgeError::failure("Missing journaled submission record")
+            })?;
             match self
                 .fetch_pending_transaction_status(chain, api, &record)
                 .await?
@@ -446,12 +434,7 @@ impl WalletService {
         stored.view.selected_endpoints = endpoints.clone();
         stored.view.revision += 1;
         self.save_send_artifact(&stored, &[]).await?;
-        let existing = self
-            .fetch_all_history_records()
-            .await?
-            .into_iter()
-            .find(|row| row.id == stored.view.id)
-            .map(|row| row.payload);
+        let existing = self.history_record(&stored.view.id).await?;
         let mut history = match existing {
             Some(record) => {
                 if record.status == TransactionStatus::Confirmed {
@@ -532,9 +515,6 @@ impl WalletService {
             .map(i64::try_from)
             .transpose()
             .map_err(|_| SpectraBridgeError::failure("Nonce exceeds history range"))?;
-        history.signed_transaction_payload = Some(serde_json::to_string(&submission)?);
-        history.signed_transaction_payload_format =
-            Some(crate::send::payload::SUBMISSION_FORMAT.into());
         self.save_send_record(history.clone()).await?;
         // Every selected endpoint gets the payload at once. Each attempt is
         // saved as uncertain before anything is sent, so a crash mid-way

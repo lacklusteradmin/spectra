@@ -91,10 +91,6 @@ pub struct TransactionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub change_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_transaction_payload: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub signed_transaction_payload_format: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<TransactionFailure>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transaction_history_source: Option<String>,
@@ -151,8 +147,6 @@ mod tests {
             change_derivation_path: None,
             source_address: None,
             change_address: None,
-            signed_transaction_payload: None,
-            signed_transaction_payload_format: None,
             failure_reason: None,
             transaction_history_source: None,
             created_at_unix: 0.0,

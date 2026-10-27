@@ -29,7 +29,7 @@ pub(super) const META_FIAT_RATES: &str = "fiat_rates_from_usd";
 /// service writer is held. Unchanged collections are neither encoded nor written.
 pub(crate) struct AppStateChanges {
     replace: bool,
-    wallets: Vec<(usize, WalletState, String)>,
+    wallets: Vec<(usize, WalletState)>,
     removed_wallets: Vec<String>,
     secret_deletions: Vec<String>,
     addresses: Vec<(usize, AddressBookEntry, String)>,
@@ -70,11 +70,7 @@ impl AppStateChanges {
         let mut remaining_wallets = old_wallets;
         for (index, wallet) in after.wallets.iter().enumerate() {
             if remaining_wallets.remove(wallet.id.as_str()) != Some((index, wallet)) {
-                changes.wallets.push((
-                    index,
-                    wallet.clone(),
-                    serde_json::to_string(wallet).map_err(DbError::from)?,
-                ));
+                changes.wallets.push((index, wallet.clone()));
             }
         }
         changes
@@ -135,7 +131,7 @@ impl AppStateChanges {
             )
             .map_err(DbError::from)?;
             let updated_at = now_secs();
-            for (_, wallet, _) in &self.wallets {
+            for (_, wallet) in &self.wallets {
                 let pending: bool = tx
                     .query_row(
                         "SELECT EXISTS(SELECT 1 FROM wallet_secret_deletions WHERE wallet_id = ?1)",
@@ -204,23 +200,15 @@ impl AppStateChanges {
                 tx.execute("DELETE FROM address_book WHERE id = ?1", params![id])
                     .map_err(DbError::from)?;
             }
-            for (index, wallet, payload) in self.wallets {
-                tx.execute("INSERT INTO wallets
-                    (id, name, chain_id, is_watch_only, include_in_portfolio_total, sort_index, payload, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-                    ON CONFLICT(id) DO UPDATE SET name=excluded.name, chain_id=excluded.chain_id,
-                    is_watch_only=excluded.is_watch_only, include_in_portfolio_total=excluded.include_in_portfolio_total,
-                    sort_index=excluded.sort_index, payload=excluded.payload, updated_at=excluded.updated_at",
-                    params![wallet.id, wallet.name, wallet.chain_id, wallet.is_watch_only(),
-                        wallet.include_in_portfolio_total, index as i64, payload, updated_at])
-                    .map_err(DbError::from)?;
+            for (index, wallet) in self.wallets {
+                super::wallets::write_wallet_row(&tx, &wallet, Some(index as i64))?;
             }
             for (index, entry, payload) in self.addresses {
-                tx.execute("INSERT INTO address_book (id, chain_id, address, sort_index, payload, updated_at)
-                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                    ON CONFLICT(id) DO UPDATE SET chain_id=excluded.chain_id, address=excluded.address,
+                tx.execute("INSERT INTO address_book (id, sort_index, payload, updated_at)
+                    VALUES (?1, ?2, ?3, ?4)
+                    ON CONFLICT(id) DO UPDATE SET
                     sort_index=excluded.sort_index, payload=excluded.payload, updated_at=excluded.updated_at",
-                    params![entry.id, entry.chain_id, entry.address, index as i64, payload, updated_at])
+                    params![entry.id, index as i64, payload, updated_at])
                     .map_err(DbError::from)?;
             }
             for (key, value) in self.meta {

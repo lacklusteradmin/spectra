@@ -237,10 +237,10 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             let history = service.fetch_all_history_records().await.unwrap();
             assert_eq!(history.len(), 1);
             assert_eq!(
-                history[0].payload.status,
+                history[0].status,
                 crate::store::wallet_domain::TransactionStatus::Pending
             );
-            assert_eq!(history[0].payload.transaction_hash, signed.transaction_hash);
+            assert_eq!(history[0].transaction_hash, signed.transaction_hash);
             wrong_response.store(false, std::sync::atomic::Ordering::Relaxed);
         }
         let result = service
@@ -263,7 +263,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
         );
         let history = service.fetch_all_history_records().await.unwrap();
         assert_eq!(history.len(), 1);
-        assert_eq!(history[0].payload.transaction_hash, result.transaction_hash);
+        assert_eq!(history[0].transaction_hash, result.transaction_hash);
         let reopened = WalletService::new(vec![]).unwrap();
         reopened
             .open_state(db.to_string_lossy().into())
@@ -274,9 +274,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
         assert_eq!(restored.review_digest, signed.review_digest);
         assert_eq!(restored.transaction_hash, result.transaction_hash);
         assert_eq!(
-            reopened.fetch_all_history_records().await.unwrap()[0]
-                .payload
-                .transaction_hash,
+            reopened.fetch_all_history_records().await.unwrap()[0].transaction_hash,
             result.transaction_hash
         );
         let requests = server.received_requests().await.unwrap();
@@ -466,18 +464,21 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
                         "0x{}",
                         hex::encode(sha3::Keccak256::digest(hex::decode(&raw[2..]).unwrap()))
                     );
-                    let records = crate::wallet_db::history_fetch_all(
-                        &crate::wallet_db::WalletDatabase::new(&database),
-                    )
-                    .unwrap();
-                    let row = records
+                    let database = crate::wallet_db::WalletDatabase::new(&database);
+                    let records = crate::wallet_db::history_fetch_all(&database).unwrap();
+                    records
                         .iter()
-                        .find(|r| r.payload.transaction_hash.as_deref() == Some(&hash))
+                        .find(|r| r.transaction_hash.as_deref() == Some(&hash))
                         .expect("durable signed record must exist before submission");
-                    let saved: crate::send::payload::PreparedSubmission = serde_json::from_str(
-                        row.payload.signed_transaction_payload.as_ref().unwrap(),
-                    )
-                    .unwrap();
+                    let saved = crate::wallet_db::send_list(&database)
+                        .unwrap()
+                        .into_iter()
+                        .find_map(|send| {
+                            send.submission.filter(|submission| {
+                                submission.transaction_hash.as_deref() == Some(&hash)
+                            })
+                        })
+                        .expect("the signed transaction is stored before submission");
                     assert_eq!(saved.payload.raw_hex().unwrap(), raw);
                     assert!(saved.nonce.is_some());
                     if fault.swap(false, Ordering::SeqCst) {
@@ -559,10 +560,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     assert_eq!(reopened.transactions().await.unwrap().len(), 4);
     let mut old = first.clone();
     old.created_at_unix = 0.0;
-    reopened
-        .apply_transaction_command(TransactionCommand::Upsert { records: vec![old] })
-        .await
-        .unwrap();
+    reopened.upsert_history_records(vec![old]).await.unwrap();
     for _ in 0..20 {
         reopened
             .record_status_poll(first.id.clone(), StatusPollOutcome::Failed)

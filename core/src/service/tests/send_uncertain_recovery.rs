@@ -352,8 +352,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             .unwrap()
             .into_iter()
             .find(|row| row.id == id)
-            .unwrap()
-            .payload;
+            .unwrap();
         assert_eq!(
             record.status,
             match status {

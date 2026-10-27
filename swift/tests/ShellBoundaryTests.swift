@@ -7,26 +7,20 @@ import Testing
 struct ShellBoundaryTests: IsolatedAppStateSuite {
     @Test func activityReconciliationFindsOldRecordsAndKeepsReadFailures() async throws {
         let wallet = WalletView(name: "Archive", chainId: Chain.ethereum, addresses: [Chain.ethereum: "0x1111111111111111111111111111111111111111"])
-        _ = try await bridge.ready().applyStateCommand(command: .upsertWallet(wallet: wallet.walletState()))
-        var records = (0..<55).map { index in
-            var record = TransactionRecord(id: "record-\(index)", walletId: wallet.id, kind: .send, status: .confirmed,
+        let stored = Dictionary(uniqueKeysWithValues: [
+            ("record-0", TransactionStatus.confirmed), ("record-1", .failed), ("record-2", .pending),
+        ].map { id, status in
+            (id, TransactionRecord(id: id, walletId: wallet.id, kind: .send, status: status,
                 walletName: wallet.name, assetDisplayName: "Ether", symbol: "ETH", chainId: Chain.ethereum,
-                amount: "1", address: "0x2222222222222222222222222222222222222222")
-            record.createdAtUnix = Double(index)
-            return record
-        }
-        records[1].status = .failed
-        records[2].status = .pending
-        _ = try await service.applyTransactionCommand(command: .upsert(records: records))
-        let summary = try await bridge.ready().transactionSnapshot()
-        #expect(!summary.recentAndPending.contains { $0.id == "record-0" || $0.id == "record-1" })
+                amount: "1", address: "0x2222222222222222222222222222222222222222"))
+        })
         var finished: [String: TransactionStatus] = [:]
         var missing: [String] = []
         var failures = 0
         await reconcileSendActivities(transactionIds: ["record-0", "record-1", "record-2", "missing", "unreadable"],
             lookup: { id in
                 if id == "unreadable" { throw NSError(domain: "Storage", code: 1) }
-                return try await self.bridge.ready().transaction(id: id)
+                return stored[id]
             }, finish: { id, record in
                 if let record { finished[id] = record.status }
                 else { missing.append(id) }

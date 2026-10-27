@@ -417,16 +417,6 @@ fn protocol_sets_keep_legacy_and_current_protocols_on_one_network() {
 }
 
 #[test]
-fn testnet_derivation_metadata_names_the_concrete_network() {
-    for chain in Chain::all().filter(|c| c.is_testnet()) {
-        assert_eq!(
-            crate::send::flow::seed_derivation_chain_raw(chain).as_deref(),
-            Some(chain.chain_display_name())
-        );
-    }
-}
-
-#[test]
 fn str_id_roundtrips() {
     for chain in Chain::all() {
         let id = chain.str_id();

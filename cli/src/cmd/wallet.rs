@@ -1259,7 +1259,7 @@ fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
                 .ok_or_else(|| CliError::failure("the chain's format has no length"))?
         }
     };
-    let seed_phrase = spectra_core::service::generate_seed_phrase(chain, words)
+    let seed_phrase = spectra_core::derivation::phrase::generate_seed_phrase(chain, words)
         .map_err(|error| CliError::usage(error.to_string()))?;
     // A new wallet on a scanning network has no outputs before now, so its
     // scan starts here.

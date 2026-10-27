@@ -864,8 +864,8 @@ async fn a_bitcoin_phrase_upgrades_its_watched_account_key() {
     )
     .unwrap();
     // The same account key, written as a zpub.
-    let (raw, _) = crate::derivation::bitcoin::ExtendedPublicKey::from_xpub_string(&xpub).unwrap();
-    let zpub = raw.to_xpub_string([0x04, 0xb2, 0x47, 0x46]);
+    let (raw, _) = crate::derivation::bip32::decode_xpub(&xpub).unwrap();
+    let zpub = crate::derivation::bip32::encode_xpub(&raw, [0x04, 0xb2, 0x47, 0x46]);
     let mut account = commit(Chain::Bitcoin);
     account.seed_phrase = None;
     account.request.kind = WalletImportKind::WatchAccountXpub { xpub: zpub.clone() };

@@ -23,27 +23,6 @@ Found by the 2026-10-26 code audit and not yet paid down. Each item names
 where the duplication or misplaced rule lives; fix the cause, not the
 symptom, and delete the item with the change.
 
-### Core
-
-- [ ] **Duplicated primitives.** Three BIP-32 implementations with path
-  parsers that disagree (`derivation/bitcoin.rs`, `derivation/primitives.rs`,
-  `bitcoin::bip32`); two Blake2b crates; three LEB128 encoders; two
-  CompactSize writers; lenient and strict EVM ABI word decoders. Keep one of
-  each; key derivation changes need the independent vectors.
-- [ ] **Grab-bag modules.** `service/helpers.rs`, `service/types.rs`,
-  `service/standalone.rs`, the endpoint code in `service/mod.rs` and the
-  single-caller pieces of `store/mod.rs` belong beside their callers.
-- [ ] **Storage leftovers.** `wallets.chain_id`, `is_watch_only`,
-  `include_in_portfolio_total` and `address_book.chain_id`/`address` are
-  written and never read; the wallet upsert is written twice;
-  `HistoryRecord` copies `TransactionRecord`'s keys; diagnostics runs live
-  in a process-global beside `ResidentState`.
-- [ ] **Dead or never-varying paths.** `apply_transaction_command` is
-  exported for one production use (`Clear`), and rebroadcast still falls back
-  to `TransactionRecord.signed_transaction_payload`, which core-made sends no
-  longer need; `seed_derivation_chain_raw` always answers; the Dogecoin
-  transaction merge rule has no reason Dash does not share.
-
 ### CLI and tests
 
 - [ ] **CLI output.** About fifteen commands print nothing in text mode and

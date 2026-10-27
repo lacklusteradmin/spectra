@@ -58,14 +58,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
         .await
         .expect("open");
     service
-        .upsert_history_records(vec![crate::wallet_db::HistoryRecord {
-            id: "tx1".into(),
-            wallet_id: Some("w1".into()),
-            chain_id: crate::registry::Chain::Bitcoin,
-            tx_hash: Some("hash-tx1".into()),
-            created_at: 0.0,
-            payload: pending_send("tx1", crate::registry::Chain::Bitcoin),
-        }])
+        .upsert_history_records(vec![pending_send("tx1", crate::registry::Chain::Bitcoin)])
         .await
         .expect("store");
 

@@ -341,7 +341,8 @@ pub(crate) mod tests {
                         .into_iter()
                         .find(|length| length.format == chain.created_phrase_format())
                         .unwrap();
-                    crate::service::generate_seed_phrase(chain, length.word_count).unwrap()
+                    crate::derivation::phrase::generate_seed_phrase(chain, length.word_count)
+                        .unwrap()
                 } else {
                     phrase(chain).to_string()
                 });
@@ -376,8 +377,8 @@ pub(crate) mod tests {
                     &account,
                     &Default::default(),
                 )
-                .unwrap()
-                .to_neutered(&secp256k1::Secp256k1::new());
+                .unwrap();
+                let key = bitcoin::bip32::Xpub::from_priv(secp256k1::SECP256K1, &key);
                 let script = crate::derivation::dispatch::script_type_for_path(&account);
                 let version = xpub_chain
                     .account_key_versions()
@@ -388,7 +389,7 @@ pub(crate) mod tests {
                 commit(
                     chain,
                     WalletImportKind::WatchAccountXpub {
-                        xpub: key.to_xpub_string(version),
+                        xpub: crate::derivation::bip32::encode_xpub(&key, version),
                     },
                 )
             }

@@ -116,12 +116,12 @@ mod tests {
         let db = temp_db("bound");
         service.open_state(db.clone()).await.expect("open");
         service
-            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(record(
+            .upsert_history_records(vec![record(
                 "B1B2C3D4-E5F6-7890-ABCD-EF1234567890",
                 "w1",
                 "bitcoin",
                 1_723_507_200.25,
-            ))])
+            )])
             .await
             .expect("upsert");
 
@@ -165,7 +165,7 @@ mod tests {
             1_723_507_200.25,
         );
         service
-            .upsert_history_records(vec![crate::wallet_db::history_record_from_payload(payload)])
+            .upsert_history_records(vec![payload])
             .await
             .expect("upsert");
 
@@ -201,7 +201,7 @@ mod tests {
                 let id = format!("00000000-0000-0000-0000-{n:012}");
                 let mut payload = record(&id, "w1", "bitcoin", 1_700_000_000.0 + n as f64);
                 payload.transaction_hash = Some(format!("{n:064x}"));
-                crate::wallet_db::history_record_from_payload(payload)
+                payload
             })
             .collect();
         service
@@ -232,7 +232,6 @@ mod tests {
 #[cfg(test)]
 mod replaceable_tests {
     use super::*;
-    use crate::service::types::TransactionCommand;
     use crate::store::persistence_models::TransactionRecord;
     use serde_json::json;
     use std::sync::Arc;
@@ -358,34 +357,32 @@ mod replaceable_tests {
         )
         .unwrap();
         service
-            .apply_transaction_command(TransactionCommand::Upsert {
-                records: vec![
-                    record(
-                        "11111111-1111-1111-1111-111111111111",
-                        "base",
-                        "ETH",
-                        json!({"createdAtUnix": 1.0}),
-                    ),
-                    record(
-                        "22222222-2222-2222-2222-222222222222",
-                        "optimism",
-                        "ETH",
-                        json!({"createdAtUnix": 2.0}),
-                    ),
-                    record(
-                        "33333333-3333-3333-3333-333333333333",
-                        "bitcoin",
-                        "BTC",
-                        json!({"createdAtUnix": 3.0}),
-                    ),
-                    record(
-                        "44444444-4444-4444-4444-444444444444",
-                        "ethereum",
-                        "ETH",
-                        json!({"status": "confirmed"}),
-                    ),
-                ],
-            })
+            .upsert_history_records(vec![
+                record(
+                    "11111111-1111-1111-1111-111111111111",
+                    "base",
+                    "ETH",
+                    json!({"createdAtUnix": 1.0}),
+                ),
+                record(
+                    "22222222-2222-2222-2222-222222222222",
+                    "optimism",
+                    "ETH",
+                    json!({"createdAtUnix": 2.0}),
+                ),
+                record(
+                    "33333333-3333-3333-3333-333333333333",
+                    "bitcoin",
+                    "BTC",
+                    json!({"createdAtUnix": 3.0}),
+                ),
+                record(
+                    "44444444-4444-4444-4444-444444444444",
+                    "ethereum",
+                    "ETH",
+                    json!({"status": "confirmed"}),
+                ),
+            ])
             .await
             .unwrap();
 

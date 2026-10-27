@@ -1,11 +1,26 @@
-//! Transaction commands and confirmation tracking.
+//! The transaction store's reads, merges and confirmation tracking.
 use super::*;
 
 impl WalletService {
-    /// Every stored history row. Internal: front ends read `transactions`.
-    pub async fn fetch_all_history_records(
+    /// The stored transaction `id` names, by its index.
+    pub(crate) async fn history_record(
         &self,
-    ) -> Result<Vec<crate::wallet_db::HistoryRecord>, SpectraBridgeError> {
+        id: &str,
+    ) -> Result<Option<crate::store::persistence_models::TransactionRecord>, SpectraBridgeError>
+    {
+        let database = self.bound_database().await?;
+        let id = id.to_string();
+        tokio::task::spawn_blocking(move || crate::wallet_db::history_find(&database, &id))
+            .await
+            .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
+            .map_err(Into::into)
+    }
+
+    /// Every stored transaction, newest first. Internal: front ends read
+    /// `transactions`, which runs this on the worker.
+    pub(crate) async fn fetch_all_history_records(
+        &self,
+    ) -> Result<Vec<crate::store::persistence_models::TransactionRecord>, SpectraBridgeError> {
         let database = self.bound_database().await?;
         tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&database))
             .await
@@ -16,107 +31,12 @@ impl WalletService {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Change a command made to the transaction store. Ids, not records —
-    /// callers re-read only what they need.
-    pub async fn apply_transaction_command(
-        &self,
-        command: TransactionCommand,
-    ) -> Result<TransactionChange, SpectraBridgeError> {
-        let this = self.clone();
-        crate::service::worker::run(async move {
-            let this = &this;
-            let database = this.bound_database().await?;
-
-            tokio::task::spawn_blocking(move || -> Result<TransactionChange, SpectraBridgeError> {
-                match command {
-                    TransactionCommand::Upsert { records } => {
-                        if records.is_empty() {
-                            return Ok(TransactionChange::default());
-                        }
-                        let rows: Vec<crate::wallet_db::HistoryRecord> = records
-                            .into_iter()
-                            .map(crate::wallet_db::history_record_from_payload)
-                            .collect();
-                        let ids: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
-                        let existing = crate::wallet_db::history_existing_ids(&database, &ids)?;
-                        crate::wallet_db::history_upsert_batch(&database, &rows)?;
-                        let existing: std::collections::HashSet<String> =
-                            existing.into_iter().collect();
-                        let (updated, added): (Vec<String>, Vec<String>) =
-                            ids.into_iter().partition(|id| existing.contains(id));
-                        Ok(TransactionChange {
-                            added,
-                            updated,
-                            removed: Vec::new(),
-                        })
-                    }
-                    TransactionCommand::Merge {
-                        incoming,
-                        chain_id,
-                        preserve_created_at_sentinel_unix,
-                    } => {
-                        let chain = chain_id;
-                        crate::wallet_db::history_update_chain(&database, chain_id, |existing| {
-                            merge_history_rows(
-                                existing,
-                                incoming,
-                                chain,
-                                preserve_created_at_sentinel_unix,
-                            )
-                        })
-                    }
-
-                    TransactionCommand::Remove { ids } => {
-                        if ids.is_empty() {
-                            return Ok(TransactionChange::default());
-                        }
-                        let ids: Vec<String> = ids.iter().map(|id| id.to_lowercase()).collect();
-                        let removed = crate::wallet_db::history_existing_ids(&database, &ids)?;
-                        crate::wallet_db::history_delete(&database, &ids)?;
-                        Ok(TransactionChange {
-                            removed,
-                            ..TransactionChange::default()
-                        })
-                    }
-                    TransactionCommand::RemoveForWallet { wallet_id } => {
-                        let removed: Vec<String> =
-                            crate::wallet_db::history_fetch_for_wallet(&database, &wallet_id)?
-                                .into_iter()
-                                .map(|record| record.id)
-                                .collect();
-                        crate::wallet_db::history_delete_for_wallet(&database, &wallet_id)?;
-                        Ok(TransactionChange {
-                            removed,
-                            ..TransactionChange::default()
-                        })
-                    }
-                    TransactionCommand::Clear => Ok(TransactionChange {
-                        removed: crate::wallet_db::history_clear(&database)?,
-                        ..TransactionChange::default()
-                    }),
-                }
-            })
-            .await
-            .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
-        })
-        .await
-    }
-
     /// Every stored transaction, newest first.
     pub async fn transactions(
         &self,
     ) -> Result<Vec<crate::store::persistence_models::TransactionRecord>, SpectraBridgeError> {
         let this = self.clone();
-        crate::service::worker::run(async move {
-            let this = &this;
-            let database = this.bound_database().await?;
-            tokio::task::spawn_blocking(move || crate::wallet_db::history_fetch_all(&database))
-                .await
-                .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
-                .map(|rows| rows.into_iter().map(|row| row.payload).collect())
-                .map_err(Into::into)
-        })
-        .await
+        crate::service::worker::run(async move { this.fetch_all_history_records().await }).await
     }
 
     /// What to tell the user about a send, from its stored record.
@@ -276,7 +196,6 @@ impl WalletService {
             let changes = crate::wallet_db::history_update_chain(&database, chain_id, |rows| {
                 let stored: Vec<_> = rows
                     .into_iter()
-                    .map(|row| row.payload)
                     .filter(|t| by_id.contains_key(&t.id))
                     .filter(|t| {
                         expected.as_ref().is_none_or(|snapshots| {
@@ -383,7 +302,7 @@ impl WalletService {
                         status_changed: decision.status_changed,
                         notify: false,
                     });
-                    writes.push(crate::wallet_db::history_record_from_payload(updated));
+                    writes.push(updated);
                 }
                 Ok::<_, SpectraBridgeError>((writes, changes))
             })?;
@@ -407,7 +326,6 @@ impl WalletService {
         })
         .await
         .map_err(|e| SpectraBridgeError::failure(format!("spawn_blocking: {e}")))?
-        .map(|rows| rows.into_iter().map(|row| row.payload).collect())
         .map_err(Into::into)
     }
 }
@@ -447,6 +365,21 @@ mod audit_fix5_tests {
             .open_state(path.to_string_lossy().into())
             .await
             .unwrap();
+        for id in ["wallet-0", "wallet-1"] {
+            service
+                .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
+                    wallet: crate::store::state::WalletState::single_address(
+                        id,
+                        "W",
+                        crate::registry::Chain::Ethereum,
+                        "0x1111111111111111111111111111111111111111",
+                        None,
+                        true,
+                    ),
+                })
+                .await
+                .unwrap();
+        }
         let barrier = Arc::new(tokio::sync::Barrier::new(24));
         let mut tasks = Vec::new();
         for i in 0..24 {
@@ -457,7 +390,7 @@ mod audit_fix5_tests {
                     "id":crate::store::new_transaction_id(), "walletId":format!("wallet-{}",i%2), "walletName":"W", "kind":"send", "status":"confirmed", "chainId":"ethereum", "transactionHash":"0xshared", "amount":"1", "symbol":"ETH", "assetDisplayName":"Ether", "address":"0xrecipient", "createdAtUnix":1000.0
                 })).unwrap();
                 barrier.wait().await;
-                service.apply_transaction_command(TransactionCommand::Merge { incoming:vec![record], chain_id:crate::registry::Chain::Ethereum, preserve_created_at_sentinel_unix:None }).await.unwrap()
+                service.merge_fetched_history(vec![record]).await.unwrap()
             }));
         }
         let mut added = 0;
@@ -530,10 +463,7 @@ mod status_commit_regressions {
                 let mut tx = record(&id, 0.0);
                 tx.chain_id = chain;
                 tx.failure_reason = old_reason;
-                service
-                    .apply_transaction_command(TransactionCommand::Upsert { records: vec![tx] })
-                    .await
-                    .unwrap();
+                service.upsert_history_records(vec![tx]).await.unwrap();
                 service
                     .apply_resolved_pending_statuses(
                         chain,
@@ -568,9 +498,7 @@ mod status_commit_regressions {
         let mut uncertain = record("uncertain", 0.0);
         uncertain.failure_reason = Some(TransactionFailure::SubmissionOutcomeUnknown);
         service
-            .apply_transaction_command(TransactionCommand::Upsert {
-                records: vec![uncertain, record("unresolved", 0.0)],
-            })
+            .upsert_history_records(vec![uncertain, record("unresolved", 0.0)])
             .await
             .unwrap();
         for id in ["uncertain", "unresolved"] {
@@ -612,9 +540,7 @@ mod status_commit_regressions {
     async fn status_commit_keeps_unix_sorting_and_canonical_wallet_index() {
         let (service, _) = setup().await;
         service
-            .apply_transaction_command(TransactionCommand::Upsert {
-                records: vec![record("old", 700000000.0), record("NEW", 800000000.0)],
-            })
+            .upsert_history_records(vec![record("old", 700000000.0), record("NEW", 800000000.0)])
             .await
             .unwrap();
         service
@@ -627,9 +553,9 @@ mod status_commit_regressions {
         let rows = service.fetch_all_history_records().await.unwrap();
         assert_eq!(
             rows.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
-            vec!["new", "old"]
+            vec!["NEW", "old"]
         );
-        assert_eq!(rows[0].created_at, 800000000.0);
+        assert_eq!(rows[0].created_at_unix, 800000000.0);
         assert_eq!(
             service
                 .transactions_for_wallet("W".into())
@@ -660,9 +586,7 @@ mod status_commit_regressions {
         tx.receipt_block_number = Some(123);
         tx.confirmation_count = Some(12);
         service
-            .apply_transaction_command(TransactionCommand::Upsert {
-                records: vec![tx.clone()],
-            })
+            .upsert_history_records(vec![tx.clone()])
             .await
             .unwrap();
         let mut pending = resolution("tx", TransactionStatus::Pending);
@@ -710,9 +634,7 @@ mod status_commit_regressions {
     async fn failed_status_commit_does_not_publish_tracker_changes() {
         let (service, db) = setup().await;
         service
-            .apply_transaction_command(TransactionCommand::Upsert {
-                records: vec![record("tx", 0.0)],
-            })
+            .upsert_history_records(vec![record("tx", 0.0)])
             .await
             .unwrap();
         let conn = rusqlite::Connection::open(db).unwrap();
@@ -748,9 +670,7 @@ mod status_commit_regressions {
         for i in 0..24 {
             let id = format!("tx{i}");
             service
-                .apply_transaction_command(TransactionCommand::Upsert {
-                    records: vec![record(&id, 0.0)],
-                })
+                .upsert_history_records(vec![record(&id, 0.0)])
                 .await
                 .unwrap();
             let barrier = Arc::new(tokio::sync::Barrier::new(2));
@@ -786,9 +706,9 @@ mod status_commit_regressions {
                                 .into_iter()
                                 .filter(|r| r.id == key)
                                 .map(|r| {
-                                    let mut payload = r.payload;
+                                    let mut payload = r;
                                     payload.wallet_name = "After".into();
-                                    crate::wallet_db::history_record_from_payload(payload)
+                                    payload
                                 })
                                 .collect();
                             Ok::<_, crate::wallet_db::error::DbError>((writes, ()))
@@ -816,13 +736,34 @@ mod status_commit_regressions {
     }
 }
 
+/// What a history merge added and updated, by id: the counts a refresh
+/// reports, never the resulting list.
+#[derive(Debug, Default)]
+pub(crate) struct TransactionChange {
+    pub added: Vec<String>,
+    pub updated: Vec<String>,
+}
+
+#[cfg(test)]
+impl TransactionChange {
+    /// Whether the merge left the store as it was.
+    pub fn is_empty(&self) -> bool {
+        self.added.is_empty() && self.updated.is_empty()
+    }
+}
+
 fn merge_history_rows(
-    existing: Vec<crate::wallet_db::HistoryRecord>,
+    existing: Vec<crate::store::persistence_models::TransactionRecord>,
     incoming: Vec<crate::store::persistence_models::TransactionRecord>,
     chain: Chain,
     preserve_created_at_sentinel_unix: Option<f64>,
-) -> Result<(Vec<crate::wallet_db::HistoryRecord>, TransactionChange), SpectraBridgeError> {
-    let existing: Vec<_> = existing.into_iter().map(|row| row.payload).collect();
+) -> Result<
+    (
+        Vec<crate::store::persistence_models::TransactionRecord>,
+        TransactionChange,
+    ),
+    SpectraBridgeError,
+> {
     let before: std::collections::HashMap<String, String> = existing
         .iter()
         .map(|record| (record.id.to_lowercase(), fingerprint(record)))
@@ -850,22 +791,15 @@ fn merge_history_rows(
             Some(_) => updated.push(id),
             None => added.push(id),
         }
-        rows.push(crate::wallet_db::history_record_from_payload(record));
+        rows.push(record);
     }
-    Ok((
-        rows,
-        TransactionChange {
-            added,
-            updated,
-            removed: Vec::new(),
-        },
-    ))
+    Ok((rows, TransactionChange { added, updated }))
 }
 
 impl WalletService {
     /// A provider response may only write history for a wallet still present
     /// on that exact network. The ownership check shares the merge transaction.
-    pub(super) async fn merge_fetched_history(
+    pub(crate) async fn merge_fetched_history(
         &self,
         incoming: Vec<crate::store::persistence_models::TransactionRecord>,
     ) -> Result<TransactionChange, SpectraBridgeError> {
@@ -920,10 +854,11 @@ impl WalletService {
 }
 
 impl WalletService {
+    /// Store `records` as they are: a test's way to set up history.
     #[cfg(test)]
     pub(crate) async fn upsert_history_records(
         &self,
-        records: Vec<crate::wallet_db::HistoryRecord>,
+        records: Vec<crate::store::persistence_models::TransactionRecord>,
     ) -> Result<(), SpectraBridgeError> {
         let database = self.bound_database().await?;
         tokio::task::spawn_blocking(move || {

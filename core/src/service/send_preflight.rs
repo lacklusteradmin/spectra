@@ -94,8 +94,8 @@ impl WalletService {
         let mut seen: std::collections::BTreeSet<String> = Default::default();
         if let Ok(rows) = self.fetch_all_history_records().await {
             for row in rows {
-                if row.payload.chain_id == chain_id {
-                    seen.insert(row.payload.address.clone());
+                if row.chain_id == chain_id {
+                    seen.insert(row.address.clone());
                 }
             }
         }
@@ -128,7 +128,7 @@ impl WalletService {
         wallet_id: String,
         holding_key: String,
         destination_address: String,
-    ) -> Vec<crate::store::EvmRecipientPreflightWarning> {
+    ) -> Vec<crate::send::flow::EvmRecipientPreflightWarning> {
         let state = self.wallet_state.read().await;
         let Some(holding) = state
             .wallets
@@ -165,13 +165,15 @@ impl WalletService {
                 .ok(),
             None => None,
         };
-        crate::store::evm_recipient_preflight_warnings(crate::store::EvmRecipientPreflightRequest {
-            chain_id,
-            holding_symbol,
-            token_symbol: token.map(|(symbol, _)| symbol),
-            recipient_has_code,
-            token_has_code,
-        })
+        crate::send::flow::evm_recipient_preflight_warnings(
+            crate::send::flow::EvmRecipientPreflightRequest {
+                chain_id,
+                holding_symbol,
+                token_symbol: token.map(|(symbol, _)| symbol),
+                recipient_has_code,
+                token_has_code,
+            },
+        )
     }
 }
 
@@ -244,8 +246,8 @@ impl WalletService {
                 .await?
                 .into_iter()
                 .map(|r| HighRiskChainAddress {
-                    chain_id: r.payload.chain_id,
-                    address: r.payload.address,
+                    chain_id: r.chain_id,
+                    address: r.address,
                 })
                 .collect(),
         });
@@ -261,8 +263,8 @@ impl WalletService {
             } else {
                 None
             };
-            crate::store::evm_recipient_preflight_warnings(
-                crate::store::EvmRecipientPreflightRequest {
+            crate::send::flow::evm_recipient_preflight_warnings(
+                crate::send::flow::EvmRecipientPreflightRequest {
                     chain_id: chain,
                     holding_symbol: symbol.clone(),
                     token_symbol: request.contract_address.as_ref().map(|_| symbol),

@@ -145,7 +145,7 @@ pub struct BroadcastAttempt {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, uniffi::Record)]
 pub struct SendArtifactReview {
     pub warnings: Vec<crate::send::flow::HighRiskSendWarning>,
-    pub recipient_warnings: Vec<crate::store::EvmRecipientPreflightWarning>,
+    pub recipient_warnings: Vec<crate::send::flow::EvmRecipientPreflightWarning>,
     pub requires_self_send_confirmation: bool,
     pub staking: Option<crate::staking::StakingReview>,
     /// What the asset's own rules do to the transfer, when they do more than

@@ -606,6 +606,12 @@ pub fn normalize_token_identifier(
     }
 }
 
+/// The entire built-in token catalog across every registered chain.
+#[uniffi::export]
+pub fn list_all_builtin_token_deployments() -> Vec<TokenDeploymentEntry> {
+    list_token_deployments(None)
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

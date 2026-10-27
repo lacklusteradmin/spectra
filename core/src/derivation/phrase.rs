@@ -238,6 +238,20 @@ pub(crate) fn generate_phrase(
     }
 }
 
+/// Generate a new phrase for a wallet on `chain`, of `word_count` words, in
+/// the format the chain's own wallets restore: BIP-39 for most, Monero's
+/// 25-word seed, TON's 24-word mnemonic.
+///
+/// Refuses a length the chain's created format does not have rather than
+/// substituting one; `seed_phrase_lengths` lists them.
+#[uniffi::export]
+pub fn generate_seed_phrase(
+    chain: crate::registry::Chain,
+    word_count: u32,
+) -> Result<String, crate::error::SpectraBridgeError> {
+    Ok(generate_phrase(chain, word_count)?.to_string())
+}
+
 #[cfg(test)]
 #[path = "tests/phrase.rs"]
 mod tests;

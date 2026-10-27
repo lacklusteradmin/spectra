@@ -143,7 +143,7 @@ impl WalletService {
                         "Tron transaction expired; build and review again",
                     ));
                 }
-                let key = decode_private_key(&signer.private_key_hex)?;
+                let key = signer.private_key()?;
                 (
                     SignedPayload::Json(p.clone().sign(&key)?),
                     p.body["txID"].as_str().map(str::to_string),

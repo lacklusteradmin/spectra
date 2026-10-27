@@ -19,7 +19,7 @@ pub struct OwnedSendReview {
     pub request: crate::send::SendExecutionRequest,
     pub preview: Option<crate::send::preview_types::SendPreview>,
     pub warnings: Vec<crate::send::flow::HighRiskSendWarning>,
-    pub recipient_warnings: Vec<crate::store::EvmRecipientPreflightWarning>,
+    pub recipient_warnings: Vec<crate::send::flow::EvmRecipientPreflightWarning>,
     pub requires_self_send_confirmation: bool,
     pub requires_wallet_password: bool,
 }

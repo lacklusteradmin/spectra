@@ -50,7 +50,9 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
     service
         .advance_history_cursor(crate::registry::Chain::Bitcoin, wallet_id.clone(), None)
         .unwrap();
-    crate::diagnostics::diagnostics_record(crate::registry::Chain::Bitcoin, row(&wallet_id));
+    service
+        .diagnostic_runs
+        .record(crate::registry::Chain::Bitcoin, row(&wallet_id));
     assert!(
         service
             .history_cursor(crate::registry::Chain::Bitcoin, wallet_id.clone())
@@ -70,7 +72,9 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
             .is_exhausted
     );
     assert!(
-        !crate::diagnostics::diagnostics_all(crate::registry::Chain::Bitcoin)
+        !service
+            .diagnostic_runs
+            .all(crate::registry::Chain::Bitcoin)
             .contains_key(&wallet_id)
     );
     let _ = std::fs::remove_file(&path);
@@ -152,7 +156,9 @@ async fn a_history_run_records_its_rows_and_the_chains_health() {
     service
         .record_history_run(Chain::Litecoin, &Ok(outcome(0, 1)))
         .await;
-    let rows = crate::diagnostics::diagnostics_all(crate::registry::Chain::Litecoin);
+    let rows = service
+        .diagnostic_runs
+        .all(crate::registry::Chain::Litecoin);
     assert_eq!(
         rows.get(&wallet_id).map(|row| row.transaction_count),
         Some(3)

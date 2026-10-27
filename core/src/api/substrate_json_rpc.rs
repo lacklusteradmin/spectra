@@ -65,10 +65,8 @@ impl SubstrateBalance {
 /// `System.Account`'s key for `account`: the prefix, `blake2_128(account)`,
 /// then the account itself (`Blake2_128Concat`).
 fn system_account_key(account: &[u8; 32]) -> String {
-    use blake2::digest::consts::U16;
-    use blake2::{Blake2b, Digest};
     let mut key = SYSTEM_ACCOUNT_PREFIX.to_vec();
-    key.extend_from_slice(&Blake2b::<U16>::digest(account));
+    key.extend_from_slice(&crate::derivation::primitives::blake2b::<16>(&[account]));
     key.extend_from_slice(account);
     format!("0x{}", hex::encode(key))
 }
@@ -370,8 +368,10 @@ fn parse_block_number(value: &Value) -> Result<u64, ApiError> {
 }
 
 fn blake2_hash(bytes: &[u8]) -> String {
-    use blake2::{Blake2b, Digest, digest::consts::U32};
-    format!("0x{}", hex::encode(Blake2b::<U32>::digest(bytes)))
+    format!(
+        "0x{}",
+        hex::encode(crate::derivation::primitives::blake2b::<32>(&[bytes]))
+    )
 }
 
 #[cfg(test)]

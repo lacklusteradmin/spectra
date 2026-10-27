@@ -13,7 +13,6 @@ use crate::derivation::error::DerivationError;
 use crate::derivation::utxo_address::ParsedUtxoAddress;
 use crate::registry::Chain;
 
-use crate::derivation::primitives::derive_bip39_seed;
 use ripemd::{Digest as RipemdDigest, Ripemd160};
 use secp256k1::{PublicKey, Secp256k1};
 
@@ -278,8 +277,6 @@ pub(crate) fn parse_decred_address(
 
 // ── BIP-32 ───────────────────────────────────────────────────────────────
 
-use crate::derivation::primitives::parse_bip32_path;
-
 // BIP-39 → BIP-32 path walk → (compressed secp256k1 pubkey, raw 32-byte private key).
 fn derive_secp_keypair(
     seed_phrase: &str,
@@ -287,12 +284,10 @@ fn derive_secp_keypair(
     passphrase: Option<&str>,
 ) -> Result<(PublicKey, [u8; 32]), DerivationError> {
     let secp = Secp256k1::new();
-    let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
-    let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
-    let path = parse_bip32_path(derivation_path)?;
-    let xpriv = master.derive_path(&secp, &path)?;
-    let public_key = PublicKey::from_secret_key(&secp, &xpriv.private_key);
-    Ok((public_key, xpriv.private_key.secret_bytes()))
+    let private_key =
+        crate::derivation::bip32::phrase_key(seed_phrase, passphrase, derivation_path)?;
+    let public_key = PublicKey::from_secret_key(&secp, &private_key);
+    Ok((public_key, private_key.secret_bytes()))
 }
 
 // Derive the Decred P2PKH address on `chain`'s network, public key and
@@ -325,7 +320,6 @@ fn derive_from_seed_phrase(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::derivation::primitives::ExtendedPrivateKey;
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::error::SpectraBridgeError;
 

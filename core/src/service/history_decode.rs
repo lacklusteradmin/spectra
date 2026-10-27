@@ -221,8 +221,6 @@ pub(crate) fn build_evm_transaction_records(
                 change_derivation_path: None,
                 source_address: Some(wallet_side.clone()).filter(|address| !address.is_empty()),
                 change_address: None,
-                signed_transaction_payload: None,
-                signed_transaction_payload_format: None,
                 failure_reason: None,
                 transaction_history_source: Some(transfer.source.clone()),
                 created_at_unix: if transfer.timestamp > 0.0 {

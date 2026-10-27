@@ -731,10 +731,7 @@ mod explicit_network_catalog {
             assert_ne!(has(ChainTag::Layer1), has(ChainTag::Layer2), "{}", e.id);
             assert_eq!(
                 has(ChainTag::Utxo),
-                matches!(
-                    chain.transaction_merge_strategy(),
-                    Merge::StandardUtxo | Merge::Dogecoin
-                ),
+                matches!(chain.transaction_merge_strategy(), Merge::Utxo),
                 "{} disagrees about being UTXO",
                 e.id
             );

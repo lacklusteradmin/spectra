@@ -452,7 +452,7 @@ impl WalletService {
                 "This key already signed the session.",
             ));
         }
-        let key = super::decode_private_key(&identity.private_key_hex)?;
+        let key = identity.private_key()?;
         let signature = tron::sign(&raw, &key)?;
         if tron::signer(&raw, &signature)? != identity.from_address {
             return Err(SpectraBridgeError::failure("signature does not recover"));

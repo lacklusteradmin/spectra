@@ -159,8 +159,6 @@ pub(super) fn record_for(
         change_derivation_path: None,
         source_address: None,
         change_address: None,
-        signed_transaction_payload: None,
-        signed_transaction_payload_format: None,
         failure_reason: None,
         transaction_history_source: Some("rust".to_string()),
         // A provider that gives no time (an unconfirmed transaction, a
@@ -354,7 +352,7 @@ impl WalletService {
         page_size: Option<u32>,
     ) -> Result<HistoryRefreshOutcome, SpectraBridgeError> {
         let _operation = self.history_pagination.operation_lock.lock().await;
-        let chain = super::evm_network(chain_id)?;
+        let chain = super::network::evm_network(chain_id)?;
         let (groups, descriptors, wallet_names, networks) = {
             let state = self.app_state().await;
             let targets = targets(&state, chain, &wallet_ids);

@@ -92,9 +92,6 @@ fn result(
 fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
     let mut results = Vec::new();
 
-    if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
-        return results;
-    }
     // Derive for the exact network, using its own path and address format.
     let Ok(path) = crate::derivation::path::default_path_from_catalog(chain) else {
         return results;
@@ -272,10 +269,7 @@ mod fixtures_are_real_tests {
     #[test]
     fn public_suites_cover_every_derivable_chain() {
         let expected: HashSet<_> = Chain::all()
-            .filter(|&chain| {
-                crate::send::flow::seed_derivation_chain_raw(chain).is_some()
-                    && crate::derivation::path::default_path_from_catalog(chain).is_ok()
-            })
+            .filter(|&chain| crate::derivation::path::default_path_from_catalog(chain).is_ok())
             .collect();
         let suites = self_tests_run_all();
         assert_eq!(suites.keys().copied().collect::<HashSet<_>>(), expected);
@@ -307,9 +301,6 @@ mod fixtures_are_real_tests {
         use crate::validation::address::validate_address;
 
         for chain in Chain::all() {
-            if crate::send::flow::seed_derivation_chain_raw(chain).is_none() {
-                continue;
-            }
             let Ok(path) = crate::derivation::path::default_path_from_catalog(chain) else {
                 continue;
             };

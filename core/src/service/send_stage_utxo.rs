@@ -355,7 +355,7 @@ impl WalletService {
         chain: Chain,
         rate: Option<&str>,
     ) -> Result<FeePolicy, SpectraBridgeError> {
-        let static_fee = || helpers::fee_or_static(chain, None);
+        let static_fee = || fee_or_static(chain, None);
         Ok(match chain.mainnet_counterpart() {
             Chain::Bitcoin => FeePolicy::Rate(match rate {
                 Some(rate) => crate::amount::decimal::canonical(rate)
@@ -650,6 +650,28 @@ impl WalletService {
             },
         })
     }
+}
+
+/// The fee to sign with: whatever the preview settled on, and otherwise the
+/// chain's own [`Chain::static_fee_units`] — which is where the fee the user
+/// was shown comes from.
+pub(super) fn fee_or_static(
+    chain: crate::registry::Chain,
+    fee: Option<u64>,
+) -> Result<u64, SpectraBridgeError> {
+    let fee = match fee {
+        Some(fee) => fee,
+        None => u64::try_from(
+            chain
+                .static_fee_units()
+                .ok_or_else(|| SpectraBridgeError::failure("No fee available for this chain"))?,
+        )
+        .map_err(|_| SpectraBridgeError::failure("Fee exceeds protocol range"))?,
+    };
+    if fee == 0 {
+        return Err(SpectraBridgeError::failure("Fee must be positive"));
+    }
+    Ok(fee)
 }
 
 #[cfg(test)]

@@ -1,8 +1,11 @@
 //! Alert edits are intents over the latest owned state, never list replacement.
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
 use super::{
-    PriceAlertRule,
-    state::{ResidentState, StateEvent},
-    wallet_domain::PriceAlertCondition,
+    state::{self, ResidentState, StateEvent},
+    wallet_domain::{self, PriceAlertCondition},
 };
 
 /// Typed reasons for refused alert edits; front ends localize them.
@@ -103,6 +106,111 @@ pub(super) fn remove(state: &mut ResidentState, id: String) -> Vec<StateEvent> {
         rejected(PriceAlertRejection::AlertNotFound)
     } else {
         vec![StateEvent::PriceAlertRemoved { id }]
+    }
+}
+
+/// Input per price alert — ids/metadata needed to produce notifications;
+/// Swift formats the user-facing text itself.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertRule {
+    pub id: String,
+    pub holding_key: String,
+    pub asset_display_name: String,
+    pub symbol: String,
+    pub chain_id: crate::registry::Chain,
+    pub target_price: f64,
+    pub condition: wallet_domain::PriceAlertCondition,
+    pub is_enabled: bool,
+    pub has_triggered: bool,
+}
+
+/// Live price lookup for one holding.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertEvaluationPrice {
+    pub holding_key: String,
+    pub live_price: f64,
+}
+
+/// Alert `has_triggered` state changes produced by the evaluator.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertTriggerUpdate {
+    pub id: String,
+    pub has_triggered: bool,
+}
+
+/// A single firing — a front end words the notification from this. The two
+/// prices are in `currency`: the display currency when its rate is known,
+/// USD when it is not.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertNotification {
+    pub id: String,
+    pub asset_display_name: String,
+    pub symbol: String,
+    pub chain_id: crate::registry::Chain,
+    pub target_price: f64,
+    pub live_price: f64,
+    pub condition: wallet_domain::PriceAlertCondition,
+    #[serde(default)]
+    pub currency: state::FiatCurrency,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertEvaluation {
+    pub updates: Vec<PriceAlertTriggerUpdate>,
+    pub notifications: Vec<PriceAlertNotification>,
+}
+
+pub fn evaluate_price_alerts(
+    alerts: Vec<PriceAlertRule>,
+    prices: Vec<PriceAlertEvaluationPrice>,
+) -> PriceAlertEvaluation {
+    let price_by_key: HashMap<String, f64> = prices
+        .into_iter()
+        .map(|p| (p.holding_key, p.live_price))
+        .collect();
+    let mut updates = Vec::new();
+    let mut notifications = Vec::new();
+    for alert in alerts.into_iter() {
+        if !alert.is_enabled {
+            continue;
+        }
+        let Some(live_price) = price_by_key.get(&alert.holding_key).copied() else {
+            continue;
+        };
+        let meets_target = match alert.condition {
+            wallet_domain::PriceAlertCondition::Above => live_price >= alert.target_price,
+            wallet_domain::PriceAlertCondition::Below => live_price <= alert.target_price,
+        };
+        if meets_target && !alert.has_triggered {
+            updates.push(PriceAlertTriggerUpdate {
+                id: alert.id.clone(),
+                has_triggered: true,
+            });
+            notifications.push(PriceAlertNotification {
+                id: alert.id,
+                asset_display_name: alert.asset_display_name,
+                symbol: alert.symbol,
+                chain_id: alert.chain_id,
+                target_price: alert.target_price,
+                live_price,
+                condition: alert.condition,
+                currency: state::FiatCurrency::Usd,
+            });
+        } else if !meets_target && alert.has_triggered {
+            updates.push(PriceAlertTriggerUpdate {
+                id: alert.id,
+                has_triggered: false,
+            });
+        }
+    }
+    PriceAlertEvaluation {
+        updates,
+        notifications,
     }
 }
 

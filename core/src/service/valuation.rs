@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn a_wallet_shows_its_most_valuable_holdings_first() {
         let mut state = ResidentState::default();
-        let tokens: Vec<_> = crate::store::built_in_token_preferences()
+        let tokens: Vec<_> = crate::store::state::built_in_token_preferences()
             .into_iter()
             .filter(|p| p.token.chain_id == crate::registry::Chain::Ethereum)
             .take(2)

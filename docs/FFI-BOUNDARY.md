@@ -41,8 +41,8 @@ record: scrub its owned strings on the receiving call path.
   Exercise the affected path in the app as well.
 - **Short-lived callers:** spawned work can outlive a CLI process. Provide an
   awaited operation, as `refresh_now` does alongside `trigger_immediate`.
-- **Timestamps:** transaction payload/FFI `created_at_unix` and the indexed
-  `HistoryRecord.created_at` all use Unix seconds, including fractional seconds.
+- **Timestamps:** a transaction's `created_at_unix` and the `created_at` index
+  column derived from it both use Unix seconds, including fractional seconds.
   Swift renders with `Date(timeIntervalSince1970:)`; there is no epoch conversion.
 - **Versions:** `ResidentState.revision` orders successful state publications within
   one service session. Failed and no-op commands do not advance it; it is not

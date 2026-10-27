@@ -494,15 +494,16 @@ mod seed_phrase_length_tests {
     fn a_non_standard_length_is_refused_rather_than_substituted() {
         // Twelve words in answer to a request for eighteen is a weaker wallet
         // than the caller asked for.
-        let refusal = crate::service::generate_seed_phrase(Chain::Bitcoin, 13)
+        let refusal = crate::derivation::phrase::generate_seed_phrase(Chain::Bitcoin, 13)
             .expect_err("13 is not a length");
         assert!(
             refusal.to_string().contains("12, 15, 18, 21, 24"),
             "{refusal}"
         );
         for length in seed_phrase_lengths(Some(Chain::Bitcoin)) {
-            let phrase = crate::service::generate_seed_phrase(Chain::Bitcoin, length.word_count)
-                .expect("a standard length generates");
+            let phrase =
+                crate::derivation::phrase::generate_seed_phrase(Chain::Bitcoin, length.word_count)
+                    .expect("a standard length generates");
             assert_eq!(
                 phrase.split_whitespace().count() as u32,
                 length.word_count,

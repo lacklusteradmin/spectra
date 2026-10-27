@@ -189,7 +189,7 @@ impl WalletService {
             ..Default::default()
         }
         .resolve(chain_id)?;
-        let chain = evm_network(chain_id)?;
+        let chain = super::network::evm_network(chain_id)?;
         let eps = self.endpoints_for(chain, &[EndpointCapability::Fee]).await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
 
@@ -359,7 +359,7 @@ impl WalletService {
                 .await
                 .map(|b| b.sun)
                 .map_err(SpectraBridgeError::from)?;
-            let fee_sun = fee_or_static(Chain::Tron, None)?;
+            let fee_sun = super::send_stage_utxo::fee_or_static(Chain::Tron, None)?;
             let spendable = trx(u128::from(balance_sun.saturating_sub(fee_sun)));
             return Ok(SendPreview {
                 estimated_network_fee: trx(u128::from(fee_sun)),
@@ -496,6 +496,17 @@ impl WalletService {
             ..Default::default()
         })
     }
+}
+
+/// A chain's fee, quoted in that chain's own native unit.
+#[derive(Debug, Clone)]
+pub(crate) struct NativeFeeEstimate {
+    /// Smallest units; some chains' fees do not fit u64.
+    pub units: u128,
+    /// `"rpc"` when a node quoted it, `"static"` when the catalog did.
+    pub source: &'static str,
+    /// Aptos's quoted unit price, distinct from the total reserved fee.
+    pub gas_unit_price_octas: Option<u64>,
 }
 
 #[cfg(test)]

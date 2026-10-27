@@ -115,17 +115,11 @@ struct SendSessionTests {
         let bridge = WalletServiceBridge(databasePath: directory.appendingPathComponent("state.sqlite").path, service: service)
         _ = try await bridge.ready()
         let store = AppState(bridge: bridge, startServices: false)
-        let wallet = WalletView(name: "Sender", chainId: Chain.ethereum, addresses: [Chain.ethereum: "0x1111111111111111111111111111111111111111"])
-        _ = try await bridge.ready().applyStateCommand(command: .upsertWallet(wallet: wallet.walletState()))
         store.sendFlow.session.artifact = artifact("old", stage: .signed)
         let gate = SuspensionGate<Bool>()
         let work = Task {
             guard let result = await store.sendFlow.session.broadcast(submit: { _, _ in
                 _ = await gate.wait()
-                let record = TransactionRecord(id: "old", walletId: wallet.id, kind: .send, status: .pending,
-                    walletName: wallet.name, assetDisplayName: "Ether", symbol: "ETH", chainId: Chain.ethereum,
-                    amount: "1", address: "0x2222222222222222222222222222222222222222")
-                _ = try await service.applyTransactionCommand(command: .upsert(records: [record]))
                 return self.artifact("old", stage: .signed)
             }) else { return }
             await store.handleBroadcastCompletion(result)
@@ -133,10 +127,12 @@ struct SendSessionTests {
         await gate.reached()
         store.sendFlow.reset()
         store.sendFlow.session.artifact = artifact("new")
+        let before = store.transactionSnapshotRevision
         gate.resume(true)
         await work.value
-        #expect(store.transactions.map(\.id) == ["old"])
-        #expect(store.pendingTransactionCount == 1)
+        // The completion re-read core's history although its composer is gone,
+        // and left the composer that replaced it alone.
+        #expect(store.transactionSnapshotRevision > before)
         #expect(store.sendFlow.session.artifact?.id == "new")
     }
 }

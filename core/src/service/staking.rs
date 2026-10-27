@@ -265,15 +265,9 @@ impl WalletService {
                 ));
             }
             let chain = stored.view.chain_id;
-            let record = this
-                .fetch_all_history_records()
-                .await?
-                .into_iter()
-                .find(|r| r.id == id)
-                .map(|r| r.payload)
-                .ok_or_else(|| {
-                    SpectraBridgeError::invalid("Missing journaled staking operation")
-                })?;
+            let record = this.history_record(&id).await?.ok_or_else(|| {
+                SpectraBridgeError::invalid("Missing journaled staking operation")
+            })?;
             if record.status != TransactionStatus::Pending {
                 return Ok(stored.view);
             }

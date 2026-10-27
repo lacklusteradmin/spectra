@@ -195,13 +195,7 @@ impl NativeScript {
     /// The script's hash: Blake2b-224 of the native-script tag (0) and its
     /// CBOR.
     pub(crate) fn hash(&self) -> [u8; 28] {
-        use blake2::Blake2b;
-        use blake2::digest::Digest;
-        use blake2::digest::consts::U28;
-        let mut hasher = Blake2b::<U28>::new();
-        hasher.update([0x00]);
-        hasher.update(self.cbor());
-        hasher.finalize().into()
+        crate::derivation::primitives::blake2b::<28>(&[&[0x00], &self.cbor()])
     }
 
     /// The account's address on `chain`: a Shelley enterprise address of the

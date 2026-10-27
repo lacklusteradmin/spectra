@@ -24,16 +24,8 @@ pub(crate) struct PreparedIcpTransaction {
     pub argument_hex: String,
 }
 
-fn leb(mut n: u64) -> Vec<u8> {
-    let mut out = Vec::new();
-    loop {
-        let byte = (n & 127) as u8;
-        n >>= 7;
-        out.push(byte | if n == 0 { 0 } else { 128 });
-        if n == 0 {
-            return out;
-        }
-    }
+fn leb(n: u64) -> Vec<u8> {
+    super::leb128::encode(n)
 }
 fn message(field: u8, bytes: &[u8]) -> Vec<u8> {
     let mut out = vec![(field << 3) | 2];

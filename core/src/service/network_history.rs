@@ -175,7 +175,7 @@ impl WalletService {
         };
 
         // Only EVM chains are supported.
-        let chain = evm_network(chain_id)?;
+        let chain = super::network::evm_network(chain_id)?;
         for token in &tokens {
             let standard = crate::catalog::tokens::resolve_token_standard(
                 chain,

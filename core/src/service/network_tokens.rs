@@ -865,6 +865,48 @@ impl WalletService {
     }
 }
 
+/// Token descriptor passed across UniFFI without JSON-shuttle marshalling.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TokenDescriptor {
+    /// The actual deployment protocol; `None` resolves from identifier shape.
+    #[uniffi(default = None)]
+    pub standard: Option<crate::registry::TokenStandard>,
+    pub contract: String,
+    pub symbol: String,
+    pub decimals: u8,
+    pub name: Option<String>,
+}
+
+impl TokenDescriptor {
+    pub(crate) fn standard_on(&self, chain: Chain) -> Option<crate::registry::TokenStandard> {
+        self.standard
+            .or_else(|| chain.token_standard_for_identifier(&self.contract))
+    }
+}
+
+/// Typed token-balance result returned via UniFFI.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct TokenBalanceResult {
+    /// The token's protocol, resolved from the read when the caller named none.
+    pub standard: Option<crate::registry::TokenStandard>,
+    pub contract_address: String,
+    /// The catalog's symbol, or empty when the catalog does not know this
+    /// contract.
+    ///
+    /// Empty is the anti-phishing property, not an omission: a discovered
+    /// token's on-chain name and symbol are written by whoever deployed it, so
+    /// rendering them would let an airdrop call itself "USDC". A front end
+    /// showing the contract address instead is showing the one thing the
+    /// attacker cannot forge.
+    pub symbol: String,
+    pub decimals: u8,
+    pub balance_raw: String,
+    pub balance_display: String,
+    /// The catalog has an entry for this contract. False for anything found by
+    /// discovery that nobody has vouched for.
+    pub is_known: bool,
+}
+
 #[cfg(test)]
 mod a_listing_answers_for_every_known_token {
     use super::holding_key;

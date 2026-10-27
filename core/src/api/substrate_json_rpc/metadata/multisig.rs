@@ -216,12 +216,10 @@ impl Metadata {
         account: &[u8; 32],
         call_hash: &[u8; 32],
     ) -> Result<String, ApiError> {
-        use blake2::digest::consts::U16;
-        use blake2::{Blake2b, Digest};
         let mut key = self.storage_prefix("Multisig", "Multisigs")?;
         key.extend(xxhash_rust::xxh64::xxh64(account, 0).to_le_bytes());
         key.extend(account);
-        key.extend(Blake2b::<U16>::digest(call_hash));
+        key.extend(crate::derivation::primitives::blake2b::<16>(&[call_hash]));
         key.extend(call_hash);
         Ok(format!("0x{}", hex::encode(key)))
     }

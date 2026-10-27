@@ -1,6 +1,6 @@
 //! Substrate native transfers, bound to a validated runtime contract.
 
-use super::substrate::{blake2b_256, decode_hash_hex};
+use super::substrate::decode_hash_hex;
 use crate::api::substrate_json_rpc::{PolkadotExtension, PolkadotRuntime, SubstrateClient};
 use crate::derivation::polkadot::decode_ss58;
 use crate::registry::Chain;
@@ -93,7 +93,7 @@ impl PreparedPolkadotTransaction {
             .map_err(|_| SendError::invalid("sr25519 key does not match the reviewed sender"))?;
         let payload = self.signing_payload()?;
         let input = if payload.len() > 256 {
-            blake2b_256(&payload).to_vec()
+            crate::derivation::primitives::blake2b::<32>(&[&payload]).to_vec()
         } else {
             payload
         };

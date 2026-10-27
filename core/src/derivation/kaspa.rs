@@ -201,8 +201,6 @@ pub fn validate_kaspa_address(address: &str) -> bool {
 
 use secp256k1::{PublicKey, Secp256k1};
 
-use crate::derivation::primitives::parse_bip32_path;
-
 // Derive a Kaspa Schnorr address, public key, and private key from a mnemonic via BIP-39 + BIP-32.
 pub(crate) fn derive_from_seed_phrase(
     hrp: &str,
@@ -214,12 +212,10 @@ pub(crate) fn derive_from_seed_phrase(
     want_private_key: bool,
 ) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
     let secp = Secp256k1::new();
-    let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
-    let master = ExtendedPrivateKey::master_from_seed(b"Bitcoin seed", seed.as_ref())?;
-    let path = parse_bip32_path(derivation_path)?;
-    let xpriv = master.derive_path(&secp, &path)?;
-    let public_key = PublicKey::from_secret_key(&secp, &xpriv.private_key);
-    let private_bytes = xpriv.private_key.secret_bytes();
+    let private_key =
+        crate::derivation::bip32::phrase_key(seed_phrase, passphrase, derivation_path)?;
+    let public_key = PublicKey::from_secret_key(&secp, &private_key);
+    let private_bytes = private_key.secret_bytes();
 
     let serialized = public_key.serialize();
     let mut x_only = [0u8; 32];
@@ -243,8 +239,6 @@ pub(crate) fn derive_from_seed_phrase(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::derivation::primitives::ExtendedPrivateKey;
-use crate::derivation::primitives::derive_bip39_seed;
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::error::SpectraBridgeError;
 

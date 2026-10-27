@@ -124,86 +124,62 @@ impl WalletService {
     }
 }
 impl WalletService {
+    /// A send made here goes out again as it was signed, through its stored
+    /// transaction, to the endpoints it was submitted to.
     async fn rebroadcast_stored(
         &self,
         transaction_id: String,
     ) -> Result<String, SpectraBridgeError> {
         let db = self.bound_database().await?;
         let id = transaction_id.clone();
-        if tokio::task::spawn_blocking(move || crate::wallet_db::send_exists(&db, &id)).await?? {
-            let stored = self.load_send_artifact(transaction_id.clone()).await?;
-            if stored.view.selected_endpoints.is_empty() {
-                return Err(crate::error::SpectraBridgeError::failure(
-                    "Select broadcast endpoints before submitting a signed transaction",
-                ));
-            }
-            let previous = stored.view.attempts.len();
-            let artifact = self
-                .broadcast_send(transaction_id, stored.view.selected_endpoints)
-                .await?;
-            return artifact.attempts[previous..]
-                .iter()
-                .find(|a| a.outcome == crate::send::stages::SubmissionOutcome::Accepted)
-                .and_then(|a| a.transaction_hash.clone())
-                .ok_or_else(|| {
-                    SpectraBridgeError::failure(
-                        "Submission was not accepted; inspect per-endpoint results before retrying",
-                    )
-                });
+        let (record, signed_here) = tokio::task::spawn_blocking(move || {
+            Ok::<_, crate::wallet_db::error::DbError>((
+                crate::wallet_db::history_find(&db, &id)?,
+                crate::wallet_db::send_exists(&db, &id)?,
+            ))
+        })
+        .await??;
+        let record = record.ok_or_else(|| SpectraBridgeError::failure("transaction not found"))?;
+        if let Some(reason) = rebroadcast_unavailable(&record, signed_here) {
+            return Err(SpectraBridgeError::failure(reason));
         }
-        let mut record = self
-            .fetch_all_history_records()
-            .await?
-            .into_iter()
-            .find(|r| r.id.eq_ignore_ascii_case(&transaction_id))
-            .ok_or_else(|| SpectraBridgeError::failure("transaction not found"))?
-            .payload;
-        let (chain, payload) = rebroadcast_input(&record)?;
-        if chain.evm_rollup_fee_model().is_some() {
+        let stored = self.load_send_artifact(transaction_id.clone()).await?;
+        if stored.view.selected_endpoints.is_empty() {
             return Err(SpectraBridgeError::failure(
-                "Rollup rebroadcast requires the prepared transaction and its reviewed fee budget",
+                "Select broadcast endpoints before submitting a signed transaction",
             ));
         }
-        // Store an uncertain outcome before network I/O; errors never pretend a send happened.
-        record.failure_reason =
-            Some(crate::store::persistence_models::TransactionFailure::RebroadcastOutcomeUnknown);
-        self.save_send_record(record.clone()).await?;
-        let hash = self.broadcast_raw(chain, payload).await?;
-        record.transaction_hash = Some(hash.clone());
-        record.status = TransactionStatus::Pending;
-        record.failure_reason = None;
-        self.save_send_record(record).await?;
-        Ok(hash)
+        let previous = stored.view.attempts.len();
+        let artifact = self
+            .broadcast_send(transaction_id, stored.view.selected_endpoints)
+            .await?;
+        artifact.attempts[previous..]
+            .iter()
+            .find(|a| a.outcome == crate::send::stages::SubmissionOutcome::Accepted)
+            .and_then(|a| a.transaction_hash.clone())
+            .ok_or_else(|| {
+                SpectraBridgeError::failure(
+                    "Submission was not accepted; inspect per-endpoint results before retrying",
+                )
+            })
     }
 }
 
-pub(super) fn rebroadcast_input(
+/// Why `record` cannot go out again, or `None` when it can: an unconfirmed
+/// send whose signed transaction this device stored (`signed_here`).
+pub(super) fn rebroadcast_unavailable(
     record: &TransactionRecord,
-) -> Result<(Chain, crate::send::payload::SignedPayload), SpectraBridgeError> {
+    signed_here: bool,
+) -> Option<&'static str> {
     if !record.kind.is_submitted() {
-        return Err(SpectraBridgeError::failure("only sends can be rebroadcast"));
+        Some("only sends can be rebroadcast")
+    } else if record.status == TransactionStatus::Confirmed {
+        Some("transaction already confirmed")
+    } else if !signed_here {
+        Some("signed payload was not saved")
+    } else {
+        None
     }
-    if record.status == TransactionStatus::Confirmed {
-        return Err(SpectraBridgeError::failure("transaction already confirmed"));
-    }
-    let chain = record.chain_id;
-    let payload = record
-        .signed_transaction_payload
-        .as_ref()
-        .ok_or_else(|| SpectraBridgeError::failure("signed payload was not saved"))?;
-    let format = record
-        .signed_transaction_payload_format
-        .as_deref()
-        .ok_or_else(|| SpectraBridgeError::failure("signed payload format missing"))?;
-    // Core writes the submission it broadcast onto the record it saves, so
-    // the payload is the record's own network's.
-    if format != crate::send::payload::SUBMISSION_FORMAT {
-        return Err(SpectraBridgeError::failure(
-            "Rebroadcast is not supported for this transaction format",
-        ));
-    }
-    let crate::send::payload::PreparedSubmission { payload, .. } = serde_json::from_str(payload)?;
-    Ok((chain, payload))
 }
 
 // Share a lock even across service instances using the same database. Weak entries
@@ -262,8 +238,7 @@ impl WalletService {
             crate::wallet_db::history_pending_for_sender(&db, chain, &sender)
         })
         .await??;
-        for row in rows {
-            let r = row.payload;
+        for r in rows {
             if r.chain_id == chain
                 && r.source_address
                     .as_deref()
@@ -308,12 +283,11 @@ impl WalletService {
 mod tests {
     use super::*;
     use crate::store::state::WalletState;
-    use wiremock::{
-        Mock, MockServer, ResponseTemplate,
-        matchers::{body_partial_json, method},
-    };
+    use wiremock::MockServer;
+    /// A send this device did not sign has nothing to submit again: it is
+    /// refused before any endpoint is asked, as is a confirmed one.
     #[tokio::test]
-    async fn stored_rebroadcast_uses_recorded_network_and_requires_node_identifier() {
+    async fn only_a_send_signed_here_is_rebroadcast() {
         let server = MockServer::start().await;
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
@@ -343,131 +317,63 @@ mod tests {
             .await
             .unwrap();
         let mut record: TransactionRecord = serde_json::from_value(json!({
-            "id": crate::store::new_transaction_id().to_uppercase(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainId": "ethereum-sepolia", "amount": "1", "address": "0x2222222222222222222222222222222222222222", "createdAtUnix": 1000.0,
-            "signedTransactionPayload": submission("0xdeadbeef"),
-            "signedTransactionPayloadFormat": crate::send::payload::SUBMISSION_FORMAT
+            "id": crate::store::new_transaction_id(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainId": "ethereum-sepolia", "amount": "1", "address": "0x2222222222222222222222222222222222222222", "createdAtUnix": 1000.0
         })).unwrap();
         service.save_send_record(record.clone()).await.unwrap();
-        Mock::given(method("POST"))
-            .and(body_partial_json(json!({"method":"eth_chainId"})))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({"jsonrpc":"2.0","id":1,"result":"0xaa36a7"})),
-            )
-            .mount(&server)
-            .await;
-
-        Mock::given(method("POST"))
-            .and(body_partial_json(
-                json!({"method":"eth_sendRawTransaction","params":["0xdeadbeef"]}),
-            ))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({"jsonrpc":"2.0","id":1,"result":"0xaccepted"})),
-            )
-            .mount(&server)
-            .await;
         assert_eq!(
             service
                 .rebroadcast_transaction(record.id.clone())
                 .await
-                .unwrap(),
-            "0xaccepted"
+                .unwrap_err()
+                .to_string(),
+            "signed payload was not saved"
         );
-        let stored = service
-            .fetch_all_history_records()
-            .await
-            .unwrap()
-            .remove(0)
-            .payload;
-        assert_eq!(stored.transaction_hash.as_deref(), Some("0xaccepted"));
-        assert!(stored.failure_reason.is_none());
-        server.reset().await;
-        Mock::given(method("POST"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .set_body_json(json!({"jsonrpc":"2.0","id":1,"result":""})),
-            )
-            .mount(&server)
-            .await;
-        assert!(
+        assert_eq!(
             service
-                .rebroadcast_transaction(record.id.clone())
+                .transaction(record.id.clone())
                 .await
-                .is_err()
-        );
-        assert!(
-            service.fetch_all_history_records().await.unwrap()[0]
-                .payload
-                .failure_reason
-                .is_some()
+                .unwrap()
+                .unwrap()
+                .actions
+                .rebroadcast_unavailable_reason
+                .as_deref(),
+            Some("signed payload was not saved")
         );
         record.status = TransactionStatus::Confirmed;
         service.save_send_record(record.clone()).await.unwrap();
-        server.reset().await;
-        let mut late = record.clone();
-        late.status = TransactionStatus::Pending;
-        late.failure_reason = Some(
-            crate::store::persistence_models::TransactionFailure::Reported {
-                message: "late result".into(),
-            },
-        );
-        service.save_send_record(late).await.unwrap();
-        assert_eq!(
-            service.fetch_all_history_records().await.unwrap()[0]
-                .payload
-                .status,
-            TransactionStatus::Confirmed
-        );
         assert!(service.rebroadcast_transaction(record.id).await.is_err());
         assert!(server.received_requests().await.unwrap().is_empty());
     }
 
-    /// What a send record keeps of the transaction it broadcast.
-    fn submission(payload: &str) -> String {
-        serde_json::to_string(&crate::send::payload::PreparedSubmission {
-            payload: crate::send::payload::SignedPayload::Hex(payload.into()),
-            transaction_hash: None,
-            nonce: None,
-        })
-        .unwrap()
-    }
-
-    /// Only a send not yet confirmed, carrying the submission core saved, is
-    /// rebroadcast.
+    /// Only an unconfirmed send whose signed transaction is stored here goes
+    /// out again.
     #[test]
-    fn only_an_unconfirmed_send_with_its_saved_submission_is_rebroadcast() {
-        let record = |status: &str, format: &str| -> TransactionRecord {
+    fn only_an_unconfirmed_send_signed_here_is_rebroadcast() {
+        let record = |kind: &str, status: &str| -> TransactionRecord {
             serde_json::from_value(json!({
-                "id": "send", "walletId": "w", "kind": "send", "status": status,
+                "id": "send", "walletId": "w", "kind": kind, "status": status,
                 "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH",
                 "chainId": "ethereum", "amount": "1", "address": "recipient",
-                "transactionHash": format!("0x{}", "ab".repeat(32)), "createdAtUnix": 1000.0,
-                "signedTransactionPayload": submission("0x1234"),
-                "signedTransactionPayloadFormat": format
+                "transactionHash": format!("0x{}", "ab".repeat(32)), "createdAtUnix": 1000.0
             }))
             .unwrap()
         };
-        let saved = crate::send::payload::SUBMISSION_FORMAT;
-        let (chain, payload) = rebroadcast_input(&record("pending", saved)).unwrap();
         assert_eq!(
-            (chain, payload.to_string()),
-            (crate::registry::Chain::Ethereum, "0x1234".into())
+            rebroadcast_unavailable(&record("send", "pending"), true),
+            None
         );
-        assert!(rebroadcast_input(&record("failed", saved)).is_ok());
-        for (status, format, refusal) in [
-            (
-                "pending",
-                "evm.raw_hex",
-                "Rebroadcast is not supported for this transaction format",
-            ),
-            ("confirmed", saved, "transaction already confirmed"),
+        assert_eq!(
+            rebroadcast_unavailable(&record("send", "failed"), true),
+            None
+        );
+        for (kind, status, signed_here, refusal) in [
+            ("send", "pending", false, "signed payload was not saved"),
+            ("send", "confirmed", true, "transaction already confirmed"),
+            ("receive", "pending", true, "only sends can be rebroadcast"),
         ] {
             assert_eq!(
-                rebroadcast_input(&record(status, format))
-                    .unwrap_err()
-                    .to_string(),
-                refusal
+                rebroadcast_unavailable(&record(kind, status), signed_here),
+                Some(refusal)
             );
         }
     }
@@ -480,7 +386,7 @@ mod send_asset_name_tests {
     #[test]
     fn a_send_asset_is_named_by_its_coin_its_token_or_its_contract() {
         let state = crate::store::state::ResidentState {
-            token_preferences: crate::store::built_in_token_preferences(),
+            token_preferences: crate::store::state::built_in_token_preferences(),
             ..Default::default()
         };
         let token = state

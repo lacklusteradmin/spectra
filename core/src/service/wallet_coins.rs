@@ -241,14 +241,17 @@ impl WalletService {
 /// The branch and index a BIP-44-shaped path ends at: `…/0/7` is receive 7,
 /// `…/1/3` change 3.
 fn path_place(path: &str) -> Option<(AddressBranch, u32)> {
-    let mut segments = path.rsplit('/');
-    let index = segments.next()?.parse().ok()?;
-    let branch = match segments.next()? {
-        "0" => AddressBranch::Receive,
-        "1" => AddressBranch::Change,
+    use bitcoin::bip32::ChildNumber::Normal;
+    let path = crate::derivation::bip32::parse_path(path).ok()?;
+    let [.., Normal { index: branch }, Normal { index }] = path.as_ref() else {
+        return None;
+    };
+    let branch = match branch {
+        0 => AddressBranch::Receive,
+        1 => AddressBranch::Change,
         _ => return None,
     };
-    Some((branch, index))
+    Some((branch, *index))
 }
 
 #[cfg(test)]

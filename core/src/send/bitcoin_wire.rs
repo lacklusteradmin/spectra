@@ -8,22 +8,10 @@ use crate::api::utxo::Txid;
 
 use sha2::{Digest, Sha256};
 
-/// Bitcoin `CompactSize`. Values above `u32::MAX` do not occur in any field
-/// this crate writes — script lengths, input and output counts.
+/// Bitcoin `CompactSize`, as rust-bitcoin writes it: the one writer of it
+/// in core, for these transactions and Litecoin's peer-to-peer messages.
 pub(crate) fn varint(n: usize) -> Vec<u8> {
-    match n {
-        0..=0xfc => vec![n as u8],
-        0xfd..=0xffff => {
-            let mut v = vec![0xfd];
-            v.extend_from_slice(&(n as u16).to_le_bytes());
-            v
-        }
-        _ => {
-            let mut v = vec![0xfe];
-            v.extend_from_slice(&(n as u32).to_le_bytes());
-            v
-        }
-    }
+    bitcoin::consensus::encode::serialize(&bitcoin::consensus::encode::VarInt(n as u64))
 }
 
 /// SHA-256 applied twice — Bitcoin's `HASH256`.

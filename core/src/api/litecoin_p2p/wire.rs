@@ -132,22 +132,11 @@ impl<'a> Reader<'a> {
     }
 }
 
+/// Bitcoin's CompactSize, as rust-bitcoin writes it.
 pub(crate) fn write_compact_size(n: u64, out: &mut Vec<u8>) {
-    match n {
-        0..=0xfc => out.push(n as u8),
-        0xfd..=0xffff => {
-            out.push(0xfd);
-            out.extend((n as u16).to_le_bytes());
-        }
-        0x1_0000..=0xffff_ffff => {
-            out.push(0xfe);
-            out.extend((n as u32).to_le_bytes());
-        }
-        _ => {
-            out.push(0xff);
-            out.extend(n.to_le_bytes());
-        }
-    }
+    out.extend(bitcoin::consensus::encode::serialize(
+        &bitcoin::consensus::encode::VarInt(n),
+    ));
 }
 
 pub(crate) fn write_bytes(bytes: &[u8], out: &mut Vec<u8>) {

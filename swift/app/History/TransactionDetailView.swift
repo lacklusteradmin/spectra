@@ -241,7 +241,6 @@ struct TransactionDetailView: View {
         }
         add("Fee Rate", amounts.storedFeeRateText(for: tx))
         add("Used Change Output", tx.storedUsedChangeOutputText)
-        add("Signed Payload Format", tx.rawTransactionFormatText)
         add("Source Path", tx.sourceDerivationPath)
         add("Change Path", tx.changeDerivationPath)
         // On an account chain the source is the From address above.
@@ -254,8 +253,7 @@ struct TransactionDetailView: View {
     @ViewBuilder
     private var technicalDetailsCard: some View {
         let rows = technicalRows
-        let raw = displayedTransaction.rawTransactionText
-        if !rows.isEmpty || raw != nil {
+        if !rows.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 Button {
                     withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) { isShowingTechnicalDetails.toggle() }
@@ -280,15 +278,6 @@ struct TransactionDetailView: View {
                             } else {
                                 TransactionDetailRow(label: row.label, value: row.value)
                             }
-                        }
-                        if let raw {
-                            Divider().opacity(0.4)
-                            CopyableValueRow(value: raw) {
-                                Text(AppLocalization.string("Raw Transaction")).font(.subheadline).foregroundStyle(.secondary)
-                            }
-                            Text(verbatim: breakableAnywhere(raw)).font(.caption.monospaced()).foregroundStyle(.secondary)
-                                .padding(SpectraLayout.Space.m).frame(maxWidth: .infinity, alignment: .leading)
-                                .spectraInsetFill()
                         }
                     }.padding(.top, SpectraLayout.Space.xs)
                 }

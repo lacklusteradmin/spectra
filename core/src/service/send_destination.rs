@@ -263,3 +263,51 @@ pub(super) fn verify_reviewed_destination(
     }
     Ok(resolved)
 }
+
+/// What a send destination looks like, for the composer's recipient warning.
+///
+/// Core classifies activity; front ends supply localized wording.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum SendDestinationActivity {
+    Unused,
+    EmptyPreviouslyUsed,
+    Funded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SendDestinationRisk {
+    pub balance_is_zero: bool,
+    pub has_history: bool,
+    pub activity: SendDestinationActivity,
+}
+
+impl SendDestinationRisk {
+    pub(crate) fn from_probe(balance_is_zero: bool, has_history: bool) -> Self {
+        let activity = if !balance_is_zero {
+            SendDestinationActivity::Funded
+        } else if has_history {
+            SendDestinationActivity::EmptyPreviouslyUsed
+        } else {
+            SendDestinationActivity::Unused
+        };
+        Self {
+            balance_is_zero,
+            has_history,
+            activity,
+        }
+    }
+}
+
+/// The address a send is actually going to, from what the user typed.
+///
+/// `used_ens` is not decoration: it is one of the high-risk signals, and it is
+/// the difference between showing the user the string they typed and showing
+/// them the address it stood for.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SendDestinationResolution {
+    /// Normalized for the chain, so it compares equal to a stored address.
+    pub address: String,
+    /// A name lookup, rather than the user, produced `address`.
+    pub used_ens: bool,
+}

@@ -109,7 +109,6 @@ extension TransactionRecord {
             feeRateDescription: nil, confirmationCount: nil, confirmedNetworkFee: nil,
             usedChangeOutput: nil, sourceDerivationPath: nil,
             changeDerivationPath: nil, sourceAddress: nil, changeAddress: nil,
-            signedTransactionPayload: nil, signedTransactionPayloadFormat: nil,
             failureReason: failureReason, transactionHistorySource: nil,
             createdAtUnix: Date().timeIntervalSince1970)
     }

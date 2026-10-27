@@ -32,7 +32,7 @@ fn account_utxo_root_path(
 }
 
 fn account_utxo_account_path(chain: Chain, path: &str) -> Result<Vec<u32>, SpectraBridgeError> {
-    let indices = crate::derivation::bitcoin::parse_bip32_path(path)?;
+    let indices = crate::derivation::bip32::indices(&crate::derivation::bip32::parse_path(path)?);
     if indices.len() != 5
         || crate::derivation::path::utxo_discovery_index(path, chain, indices[3])
             != Some(indices[4])

@@ -475,26 +475,10 @@ fn prefixed_keccak(scheme: MessageScheme, message: &str) -> [u8; 32] {
 
 /// Blake2b-256 of the personal-message intent and the message as BCS bytes.
 fn sui_personal_digest(message: &str) -> [u8; 32] {
-    use blake2::digest::{Update, VariableOutput};
     let mut data = vec![3, 0, 0];
-    let mut length = message.len();
-    loop {
-        let byte = (length & 0x7f) as u8;
-        length >>= 7;
-        if length == 0 {
-            data.push(byte);
-            break;
-        }
-        data.push(byte | 0x80);
-    }
+    crate::send::leb128::write(message.len() as u64, &mut data);
     data.extend_from_slice(message.as_bytes());
-    let mut hasher = blake2::Blake2bVar::new(32).expect("32 is a valid Blake2b length");
-    hasher.update(&data);
-    let mut digest = [0u8; 32];
-    hasher
-        .finalize_variable(&mut digest)
-        .expect("the buffer is the requested length");
-    digest
+    crate::derivation::primitives::blake2b::<32>(&[&data])
 }
 
 fn substrate_wrapped(message: &str) -> Vec<u8> {

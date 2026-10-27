@@ -217,7 +217,7 @@ impl WalletService {
         &self,
         chain: crate::registry::Chain,
     ) -> Result<ChainDiagnostics, SpectraBridgeError> {
-        Ok(chain_diagnostics_for(chain))
+        Ok(chain_diagnostics_for(&self.diagnostic_runs, chain))
     }
 
     /// The diagnostics bundle, as the JSON a file holds: every network's
@@ -247,7 +247,10 @@ impl WalletService {
                 environment,
                 chain_degraded: state.diagnostics.degraded.clone(),
                 chain_diagnostics_json: Chain::all()
-                    .map(|c| (c.str_id().to_string(), chain_diagnostics_for(c).document))
+                    .map(|c| {
+                        let diagnostics = chain_diagnostics_for(&this.diagnostic_runs, c);
+                        (c.str_id().to_string(), diagnostics.document)
+                    })
                     .collect(),
             };
             crate::diagnostics::diagnostics_bundle_to_json(payload).ok_or_else(|| {
@@ -258,9 +261,12 @@ impl WalletService {
     }
 }
 
-fn chain_diagnostics_for(network: Chain) -> ChainDiagnostics {
+fn chain_diagnostics_for(
+    runs: &crate::diagnostics::DiagnosticRuns,
+    network: Chain,
+) -> ChainDiagnostics {
     let family = network.mainnet_counterpart();
-    let recorded = crate::diagnostics::diagnostics_recorded(family, network);
+    let recorded = runs.recorded(family, network);
     let mut counts: HashMap<String, u32> = HashMap::new();
     for row in &recorded.history {
         let source = row.source_used.trim();
@@ -317,14 +323,9 @@ mod tests {
 
     /// The screen and the bundle read one answer: history keyed by the family,
     /// endpoints by the network named, and the header from core's counts.
-    // The guard only serializes tests over the shared registry; holding it
-    // across awaits is the point, and nothing else locks it.
-    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn chain_diagnostics_read_the_named_network_into_the_bundle() {
         use crate::diagnostics::*;
-        let _g = registry::diagnostics_test_lock();
-        diagnostics_clear_all();
         let service = WalletService::new_catalog().unwrap();
         let path = std::env::temp_dir().join(format!(
             "chain-diagnostics-{}.sqlite",
@@ -344,10 +345,18 @@ mod tests {
             error: None,
             per_source: Vec::new(),
         };
-        diagnostics_record(crate::registry::Chain::Litecoin, row("w1", "blockbook"));
-        diagnostics_record(crate::registry::Chain::Litecoin, row("w2", "blockbook"));
-        diagnostics_record(crate::registry::Chain::Litecoin, row("w3", " "));
-        diagnostics_record_history_run(crate::registry::Chain::Litecoin);
+        service
+            .diagnostic_runs
+            .record(crate::registry::Chain::Litecoin, row("w1", "blockbook"));
+        service
+            .diagnostic_runs
+            .record(crate::registry::Chain::Litecoin, row("w2", "blockbook"));
+        service
+            .diagnostic_runs
+            .record(crate::registry::Chain::Litecoin, row("w3", " "));
+        service
+            .diagnostic_runs
+            .record_history_run(crate::registry::Chain::Litecoin);
         let probe = |endpoint: &str| EndpointProbe {
             api: crate::api::endpoint::EndpointApi::Esplora,
             chain_id: crate::registry::Chain::Bitcoin,
@@ -357,11 +366,11 @@ mod tests {
             reachable: false,
             detail: "timeout".into(),
         };
-        diagnostics_record_endpoints(
+        service.diagnostic_runs.record_endpoints(
             crate::registry::Chain::Litecoin,
             vec![probe("https://main")],
         );
-        diagnostics_record_endpoints(
+        service.diagnostic_runs.record_endpoints(
             crate::registry::Chain::LitecoinTestnet,
             vec![probe("https://test")],
         );
@@ -414,7 +423,6 @@ mod tests {
             selected.document
         );
         assert_eq!(parsed.chain_diagnostics_json["litecoin"], mainnet.document);
-        diagnostics_clear_all();
     }
     /// Key material in a log line's text never reaches the stored log; the
     /// transaction hash beside it is an identifier and stays readable.

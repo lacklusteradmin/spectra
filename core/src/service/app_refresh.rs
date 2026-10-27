@@ -38,7 +38,7 @@ pub struct AppRefreshResult {
     /// Price alerts this refresh crossed, to notify about.
     pub price_alerts: Vec<crate::store::PriceAlertNotification>,
     /// A large portfolio movement this refresh revealed, to notify about.
-    pub movement: Option<super::standalone::LargeMovementEvaluation>,
+    pub movement: Option<super::movement::LargeMovementEvaluation>,
     /// Stored transactions changed: a status or receipt, or new history. A
     /// front end re-reads its transaction projection only when this is set.
     pub transactions_changed: bool,

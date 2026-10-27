@@ -127,8 +127,13 @@ arguments, the catalog TOML files and the database columns.
 Chain-specific implementations live directly in each domain directory, for
 example `derivation/bitcoin.rs`, `service/bitcoin_history.rs` and `send/bitcoin.rs`.
 Keep differences that carry protocol meaning; share cryptographic primitives
-and wrappers that differ only in a chain name. Tests over the registry should
-assert complete capability coverage, rather than only test named examples.
+and wrappers that differ only in a chain name. Each primitive has one
+implementation: `derivation/bip32.rs` reads every derivation path and holds
+the secp256k1 extended keys (rust-bitcoin's), `derivation::primitives::blake2b`
+every plain BLAKE2b, `send/leb128.rs` every LEB128 number, rust-bitcoin's
+`VarInt` every CompactSize, and `api::evm_json_rpc::abi_u128` every uint256
+ABI word, EVM's and Tron's alike. Tests over the registry should assert
+complete capability coverage, rather than only test named examples.
 
 ## Boundary design
 
@@ -299,7 +304,11 @@ panic when broken, since a broken embedded file is a build defect.
   Kaspa owns its own hash preimage encoding. Solana compiles a unique account
   list across all instructions before signing.
 - `wallet_db/` separates connection/schema, keypool, addresses, history,
-  wallets, state and teardown. `state` and `teardown` keep their cross-table
+  wallets, state and teardown. A history row is its `TransactionRecord`; the
+  indexed columns beside it (lowercased id, wallet and hash, network, sort
+  key) are derived from the record when it is written. A send made here keeps
+  its signed transaction only in its send record, which a rebroadcast
+  submits. `state` and `teardown` keep their cross-table
   transactions; splitting files does not split commits. `store/tests/` groups
   regressions by domain. `wallet_db::zcash` is the exception to one database:
   a Zcash wallet's shielded state is librustzcash's own database

@@ -12,10 +12,11 @@ fn history_protocols_select_their_merge_semantics() {
         crate::registry::Chain::BitcoinCash,
         crate::registry::Chain::BitcoinSV,
         crate::registry::Chain::Litecoin,
+        crate::registry::Chain::Dogecoin,
+        crate::registry::Chain::Dash,
     ] {
-        assert_eq!(strategy(name), S::StandardUtxo, "{name}");
+        assert_eq!(strategy(name), S::Utxo, "{name}");
     }
-    assert_eq!(strategy(crate::registry::Chain::Dogecoin), S::Dogecoin);
     for name in [
         crate::registry::Chain::Tron,
         crate::registry::Chain::Solana,

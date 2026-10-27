@@ -36,44 +36,11 @@ pub(crate) fn decode_cardano_addr_bytes(address: &str) -> Result<Vec<u8>, Deriva
 
 // ── BIP-32 path parsing ──────────────────────────────────────────────────
 
-// Parse a BIP-32 derivation path string into a list of child index integers (hardened or soft).
+// A path's steps as indices, hardened or soft, read by BIP-32's one reader.
 fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, DerivationError> {
-    let trimmed = path.trim();
-    let body = trimmed
-        .strip_prefix("m/")
-        .or_else(|| trimmed.strip_prefix("M/"))
-        .unwrap_or_else(|| {
-            if trimmed == "m" || trimmed == "M" {
-                ""
-            } else {
-                trimmed
-            }
-        });
-    if body.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for segment in body.split('/') {
-        let seg = segment.trim();
-        let (digits, hardened) = if let Some(s) = seg.strip_suffix('\'') {
-            (s, true)
-        } else if let Some(s) = seg.strip_suffix('h') {
-            (s, true)
-        } else {
-            (seg, false)
-        };
-        let raw: u32 = digits.parse().map_err(|_| {
-            DerivationError::refused("Invalid derivation path segment: %@", [segment])
-        })?;
-        if raw & 0x8000_0000 != 0 {
-            return Err(DerivationError::refused(
-                "Derivation path segment out of range: %@",
-                [segment],
-            ));
-        }
-        out.push(if hardened { raw | 0x8000_0000 } else { raw });
-    }
-    Ok(out)
+    Ok(crate::derivation::bip32::indices(
+        &crate::derivation::bip32::parse_path(path)?,
+    ))
 }
 
 // ── BIP-32-Ed25519 (Khovratovich-Law) ────────────────────────────────────
@@ -296,10 +263,7 @@ pub(crate) fn verification_key_hash(public_key: &[u8; 32]) -> [u8; 28] {
 
 // Blake2b-224 of a public key: the key hash a Shelley address carries.
 fn key_hash(public_key: &[u8; 32]) -> [u8; 28] {
-    use blake2::Blake2b;
-    use blake2::digest::Digest;
-    use blake2::digest::consts::U28;
-    Blake2b::<U28>::digest(public_key).into()
+    crate::derivation::primitives::blake2b::<28>(&[public_key])
 }
 
 // A CIP-19 Shelley address of key credentials: the header (type, network),

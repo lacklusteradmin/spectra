@@ -17,14 +17,18 @@ impl Default for TransactionActions {
     }
 }
 impl TransactionRecord {
-    pub(crate) fn with_actions(mut self) -> Self {
+    /// `signed_here`: whether this device stored the send's signed
+    /// transaction, which is what a rebroadcast submits.
+    pub(crate) fn with_actions(mut self, signed_here: bool) -> Self {
         self.actions = TransactionActions {
             recheck_unavailable_reason: super::transaction_recheck::recheck_chain(&self)
                 .err()
                 .map(|e| e.to_string()),
-            rebroadcast_unavailable_reason: super::send_records::rebroadcast_input(&self)
-                .err()
-                .map(|e| e.to_string()),
+            rebroadcast_unavailable_reason: super::send_records::rebroadcast_unavailable(
+                &self,
+                signed_here,
+            )
+            .map(str::to_string),
         };
         self
     }

@@ -214,17 +214,6 @@ extension TransactionRecord: Identifiable {
         guard let usedChangeOutput else { return nil }
         return AppLocalization.string(usedChangeOutput ? "Yes" : "No")
     }
-    /// The signed payload as stored, whatever its encoding; the format row
-    /// beside it says which.
-    var rawTransactionText: String? {
-        let trimmed = signedTransactionPayload?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? nil : trimmed
-    }
-    var rawTransactionFormatText: String? {
-        guard let signedTransactionPayloadFormat else { return nil }
-        let trimmed = signedTransactionPayloadFormat.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
     /// Core stores a time it does not know as a date before any chain existed.
     var hasKnownDate: Bool { createdAtUnix > 0 }
     /// When it happened, in the app's language: the date and the second,

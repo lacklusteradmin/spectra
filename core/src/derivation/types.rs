@@ -38,24 +38,20 @@ pub enum BitcoinScriptType {
 // ── Path metadata helper ──────────────────────────────────────────────────────
 
 /// Extract `(account, branch, index)` from a BIP-32 path string.
-/// Returns `(0, 0, 0)` for paths with too few segments or no `m/` prefix.
+/// Returns `(0, 0, 0)` for a path that does not read.
 pub(crate) fn parse_path_metadata(path: &str) -> (u32, u32, u32) {
-    let trimmed = path.trim();
-    let Some(stripped) = trimmed
-        .strip_prefix("m/")
-        .or_else(|| trimmed.strip_prefix("M/"))
-    else {
+    let Ok(path) = crate::derivation::bip32::parse_path(path) else {
         return (0, 0, 0);
     };
-    let segments: Vec<u32> = stripped
-        .split('/')
-        .filter_map(|s| s.trim_end_matches('\'').parse().ok())
+    let steps: Vec<u32> = path
+        .into_iter()
+        .map(|step| crate::derivation::bip32::step_number(*step))
         .collect();
-    let account = segments.get(2).copied().unwrap_or(0);
-    let branch = segments
-        .get(segments.len().saturating_sub(2))
+    let account = steps.get(2).copied().unwrap_or(0);
+    let branch = steps
+        .get(steps.len().saturating_sub(2))
         .copied()
         .unwrap_or(0);
-    let index = segments.last().copied().unwrap_or(0);
+    let index = steps.last().copied().unwrap_or(0);
     (account, branch, index)
 }

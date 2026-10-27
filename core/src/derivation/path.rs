@@ -123,27 +123,15 @@ pub fn format_derivation_path(segments: Vec<DerivationPathSegment>) -> String {
 }
 
 pub(crate) fn parse_derivation_path_str(raw_path: &str) -> Option<Vec<DerivationPathSegment>> {
-    let trimmed = raw_path.trim();
-    let mut components = trimmed.split('/');
-    let head = components.next()?;
-    if !head.eq_ignore_ascii_case("m") {
-        return None;
-    }
-    components
-        .map(|component| {
-            let is_hardened = component.ends_with('\'');
-            let value_string = if is_hardened {
-                &component[..component.len().saturating_sub(1)]
-            } else {
-                component
-            };
-            value_string
-                .parse::<u32>()
-                .ok()
-                .filter(|value| *value < (1 << 31))
-                .map(|value| DerivationPathSegment { value, is_hardened })
-        })
-        .collect()
+    let path = crate::derivation::bip32::parse_path(raw_path).ok()?;
+    Some(
+        path.into_iter()
+            .map(|step| DerivationPathSegment {
+                value: crate::derivation::bip32::step_number(*step),
+                is_hardened: step.is_hardened(),
+            })
+            .collect(),
+    )
 }
 
 pub(crate) fn normalize_derivation_path(raw_path: &str, fallback: &str) -> String {

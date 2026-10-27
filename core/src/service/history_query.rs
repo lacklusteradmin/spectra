@@ -68,7 +68,7 @@ pub struct TransactionSnapshot {
     pub revision: u64,
     pub recent_and_pending: Vec<TransactionRecord>,
     pub replaceable: Vec<super::history_derived::ReplaceableSend>,
-    pub earliest: Vec<crate::store::WalletEarliestTransactionDate>,
+    pub earliest: Vec<crate::service::WalletEarliestTransactionDate>,
     pub total_count: u64,
     /// Transactions still pending, across every wallet: what a front end
     /// badges its history with.
@@ -263,18 +263,14 @@ impl WalletService {
             }
             query.limit = query.limit.min(HISTORY_PAGE_MAX);
             let database = this.bound_database().await?;
-            tokio::task::spawn_blocking(move || crate::wallet_db::history_page(&database, &query))
-                .await
-                .map_err(SpectraBridgeError::failure)?
-                .map(|mut page| {
-                    page.records = page
-                        .records
-                        .into_iter()
-                        .map(TransactionRecord::with_actions)
-                        .collect();
-                    page
-                })
-                .map_err(Into::into)
+            tokio::task::spawn_blocking(move || {
+                let mut page = crate::wallet_db::history_page(&database, &query)?;
+                page.records = with_actions(&database, page.records)?;
+                Ok::<_, crate::wallet_db::error::DbError>(page)
+            })
+            .await
+            .map_err(SpectraBridgeError::failure)?
+            .map_err(Into::into)
         })
         .await
     }
@@ -286,18 +282,12 @@ impl WalletService {
             let more = this.wallets_with_more_history_now().await;
             let sequence = this.projection_sequence.clone();
             tokio::task::spawn_blocking(move || {
-                crate::wallet_db::history_snapshot(&database, &sequence)
+                let mut snapshot = crate::wallet_db::history_snapshot(&database, &sequence)?;
+                snapshot.recent_and_pending = with_actions(&database, snapshot.recent_and_pending)?;
+                Ok::<_, crate::wallet_db::error::DbError>(snapshot)
             })
             .await
             .map_err(SpectraBridgeError::failure)?
-            .map(|mut snapshot| {
-                snapshot.recent_and_pending = snapshot
-                    .recent_and_pending
-                    .into_iter()
-                    .map(TransactionRecord::with_actions)
-                    .collect();
-                snapshot
-            })
             .map_err(SpectraBridgeError::from)
             .map(|mut snapshot| {
                 snapshot.wallets_with_more_history = more;
@@ -314,14 +304,35 @@ impl WalletService {
         crate::service::worker::run(async move {
             let this = &this;
             let database = this.bound_database().await?;
-            tokio::task::spawn_blocking(move || crate::wallet_db::history_find(&database, &id))
-                .await
-                .map_err(SpectraBridgeError::failure)?
-                .map(|record| record.map(TransactionRecord::with_actions))
-                .map_err(Into::into)
+            tokio::task::spawn_blocking(move || {
+                let record = crate::wallet_db::history_find(&database, &id)?;
+                Ok::<_, crate::wallet_db::error::DbError>(
+                    with_actions(&database, record.into_iter().collect())?.pop(),
+                )
+            })
+            .await
+            .map_err(SpectraBridgeError::failure)?
+            .map_err(Into::into)
         })
         .await
     }
+}
+
+/// `records` with what a front end may do with each, which for a rebroadcast
+/// depends on whether this device stored the signed transaction.
+fn with_actions(
+    database: &crate::wallet_db::WalletDatabase,
+    records: Vec<TransactionRecord>,
+) -> Result<Vec<TransactionRecord>, crate::wallet_db::error::DbError> {
+    let ids: Vec<&str> = records.iter().map(|record| record.id.as_str()).collect();
+    let signed = crate::wallet_db::send_ids_among(database, &ids)?;
+    Ok(records
+        .into_iter()
+        .map(|record| {
+            let signed_here = signed.contains(&record.id);
+            record.with_actions(signed_here)
+        })
+        .collect())
 }
 
 // Not exported: the lookup behind `transaction_endpoints` and `address_holder`.
@@ -388,6 +399,13 @@ impl WalletService {
         known.extend(contacts);
         known
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct WalletEarliestTransactionDate {
+    pub wallet_id: String,
+    pub earliest_created_at_unix: f64,
 }
 
 #[cfg(test)]

@@ -315,6 +315,157 @@ impl WalletService {
     }
 }
 
+/// One chain's primary-API endpoint list, given at construction or through
+/// `update_endpoints` to replace the catalog transport.
+#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+pub struct ChainEndpoints {
+    /// Declared operations for explicit URLs absent from the directory.
+    pub capabilities: Vec<EndpointCapability>,
+    pub chain_id: crate::registry::Chain,
+    pub endpoints: Vec<String>,
+}
+
+// Durable transaction lifecycle records live in `crate::send::stages`.
+
+// ── Endpoint index (internal — pre-indexed for O(1) chain_id lookup) ──────
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct EndpointIndex {
+    pub(super) capabilities: std::collections::HashMap<Chain, Vec<EndpointCapability>>,
+    pub(super) endpoints: std::collections::HashMap<Chain, Arc<Vec<String>>>,
+}
+
+impl EndpointIndex {
+    pub(super) fn from_list(list: Vec<ChainEndpoints>) -> Result<Self, SpectraBridgeError> {
+        for row in &list {
+            for url in &row.endpoints {
+                crate::api::endpoint::validate_configured_endpoint(row.chain_id, url)?;
+            }
+        }
+
+        let mut endpoints = std::collections::HashMap::with_capacity(list.len());
+        let mut capabilities = std::collections::HashMap::new();
+        for entry in list {
+            capabilities.insert(entry.chain_id, entry.capabilities);
+            endpoints.insert(entry.chain_id, Arc::new(entry.endpoints));
+        }
+        Ok(Self {
+            endpoints,
+            capabilities,
+        })
+    }
+}
+
+impl WalletService {
+    /// The API and URLs of a chain with one API. The UTXO family has several
+    /// and goes through `utxo_client` instead.
+    pub(crate) async fn fetch_endpoints(
+        &self,
+        chain: Chain,
+        required: &[EndpointCapability],
+    ) -> Result<(EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
+        let [api] = chain.endpoint_apis() else {
+            return Err(SpectraBridgeError::failure(format!(
+                "{} has no single fetch API",
+                chain.str_id()
+            )));
+        };
+        Ok((*api, self.endpoints_for(chain, required).await))
+    }
+
+    pub(crate) async fn configured_endpoint_urls(&self, chain: Chain) -> Arc<Vec<String>> {
+        let base = self
+            .endpoints
+            .read()
+            .await
+            .endpoints
+            .get(&chain)
+            .cloned()
+            .unwrap_or_default();
+        if self
+            .uses_catalog_endpoints
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            let mut custom = self
+                .custom_api_endpoints(chain, chain.endpoint_apis(), &[])
+                .await;
+            // The user's endpoints alone, when the user said so for this
+            // network: the catalog's are not contacted at all.
+            if self.uses_custom_endpoints_only(chain).await {
+                return Arc::new(custom);
+            }
+            if !custom.is_empty() {
+                for url in base.iter() {
+                    if !custom.contains(url) {
+                        custom.push(url.clone());
+                    }
+                }
+                return Arc::new(custom);
+            }
+        }
+        base
+    }
+}
+
+impl WalletService {
+    pub async fn update_endpoints(
+        &self,
+        endpoints: Vec<ChainEndpoints>,
+    ) -> Result<(), SpectraBridgeError> {
+        let index = EndpointIndex::from_list(endpoints)?;
+        self.uses_catalog_endpoints
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        let mut guard = self.endpoints.write().await;
+        *guard = index;
+        Ok(())
+    }
+}
+
+/// Catalog transport configuration for a non-platform front end: each
+/// chain's own list, every API it speaks included. Indexers and secondary
+/// services are asked for by API, through `WalletService::api_endpoints`.
+pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
+    let mut endpoints = Vec::new();
+    for chain in Chain::all() {
+        let apis = chain.endpoint_apis();
+        if apis.is_empty() {
+            continue;
+        }
+        endpoints.push(ChainEndpoints {
+            capabilities: vec![],
+            chain_id: chain,
+            endpoints: crate::catalog::endpoints::records_for_chain(chain, &[])
+                .into_iter()
+                .filter(|record| {
+                    apis.contains(&record.api)
+                        && record.capabilities.iter().any(|c| c.is_primary_read())
+                })
+                .map(|record| record.endpoint)
+                .collect(),
+        });
+    }
+    Ok(endpoints)
+}
+
+#[cfg(test)]
+mod destination_activity_tests {
+    use super::*;
+    #[test]
+    fn activity_distinguishes_an_unused_address_from_a_previously_emptied_one() {
+        for (balance, history, expected) in [
+            (true, false, SendDestinationActivity::Unused),
+            (true, true, SendDestinationActivity::EmptyPreviouslyUsed),
+            (false, false, SendDestinationActivity::Funded),
+            (false, true, SendDestinationActivity::Funded),
+        ] {
+            assert_eq!(
+                SendDestinationRisk::from_probe(balance, history).activity,
+                expected
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -980,6 +1131,56 @@ mod tests {
                 .await
                 .unwrap(),
             ["https://api.whatsonchain.com/v1/bsv/main"]
+        );
+    }
+}
+
+#[cfg(test)]
+mod a_primary_endpoint_can_serve_a_primary_read {
+    use super::*;
+
+    /// Operation URL prefixes and incompatible API families are never passed
+    /// to a primary client as base URLs, even when they share a chain.
+    #[test]
+    fn no_chain_is_offered_an_endpoint_that_answers_none_of_them() {
+        let mut checked = 0;
+        for row in catalog_endpoints().expect("catalog endpoints") {
+            for endpoint in &row.endpoints {
+                let chain = row.chain_id;
+                let record = crate::catalog::endpoints::records_for_chain(row.chain_id, &[])
+                    .into_iter()
+                    .find(|record| &record.endpoint == endpoint)
+                    .unwrap();
+                assert!(chain.endpoint_apis().contains(&record.api));
+                assert!(
+                    record.capabilities.iter().any(|c| c.is_primary_read()),
+                    "{} lists operation-only URL {endpoint} as a base",
+                    row.chain_id
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "no primary endpoint was checked at all");
+    }
+
+    /// Litecoin's Esplora and BlockCypher rows are both its own endpoints;
+    /// neither is set aside for the other.
+    #[test]
+    fn a_chain_uses_every_api_it_speaks() {
+        let litecoin = catalog_endpoints()
+            .unwrap()
+            .into_iter()
+            .find(|row| row.chain_id == crate::registry::Chain::Litecoin)
+            .unwrap();
+        assert!(
+            litecoin
+                .endpoints
+                .contains(&"https://litecoinspace.org/api".to_string())
+        );
+        assert!(
+            litecoin
+                .endpoints
+                .contains(&"https://api.blockcypher.com/v1/ltc/main".to_string())
         );
     }
 }
