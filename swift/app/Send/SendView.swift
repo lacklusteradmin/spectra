@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import VisionKit
 
 private enum SendFlowStep: Int, CaseIterable {
     case from
@@ -20,26 +19,10 @@ private enum SendFlowStep: Int, CaseIterable {
 
 struct SendView: View {
     @Bindable var store: AppState
-    @State private var isShowingQRScanner: Bool = false
-    @State private var qrScannerErrorMessage: String?
-    /// What the last scanned code filled in, said for as long as the
-    /// recipient is still the one it named.
-    @State private var scannedPayment: ScannedPayment?
     @State private var currentStep: SendFlowStep = .from
     @State private var flowDirection: Int = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Core's answer for the recipient as typed, keyed by what it answered.
-    /// The amount page and the confirm gate read it rather than ask again;
-    /// the preview and the build check the recipient for themselves.
-    @State private var validatedRecipient: (key: String, resolution: SendDestinationResolution)?
-    @State private var recipientError: SendRecipientProblem?
-    @State private var isValidatingRecipient = false
-    @State private var quotedInputKey: String?
-    @State private var quoteAttempt = 0
-    @State private var recipientValidationAttempt = 0
     @State private var sendWalletPassword = ""
-    @State private var stagedTransaction: TransactionRecord?
-    @State private var transactionError: String?
     /// The artifact on screen was resumed from the list, not built from the
     /// form, which it does not fill: Back returns to that list.
     @State private var isShowingResumedSend = false
@@ -111,30 +94,6 @@ struct SendView: View {
                 .accessibilityLabel(AppLocalization.string("Close"))
             }
         }
-        .task(id: "\(recipientKey)|\(recipientValidationAttempt)") {
-            let key = recipientKey
-            validatedRecipient = nil
-            recipientError = nil
-            isValidatingRecipient = false
-            guard let chain = selectedNetworkSendCoin?.chain,
-                  !store.sendFlow.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            do {
-                // Typing is not checking: the row appears once typing pauses,
-                // not on every keystroke.
-                try await Task.sleep(for: .milliseconds(350))
-                isValidatingRecipient = true
-                defer { if recipientKey == key { isValidatingRecipient = false } }
-                let resolution = try await store.resolveSendDestination(input: store.sendFlow.address, on: chain)
-                guard !Task.isCancelled, recipientKey == key else { return }
-                validatedRecipient = (key, resolution)
-            } catch {
-                guard !Task.isCancelled, recipientKey == key else { return }
-                recipientError = SendRecipientProblem(error)
-            }
-        }
-        .sheet(isPresented: $isShowingQRScanner) {
-            SendQRScannerSheet { payload in applyScannedRecipientPayload(payload) }
-        }
         .task(id: currentStep) {
             if currentStep == .from { await store.sendFlow.loadSavedArtifacts() }
         }
@@ -144,49 +103,6 @@ struct SendView: View {
         }
         .onChange(of: store.sendFlow.isShowingHighRiskConfirmation) { _, showing in
             if !showing { sendWalletPassword = "" }
-        }
-        .task(id: "\(previewRefreshKey)#\(quoteAttempt)") {
-            let key = previewRefreshKey
-            quotedInputKey = nil
-            guard store.sendFlow.session.artifact == nil else { return }
-            do {
-                try await Task.sleep(for: .milliseconds(350))
-                while store.sendFlow.isPreparingPreview {
-                    try await Task.sleep(for: .milliseconds(100))
-                }
-                try Task.checkCancellation()
-                await store.refreshSendPreview()
-                // A quote that failed leaves the fee unknown: nothing is
-                // current until a retry lands.
-                guard !Task.isCancelled, previewRefreshKey == key, store.sendFlow.previewError == nil else { return }
-                quotedInputKey = key
-            } catch { return }
-        }
-        .task(id: "\(store.sendFlow.session.id):\(store.sendFlow.session.artifact?.id ?? ""):\(store.sendFlow.session.artifact?.revision ?? 0):\(store.transactionRevision)") {
-            guard let artifact = store.sendFlow.session.artifact, !artifact.attempts.isEmpty else {
-                stagedTransaction = nil
-                transactionError = nil
-                return
-            }
-            if stagedTransaction?.id != artifact.id {
-                stagedTransaction = nil
-                transactionError = nil
-            }
-            let session = store.sendFlow.session.id
-            let revision = store.transactionRevision
-            do {
-                let record = try await store.bridge.ready().transaction(id: artifact.id)
-                guard store.sendFlow.session.isCurrent(session), store.transactionRevision == revision,
-                      store.sendFlow.session.artifact?.id == artifact.id,
-                      store.sendFlow.session.artifact?.revision == artifact.revision else { return }
-                stagedTransaction = record
-                transactionError = nil
-            } catch {
-                guard store.sendFlow.session.isCurrent(session), store.transactionRevision == revision,
-                      store.sendFlow.session.artifact?.id == artifact.id,
-                      store.sendFlow.session.artifact?.revision == artifact.revision else { return }
-                transactionError = userErrorMessage(error)
-            }
         }
         .alert(AppLocalization.string("Sign this transaction?"), isPresented: Bindable(store.sendFlow).isShowingHighRiskConfirmation) {
             if store.stagedSendRequiresPassword {
@@ -245,27 +161,14 @@ struct SendView: View {
                 .disclosureGroupStyle(.spectra)
             }
         case .recipient:
-            SendRecipientPage(
-                store: store,
-                isShowingQRScanner: $isShowingQRScanner,
-                qrScannerErrorMessage: $qrScannerErrorMessage,
-                scanNotice: scanNotice,
-                validationError: recipientError,
-                isValidating: isValidatingRecipient,
-                validatedResolution: currentRecipientResolution,
-                retryValidation: { recipientValidationAttempt += 1 }
-            )
+            SendRecipientPage(store: store)
         case .amount:
-            SendAmountPage(store: store, quoteIsCurrent: quotedInputKey == previewRefreshKey,
-                retryQuote: { quoteAttempt += 1 })
+            SendAmountPage(store: store)
         case .confirm:
-            if let artifact = store.sendFlow.session.artifact {
-                SendStagesView(store: store, artifact: artifact,
-                    transaction: stagedTransaction, transactionError: transactionError)
+            if let progress = store.sendFlow.session.progress {
+                SendStagesView(store: store, progress: progress)
             } else {
-                SendConfirmationStep(store: store, quoteIsCurrent: quotedInputKey == previewRefreshKey,
-                    recipientAddress: currentRecipientResolution?.address ?? store.sendFlow.address,
-                    retryQuote: { quoteAttempt += 1 })
+                SendConfirmationStep(store: store)
             }
         }
     }
@@ -301,9 +204,7 @@ struct SendView: View {
     @ViewBuilder
     private func flowBottomBar(selectedCoin: AssetHolding?) -> some View {
         SpectraBottomActionBar {
-            if executionAction == .done,
-               let artifact = store.sendFlow.session.artifact,
-               SendExecutionAction.canRetry(artifact: artifact, transaction: stagedTransaction) {
+            if let progress = store.sendFlow.session.progress, progress.next == .done, progress.canRebroadcast {
                 Button {
                     startBroadcast()
                 } label: {
@@ -337,6 +238,9 @@ struct SendView: View {
         }
     }
 
+    /// Core's next step for the staged send; none until one is built.
+    private var nextStep: SendNextStep? { store.sendFlow.session.progress?.next }
+
     private var primaryActionTitle: String {
         switch currentStep {
         case .from, .recipient: return "Next"
@@ -345,13 +249,13 @@ struct SendView: View {
             // Three stages, each its own action (docs/ARCHITECTURE.md): what was built
             // is inspectable before signing, and a signed send waits for the
             // user to choose which nodes receive it.
-            return executionAction.title
+            return nextStep?.title ?? "Build Transaction"
         }
     }
 
     private var primaryActionSystemImage: String {
         guard currentStep == .confirm else { return "chevron.right" }
-        return executionAction.systemImage
+        return nextStep?.systemImage ?? "hammer.fill"
     }
 
     private var primaryShowsProgress: Bool {
@@ -367,9 +271,9 @@ struct SendView: View {
         case .amount:
             go(to: .confirm)
         case .confirm:
-            spectraHaptic(executionAction == .done ? .light : .heavy)
-            switch executionAction {
-            case .build:
+            spectraHaptic(nextStep == .done ? .light : .heavy)
+            switch nextStep {
+            case nil:
                 isShowingResumedSend = false
                 let session = store.sendFlow.session.id
                 Task {
@@ -377,7 +281,7 @@ struct SendView: View {
                     await store.sendFlow.build()
                 }
             case .sign: store.sendFlow.isShowingHighRiskConfirmation = true
-            case .broadcast, .retry: startBroadcast()
+            case .broadcast, .rebroadcast: startBroadcast()
             case .done: store.cancelSend()
             }
         }
@@ -396,51 +300,47 @@ struct SendView: View {
         case .from:
             return store.selectedWalletForSend() != nil && selectedCoin != nil
         case .recipient:
-            return currentRecipientResolution != nil
+            return store.sendFlow.currentRecipient != nil
         case .amount:
             return store.sendAmountIsValid && store.sendAmountRefusal == nil && store.sendFlow.previewError == nil
         case .confirm:
-            if store.sendFlow.session.artifact != nil {
+            if let progress = store.sendFlow.session.progress {
                 guard !isSendBusy else { return false }
-                switch executionAction {
+                switch progress.next {
                 case .broadcast: return !store.sendFlow.session.selectedEndpoints.isEmpty
-                case .retry:
-                    guard let artifact = store.sendFlow.session.artifact else { return false }
-                    return !store.sendFlow.session.selectedEndpoints.isEmpty
-                        && SendExecutionAction.canRetry(artifact: artifact, transaction: stagedTransaction)
-                default: return true
+                case .rebroadcast:
+                    return !store.sendFlow.session.selectedEndpoints.isEmpty && progress.canRebroadcast
+                case .sign, .done: return true
                 }
             }
             return !isSendBusy
                 && store.selectedWalletForSend() != nil
                 && selectedCoin != nil
-                && currentRecipientResolution != nil
+                && store.sendFlow.currentRecipient != nil
                 && store.sendAmountIsValid
                 && store.sendAmountRefusal == nil
-                && quotedInputKey == previewRefreshKey
+                && store.sendFlow.quoteIsCurrent
                 && store.sendFlow.customEvmFeeValidationError == nil
                 && store.sendFlow.evmNonceValidationError == nil
         }
-    }
-
-    private var executionAction: SendExecutionAction {
-        SendExecutionAction(artifact: store.sendFlow.session.artifact, transaction: stagedTransaction)
     }
 
     /// The flow's name while it is composed — the step bar and the page's
     /// own heading say which step this is — and the stage once it is built,
     /// in title case as every navigation title is.
     private var navigationTitle: String {
-        guard currentStep == .confirm, let artifact = store.sendFlow.session.artifact else { return "Send" }
-        switch executionAction {
-        case .build: return "Review Transfer"
+        guard currentStep == .confirm else { return "Send" }
+        guard let progress = store.sendFlow.session.progress else { return "Review Transfer" }
+        switch progress.next {
         case .sign: return "Check and Sign"
         case .broadcast: return "Submit Transaction"
-        case .retry: return "Submission Results"
+        case .rebroadcast: return "Submission Results"
         case .done:
-            if stagedTransaction?.id == artifact.id, stagedTransaction?.status == .confirmed { return "Transfer Complete" }
-            if stagedTransaction?.id == artifact.id, stagedTransaction?.status == .failed { return "Transaction Failed" }
-            return "Waiting for Confirmation"
+            switch progress.transaction?.status {
+            case .confirmed: return "Transfer Complete"
+            case .failed: return "Transaction Failed"
+            case .pending, nil: return "Waiting for Confirmation"
+            }
         }
     }
 
@@ -476,69 +376,6 @@ struct SendView: View {
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.28)) {
             currentStep = step
         }
-    }
-
-    private var currentRecipientResolution: SendDestinationResolution? {
-        guard let validatedRecipient, validatedRecipient.key == recipientKey else { return nil }
-        return validatedRecipient.resolution
-    }
-
-    private var recipientKey: String { [store.sendFlow.walletId, store.sendFlow.holdingKey, store.sendFlow.address].joined(separator: "|") }
-
-    private var previewRefreshKey: String {
-        [
-            store.sendFlow.session.artifact?.id ?? "",
-            store.sendFlow.walletId,
-            store.sendFlow.holdingKey,
-            store.sendFlow.address,
-            store.sendFlow.amount,
-            store.sendFlow.useCustomEvmFees.description,
-            store.sendFlow.customEvmMaxFeeGwei,
-            store.sendFlow.customEvmPriorityFeeGwei,
-            store.sendFlow.evmManualNonceEnabled.description,
-            store.sendFlow.evmManualNonce,
-        ].joined(separator: "|")
-    }
-
-    private func applyScannedRecipientPayload(_ payload: String) {
-        // Core reads the payload — bare address or payment URI — against the
-        // network and the asset being sent, and hands back the stored form
-        // of the address with the amount and memo the code asks for. Without
-        // an asset there is nothing to judge the code against.
-        guard let coin = selectedNetworkSendCoin else {
-            qrScannerErrorMessage = AppLocalization.string("The scanned QR code does not contain a valid address for the selected asset.")
-            return
-        }
-        do {
-            let payment = try readScannedPayment(chain: coin.chain, tokenContract: coin.contractAddress, payload: payload)
-            store.sendFlow.address = payment.address
-            if let amount = payment.amount { store.sendFlow.amount = AmountPresentation.decimalFieldText(amount) }
-            if let memo = payment.memo {
-                store.sendFlow.memoKind = memo.kind
-                store.sendFlow.memoText = memo.value
-            }
-            scannedPayment = payment
-            qrScannerErrorMessage = nil
-        } catch {
-            scannedPayment = nil
-            qrScannerErrorMessage = userErrorMessage(error)
-        }
-    }
-
-    /// "From the code: 0.1 BTC and Destination Tag 123456." — what the scan
-    /// filled in besides the address, while that address stands.
-    private var scanNotice: String? {
-        guard let payment = scannedPayment, payment.address == store.sendFlow.address else { return nil }
-        var filled: [String] = []
-        if let amount = payment.amount, let coin = selectedNetworkSendCoin {
-            filled.append(AppLocalization.format("scan.filled.part_format", amount, coin.symbol))
-        }
-        if let memo = payment.memo {
-            filled.append(AppLocalization.format("scan.filled.part_format", memo.kind.localizedTitle, memo.value))
-        }
-        guard !filled.isEmpty else { return nil }
-        return AppLocalization.format(
-            "scan.filled_format", filled.formatted(.list(type: .and).locale(AppLocalization.locale)))
     }
 }
 

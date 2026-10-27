@@ -13,33 +13,27 @@ struct SendPreviewInputSnapshot: Equatable {
     let priorityFee: String
 }
 
-/// What the wallet projection says a preview is for: the holding the composer
-/// has selected, if any, and the amount to quote.
-struct SendPreviewTarget {
-    let coin: AssetHolding?
-    let amount: String
-}
-
 extension SendFlowState {
-    func previewInput(for target: SendPreviewTarget) -> SendPreviewInputSnapshot {
+    /// The form as a quote reads it.
+    var previewInput: SendPreviewInputSnapshot {
         SendPreviewInputSnapshot(walletId: walletId, holdingKey: holdingKey,
-            amount: target.amount, destination: address,
+            amount: amountInput, destination: address,
             nonceEnabled: evmManualNonceEnabled, nonce: evmManualNonce,
             feesEnabled: useCustomEvmFees, maxFee: customEvmMaxFeeGwei,
             priorityFee: customEvmPriorityFeeGwei)
     }
 
     /// Every completion, including errors and loading cleanup, belongs to one
-    /// request. Core quotes and checks the recipient in the same call.
+    /// request. Core quotes and checks the recipient in the same call, and
+    /// quotes an empty amount provisionally, for a share of the holding.
     ///
-    /// `target` is read when the request starts and again when its answer
-    /// lands: an answer for a holding or amount the projection has since
-    /// moved off is not adopted.
-    func refreshPreview(target: () -> SendPreviewTarget) async {
+    /// The selected holding is read when the request starts and again when
+    /// its answer lands: an answer for a form the composer has since moved
+    /// off is not adopted.
+    func refreshPreview() async {
         let requestId = UUID()
         previewRequestId = requestId
-        let start = target()
-        let input = previewInput(for: start)
+        let input = previewInput
         previewError = nil
         // An override still being typed is pointed out beside its field.
         // Until it parses there is nothing to quote, and a refused quote
@@ -52,7 +46,7 @@ extension SendFlowState {
             return
         }
         clearDestinationCheck()
-        guard start.coin != nil else {
+        guard selectedHolding() != nil else {
             isPreparingPreview = false
             previewStore.reset()
             return
@@ -66,22 +60,22 @@ extension SendFlowState {
             let preview = try await bridge.ready().previewOwnedSend(
                 walletId: input.walletId, holdingKey: input.holdingKey, amount: input.amount,
                 destination: input.destination, explicitNonce: nonce, customFees: fees)
-            adoptPreviewResult(.success(preview), requestId: requestId, input: input, target: target)
+            adoptPreviewResult(.success(preview), requestId: requestId, input: input)
         } catch {
-            adoptPreviewResult(.failure(error), requestId: requestId, input: input, target: target)
+            adoptPreviewResult(.failure(error), requestId: requestId, input: input)
         }
     }
 
     func adoptPreviewResult(_ result: Result<OwnedSendPreview?, Error>, requestId: UUID,
-                            input: SendPreviewInputSnapshot, target: () -> SendPreviewTarget) {
-        let current = target()
-        guard !Task.isCancelled, previewRequestId == requestId, previewInput(for: current) == input else { return }
+                            input: SendPreviewInputSnapshot) {
+        guard !Task.isCancelled, previewRequestId == requestId, previewInput == input else { return }
         switch result {
         case .success(let preview):
             previewStore.apply(preview)
             previewError = nil
+            quotedInput = input
             clearVerificationNotice()
-            adoptRecipientCheck(preview?.recipient, coin: current.coin)
+            adoptRecipientCheck(preview?.recipient, coin: selectedHolding())
         case .failure(let error):
             guard !(error is CancellationError) else { return }
             previewStore.reset()
@@ -101,7 +95,7 @@ extension SendFlowState {
             destinationInfoMessage = AppLocalization.string("This address belongs to one of your wallets.")
             return
         }
-        var warnings = check.isNewToWallet ? highRiskSendMessages([.newAddress]) : []
+        var warnings = check.isNewToWallet ? [HighRiskSendWarning.newAddress.localizedText] : []
         if let activity = check.activity {
             let messages = chainRiskProbeMessages(chainName: coin.chainName, symbol: coin.symbol, activity: activity)
             warnings += messages.warning.map { [$0] } ?? []

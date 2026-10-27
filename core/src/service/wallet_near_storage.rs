@@ -270,11 +270,7 @@ impl WalletService {
                 asset: chain.coin_symbol().into(),
                 symbol: chain.coin_symbol().into(),
                 staking: None,
-                operation: Some(WalletOperation::RefundTokenStorage {
-                    contract,
-                    refund,
-                    network_fee,
-                }),
+                operation: Some(WalletOperation::RefundTokenStorage { contract, refund }),
                 review: SendArtifactReview::default(),
                 signing_payload_hex,
                 request,

@@ -73,34 +73,24 @@ private struct MergeCoinsView: View {
     let store: AppState
     let wallet: WalletView
     let type: SuiCoinType
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
 
     var body: some View {
-        Form {
+        WalletOperationSheet(
+            store: store, wallet: wallet, title: AppLocalization.string("Merge Coins"),
+            authenticationReason: AppLocalization.format("Authenticate to merge coins in %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The objects are one once it confirms."),
+            build: { try await store.bridge.ready().buildCoinMerge(walletId: wallet.id, coinType: type.coinType) }
+        ) { artifact in
             Section {
                 LabeledContent(AppLocalization.string("Coin"), value: type.symbol)
-                if case let .mergeCoins(_, objects, networkFee) = session.artifact?.operation {
+                if case let .mergeCoins(_, objects)? = artifact?.operation {
                     LabeledContent(
                         AppLocalization.string("Objects Merged"),
                         value: AppLocalization.format("%lld objects", count: Int(objects), Int(objects)))
-                    LabeledContent(AppLocalization.string("Network Fee"), value: "≤ " + store.amounts.formattedNativeAmount(networkFee, chain: wallet.chain))
                 }
             } footer: {
                 Text(AppLocalization.string("The objects become one, and nothing leaves the wallet. Storage freed by the merged objects is refunded, which often covers the fee."))
             }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to merge coins in %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The objects are one once it confirms."))
-        }
-        .navigationTitle(AppLocalization.string("Merge Coins")).navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
-        .task {
-            await session.load(
-                operation: .build,
-                prepare: { try await store.bridge.ready().buildCoinMerge(walletId: wallet.id, coinType: type.coinType) },
-                endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
         }
     }
 }

@@ -1,29 +1,18 @@
 import SwiftUI
 
-/// Signing and submission are explicit steps over one immutable core review.
+/// Signing and submission are explicit steps over one immutable core review;
+/// which of them, and whether a check or a repair is offered, is core's
+/// `SendProgress`.
 struct StakingTransactionView: View {
     @Bindable var store: AppState
     @Bindable var vm: StakingState
-    let artifact: SendArtifact
+    let progress: SendProgress
     @Binding var confirmsSigning: Bool
     @Binding var confirmsBroadcast: Bool
 
-    private var action: SendExecutionAction {
-        SendExecutionAction(artifact: artifact, transaction: vm.transaction)
-    }
+    private var artifact: SendArtifact { progress.artifact }
     private var canBroadcast: Bool {
-        action == .broadcast
-            || (action == .retry
-                && SendExecutionAction.canRetry(artifact: artifact, transaction: vm.transaction))
-    }
-    private var offersRepair: Bool {
-        guard let intent = artifact.staking else { return false }
-        return stakingInputRules(chain: intent.chainId, action: intent.action).repairAllowed
-            && artifact.stage == .signed && !artifact.attempts.isEmpty
-            && vm.transaction?.status != .confirmed
-    }
-    private var canCheckStatus: Bool {
-        !artifact.attempts.isEmpty && (vm.transaction == nil || vm.transaction?.status == .pending)
+        progress.next == .broadcast || (progress.next == .rebroadcast && progress.canRebroadcast)
     }
     private var needsReadPassword: Bool {
         vm.rules.positionsRequireAuthorization
@@ -35,28 +24,28 @@ struct StakingTransactionView: View {
             reviewCard
             statusCard
             if canBroadcast { destinations }
-            if let review = artifact.review.staking, action == .sign {
+            if artifact.review.staking != nil, progress.next == .sign {
                 Text(AppLocalization.string("staking.review_before_signing")).font(.caption)
                     .foregroundStyle(.secondary)
                 Button(AppLocalization.string("Sign Transaction")) { confirmsSigning = true }
-                    .buttonStyle(.glassProminent).disabled(vm.isBusy || review.networkFee.isEmpty)
+                    .buttonStyle(.glassProminent).disabled(vm.isBusy || artifact.review.networkFee == nil)
                     .accessibilityIdentifier("staking.sign")
             } else if canBroadcast {
-                Button(AppLocalization.string(action.title)) { confirmsBroadcast = true }
+                Button(AppLocalization.string(progress.next.title)) { confirmsBroadcast = true }
                     .buttonStyle(.glassProminent).disabled(vm.isBusy || vm.session.selectedEndpoints.isEmpty)
                     .accessibilityIdentifier("staking.broadcast")
             }
-            if canCheckStatus {
+            if progress.canRecheck {
                 Button(AppLocalization.string("staking.check_status")) { vm.begin(.recheck) }
                     .buttonStyle(.glass).disabled(vm.isBusy || (needsReadPassword && vm.password.isEmpty))
             }
-            if offersRepair {
+            if progress.canRepair {
                 Text(AppLocalization.string("staking.repair_explanation")).font(.caption).foregroundStyle(.secondary)
                 Button(AppLocalization.string("staking.repair")) { vm.begin(.repair) }
                     .buttonStyle(.glass).disabled(vm.isBusy || (needsReadPassword && vm.password.isEmpty))
                     .accessibilityIdentifier("staking.repair")
             }
-            if let link = vm.transaction?.explorerLink {
+            if let link = progress.transaction?.explorerLink {
                 Link(AppLocalization.string("View in block explorer"), destination: link.url).buttonStyle(
                     .glass)
             }
@@ -120,13 +109,13 @@ struct StakingTransactionView: View {
                 if review.fundingAlreadyCompleted {
                     Text(AppLocalization.string("staking.funding_completed")).font(.caption).foregroundStyle(.secondary)
                 }
-                let label = AppLocalization.string(
-                    review.feeIsUpperBound ? "staking.fee_upper_bound" : "Network Fee")
-                // With its display-currency value, as a send's fee is shown.
-                reviewRow(
-                    label,
-                    value: store.amounts.compactNetworkFee(
-                        review.networkFee, value: artifact.review.networkFeeValue, chain: artifact.chainId))
+                // With its display-currency value and its bound, as a send's
+                // fee is shown.
+                if let fee = artifact.review.networkFee {
+                    reviewRow(
+                        AppLocalization.string("Network Fee"),
+                        value: store.amounts.reviewedNetworkFee(fee, chain: artifact.chainId))
+                }
                 if review.feeIsDeductedFromAmount {
                     Text(AppLocalization.string("staking.fee_deducted")).font(.caption).foregroundStyle(.secondary)
                 }
@@ -158,7 +147,7 @@ struct StakingTransactionView: View {
 
     private var statusCard: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
-            if let transaction = vm.transaction {
+            if let transaction = progress.transaction {
                 Text(transaction.status.localizedTitle).font(.headline)
                 if let failure = transaction.localizedFailureReason {
                     Text(verbatim: failure).font(.subheadline).foregroundStyle(.red)
@@ -168,7 +157,7 @@ struct StakingTransactionView: View {
                     .font(.headline)
             }
             if artifact.attempts.contains(where: { $0.outcome == .accepted }),
-                vm.transaction == nil || vm.transaction?.status == .pending
+                progress.transaction == nil || progress.transaction?.status == .pending
             {
                 Text(AppLocalization.string("staking.submission_pending")).font(.subheadline)
                     .foregroundStyle(.secondary)

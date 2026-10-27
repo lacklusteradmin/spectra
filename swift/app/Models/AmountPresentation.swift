@@ -111,6 +111,17 @@ struct AmountPresentation {
         guard let fiat = formattedFiatIfAvailable(value) else { return native }
         return "\(native) (~\(fiat))"
     }
+    /// A reviewed fee as every review shows it, marked as core says it
+    /// relates to what the network charges: an estimate, exactly what it
+    /// pays, or the most it can cost.
+    func reviewedNetworkFee(_ fee: NetworkFee, chain: Chain) -> String {
+        let text = compactNetworkFee(fee.amount, value: fee.value, chain: chain)
+        switch fee.bound {
+        case .estimate: return "≈ " + text
+        case .exact: return text
+        case .atMost: return "≤ " + text
+        }
+    }
     /// A gas price as a fee row shows it: four significant digits, enough to
     /// compare quotes by. Core states it exactly; the rounding is only for
     /// the row. A receipt states the rate exactly.

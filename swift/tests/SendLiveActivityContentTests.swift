@@ -58,8 +58,8 @@ struct SendLiveActivityContentTests {
     }
 
     @Test func longIdentifiersKeepBothEndsAndShortOnesAreLeftAlone() {
-        #expect(sendLiveActivityPreview("0xabc", keepingEachEnd: 6) == "0xabc")
-        #expect(sendLiveActivityPreview("0x1234567890abcdef1234567890abcdef12345678", keepingEachEnd: 6) == "0x1234…345678")
+        #expect(shortAddress("0xabc") == "0xabc")
+        #expect(shortAddress("0x1234567890abcdef1234567890abcdef12345678") == "0x1234…345678")
     }
 
     @Test func theHashAppearsOnlyOnceThereIsOne() {

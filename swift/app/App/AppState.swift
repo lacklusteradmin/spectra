@@ -79,9 +79,11 @@ final class AppState {
         didSet { transactionRevision &+= 1 }
     }
 
-    /// The only place the transaction projection is written.
+    /// The only place the transaction projection is written. A staged send's
+    /// record may have moved with it.
     func setTransactionProjection(_ records: [TransactionRecord]) {
         transactions = records
+        sendFlow.refreshProgress()
     }
     var historyReadError: String? = nil
     @ObservationIgnored var portfolioSnapshotRevision: UInt64 = 0 // Core snapshot order, not request order.
@@ -272,6 +274,7 @@ final class AppState {
         self.priceAlerts = PriceAlertsState(commands: commands)
         self.tor = TorState(bridge: bridge)
         commands.adopt = { [weak self] in await self?.adoptCommittedTransition($0) }
+        sendFlow.selectedHolding = { [weak self] in self?.selectedSendCoin }
         guard startServices else { return }
         // A launch is a return to the app too: without this, closing it from
         // the app switcher and opening it again would get past auto-lock.

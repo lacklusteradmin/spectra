@@ -272,8 +272,15 @@ async fn only_a_function_call_key_the_wallet_does_not_sign_with_is_deleted() {
         Some(crate::send::stages::WalletOperation::DeleteAccessKey {
             public_key: dapp,
             receiver: "zapp.near".into(),
-            network_fee: crate::amount::decimal::from_units(fee, 24),
         })
+    );
+    let reviewed = built.review.network_fee.clone().unwrap();
+    assert_eq!(
+        (reviewed.amount, reviewed.bound),
+        (
+            crate::amount::decimal::from_units(fee, 24),
+            crate::send::stages::FeeBound::AtMost
+        )
     );
     assert_eq!((built.sender, built.recipient), (account.clone(), account));
 }

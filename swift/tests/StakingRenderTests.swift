@@ -35,7 +35,7 @@ struct StakingRenderTests: IsolatedAppStateSuite {
         if stage == .withdrawalFees {
             artifact.staking?.action = .withdraw
             artifact.staking?.positionId = "42"
-            artifact.review.staking?.networkFee = "0.0001"
+            artifact.review.networkFee = NetworkFee(amount: "0.0001", bound: .exact, value: nil)
             artifact.review.staking?.refundableDeposit = nil
             artifact.review.staking?.feeIsDeductedFromAmount = true
         }
@@ -44,11 +44,11 @@ struct StakingRenderTests: IsolatedAppStateSuite {
             artifact.reviewDigest = "reviewed-recovery"
             artifact.staking?.lockupSeconds = 600
             artifact.review.staking?.lockupSeconds = nil
-            artifact.review.staking?.networkFee = "0"
+            artifact.review.networkFee = NetworkFee(amount: "0", bound: .exact, value: nil)
             artifact.review.staking?.refundableDeposit = nil
             artifact.review.staking?.fundingAlreadyCompleted = true
         }
-        vm.session.artifact = artifact
+        var progress = StakingTestSupport.progress(artifact)
         vm.session.endpoints = ["node-a", "node-b"]
         vm.positions = [StakingTestSupport.position()]
         if stage == .queuedRewards {
@@ -56,16 +56,21 @@ struct StakingRenderTests: IsolatedAppStateSuite {
             vm.positions[0].rewardsUnlockTimeUnix = 1_800_604_800
         }
         vm.hasLoadedPositions = true
-        if stage == .pending || stage == .confirmed {
-            vm.transaction = StakingTestSupport.transaction(status: stage == .confirmed ? .confirmed : .pending)
+        if stage == .confirmed {
+            progress = .staged(
+                artifact, transaction: StakingTestSupport.transaction(status: .confirmed), next: .done)
         }
-        if stage == .recovery { vm.transaction = StakingTestSupport.transaction(status: .failed) }
+        if stage == .recovery {
+            progress = .staged(
+                artifact, transaction: StakingTestSupport.transaction(status: .failed), next: .done, canRepair: true)
+        }
+        vm.session.progress = progress
         let view = ScrollView {
             if stage == .positions || stage == .queuedRewards {
                 StakingPositionsView(vm: vm, canSign: true, requiresPassword: false)
             } else {
                 StakingTransactionView(
-                    store: store, vm: vm, artifact: artifact,
+                    store: store, vm: vm, progress: progress,
                     confirmsSigning: .constant(false), confirmsBroadcast: .constant(false))
             }
         }.frame(width: 393, height: 852).background(Color(.systemBackground))

@@ -18,7 +18,7 @@ import Foundation
     enum ErrorPlace { case positions, step }
 
     let chain: Chain
-    let session = SendSession()
+    let session: SendSession
     var validators: [StakingValidator] = []
     var positions: [StakingPosition] = []
     var savedArtifacts: [SendArtifact] = []
@@ -34,7 +34,6 @@ import Foundation
     /// so it can be corrected rather than retyped. Forgotten when the page
     /// closes or another wallet is chosen.
     var password = ""
-    var transaction: TransactionRecord?
     var request: Request?
     var isLoading = false
     var hasLoadedPositions = false
@@ -46,7 +45,6 @@ import Foundation
     @ObservationIgnored private var generation = UUID()
     @ObservationIgnored private var positionsRead = UUID()
     @ObservationIgnored private var savedRead = UUID()
-    @ObservationIgnored private var transactionRead = UUID()
 
     init(
         chain: Chain, bridge: WalletServiceBridge, operations: StakingOperations? = nil,
@@ -54,7 +52,9 @@ import Foundation
         broadcastCompletion: (@MainActor (SendArtifact) async -> Void)? = nil
     ) {
         self.chain = chain
-        self.operations = operations ?? .live(bridge: bridge)
+        let operations = operations ?? .live(bridge: bridge)
+        self.operations = operations
+        session = SendSession(progress: operations.progress)
         self.authentication = authentication
         self.broadcastCompletion = broadcastCompletion
     }
@@ -79,7 +79,6 @@ import Foundation
 
     func startStake() {
         session.reset()
-        transaction = nil
         action = .stake
         validatorId = ""
         positionId = nil
@@ -90,7 +89,6 @@ import Foundation
 
     func selectPosition(_ position: StakingPosition, action: StakingAction) {
         session.reset()
-        transaction = nil
         self.action = action
         validatorId = position.validatorIdentifier
         positionId = position.id
@@ -116,7 +114,6 @@ import Foundation
         request = nil
         password = ""
         session.reset()
-        transaction = nil
     }
 
     private func current(_ token: UUID) -> Bool { generation == token && !Task.isCancelled }
@@ -262,7 +259,7 @@ import Foundation
                     } else {
                         await store.handleBroadcastCompletion(submitted)
                     }
-                    if current(token) { await loadTransaction() }
+                    if current(token) { await session.refresh() }
                 }
             case .resume(let savedId):
                 session.reset()
@@ -270,9 +267,9 @@ import Foundation
                     operation: .resume,
                     prepare: { try await self.operations.inspect(savedId) },
                     endpoints: { try await self.operations.endpoints($0) })
-                if current(token) { await loadTransaction() }
             case .recheck:
-                if let artifact = session.artifact, !artifact.attempts.isEmpty {
+                if let progress = session.progress, progress.canRecheck {
+                    let artifact = progress.artifact
                     if rules.positionsRequireAuthorization {
                         if let failure = await authorize(
                             AppLocalization.string("staking.authorize_status"), store: store)
@@ -281,53 +278,25 @@ import Foundation
                         }
                         guard current(token), session.artifact?.id == artifact.id else { return }
                     }
-                    let inspected = try await operations.recheck(artifact.id, suppliedPassword)
+                    _ = try await operations.recheck(artifact.id, suppliedPassword)
                     await store.refreshTransactionProjection()
-                    if current(token), session.artifact?.id == artifact.id {
-                        session.artifact = inspected
-                        await loadTransaction()
-                    }
+                    if current(token), session.artifact?.id == artifact.id { await session.refresh() }
                 }
             case .repair:
-                guard let artifact = session.artifact else { return }
+                guard let progress = session.progress, progress.canRepair else { return }
+                let artifact = progress.artifact
                 if let failure = await authorize(AppLocalization.string("staking.authorize_repair"), store: store) {
                     throw DisplayedError(failure)
                 }
                 guard current(token), session.artifact?.reviewDigest == artifact.reviewDigest else { return }
-                if await session.load(
+                await session.load(
                     operation: .build,
                     prepare: { try await self.operations.repair(artifact.id, suppliedPassword) },
                     endpoints: { try await self.operations.endpoints($0) })
-                {
-                    transaction = nil
-                    transactionRead = UUID()
-                }
             }
         } catch {
             guard current(token) else { return }
             if case .positions = request.operation { fail(error, at: .positions) } else { fail(error, at: .step) }
-        }
-    }
-
-    func loadTransaction() async {
-        let query = UUID()
-        transactionRead = query
-        guard let artifact = session.artifact, !artifact.attempts.isEmpty else {
-            transaction = nil
-            return
-        }
-        let token = generation
-        do {
-            let result = try await operations.transaction(artifact.id)
-            guard current(token), session.artifact?.reviewDigest == artifact.reviewDigest, transactionRead == query
-            else {
-                return
-            }
-            transaction = result
-        } catch {
-            if current(token), session.artifact?.reviewDigest == artifact.reviewDigest, transactionRead == query {
-                fail(error, at: .step)
-            }
         }
     }
 }

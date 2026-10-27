@@ -468,7 +468,14 @@ async fn an_owned_peercoin_build_pays_the_fee_its_preview_quoted() {
         crate::amount::decimal::from_units(prepared.fee.into(), 6),
         quoted
     );
-    assert_eq!(built.review.network_fee.as_deref(), Some(quoted.as_str()));
+    assert_eq!(
+        built
+            .review
+            .network_fee
+            .as_ref()
+            .map(|fee| fee.amount.as_str()),
+        Some(quoted.as_str())
+    );
 }
 
 /// A reviewed input spent since the review is not signed for.

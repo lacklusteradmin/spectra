@@ -321,7 +321,8 @@ async fn a_send_to_the_wallets_own_address_is_built_for_self_send_confirmation()
         .build_send(request(SENDER, "0.000000000000000001"))
         .await
         .unwrap();
-    assert!(own.review.requires_self_send_confirmation);
+    let own_address = crate::send::stages::ReviewWarning::OwnAddress;
+    assert!(own.review.warnings.contains(&own_address));
     assert_eq!(
         json(&service.inspect_send(own.id.clone()).await.unwrap().review),
         json(&own.review)
@@ -330,7 +331,7 @@ async fn a_send_to_the_wallets_own_address_is_built_for_self_send_confirmation()
         .build_send(request(&recipient(), "0.01"))
         .await
         .unwrap();
-    assert!(!other.review.requires_self_send_confirmation);
+    assert!(!other.review.warnings.contains(&own_address));
 }
 
 /// A stored send is read back only as it was reviewed and signed: a changed
@@ -354,7 +355,7 @@ async fn an_altered_stored_send_is_refused_wherever_it_is_read() {
             payload["view"]["symbol"] = json!("USDC")
         }),
         ("self-send advisory", |payload| {
-            payload["view"]["review"]["requires_self_send_confirmation"] = json!(true)
+            payload["view"]["review"]["warnings"] = json!([{ "kind": "own_address" }])
         }),
         ("request amount", |payload| {
             payload["request"]["amount_str"] = json!("9")

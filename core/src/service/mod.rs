@@ -331,6 +331,7 @@ mod send_stage_tron;
 mod send_stage_utxo;
 mod send_stage_xrp;
 mod send_stages;
+pub use send_stages::{SendNextStep, SendProgress};
 mod send_utxo_sources;
 mod setup_summary;
 pub use setup_summary::{CapabilityCoverage, WalletSetupLimit, WalletSetupSummary};

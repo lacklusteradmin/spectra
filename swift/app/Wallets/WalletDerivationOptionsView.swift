@@ -270,3 +270,51 @@ private struct NewPhraseLengthSection: View {
         .padding(SpectraLayout.Space.l).spectraBubbleFill().spectraCardFill()
     }
 }
+
+struct SeedPathSlotEditor: View {
+    let title: String
+    @Binding var path: String
+    let defaultPath: String
+    private var segments: [DerivationPathSegment] {
+        parseDerivationPath(rawPath: path) ?? parseDerivationPath(rawPath: defaultPath) ?? []
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
+            HStack {
+                Text(AppLocalization.string(title)).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary)
+                Spacer()
+                Button(AppLocalization.string("Reset")) {
+                    path = defaultPath
+                }.font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: SpectraLayout.Space.s) {
+                    Text("m").font(.caption.monospaced().weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(segments.indices, id: \.self) { index in
+                        let segment = segments[index]
+                        HStack(spacing: SpectraLayout.Space.xs) {
+                            Text(verbatim: "/").font(.caption.monospaced()).foregroundStyle(.secondary)
+                            TextField(
+                                "0",
+                                text: Binding(
+                                    get: { String(segment.value) }, set: { updateSegment(at: index, value: $0) }
+                                )
+                            ).keyboardType(.numberPad).font(.caption.monospaced()).foregroundStyle(Color.primary).padding(.horizontal, SpectraLayout.Space.s)
+                                .padding(.vertical, SpectraLayout.Space.s).spectraInputFieldStyle(cornerRadius: SpectraLayout.Radius.inner)
+                            if segment.isHardened {
+                                Text(verbatim: "'").font(.caption.monospaced().weight(.bold)).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    private func updateSegment(at index: Int, value: String) {
+        guard var resolvedSegments = parseDerivationPath(rawPath: path) ?? parseDerivationPath(rawPath: defaultPath),
+            resolvedSegments.indices.contains(index), let numericValue = UInt32(value.filter(\.isNumber))
+        else { return }
+        resolvedSegments[index].value = numericValue
+        path = formatDerivationPath(segments: resolvedSegments)
+    }
+}

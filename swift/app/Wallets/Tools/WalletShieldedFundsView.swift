@@ -164,103 +164,97 @@ private struct ShieldedTransactionView: View {
     let store: AppState
     let wallet: WalletView
     let flow: PrivateFundsFlow
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
     @State private var recipient = ""
     @State private var amount = ""
     @State private var memo = ""
 
-    private var symbol: String { wallet.chain.gasTokenSymbol }
+    /// Shielding asks for nothing and is built as the sheet opens.
+    private var formIsComplete: Bool? {
+        guard flow == .send else { return nil }
+        return !recipient.trimmingCharacters(in: .whitespaces).isEmpty
+            && !amount.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
-        Form {
-            if let artifact = session.artifact {
-                reviewSection(artifact)
-            } else if flow == .send {
-                Section {
-                    AddressEntryRow(
-                        title: AppLocalization.string("Destination Address"), text: $recipient, chain: wallet.chain,
-                        contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
-                    TextField(AppLocalization.string("Amount"), text: $amount)
-                        .keyboardType(.decimalPad).monospacedDigit()
-                    TextField(AppLocalization.string("Memo (Optional)"), text: $memo, axis: .vertical)
-                        .lineLimit(1...4)
-                } footer: {
-                    Text(AppLocalization.string(
-                        "A unified or Sapling address receives privately; a transparent one is public. A memo reaches only a shielded recipient, and only the recipient reads it."
-                    ))
-                }
-                Section {
-                    Button(AppLocalization.string("Review")) { Task { await review() } }
-                        .disabled(recipient.trimmingCharacters(in: .whitespaces).isEmpty
-                                  || amount.trimmingCharacters(in: .whitespaces).isEmpty || session.isBusy)
-                }
-            }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to send shielded funds from %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The funds move once it confirms; scan again to see them."))
-        }
-        .navigationTitle(flow == .moveIn
-                         ? AppLocalization.string("Shield Transparent Funds")
-                         : AppLocalization.string("Send Shielded Funds"))
-        .navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
-        .task {
-            if flow == .moveIn { await review() }
-        }
-    }
-
-    @ViewBuilder
-    private func reviewSection(_ artifact: SendArtifact) -> some View {
-        switch artifact.operation {
-        case let .shieldTransparent(amount, networkFee):
+        WalletOperationSheet(
+            store: store, wallet: wallet,
+            title: flow == .moveIn
+                ? AppLocalization.string("Shield Transparent Funds") : AppLocalization.string("Send Shielded Funds"),
+            authenticationReason: AppLocalization.format("Authenticate to send shielded funds from %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The funds move once it confirms; scan again to see them."),
+            formIsComplete: formIsComplete,
+            endpoints: { try await store.bridge.ready().zcashShieldedBroadcastEndpoints(chain: $0) },
+            build: build
+        ) {
             Section {
-                LabeledContent(AppLocalization.string("Shielded"), value: "\(amount) \(symbol)")
-                LabeledContent(AppLocalization.string("Network Fee"), value: "\(networkFee) \(symbol)")
+                AddressEntryRow(
+                    title: AppLocalization.string("Destination Address"), text: $recipient, chain: wallet.chain,
+                    contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
+                TextField(AppLocalization.string("Amount"), text: $amount)
+                    .keyboardType(.decimalPad).monospacedDigit()
+                TextField(AppLocalization.string("Memo (Optional)"), text: $memo, axis: .vertical)
+                    .lineLimit(1...4)
             } footer: {
                 Text(AppLocalization.string(
-                    "Every transparent output of this wallet moves into its own shielded pool. The transaction shows the transparent address it came from."
+                    "A unified or Sapling address receives privately; a transparent one is public. A memo reaches only a shielded recipient, and only the recipient reads it."
                 ))
             }
-        case let .shieldedPayment(memo, networkFee):
-            Section {
-                LabeledContent(AppLocalization.string("To")) {
-                    Text(verbatim: artifact.recipient).font(.caption.monospaced()).lineLimit(2)
-                        .truncationMode(.middle)
-                }
-                LabeledContent(AppLocalization.string("Amount"), value: "\(artifact.amount) \(symbol)")
-                LabeledContent(AppLocalization.string("Network Fee"), value: "\(networkFee) \(symbol)")
-                if let memo {
-                    LabeledContent(AppLocalization.string("Memo")) { Text(verbatim: memo).lineLimit(4) }
-                }
-            }
-            let warnings = highRiskSendMessages(artifact.review.warnings)
-            if !warnings.isEmpty {
+        } summary: { artifact in
+            switch artifact?.operation {
+            case let .shieldTransparent(amount):
                 Section {
-                    ForEach(warnings, id: \.self) { Text($0).foregroundStyle(Color.spectraWarning) }
+                    LabeledContent(
+                        AppLocalization.string("Shielded"),
+                        value: store.amounts.formattedNativeAmount(amount, chain: wallet.chain))
+                } footer: {
+                    Text(AppLocalization.string(
+                        "Every transparent output of this wallet moves into its own shielded pool. The transaction shows the transparent address it came from."
+                    ))
                 }
+            case let .shieldedPayment(memo):
+                if let artifact {
+                    PrivatePaymentSummary(store: store, wallet: wallet, artifact: artifact, memo: memo)
+                }
+            default:
+                EmptyView()
             }
-        default:
-            EmptyView()
         }
     }
 
-    private func review() async {
+    private func build() async throws -> SendArtifact {
         let recipient = recipient.trimmingCharacters(in: .whitespacesAndNewlines)
         let amount = AmountPresentation.canonicalDecimalInput(amount)
         let memo = memo.trimmingCharacters(in: .whitespacesAndNewlines)
-        await session.load(
-            operation: .build,
-            prepare: {
-                switch flow {
-                case .moveIn:
-                    try await store.bridge.ready().buildZcashShielding(walletId: wallet.id)
-                case .send:
-                    try await store.bridge.ready().buildZcashShieldedSend(
-                        walletId: wallet.id, recipient: recipient, amount: amount, memo: memo.isEmpty ? nil : memo)
-                }
-            },
-            endpoints: { try await store.bridge.ready().zcashShieldedBroadcastEndpoints(chain: $0) })
+        switch flow {
+        case .moveIn:
+            return try await store.bridge.ready().buildZcashShielding(walletId: wallet.id)
+        case .send:
+            return try await store.bridge.ready().buildZcashShieldedSend(
+                walletId: wallet.id, recipient: recipient, amount: amount, memo: memo.isEmpty ? nil : memo)
+        }
+    }
+}
+
+/// A payment out of a wallet's private funds, as both private-funds sheets
+/// review it: the recipient, the amount, and the memo it carries.
+struct PrivatePaymentSummary: View {
+    let store: AppState
+    let wallet: WalletView
+    let artifact: SendArtifact
+    let memo: String?
+
+    var body: some View {
+        Section {
+            LabeledContent(AppLocalization.string("To")) {
+                Text(verbatim: artifact.recipient).font(.caption.monospaced()).lineLimit(2)
+                    .truncationMode(.middle)
+            }
+            LabeledContent(
+                AppLocalization.string("Amount"),
+                value: store.amounts.formattedNativeAmount(artifact.amount, chain: wallet.chain))
+            if let memo {
+                LabeledContent(AppLocalization.string("Memo")) { Text(verbatim: memo).lineLimit(4) }
+            }
+        }
     }
 }

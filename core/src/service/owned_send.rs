@@ -54,6 +54,22 @@ fn shortcut_amount(exact: String, percent: u32, asset_decimals: u32) -> String {
     }
 }
 
+/// The share of the holding a quote is made for before an amount is typed.
+const PROVISIONAL_QUOTE_PERCENT: u32 = 10;
+
+/// What a composer is quoted for while its amount field is empty: a tenth of
+/// the holding, enough to price the fee and the maximum, and never filled in
+/// as the amount. A holding too small for a tenth to count is quoted at its
+/// smallest unit, so the fee is still priced.
+fn provisional_amount(balance: &str, decimals: u32) -> String {
+    crate::amount::input::send_amount_shortcut(
+        balance.to_string(),
+        decimals,
+        PROVISIONAL_QUOTE_PERCENT,
+    )
+    .unwrap_or_else(|| crate::amount::decimal::from_units(1, decimals))
+}
+
 /// The amount shortcuts a composer offers, in order, whether or not a quote
 /// has priced them yet — so the controls exist before the first quote does.
 #[uniffi::export]
@@ -203,7 +219,9 @@ fn amount_refusal(
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Quote a send and, alongside it, check whether the destination has been
-    /// used. A recipient read that fails leaves the quote standing.
+    /// used. A recipient read that fails leaves the quote standing. An empty
+    /// `amount` is quoted provisionally, for a share of the holding; the
+    /// quote's `amount` says what it was made for.
     pub async fn preview_owned_send(
         &self,
         wallet_id: String,
@@ -307,6 +325,14 @@ impl WalletService {
             return Ok(None);
         }
         let token_decimals = token.as_ref().map(|t| u32::from(t.decimals));
+        let amount = if amount.trim().is_empty() {
+            provisional_amount(
+                &holding.amount,
+                token_decimals.unwrap_or(u32::from(chain.native_decimals())),
+            )
+        } else {
+            amount
+        };
         let wrap = |preview| {
             owned_preview(
                 &state,
@@ -851,3 +877,19 @@ mod shortcut_amount_tests {
 #[cfg(test)]
 #[path = "tests/send_owned.rs"]
 mod owned_send_tests;
+
+#[cfg(test)]
+mod provisional_amount_tests {
+    use super::provisional_amount;
+
+    /// A tenth of the holding, cut to its precision; a holding too small for
+    /// a tenth to count is quoted at its smallest unit.
+    #[test]
+    fn an_empty_amount_is_quoted_for_a_tenth_of_the_holding() {
+        assert_eq!(provisional_amount("2.5", 8), "0.25");
+        assert_eq!(provisional_amount("0.123456789", 8), "0.01234567");
+        assert_eq!(provisional_amount("0.00000009", 8), "0.00000001");
+        assert_eq!(provisional_amount("0", 6), "0.000001");
+        assert_eq!(provisional_amount("7", 0), "1");
+    }
+}

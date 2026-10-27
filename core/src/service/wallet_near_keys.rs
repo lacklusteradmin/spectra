@@ -222,7 +222,6 @@ impl WalletService {
                 operation: Some(WalletOperation::DeleteAccessKey {
                     public_key,
                     receiver: call.receiver_id,
-                    network_fee,
                 }),
                 review: SendArtifactReview::default(),
                 signing_payload_hex,

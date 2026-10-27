@@ -148,18 +148,22 @@ async fn an_owned_build_keeps_its_reviews_advisories_and_fee() {
         .estimated_network_fee
         .clone();
     let built = service.build_owned_send(input(OTHER, "1")).await.unwrap();
-    assert!(built.review.requires_self_send_confirmation);
-    assert_eq!(
-        serde_json::to_value(&built.review.warnings).unwrap(),
-        serde_json::to_value(&quote.warnings).unwrap()
+    let reviewed = crate::send::stages::SendArtifactReview::of_transfer(
+        quote.warnings.clone(),
+        quote.recipient_warnings.clone(),
+        true,
     );
-    assert_eq!(
-        serde_json::to_value(&built.review.recipient_warnings).unwrap(),
-        serde_json::to_value(&quote.recipient_warnings).unwrap()
+    assert!(
+        built
+            .review
+            .warnings
+            .contains(&crate::send::stages::ReviewWarning::OwnAddress)
     );
+    assert_eq!(built.review.warnings, reviewed.warnings);
+    let fee = built.review.network_fee.clone().unwrap();
     assert_eq!(
-        built.review.network_fee.as_deref(),
-        Some(quoted_fee.as_str())
+        (fee.amount.as_str(), fee.bound),
+        (quoted_fee.as_str(), crate::send::stages::FeeBound::Estimate)
     );
     let PreparedPayload::Evm(prepared) =
         service.load_send_artifact(built.id).await.unwrap().prepared

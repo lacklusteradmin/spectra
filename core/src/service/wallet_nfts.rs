@@ -198,10 +198,6 @@ impl WalletService {
                 .fetch_collection_label(&contract)
                 .await
                 .unwrap_or_default();
-            let network_fee = crate::amount::decimal::from_units(
-                prepared.maximum_fee_wei()?,
-                u32::from(chain.native_decimals()),
-            );
             let signing_payload_hex = hex::encode(prepared.signing_payload()?);
             let request = crate::send::SendExecutionRequest {
                 chain_id: chain,
@@ -231,7 +227,6 @@ impl WalletService {
                     token_id,
                     quantity,
                     collection,
-                    network_fee,
                 }),
                 review: SendArtifactReview::default(),
                 signing_payload_hex,

@@ -25,8 +25,6 @@ impl StakingAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 pub struct StakingReview {
-    pub network_fee: String,
-    pub fee_is_upper_bound: bool,
     /// Governance disbursement fees reduce the reviewed principal payout.
     pub fee_is_deducted_from_amount: bool,
     /// Recovery completes management steps for an already funded neuron.
@@ -89,7 +87,6 @@ pub struct StakingInputRules {
     pub validator_required: bool,
     pub lockup_required: bool,
     pub positions_require_authorization: bool,
-    pub repair_allowed: bool,
 }
 
 #[uniffi::export]
@@ -113,7 +110,6 @@ pub fn staking_input_rules(
         validator_required: action == StakingAction::Stake && chain.supports_staking(),
         lockup_required: chain == Chain::Icp && action == StakingAction::Stake,
         positions_require_authorization: chain == Chain::Icp,
-        repair_allowed: chain == Chain::Icp && action == StakingAction::Stake,
     }
 }
 

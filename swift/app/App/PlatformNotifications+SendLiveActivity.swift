@@ -12,15 +12,6 @@ import Foundation
 
 // MARK: - Content
 
-/// Middle-truncate a long identifier so both ends stay readable on one line.
-///
-/// A reader checking an address or a hash reads its ends, and every row in the
-/// activity is one line wide.
-func sendLiveActivityPreview(_ value: String, keepingEachEnd keep: Int) -> String {
-    guard value.count > keep * 2 + 1 else { return value }
-    return "\(value.prefix(keep))…\(value.suffix(keep))"
-}
-
 /// What the activity shows for `transaction` in `phase`.
 ///
 /// `amountText` is passed in rather than formatted here: the asset's precision
@@ -51,9 +42,9 @@ func sendLiveActivityContentState(
         amountText: amountText,
         statusText: statusText,
         detailText: detailText,
-        destinationPreview: sendLiveActivityPreview(transaction.address, keepingEachEnd: 6),
+        destinationPreview: shortAddress(transaction.address),
         transactionHashPreview: transaction.transactionHash.map {
-            sendLiveActivityPreview($0, keepingEachEnd: 8)
+            shortAddress($0, keepingEachEnd: 8)
         },
         startedAt: transaction.createdDate)
 }

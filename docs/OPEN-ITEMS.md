@@ -17,27 +17,6 @@ Delete an item once it is done.
   offline CLI fixtures. Keep live probes read-only; any resulting behaviour
   changes need `make verify`.
 
-## Technical debt
-
-Found by the 2026-10-26 code audit and not yet paid down. Each item names
-where the duplication or misplaced rule lives; fix the cause, not the
-symptom, and delete the item with the change.
-
-### iOS app
-
-- [ ] **The send composer's requests live in a view.** `SendFlowViews.swift`
-  keeps recipient resolution, preview refresh (with a polling loop) and the
-  staged-transaction read as `@State` tasks; they belong on `SendFlowState`.
-- [ ] **Decisions made in Swift.** The next send stage
-  (`SendExecutionAction.swift`), staking repair/broadcast availability, the
-  10% provisional-quote amount, whether a fee is an upper bound, and review
-  warnings (assembled three ways) are core's to answer.
-- [ ] **Duplicated views.** Ten wallet-tool sheets repeat one build/review
-  form; three copy-with-feedback implementations and three address
-  shorteners; the send recipient field rebuilds `AddressEntryRow`.
-  `DashboardViews.swift`, `WalletFlowViews.swift` and
-  `SendPrimarySectionsView.swift` each hold several screens.
-
 ## Supported chain scope
 
 [CHAIN-SUPPORT.md](CHAIN-SUPPORT.md) defines supported protocols, import formats,

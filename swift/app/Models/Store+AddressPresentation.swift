@@ -24,3 +24,11 @@ func groupedAddress(_ address: String) -> AttributedString {
 func readableAddress(_ address: String, chain: Chain) -> AttributedString {
     groupedAddress(displayAddress(chain: chain, address: address))
 }
+
+/// Both ends of an address or hash, which is how one is recognised, where a
+/// row has no room for the middle: a contacts menu, a lock-screen line.
+/// Anything short enough to read whole is returned whole.
+func shortAddress(_ value: String, keepingEachEnd keep: Int = 6) -> String {
+    guard value.count > keep * 2 + 1 else { return value }
+    return "\(value.prefix(keep))…\(value.suffix(keep))"
+}

@@ -44,20 +44,14 @@ extension AppState {
         guard let decimals = sendAmountDecimals else { return false }
         return isValidAmountInput(text: sendFlow.amountInput, maxDecimals: decimals)
     }
-    // A provisional quote can load before the user types; it never changes the
-    // amount field and is replaced by a quote for the entered amount.
-    var sendPreviewAmountInput: String {
-        guard sendFlow.amountInput.isEmpty,
-              let coin = selectedSendCoin, let decimals = sendAmountDecimals else { return sendFlow.amountInput }
-        return sendAmountShortcut(maximum: coin.amount, decimals: decimals, percentage: 10) ?? "0"
-    }
     /// The quote core made for the selected holding, if it is current.
     var sendQuote: OwnedSendPreview? {
         guard let coin = selectedSendCoin else { return nil }
         return sendFlow.previewStore.quote(walletId: sendFlow.walletId, coin: coin)
     }
     /// The quote for the amount on screen. A quote for another amount — the
-    /// provisional one, or one still in flight — says nothing about this one.
+    /// provisional one core makes before an amount is typed, or one still in
+    /// flight — says nothing about this one.
     var sendQuoteForEnteredAmount: OwnedSendPreview? {
         guard let quote = sendQuote,
               quote.amount == sendFlow.amountInput else { return nil }
@@ -74,12 +68,6 @@ extension AppState {
     }
     func sendPreview(for coin: AssetHolding) -> SendPreview? {
         sendFlow.previewStore.quote(walletId: sendFlow.walletId, coin: coin)?.preview
-    }
-    var sendPreviewTarget: SendPreviewTarget {
-        SendPreviewTarget(coin: selectedSendCoin, amount: sendPreviewAmountInput)
-    }
-    func refreshSendPreview() async {
-        await sendFlow.refreshPreview { self.sendPreviewTarget }
     }
     var sendAddressBookEntries: [AddressBookEntry] {
         guard let selectedSendCoin else { return [] }
@@ -124,16 +112,10 @@ extension AppState {
             sendFlow.useCustomEvmFees = true
             sendFlow.customEvmMaxFeeGwei = draft.maxFeeGwei
             sendFlow.customEvmPriorityFeeGwei = draft.priorityFeeGwei
-            await refreshSendPreview()
         } catch {
             guard sendFlow.session.isCurrent(session) else { return }
             sendFlow.session.error = AppLocalization.format("Unable to prepare replacement context: %@", userErrorMessage(error))
         }
-    }
-    /// The address this send is going to, from whatever is in the field.
-    /// Core owns resolution.
-    func resolveSendDestination(input: String, on chain: Chain) async throws -> SendDestinationResolution {
-        try await self.bridge.ready().resolveSendDestination(chainId: chain, input: input)
     }
     func confirmSigning(password: String?) async {
         await sendFlow.sign(password: password) {

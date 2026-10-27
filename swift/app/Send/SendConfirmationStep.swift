@@ -3,9 +3,8 @@ import SwiftUI
 /// The pre-build review form.
 struct SendConfirmationStep: View {
     @Bindable var store: AppState
-    let quoteIsCurrent: Bool
-    let recipientAddress: String
-    let retryQuote: () -> Void
+    private var quoteIsCurrent: Bool { store.sendFlow.quoteIsCurrent }
+    private var recipientAddress: String { store.sendFlow.currentRecipient?.address ?? store.sendFlow.address }
     private var selectedCoin: AssetHolding? {
         store.availableSendCoins(for: store.sendFlow.walletId).first(where: { $0.holdingKey == store.sendFlow.holdingKey })
     }
@@ -30,7 +29,7 @@ struct SendConfirmationStep: View {
                             Label(error, systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption).foregroundStyle(.red)
                             Spacer(minLength: 0)
-                            Button(AppLocalization.string("Retry"), action: retryQuote)
+                            Button(AppLocalization.string("Retry"), action: store.sendFlow.schedulePreview)
                                 .font(.caption.weight(.semibold))
                         }
                     } else if let refusal = store.sendAmountRefusal {

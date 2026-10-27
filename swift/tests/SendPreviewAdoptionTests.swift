@@ -63,7 +63,7 @@ struct SendPreviewAdoptionTests: IsolatedAppStateSuite {
         let store = makeState()
         store.sendFlow.evmManualNonceEnabled = true
         store.sendFlow.evmManualNonce = "not a number"
-        await store.refreshSendPreview()
+        await store.sendFlow.refreshPreview()
         #expect(store.sendFlow.previewError == nil)
         #expect(!store.sendFlow.isPreparingPreview)
     }
@@ -78,24 +78,23 @@ struct SendPreviewAdoptionTests: IsolatedAppStateSuite {
             { $0.sendFlow.customEvmPriorityFeeGwei = "invalid" },
             { $0.sendFlow.previewRequestId = UUID() },
         ]
-        let target = { store.sendPreviewTarget }
         for edit in edits {
-            let input = store.sendFlow.previewInput(for: target())
+            let input = store.sendFlow.previewInput
             let request = store.sendFlow.previewRequestId
             edit(store)
             store.sendFlow.previewError = "current quote failure"
             store.sendFlow.adoptPreviewResult(.failure(NSError(domain: "old", code: 1)),
-                requestId: request, input: input, target: target)
+                requestId: request, input: input)
             #expect(store.sendFlow.previewError == "current quote failure")
-            store.sendFlow.adoptPreviewResult(.success(nil), requestId: request, input: input, target: target)
+            store.sendFlow.adoptPreviewResult(.success(nil), requestId: request, input: input)
             #expect(store.sendFlow.previewError == "current quote failure")
+            #expect(!store.sendFlow.quoteIsCurrent)
         }
         // A quote's failure is the quote's, not the build's or the broadcast's.
         store.sendFlow.session.error = "current build failure"
         store.sendFlow.adoptPreviewResult(.failure(NSError(domain: "current", code: 1,
             userInfo: [NSLocalizedDescriptionKey: "current failure"])),
-            requestId: store.sendFlow.previewRequestId, input: store.sendFlow.previewInput(for: target()),
-            target: target)
+            requestId: store.sendFlow.previewRequestId, input: store.sendFlow.previewInput)
         #expect(store.sendFlow.previewError == "current failure")
         #expect(store.sendFlow.session.error == "current build failure")
         let oldRequest = store.sendFlow.previewRequestId
@@ -103,4 +102,28 @@ struct SendPreviewAdoptionTests: IsolatedAppStateSuite {
         #expect(store.sendFlow.previewRequestId != oldRequest)
     }
 
+    /// A quote is current for the form it answered, and stops being so at
+    /// the first edit: nothing builds from a quote for another form.
+    @Test func aQuoteIsCurrentOnlyForTheFormItAnswered() {
+        let flow = makeState().sendFlow
+        flow.walletId = "w"
+        flow.holdingKey = "ethereum:native"
+        flow.address = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+        flow.amount = "1"
+        #expect(!flow.quoteIsCurrent)
+        flow.adoptPreviewResult(.success(nil), requestId: flow.previewRequestId, input: flow.previewInput)
+        #expect(flow.quoteIsCurrent)
+        flow.amount = "2"
+        #expect(!flow.quoteIsCurrent)
+    }
+
+    /// Off screen the composer asks core nothing: no recipient check, no
+    /// quote, however its form changes.
+    @Test func aComposerOffScreenSchedulesNoRequests() {
+        let flow = makeState().sendFlow
+        flow.address = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+        flow.amount = "1"
+        #expect(!flow.isResolvingRecipient && flow.currentRecipient == nil)
+        #expect(!flow.isPreparingPreview)
+    }
 }

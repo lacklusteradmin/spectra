@@ -1,13 +1,14 @@
 import SwiftUI
 import UIKit
 
-/// A projection of core's durable artifact and history record. Node acceptance
-/// describes submission only; the history record alone supplies confirmation.
+/// A projection of core's durable artifact, its history record and the step
+/// core allows next. Node acceptance describes submission only; the history
+/// record alone supplies confirmation.
 struct SendStagesView: View {
     @Bindable var store: AppState
-    let artifact: SendArtifact
-    var transaction: TransactionRecord? = nil
-    var transactionError: String? = nil
+    let progress: SendProgress
+
+    private var artifact: SendArtifact { progress.artifact }
 
     var body: some View {
         VStack(alignment: .leading, spacing: SpectraLayout.Space.m) {
@@ -31,8 +32,7 @@ struct SendStagesView: View {
                 if !hasFinalHistoryStatus, let fee = artifact.review.networkFee {
                     Divider().opacity(0.4)
                     SendCostRows(
-                        fee: "≈ " + store.amounts.compactNetworkFee(
-                            fee, value: artifact.review.networkFeeValue, chain: artifact.chainId),
+                        fee: store.amounts.reviewedNetworkFee(fee, chain: artifact.chainId),
                         total: artifact.review.total.map {
                             "≈ " + store.amounts.formattedAssetAmount(
                                 $0, symbol: artifact.symbol, deploymentId: artifact.chainId.entry?.nativeDeploymentId)
@@ -67,19 +67,10 @@ struct SendStagesView: View {
                 .font(.subheadline.weight(.semibold))
                 .disclosureGroupStyle(.spectra)
             }
-
-            if let transactionError {
-                Label(transactionError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
         }
     }
 
-    private var displayedTransaction: TransactionRecord? {
-        guard transaction?.id == artifact.id else { return nil }
-        return transaction
-    }
+    private var displayedTransaction: TransactionRecord? { progress.transaction }
 
     private var hasFinalHistoryStatus: Bool {
         displayedTransaction?.status == .confirmed || displayedTransaction?.status == .failed
@@ -89,16 +80,17 @@ struct SendStagesView: View {
         artifact.attempts.contains { $0.outcome == .accepted }
     }
 
+    /// Nodes are chosen up front when submitting is the next step.
     private var showsImmediateNodeChoice: Bool {
-        let action = SendExecutionAction(artifact: artifact, transaction: displayedTransaction)
-        return action == .broadcast
-            || (action == .retry && SendExecutionAction.canRetry(artifact: artifact, transaction: displayedTransaction))
+        progress.next == .broadcast || (progress.next == .rebroadcast && progress.canRebroadcast)
     }
 
+    /// Otherwise a rebroadcast core allows waits behind a disclosure.
     private var showsRetryNodeChoice: Bool {
-        displayedTransaction?.status != .confirmed && !showsImmediateNodeChoice
-            && SendExecutionAction.canRetry(artifact: artifact, transaction: displayedTransaction)
+        progress.canRebroadcast && !showsImmediateNodeChoice
     }
+
+    private var warnings: [String] { artifact.reviewWarningMessages }
 
     /// Where a stage stands. Each has its own symbol, as the composer's step
     /// bar does, so the current stage is not told from a waiting one by colour.
@@ -356,7 +348,7 @@ struct SendStagesView: View {
                     if !artifact.signingPayloadHex.isEmpty {
                         technicalValue("Signing payload", value: artifact.signingPayloadHex)
                     }
-                    if !artifact.attempts.isEmpty, store.sendFlow.pendingHighRiskReasons.count > 1 {
+                    if !artifact.attempts.isEmpty, !warnings.isEmpty {
                         VStack(alignment: .leading, spacing: SpectraLayout.Space.s) {
                             Text(AppLocalization.string("Review warnings"))
                                 .font(.caption.weight(.semibold))
@@ -439,7 +431,7 @@ struct SendStagesView: View {
     }
 
     private var reviewWarnings: some View {
-        ForEach(Array(store.sendFlow.pendingHighRiskReasons.dropFirst().enumerated()), id: \.offset) { _, reason in
+        ForEach(Array(warnings.enumerated()), id: \.offset) { _, reason in
             Label(reason, systemImage: "exclamationmark.triangle")
                 .font(.subheadline)
                 .foregroundStyle(.spectraWarning)

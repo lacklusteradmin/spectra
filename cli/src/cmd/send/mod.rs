@@ -16,7 +16,9 @@ use serde::Serialize;
 use spectra_core::registry::PaymentMemoKind;
 use spectra_core::send::flow::{EvmRecipientPreflightWarning, HighRiskSendWarning};
 use spectra_core::send::payment_memo::PaymentMemo;
-use spectra_core::send::stages::{SendArtifact, SendStage, SubmissionOutcome, WalletOperation};
+use spectra_core::send::stages::{
+    FeeBound, ReviewWarning, SendArtifact, SendStage, SubmissionOutcome, WalletOperation,
+};
 
 use crate::ctx::Ctx;
 use crate::error::CliResult;
@@ -231,17 +233,21 @@ fn render_artifact(artifact: &SendArtifact) {
     }
     if let Some(operation) = &artifact.operation {
         render_operation(artifact, operation);
-    } else if let Some(fee) = &artifact.review.network_fee {
-        out::wide_field(9, "fee", fee);
+    }
+    if let Some(fee) = &artifact.review.network_fee {
+        let bound = match fee.bound {
+            FeeBound::Estimate => "about ",
+            FeeBound::Exact => "",
+            FeeBound::AtMost => "at most ",
+        };
+        let coin = artifact.chain_id.coin_symbol();
+        out::wide_field(9, "fee", &format!("{bound}{} {coin}", fee.amount));
     }
     if let Some(total) = &artifact.review.total {
         out::wide_field(9, "total", &format!("{total} {symbol}"));
     }
     for warning in &artifact.review.warnings {
-        out::wide_field(9, "warning", &warning_text(warning));
-    }
-    for warning in &artifact.review.recipient_warnings {
-        out::wide_field(9, "warning", &recipient_warning_text(warning));
+        out::wide_field(9, "warning", &review_warning_text(artifact, warning));
     }
     if let Some(hash) = &artifact.transaction_hash {
         out::wide_field(9, "hash", hash);
@@ -260,6 +266,29 @@ fn render_artifact(artifact: &SendArtifact) {
         println!();
         for line in artifact.prepared_details.lines() {
             println!("  {}", out::hint(line));
+        }
+    }
+}
+
+/// What core's review says before signing, worded for the terminal.
+fn review_warning_text(artifact: &SendArtifact, warning: &ReviewWarning) -> String {
+    let symbol = &artifact.symbol;
+    let coin = artifact.chain_id.coin_symbol();
+    match warning {
+        ReviewWarning::Risk { warning } => warning_text(warning),
+        ReviewWarning::Contract { warning } => recipient_warning_text(warning),
+        ReviewWarning::OwnAddress => "the destination is one of your own wallets".into(),
+        ReviewWarning::TokenFee { fee, received } => {
+            format!("the token takes {fee} {symbol}; the recipient receives {received} {symbol}")
+        }
+        ReviewWarning::CarriesNative { amount } => {
+            format!("{amount} {coin} goes with the token and stays with the recipient")
+        }
+        ReviewWarning::RegistersRecipient { deposit } => {
+            format!("registers the recipient with the token first, for {deposit} {coin}")
+        }
+        ReviewWarning::TransferHook { program } => {
+            format!("the token runs {program} on every transfer, which can refuse it")
         }
     }
 }
@@ -312,22 +341,15 @@ pub fn recipient_warning_text(warning: &EvmRecipientPreflightWarning) -> String 
 fn render_operation(artifact: &SendArtifact, operation: &WalletOperation) {
     let symbol = artifact.chain_id.coin_symbol();
     let field = |label: &str, value: &str| out::wide_field(9, label, value);
-    let fee = |fee: &str| field("fee", &format!("{fee} {symbol}"));
     match operation {
-        WalletOperation::RevokeApproval {
-            token,
-            spender,
-            network_fee,
-        } => {
+        WalletOperation::RevokeApproval { token, spender } => {
             field("revokes", token);
             field("spender", spender);
-            fee(network_fee);
         }
         WalletOperation::CloseAccount {
             destination,
             reserve,
             removed_objects,
-            network_fee,
         } => {
             println!(
                 "  {}  closing deletes {} on the network; this cannot be undone",
@@ -337,44 +359,23 @@ fn render_operation(artifact: &SendArtifact, operation: &WalletOperation) {
             field("into", destination);
             field("reserve", &format!("{reserve} {symbol}"));
             field("objects", &removed_objects.to_string());
-            fee(network_fee);
         }
-        WalletOperation::CloseTokenAccounts {
-            accounts,
-            rent,
-            network_fee,
-        } => {
+        WalletOperation::CloseTokenAccounts { accounts, rent } => {
             for account in accounts {
                 field("closes", account);
             }
             field("rent", &format!("{rent} {symbol}"));
-            fee(network_fee);
         }
-        WalletOperation::MergeCoins {
-            coin_type,
-            objects,
-            network_fee,
-        } => {
+        WalletOperation::MergeCoins { coin_type, objects } => {
             field("merges", &format!("{objects} objects of {coin_type}"));
-            fee(network_fee);
         }
-        WalletOperation::TrustAsset {
-            asset,
-            reserve,
-            network_fee,
-        } => {
+        WalletOperation::TrustAsset { asset, reserve } => {
             field("trusts", asset);
             field("reserve", &format!("{reserve} {symbol}"));
-            fee(network_fee);
         }
-        WalletOperation::RemoveTrustLine {
-            asset,
-            reserve,
-            network_fee,
-        } => {
+        WalletOperation::RemoveTrustLine { asset, reserve } => {
             field("untrusts", asset);
             field("frees", &format!("{reserve} {symbol}"));
-            fee(network_fee);
         }
         WalletOperation::TransferNft {
             contract,
@@ -382,44 +383,30 @@ fn render_operation(artifact: &SendArtifact, operation: &WalletOperation) {
             token_id,
             quantity,
             collection,
-            network_fee,
         } => {
             field("token", &format!("{collection} #{token_id}"));
             field("standard", standard.label());
             field("contract", contract);
             field("quantity", quantity);
-            fee(network_fee);
         }
-        WalletOperation::ShieldTransparent {
-            amount,
-            network_fee,
-        } => {
+        WalletOperation::ShieldTransparent { amount } => {
             field("shields", &format!("{amount} {symbol}"));
-            fee(network_fee);
         }
-        WalletOperation::ShieldedPayment { memo, network_fee } => {
+        WalletOperation::ShieldedPayment { memo } => {
             if let Some(memo) = memo {
                 field("memo", memo);
             }
-            fee(network_fee);
         }
         WalletOperation::DeleteAccessKey {
             public_key,
             receiver,
-            network_fee,
         } => {
             field("deletes", public_key);
             field("calls", receiver);
-            fee(network_fee);
         }
-        WalletOperation::RefundTokenStorage {
-            contract,
-            refund,
-            network_fee,
-        } => {
+        WalletOperation::RefundTokenStorage { contract, refund } => {
             field("leaves", contract);
             field("refund", &format!("{refund} {symbol}"));
-            fee(network_fee);
         }
     }
 }

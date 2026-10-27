@@ -114,48 +114,37 @@ private struct TrustLineChangeView: View {
     let store: AppState
     let wallet: WalletView
     let change: TrustLineChange
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
 
     var body: some View {
-        Form {
-            switch session.artifact?.operation {
-            case let .trustAsset(asset, reserve, networkFee):
-                summary(asset: asset, reserveTitle: "Reserve Locked", reserve: reserve, networkFee: networkFee,
+        WalletOperationSheet(
+            store: store, wallet: wallet,
+            title: AppLocalization.string(change.remove ? "Remove Trust Line" : "Trust Asset"),
+            authenticationReason: AppLocalization.format("Authenticate to change trust lines of %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The trust line changes once it confirms."),
+            build: {
+                let bridge = try await store.bridge.ready()
+                return change.remove
+                    ? try await bridge.buildRemoveTrustLine(walletId: wallet.id, asset: change.asset)
+                    : try await bridge.buildTrustAsset(walletId: wallet.id, asset: change.asset)
+            }
+        ) { artifact in
+            switch artifact?.operation {
+            case let .trustAsset(asset, reserve):
+                summary(asset: asset, reserveTitle: "Reserve Locked", reserve: reserve,
                         note: "The line accepts any amount of this asset from now on; removing it later frees the reserve.")
-            case let .removeTrustLine(asset, reserve, networkFee):
-                summary(asset: asset, reserveTitle: "Reserve Freed", reserve: reserve, networkFee: networkFee,
+            case let .removeTrustLine(asset, reserve):
+                summary(asset: asset, reserveTitle: "Reserve Freed", reserve: reserve,
                         note: "The wallet stops accepting this asset; trust it again to receive it.")
             default:
                 EmptyView()
             }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to change trust lines of %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The trust line changes once it confirms."))
-        }
-        .navigationTitle(AppLocalization.string(change.remove ? "Remove Trust Line" : "Trust Asset"))
-        .navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
-        .task {
-            await session.load(
-                operation: .build,
-                prepare: {
-                    let bridge = try await store.bridge.ready()
-                    return change.remove
-                        ? try await bridge.buildRemoveTrustLine(walletId: wallet.id, asset: change.asset)
-                        : try await bridge.buildTrustAsset(walletId: wallet.id, asset: change.asset)
-                },
-                endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
         }
     }
 
-    private func summary(asset: String, reserveTitle: String, reserve: String, networkFee: String, note: String) -> some View {
-        let coin = wallet.chain.gasTokenSymbol
-        return Section {
+    private func summary(asset: String, reserveTitle: String, reserve: String, note: String) -> some View {
+        Section {
             Text(verbatim: asset).font(.caption.monospaced()).textSelection(.enabled)
-            LabeledContent(AppLocalization.string(reserveTitle), value: "\(reserve) \(coin)")
-            LabeledContent(AppLocalization.string("Network Fee"), value: "\(networkFee) \(coin)")
+            LabeledContent(AppLocalization.string(reserveTitle), value: store.amounts.formattedNativeAmount(reserve, chain: wallet.chain))
         } footer: {
             Text(AppLocalization.string(note))
         }

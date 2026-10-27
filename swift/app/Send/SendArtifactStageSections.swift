@@ -2,7 +2,8 @@ import SwiftUI
 
 /// The password, signing and broadcast sections of a page that reviews one
 /// core-built transaction itself, such as an approval revocation or an
-/// account closing. Core keeps the artifact; `session` adopts its answers.
+/// account closing. Core keeps the artifact and says which step comes next;
+/// `session` adopts its answers.
 struct SendArtifactStageSections: View {
     let store: AppState
     let wallet: WalletView
@@ -18,9 +19,9 @@ struct SendArtifactStageSections: View {
     private var needsPassword: Bool { wallet.signing.requiresPassword }
 
     var body: some View {
-        if let artifact = session.artifact {
-            switch artifact.stage {
-            case .prepared:
+        if let progress = session.progress {
+            switch progress.next {
+            case .sign:
                 if needsPassword {
                     Section {
                         SecureField(AppLocalization.string("Wallet Password"), text: $password)
@@ -38,36 +39,46 @@ struct SendArtifactStageSections: View {
                         }
                     }.disabled(!canSign || session.isBusy || (needsPassword && password.isEmpty))
                 }.onDisappear { password = "" }
-            case .signed:
-                if artifact.attempts.isEmpty {
-                    Section(AppLocalization.string("Broadcast To")) {
-                        ForEach(session.endpoints, id: \.self) { endpoint in
-                            Toggle(isOn: Binding(
-                                get: { session.selectedEndpoints.contains(endpoint) },
-                                set: { selected in
-                                    if selected { session.selectedEndpoints.insert(endpoint) }
-                                    else { session.selectedEndpoints.remove(endpoint) }
-                                }
-                            )) {
-                                Text(verbatim: endpoint).font(.caption.monospaced()).lineLimit(1)
+            case .broadcast, .rebroadcast:
+                Section(AppLocalization.string("Broadcast To")) {
+                    ForEach(session.endpoints, id: \.self) { endpoint in
+                        Toggle(isOn: Binding(
+                            get: { session.selectedEndpoints.contains(endpoint) },
+                            set: { selected in
+                                if selected { session.selectedEndpoints.insert(endpoint) }
+                                else { session.selectedEndpoints.remove(endpoint) }
                             }
+                        )) {
+                            Text(verbatim: endpoint).font(.caption.monospaced()).lineLimit(1)
                         }
-                        Button(AppLocalization.string("Broadcast Transaction")) {
-                            Task {
-                                if await session.broadcast(submit: {
-                                    try await store.bridge.ready().broadcastSend(id: $0, endpoints: $1)
-                                }) != nil {
-                                    _ = await store.refreshTransactionProjection()
-                                }
-                            }
-                        }.disabled(session.isBusy || session.selectedEndpoints.isEmpty)
                     }
-                } else {
-                    Section {
-                        Label(submittedText, systemImage: "checkmark.circle.fill").foregroundStyle(.tint)
-                        if let hash = artifact.transactionHash {
-                            Text(verbatim: hash).font(.caption2.monospaced()).textSelection(.enabled)
+                    Button(AppLocalization.string(progress.next.title)) {
+                        Task {
+                            if await session.broadcast(submit: {
+                                try await store.bridge.ready().broadcastSend(id: $0, endpoints: $1)
+                            }) != nil {
+                                _ = await store.refreshTransactionProjection()
+                            }
                         }
+                    }.disabled(session.isBusy || session.selectedEndpoints.isEmpty
+                               || (progress.next == .rebroadcast && !progress.canRebroadcast))
+                }
+                if !progress.artifact.attempts.isEmpty {
+                    Section(AppLocalization.string("Submission results")) {
+                        ForEach(Array(progress.artifact.attempts.enumerated()), id: \.offset) { _, attempt in
+                            VStack(alignment: .leading, spacing: SpectraLayout.Space.xs) {
+                                Text(verbatim: attempt.endpoint).font(.caption.monospaced()).lineLimit(1)
+                                Label(attempt.outcome.title, systemImage: attempt.outcome.systemImage)
+                                    .font(.subheadline.weight(.semibold)).foregroundStyle(attempt.outcome.color)
+                            }
+                        }
+                    }
+                }
+            case .done:
+                Section {
+                    Label(submittedText, systemImage: "checkmark.circle.fill").foregroundStyle(.tint)
+                    if let hash = progress.artifact.transactionHash {
+                        Text(verbatim: hash).font(.caption2.monospaced()).textSelection(.enabled)
                     }
                 }
             }
@@ -82,12 +93,12 @@ struct SendArtifactStageSections: View {
 }
 
 extension View {
-    /// A send sheet's way out: Cancel, where Cancel goes, until a node has
-    /// accepted the transaction; then Done, where Done goes. "Done" before
-    /// anything was done read as a confirmation of nothing.
+    /// A send sheet's way out: Cancel, where Cancel goes, until the
+    /// transaction is out of the stages' hands; then Done, where Done goes.
+    /// "Done" before anything was done read as a confirmation of nothing.
     func sendSheetDismissal(session: SendSession, dismiss: @escaping () -> Void) -> some View {
         toolbar {
-            if session.artifact?.attempts.contains(where: { $0.outcome == .accepted }) == true {
+            if session.progress?.next == .done {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(AppLocalization.string("Done"), action: dismiss)
                 }

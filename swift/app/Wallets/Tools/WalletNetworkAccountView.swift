@@ -207,8 +207,6 @@ extension TonAccountState {
 private struct CloseAccountView: View {
     let store: AppState
     let wallet: WalletView
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
     @State private var destination = ""
     @State private var memoKind: PaymentMemoKind?
     @State private var memoText = ""
@@ -217,23 +215,41 @@ private struct CloseAccountView: View {
     private var memoKinds: [PaymentMemoKind] { paymentMemoKinds(chain: wallet.chainId) }
 
     var body: some View {
-        Form {
-            if let artifact = session.artifact,
-               case let .closeAccount(destination, reserve, removedObjects, networkFee) = artifact.operation {
+        WalletOperationSheet(
+            store: store, wallet: wallet, title: AppLocalization.string("Close Account"),
+            authenticationReason: AppLocalization.format("Authenticate to close the account of %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The account is closed once it confirms."),
+            formIsComplete: !destination.trimmingCharacters(in: .whitespaces).isEmpty,
+            canSign: understood,
+            build: build
+        ) {
+            Section {
+                AddressEntryRow(
+                    title: AppLocalization.string("Destination Address"), text: $destination, chain: wallet.chain,
+                    contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
+                if !memoKinds.isEmpty {
+                    SendPaymentMemoField(kinds: memoKinds, kind: $memoKind, text: $memoText)
+                }
+            } footer: {
+                Text(AppLocalization.string("Closing deletes this account on the network and sends everything it holds, its reserve included, to another account that already exists. It cannot be undone. The wallet stays in Spectra, and funding its address again later opens a new account."))
+            }
+        } summary: { artifact in
+            if let artifact, case let .closeAccount(destination, reserve, removedObjects) = artifact.operation {
                 Section {
                     LabeledContent(AppLocalization.string("To")) {
                         Text(verbatim: destination).font(.caption.monospaced()).lineLimit(1)
                             .truncationMode(.middle)
                     }
                     if let memo = artifact.memo { PaymentMemoRow(memo: memo) }
-                    LabeledContent(AppLocalization.string("Amount"), value: "\(artifact.amount) \(artifact.symbol)")
                     LabeledContent(
-                        AppLocalization.string("Reserve Recovered"), value: "\(reserve) \(artifact.symbol)")
+                        AppLocalization.string("Amount"),
+                        value: store.amounts.formattedNativeAmount(artifact.amount, chain: wallet.chain))
+                    LabeledContent(
+                        AppLocalization.string("Reserve Recovered"),
+                        value: store.amounts.formattedNativeAmount(reserve, chain: wallet.chain))
                     if removedObjects > 0 {
                         LabeledContent(AppLocalization.string("Objects Deleted"), value: "\(removedObjects)")
                     }
-                    LabeledContent(
-                        AppLocalization.string("Network Fee"), value: "\(networkFee) \(artifact.symbol)")
                 } footer: {
                     Text(AppLocalization.string("Everything the account holds when the transaction executes goes to this account, less the fee. The amount shown is its balance now."))
                 }
@@ -244,41 +260,14 @@ private struct CloseAccountView: View {
                             isOn: $understood)
                     }
                 }
-            } else {
-                Section {
-                    AddressEntryRow(
-                        title: AppLocalization.string("Destination Address"), text: $destination, chain: wallet.chain,
-                        contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
-                    if !memoKinds.isEmpty {
-                        SendPaymentMemoField(kinds: memoKinds, kind: $memoKind, text: $memoText)
-                    }
-                } footer: {
-                    Text(AppLocalization.string("Closing deletes this account on the network and sends everything it holds, its reserve included, to another account that already exists. It cannot be undone. The wallet stays in Spectra, and funding its address again later opens a new account."))
-                }
-                Section {
-                    Button(AppLocalization.string("Review")) { Task { await review() } }
-                        .disabled(destination.trimmingCharacters(in: .whitespaces).isEmpty || session.isBusy)
-                }
             }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to close the account of %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The account is closed once it confirms."),
-                canSign: understood)
         }
-        .navigationTitle(AppLocalization.string("Close Account")).navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
     }
 
-    private func review() async {
+    private func build() async throws -> SendArtifact {
         let destination = destination.trimmingCharacters(in: .whitespacesAndNewlines)
         let memo = memoKind.flatMap { memoText.isEmpty ? nil : PaymentMemo(kind: $0, value: memoText) }
-        await session.load(
-            operation: .build,
-            prepare: {
-                try await store.bridge.ready().buildAccountClosing(
-                    walletId: wallet.id, destination: destination, memo: memo)
-            },
-            endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
+        return try await store.bridge.ready().buildAccountClosing(
+            walletId: wallet.id, destination: destination, memo: memo)
     }
 }

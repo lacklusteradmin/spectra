@@ -289,7 +289,7 @@ def account_case(chain):
         run('endpoints','--chain',chain,'--api',api,'--capabilities','staking,balance,fee,verification,broadcast','--add',endpoint)
         amount = '20' if chain=='aptos' else '2'
         prepared = run('staking','build','Stake','--chain',chain,'--action','stake','--validator',s['target'],'--amount',amount)['artifact']
-        assert prepared['staking']['action']=='stake' and prepared['review']['staking']['network_fee'], prepared
+        assert prepared['staking']['action']=='stake' and prepared['review']['staking'] and prepared['review']['network_fee']['amount'], prepared
         assert run('send','inspect',prepared['id'])['artifact']==prepared
         signed = run('send','sign',prepared['id'],'--review-digest',prepared['review_digest'],'--endpoint',endpoint)['artifact']
         s['hash'] = signed['transaction_hash']

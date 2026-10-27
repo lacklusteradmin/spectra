@@ -84,34 +84,24 @@ struct WalletTokenAccountsView: View {
 private struct CloseTokenAccountsView: View {
     let store: AppState
     let wallet: WalletView
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
 
     var body: some View {
-        Form {
-            if case let .closeTokenAccounts(accounts, rent, networkFee) = session.artifact?.operation {
+        WalletOperationSheet(
+            store: store, wallet: wallet, title: AppLocalization.string("Close Token Accounts"),
+            authenticationReason: AppLocalization.format("Authenticate to close token accounts of %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The rent is back once it confirms."),
+            build: { try await store.bridge.ready().buildTokenAccountClosure(walletId: wallet.id, accounts: []) }
+        ) { artifact in
+            if case let .closeTokenAccounts(accounts, rent)? = artifact?.operation {
                 Section {
                     LabeledContent(
                         AppLocalization.string("Accounts"),
                         value: AppLocalization.format("%lld accounts", count: accounts.count, accounts.count))
                     LabeledContent(AppLocalization.string("Rent Returned"), value: store.amounts.formattedNativeAmount(rent, chain: wallet.chain))
-                    LabeledContent(AppLocalization.string("Network Fee"), value: store.amounts.formattedNativeAmount(networkFee, chain: wallet.chain))
                 } footer: {
                     Text(AppLocalization.string("The accounts are deleted and their rent comes back to this wallet. A token sent here later opens a new account."))
                 }
             }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to close token accounts of %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The rent is back once it confirms."))
-        }
-        .navigationTitle(AppLocalization.string("Close Token Accounts")).navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
-        .task {
-            await session.load(
-                operation: .build,
-                prepare: { try await store.bridge.ready().buildTokenAccountClosure(walletId: wallet.id, accounts: []) },
-                endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
         }
     }
 }

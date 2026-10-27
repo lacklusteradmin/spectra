@@ -9,13 +9,19 @@ struct SendSessionTests {
         SendArtifact(id: id, revision: 0, stage: stage, walletId: "wallet", chainId: .ethereum,
             sender: "sender", recipient: "recipient", memo: nil, amount: "1.000000000000000001", asset: "ETH", symbol: "ETH", staking: nil, operation: nil,
             createdAt: 0, reviewDigest: "digest-\(id)",
-            review: SendArtifactReview(warnings: [.newAddress], recipientWarnings: [], requiresSelfSendConfirmation: true, staking: nil, transferTerms: nil),
+            review: SendArtifactReview(warnings: [.risk(warning: .newAddress), .ownAddress], staking: nil, transferTerms: nil),
             preparedDetails: "exact transaction", signingPayloadHex: "", signedPayload: nil,
             transactionHash: nil, attempts: [], selectedEndpoints: [])
     }
 
+    /// A session whose core answers every artifact with the step its stage
+    /// and submissions reach first.
+    private func makeSession() -> SendSession {
+        SendSession(progress: { .staged($0) })
+    }
+
     @Test func lateEndpointResponseCannotMixTwoResumedArtifacts() async {
-        let session = SendSession()
+        let session = makeSession()
         let oldGate = SuspensionGate<[String]>()
         let newGate = SuspensionGate<[String]>()
         let old = Task {
@@ -43,8 +49,8 @@ struct SendSessionTests {
     }
 
     @Test func closingDuringAuthenticationNeverCallsSigner() async {
-        let session = SendSession()
-        session.artifact = artifact("old")
+        let session = makeSession()
+        session.progress = .staged(artifact("old"))
         let authentication = SuspensionGate<String?>()
         var signed = false
         let work = Task {
@@ -55,7 +61,7 @@ struct SendSessionTests {
         }
         await authentication.reached()
         session.reset()
-        session.artifact = artifact("new")
+        session.progress = .staged(artifact("new"))
         authentication.resume(nil)
         await work.value
         #expect(!signed)
@@ -64,7 +70,7 @@ struct SendSessionTests {
     }
 
     @Test func closedBuildFailureCannotOverwriteNewSessionError() async {
-        let session = SendSession()
+        let session = makeSession()
         let gate = SuspensionGate<Bool>()
         let work = Task {
             await session.load(operation: .build, prepare: {
@@ -83,8 +89,8 @@ struct SendSessionTests {
     }
 
     @Test func broadcastCompletionAfterCloseStillReturnsCommittedResultWithoutReopeningArtifact() async {
-        let session = SendSession()
-        session.artifact = artifact("old", stage: .signed)
+        let session = makeSession()
+        session.progress = .staged(artifact("old", stage: .signed))
         session.endpoints = ["selected", "unselected"]
         session.selectedEndpoints = ["selected"]
         let gate = SuspensionGate<Bool>()
@@ -98,7 +104,7 @@ struct SendSessionTests {
         }
         await gate.reached()
         session.reset()
-        session.artifact = artifact("new")
+        session.progress = .staged(artifact("new"))
         session.error = "New session error"
         gate.resume(true)
         let result = await work.value
@@ -115,7 +121,7 @@ struct SendSessionTests {
         let bridge = WalletServiceBridge(databasePath: directory.appendingPathComponent("state.sqlite").path, service: service)
         _ = try await bridge.ready()
         let store = AppState(bridge: bridge, startServices: false)
-        store.sendFlow.session.artifact = artifact("old", stage: .signed)
+        store.sendFlow.session.progress = .staged(artifact("old", stage: .signed))
         let gate = SuspensionGate<Bool>()
         let work = Task {
             guard let result = await store.sendFlow.session.broadcast(submit: { _, _ in
@@ -126,7 +132,7 @@ struct SendSessionTests {
         }
         await gate.reached()
         store.sendFlow.reset()
-        store.sendFlow.session.artifact = artifact("new")
+        store.sendFlow.session.progress = .staged(artifact("new"))
         let before = store.transactionSnapshotRevision
         gate.resume(true)
         await work.value
@@ -134,5 +140,22 @@ struct SendSessionTests {
         // and left the composer that replaced it alone.
         #expect(store.transactionSnapshotRevision > before)
         #expect(store.sendFlow.session.artifact?.id == "new")
+    }
+
+    /// A step core does not allow is not taken, whatever the artifact's stage.
+    @Test func onlyCoresNextStepRuns() async {
+        let session = makeSession()
+        session.progress = .staged(artifact("done", stage: .signed), next: .done)
+        let submitted = await session.broadcast { _, _ in
+            Issue.record("A finished send is not submitted again")
+            return self.artifact("done", stage: .signed)
+        }
+        #expect(submitted == nil)
+        session.progress = .staged(artifact("signed", stage: .signed), next: .broadcast)
+        await session.sign(password: nil, authenticate: { nil }, sign: { _, _, _ in
+            Issue.record("A signed send is not signed again")
+            return self.artifact("signed", stage: .signed)
+        })
+        #expect(session.artifact?.id == "signed")
     }
 }

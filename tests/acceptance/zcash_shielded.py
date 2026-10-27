@@ -105,8 +105,9 @@ class ShieldedTests(unittest.TestCase):
         # Shielding: every transparent output into the wallet's own
         # Ironwood pool, less ZIP-317's fee, paying no one.
         built = data.run('wallet', 'shield', 'Shielded')['artifact']
-        assert built['operation'] == {'kind': 'shield_transparent', 'amount': '0.49985',
-                                      'network_fee': '0.00015'}, built['operation']
+        assert built['operation'] == {'kind': 'shield_transparent', 'amount': '0.49985'}, built['operation']
+        assert (built['review']['network_fee']['amount'], built['review']['network_fee']['bound']) == \
+            ('0.00015', 'exact'), built['review']
         assert (built['recipient'], built['amount']) == (info['wallet_address'], '0.49985'), built
         mined = self.send(data, built)
         assert mined['transparent_inputs'] == [{'address': info['wallet_transparent'], 'value': 50_000_000}], mined
@@ -126,10 +127,10 @@ class ShieldedTests(unittest.TestCase):
         built = data.run('wallet', 'send-shielded', 'Shielded', '--to', info['outsider_address'],
                          '--amount', '0.3', '--memo', memo)['artifact']
         assert (built['recipient'], built['amount'], built['operation']) == \
-            (info['outsider_address'], '0.3', {'kind': 'shielded_payment', 'memo': memo, 'network_fee': '0.0001'}), \
-            built
+            (info['outsider_address'], '0.3', {'kind': 'shielded_payment', 'memo': memo}), built
+        assert built['review']['network_fee']['amount'] == '0.0001', built['review']
         # Reviewed as any send: never paid before, and a valid address.
-        assert [w['code'] for w in built['review']['warnings']] == ['new_address'], built['review']
+        assert [w['warning']['code'] for w in built['review']['warnings']] == ['new_address'], built['review']
         prepared = json.loads(built['prepared_details'])['ZcashShielded']
         assert (prepared['uses_sapling'], prepared['transparent_in_zat'], prepared['fee_zat']) == \
             (False, 0, 10_000), prepared

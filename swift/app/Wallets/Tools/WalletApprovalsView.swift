@@ -83,44 +83,30 @@ extension TokenApproval: Identifiable {
     public var id: String { "\(token):\(spender)" }
 }
 
-/// Building, signing and broadcasting one revocation. Core keeps the
-/// artifact; the session adopts its answers for this sheet.
+/// Building, signing and broadcasting one revocation.
 private struct RevokeApprovalView: View {
     let store: AppState
     let wallet: WalletView
     let approval: TokenApproval
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
 
     var body: some View {
-        Form {
+        WalletOperationSheet(
+            store: store, wallet: wallet, title: AppLocalization.string("Revoke Approval"),
+            authenticationReason: AppLocalization.format("Authenticate to revoke an approval from %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The allowance is zero once it confirms."),
+            build: {
+                try await store.bridge.ready().buildApprovalRevocation(
+                    walletId: wallet.id, token: approval.token, spender: approval.spender)
+            }
+        ) { _ in
             Section {
                 LabeledContent(AppLocalization.string("Token"), value: approval.symbol.isEmpty ? approval.token : approval.symbol)
                 LabeledContent(AppLocalization.string("Spender")) {
                     Text(verbatim: approval.spender).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
                 }
-                if case let .revokeApproval(_, _, networkFee) = session.artifact?.operation {
-                    LabeledContent(AppLocalization.string("Network Fee"),
-                        value: "≤ \(networkFee) \(wallet.chain.gasTokenSymbol)")
-                }
             } footer: {
                 Text(AppLocalization.string("This sets the allowance to zero. The spender can no longer move this token from the wallet."))
             }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to revoke an approval from %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The allowance is zero once it confirms."))
-        }
-        .navigationTitle(AppLocalization.string("Revoke Approval")).navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
-        .task {
-            await session.load(
-                operation: .build,
-                prepare: {
-                    try await store.bridge.ready().buildApprovalRevocation(
-                        walletId: wallet.id, token: approval.token, spender: approval.spender)
-                },
-                endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
         }
     }
 }

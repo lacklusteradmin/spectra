@@ -60,7 +60,6 @@ struct ReceiveView: View {
 
 private struct ReceiveAddressView: View {
     @Bindable var store: AppState
-    @State private var didCopy: Bool = false
     @State private var isShowingShareSheet: Bool = false
     /// What an account on a reserve network must first receive to exist,
     /// read from the network while the wallet holds nothing.
@@ -282,23 +281,8 @@ private struct ReceiveAddressView: View {
     private func receiveActionCard(address: String?) -> some View {
         GlassEffectContainer(spacing: SpectraLayout.Space.s) {
             HStack(spacing: SpectraLayout.Space.s) {
-                Button {
-                    guard let address else { return }
-                    UIPasteboard.general.string = address
-                    didCopy = true
-                    spectraHaptic(.light)
-                } label: {
-                    Label(
-                        AppLocalization.string(didCopy ? "Copied" : "Copy Address"),
-                        systemImage: didCopy ? "checkmark" : "doc.on.doc"
-                    )
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 46)
-                    .contentTransition(.symbolEffect(.replace))
-                }
-                .buttonStyle(.glassProminent)
-                .disabled(address == nil)
+                CopyButton(value: address ?? "", title: "Copy Address", style: .prominent)
+                    .disabled(address == nil)
 
                 Button {
                     isShowingShareSheet = true
@@ -311,12 +295,6 @@ private struct ReceiveAddressView: View {
                 .buttonStyle(.glass)
                 .disabled(address == nil)
             }
-        }
-        .task(id: didCopy) {
-            guard didCopy else { return }
-            try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled else { return }
-            didCopy = false
         }
     }
 }

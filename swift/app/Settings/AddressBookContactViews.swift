@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import UIKit
 
 /// Every mainnet, because core validates every mainnet, as the rows the shared
 /// chain picker draws.
@@ -203,7 +202,6 @@ struct AddressBookContactView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editedName: String = ""
     @State private var isConfirmingDelete = false
-    @State private var didCopy = false
 
     /// The stored contact, so a rename is reflected here rather than leaving
     /// the pushed page showing the name it was opened with.
@@ -244,12 +242,6 @@ struct AddressBookContactView: View {
             }
         }
         .onAppear { editedName = contact.name }
-        .task(id: didCopy) {
-            guard didCopy else { return }
-            try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled else { return }
-            didCopy = false
-        }
     }
 
     private var contactHero: some View {
@@ -282,20 +274,7 @@ struct AddressBookContactView: View {
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
 
-            Button {
-                UIPasteboard.general.string = contact.address
-                didCopy = true
-                spectraHaptic(.light)
-            } label: {
-                Label(
-                    AppLocalization.string(didCopy ? "Copied" : "Copy"),
-                    systemImage: didCopy ? "checkmark" : "doc.on.doc"
-                )
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, SpectraLayout.Space.s)
-            }
-            .buttonStyle(.glass)
+            CopyButton(value: contact.address, title: "Copy", style: .wide)
         }
         .frame(maxWidth: .infinity)
         .padding(SpectraLayout.Space.l)

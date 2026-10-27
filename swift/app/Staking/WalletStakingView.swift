@@ -37,9 +37,9 @@ struct WalletStakingView: View {
                     passwordCard
                 }
                 if !vm.walletId.isEmpty {
-                    if let artifact = vm.session.artifact {
+                    if let progress = vm.session.progress {
                         StakingTransactionView(
-                            store: store, vm: vm, artifact: artifact,
+                            store: store, vm: vm, progress: progress,
                             confirmsSigning: $confirmsSigning, confirmsBroadcast: $confirmsBroadcast)
                     } else {
                         StakingPositionsView(
@@ -67,7 +67,7 @@ struct WalletStakingView: View {
             if let id = vm.request?.id { await vm.perform(id, store: store) }
         }
         .task(id: "\(vm.session.artifact?.id ?? ""):\(store.transactionRevision)") {
-            await vm.loadTransaction()
+            await vm.session.refresh()
         }
         .onDisappear { vm.cancel() }
         .sheet(isPresented: $showsValidators) {

@@ -169,8 +169,9 @@ Shared values and helpers live in:
 
 ## Examples in the app
 
-- [DashboardViews.swift](../swift/app/Dashboard/DashboardViews.swift): top-level tab,
-  hero cards and asset detail rows.
+- [DashboardView.swift](../swift/app/Dashboard/DashboardView.swift) and
+  [AssetGroupDetailView.swift](../swift/app/Dashboard/AssetGroupDetailView.swift):
+  top-level tab, hero cards and asset detail rows.
 - [ReceiveFlowViews.swift](../swift/app/Receive/ReceiveFlowViews.swift): business detail layout.
 - [ChainWikiViews.swift](../swift/app/Wiki/ChainWikiViews.swift): compact interactive cards.
 - [HistoryView.swift](../swift/app/History/HistoryView.swift) and

@@ -199,7 +199,6 @@ impl WalletService {
                 operation: Some(WalletOperation::MergeCoins {
                     coin_type,
                     objects: count,
-                    network_fee,
                 }),
                 review: SendArtifactReview::default(),
                 signing_payload_hex,

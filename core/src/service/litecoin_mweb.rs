@@ -919,10 +919,7 @@ impl WalletService {
                 &wallet,
                 mweb_request(&wallet, &recipient, litoshis, Some(fee)),
                 PreparedPayload::LitecoinMweb(prepared),
-                WalletOperation::ShieldedPayment {
-                    memo: None,
-                    network_fee: decimal(fee),
-                },
+                WalletOperation::ShieldedPayment { memo: None },
             )
             .await
         })
@@ -972,7 +969,6 @@ impl WalletService {
                 PreparedPayload::LitecoinPegIn(pegin),
                 WalletOperation::ShieldTransparent {
                     amount: decimal(litoshis),
-                    network_fee: decimal(fee),
                 },
             )
             .await

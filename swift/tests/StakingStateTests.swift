@@ -85,7 +85,7 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
             chain: .solana, bridge: bridge, operations: operations,
             authentication: { _ in await authentication.wait() })
         vm.selectWallet("wallet")
-        vm.session.artifact = StakingTestSupport.artifact()
+        vm.session.progress = StakingTestSupport.progress(StakingTestSupport.artifact())
         vm.password = "secret"
         vm.begin(.sign)
         let id = try #require(vm.request?.id)
@@ -148,7 +148,7 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
         vm.begin(.broadcast)
         await vm.perform(try #require(vm.request?.id), store: store)
         #expect(broadcasts == 1 && completed)
-        #expect(vm.transaction?.status == .pending, "Acceptance never establishes confirmation")
+        #expect(vm.session.progress?.transaction?.status == .pending, "Acceptance never establishes confirmation")
     }
 
     @Test func broadcastCompletionSurvivesClosingTheScreen() async throws {
@@ -160,7 +160,7 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
             chain: .solana, bridge: bridge, operations: operations,
             broadcastCompletion: { completedId = $0.id })
         vm.selectWallet("wallet")
-        vm.session.artifact = StakingTestSupport.artifact(stage: .signed)
+        vm.session.progress = StakingTestSupport.progress(StakingTestSupport.artifact(stage: .signed))
         vm.session.endpoints = ["node-b"]
         vm.session.selectedEndpoints = ["node-b"]
         vm.begin(.broadcast)
@@ -204,7 +204,8 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
                 return nil
             })
         vm.selectWallet("wallet")
-        vm.session.artifact = StakingTestSupport.artifact(stage: .signed, submitted: true, chain: .icp)
+        vm.session.progress = StakingTestSupport.progress(
+            StakingTestSupport.artifact(stage: .signed, submitted: true, chain: .icp))
         vm.password = "read-password"
         vm.begin(.recheck)
         await vm.perform(try #require(vm.request?.id), store: makeState())
@@ -263,7 +264,7 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
         var recovered = StakingTestSupport.artifact(chain: .icp)
         recovered.revision = 2
         recovered.reviewDigest = "reviewed-recovery"
-        recovered.review.staking?.networkFee = "0"
+        recovered.review.networkFee = NetworkFee(amount: "0", bound: .exact, value: nil)
         recovered.review.staking?.fundingAlreadyCompleted = true
         var repairs = 0
         var signs = 0
@@ -293,15 +294,16 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
             authentication: { _ in nil }, broadcastCompletion: { _ in })
         let store = makeState()
         vm.selectWallet("wallet")
-        vm.session.artifact = StakingTestSupport.artifact(stage: .signed, submitted: true, chain: .icp)
-        vm.transaction = StakingTestSupport.transaction(status: .failed)
+        vm.session.progress = .staged(
+            StakingTestSupport.artifact(stage: .signed, submitted: true, chain: .icp),
+            transaction: StakingTestSupport.transaction(status: .failed), next: .done, canRepair: true)
         vm.password = "repair-password"
         vm.begin(.repair)
         await vm.perform(try #require(vm.request?.id), store: store)
         #expect(repairs == 1 && signs == 0 && broadcasts == 0)
         #expect(vm.session.artifact == recovered)
         #expect(vm.session.selectedEndpoints.isEmpty)
-        #expect(vm.transaction == nil)
+        #expect(vm.session.progress?.transaction == nil)
         #expect(vm.password == "repair-password")
         vm.begin(.sign)
         await vm.perform(try #require(vm.request?.id), store: store)
@@ -312,29 +314,23 @@ struct StakingViewModelTests: IsolatedAppStateSuite {
         #expect(broadcasts == 1)
     }
 
-    @Test(arguments: [SendStage.prepared, .signed])
-    func reopeningARecoveryReviewIgnoresTheEarlierFailedSubmission(stage: SendStage) async throws {
+    /// Repairing is core's to allow: a review core does not offer it on is
+    /// not rebuilt, whatever its stage.
+    @Test func repairWaitsForCoreToAllowIt() async throws {
         var operations = StakingTestSupport.operations()
-        var repaired = StakingTestSupport.artifact(stage: stage, chain: .icp)
-        repaired.revision = 2
-        repaired.reviewDigest = "recovery-revision"
-        repaired.review.staking?.fundingAlreadyCompleted = true
-        var oldHistoryReads = 0
-        operations.inspect = { _ in repaired }
-        operations.transaction = { _ in
-            oldHistoryReads += 1
-            return StakingTestSupport.transaction(status: .failed)
+        var repairs = 0
+        operations.repair = { id, _ in
+            repairs += 1
+            return StakingTestSupport.artifact(id, chain: .icp)
         }
-        let vm = StakingState(chain: .icp, bridge: bridge, operations: operations)
+        let vm = StakingState(
+            chain: .icp, bridge: bridge, operations: operations, authentication: { _ in nil })
         vm.selectWallet("wallet")
-        vm.begin(.resume(repaired.id))
+        vm.session.progress = .staged(
+            StakingTestSupport.artifact(stage: .signed, submitted: true, chain: .icp),
+            transaction: StakingTestSupport.transaction(status: .confirmed), next: .done, canRepair: false)
+        vm.begin(.repair)
         await vm.perform(try #require(vm.request?.id), store: makeState())
-        await vm.loadTransaction()
-        #expect(vm.session.artifact == repaired)
-        #expect(vm.transaction == nil && oldHistoryReads == 0)
-        #expect(
-            SendExecutionAction(artifact: vm.session.artifact, transaction: vm.transaction)
-                == (stage == .prepared ? .sign : .broadcast))
+        #expect(repairs == 0)
     }
-
 }

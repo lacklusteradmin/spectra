@@ -81,38 +81,27 @@ private struct RefundTokenStorageView: View {
     let store: AppState
     let wallet: WalletView
     let deposit: NearStorageDeposit
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
 
     var body: some View {
-        Form {
+        WalletOperationSheet(
+            store: store, wallet: wallet, title: AppLocalization.string("Get Deposit Back"),
+            authenticationReason: AppLocalization.format("Authenticate to get a storage deposit back for %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The deposit is back once it confirms."),
+            build: {
+                try await store.bridge.ready().buildTokenStorageRefund(walletId: wallet.id, contract: deposit.contract)
+            }
+        ) { artifact in
             Section {
                 LabeledContent(AppLocalization.string("Contract")) {
                     Text(verbatim: deposit.contract).font(.caption.monospaced()).lineLimit(1)
                         .truncationMode(.middle)
                 }
-                if case let .refundTokenStorage(_, refund, networkFee) = session.artifact?.operation {
+                if case let .refundTokenStorage(_, refund)? = artifact?.operation {
                     LabeledContent(AppLocalization.string("Deposit Returned"), value: store.amounts.formattedNativeAmount(refund, chain: wallet.chain))
-                    LabeledContent(AppLocalization.string("Network Fee"), value: "≤ " + store.amounts.formattedNativeAmount(networkFee, chain: wallet.chain))
                 }
             } footer: {
                 Text(AppLocalization.string("The contract unregisters this account and returns its deposit. Receiving the token again registers the account anew, for a new deposit."))
             }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to get a storage deposit back for %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The deposit is back once it confirms."))
-        }
-        .navigationTitle(AppLocalization.string("Get Deposit Back")).navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
-        .task {
-            await session.load(
-                operation: .build,
-                prepare: {
-                    try await store.bridge.ready().buildTokenStorageRefund(
-                        walletId: wallet.id, contract: deposit.contract)
-                },
-                endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
         }
     }
 }

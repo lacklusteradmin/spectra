@@ -132,3 +132,21 @@ extension AssetHolding {
 extension WalletDiagnosticsState {
     func flushPendingPersistence() async { await pendingCommand?.value }
 }
+
+extension SendProgress {
+    /// A staged send as a test sets it up. Core decides the next step; a
+    /// test names it, or takes the one the artifact's stage and submissions
+    /// first reach.
+    static func staged(
+        _ artifact: SendArtifact, transaction: TransactionRecord? = nil, next: SendNextStep? = nil,
+        canRebroadcast: Bool = false, canRepair: Bool = false, canRecheck: Bool = false
+    ) -> SendProgress {
+        let reached: SendNextStep =
+            artifact.stage == .prepared ? .sign
+            : artifact.attempts.contains { $0.outcome == .accepted } ? .done
+            : artifact.attempts.isEmpty ? .broadcast : .rebroadcast
+        return SendProgress(
+            artifact: artifact, transaction: transaction, next: next ?? reached,
+            canRebroadcast: canRebroadcast, canRepair: canRepair, canRecheck: canRecheck)
+    }
+}

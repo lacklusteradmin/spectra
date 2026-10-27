@@ -97,74 +97,65 @@ private struct SendNftView: View {
     let store: AppState
     let wallet: WalletView
     let nft: WalletNft
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
     @State private var recipient = ""
     @State private var quantity = "1"
 
     var body: some View {
-        Form {
+        WalletOperationSheet(
+            store: store, wallet: wallet, title: AppLocalization.string("Send NFT"),
+            authenticationReason: AppLocalization.format("Authenticate to send an NFT from %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The token moves once it confirms."),
+            formIsComplete: !recipient.trimmingCharacters(in: .whitespaces).isEmpty,
+            build: build
+        ) {
+            token
             Section {
-                LabeledContent(AppLocalization.string("Token"), value: nft.title)
-                LabeledContent(AppLocalization.string("Token ID")) {
-                    Text(verbatim: nft.tokenId).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+                AddressEntryRow(
+                    title: AppLocalization.string("Destination Address"), text: $recipient, chain: wallet.chain,
+                    contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
+                if nft.standard == .erc1155 {
+                    TextField(AppLocalization.string("Quantity"), text: $quantity)
+                        .keyboardType(.numberPad).monospacedDigit()
                 }
-                LabeledContent(AppLocalization.string("Standard"), value: nft.standard.label)
-                LabeledContent(AppLocalization.string("Contract")) {
-                    Text(verbatim: nft.contract).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+            } footer: {
+                if nft.standard == .erc1155 {
+                    Text(AppLocalization.format("This wallet holds %@ of this token.", nft.quantity))
                 }
             }
-            if let artifact = session.artifact,
-               case let .transferNft(_, _, _, quantity, _, networkFee) = artifact.operation {
+        } summary: { artifact in
+            token
+            if let artifact, case let .transferNft(_, _, _, quantity, _) = artifact.operation {
                 Section {
                     LabeledContent(AppLocalization.string("To")) {
                         Text(verbatim: artifact.recipient).font(.caption.monospaced()).lineLimit(1)
                             .truncationMode(.middle)
                     }
                     LabeledContent(AppLocalization.string("Quantity"), value: quantity)
-                    LabeledContent(AppLocalization.string("Network Fee"),
-                        value: "≤ \(networkFee) \(wallet.chain.gasTokenSymbol)")
                 } footer: {
                     Text(AppLocalization.string("A contract recipient must accept the token, or the transfer is refused and only the fee is spent."))
                 }
-            } else {
-                Section {
-                    AddressEntryRow(
-                        title: AppLocalization.string("Destination Address"), text: $recipient, chain: wallet.chain,
-                        contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
-                    if nft.standard == .erc1155 {
-                        TextField(AppLocalization.string("Quantity"), text: $quantity)
-                            .keyboardType(.numberPad).monospacedDigit()
-                    }
-                } footer: {
-                    if nft.standard == .erc1155 {
-                        Text(AppLocalization.format("This wallet holds %@ of this token.", nft.quantity))
-                    }
-                }
-                Section {
-                    Button(AppLocalization.string("Review")) { Task { await review() } }
-                        .disabled(recipient.trimmingCharacters(in: .whitespaces).isEmpty || session.isBusy)
-                }
             }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to send an NFT from %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The token moves once it confirms."))
         }
-        .navigationTitle(AppLocalization.string("Send NFT")).navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
     }
 
-    private func review() async {
+    private var token: some View {
+        Section {
+            LabeledContent(AppLocalization.string("Token"), value: nft.title)
+            LabeledContent(AppLocalization.string("Token ID")) {
+                Text(verbatim: nft.tokenId).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+            }
+            LabeledContent(AppLocalization.string("Standard"), value: nft.standard.label)
+            LabeledContent(AppLocalization.string("Contract")) {
+                Text(verbatim: nft.contract).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+            }
+        }
+    }
+
+    private func build() async throws -> SendArtifact {
         let recipient = recipient.trimmingCharacters(in: .whitespacesAndNewlines)
         let quantity = nft.standard == .erc1155 ? quantity.trimmingCharacters(in: .whitespaces) : "1"
-        await session.load(
-            operation: .build,
-            prepare: {
-                try await store.bridge.ready().buildNftTransfer(
-                    walletId: wallet.id, contract: nft.contract, tokenId: nft.tokenId, quantity: quantity,
-                    recipient: recipient)
-            },
-            endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
+        return try await store.bridge.ready().buildNftTransfer(
+            walletId: wallet.id, contract: nft.contract, tokenId: nft.tokenId, quantity: quantity,
+            recipient: recipient)
     }
 }

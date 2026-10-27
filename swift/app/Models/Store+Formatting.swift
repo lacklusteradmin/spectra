@@ -2,52 +2,87 @@ import Foundation
 
 // Localized display messages. AmountPresentation owns native number rendering.
 
-/// Every recipient warning, worded. Exhaustive, with no `default`: a reason
-/// core adds does not compile until it has words.
-func evmRecipientMessages(_ warnings: [EvmRecipientPreflightWarning]) -> [String] {
-    warnings.map { warning in
-        switch warning {
+extension EvmRecipientPreflightWarning {
+    /// The warning, worded. Exhaustive, with no `default`: a reason core adds
+    /// does not compile until it has words.
+    var localizedText: String {
+        switch self {
         case .recipientIsContract(let chain, let symbol):
-            return AppLocalization.format(
+            AppLocalization.format(
                 "Recipient is a smart contract on %@. Confirm it can receive %@ safely.", chain.displayName, symbol)
         case .recipientCodeUnknown(let chain):
-            return AppLocalization.format(
+            AppLocalization.format(
                 "Could not verify recipient contract state on %@. Review destination carefully.", chain.displayName)
         case .tokenContractMissing(let chain, let tokenSymbol):
-            return AppLocalization.format(
+            AppLocalization.format(
                 "Token contract %@ appears missing on %@. This may be a wrong-network token selection.",
                 tokenSymbol, chain.displayName)
         case .tokenCodeUnknown(let chain, let tokenSymbol):
-            return AppLocalization.format("Could not verify %@ contract bytecode on %@.", tokenSymbol, chain.displayName)
+            AppLocalization.format("Could not verify %@ contract bytecode on %@.", tokenSymbol, chain.displayName)
         }
     }
 }
-/// Every reason a send looks risky, worded. Exhaustive for the same reason as
-/// `evmRecipientMessages`.
-func highRiskSendMessages(_ warnings: [HighRiskSendWarning]) -> [String] {
-    warnings.map { warning in
-        switch warning {
+
+extension HighRiskSendWarning {
+    /// The reason, worded. Exhaustive for the same reason as
+    /// `EvmRecipientPreflightWarning.localizedText`.
+    var localizedText: String {
+        switch self {
         case .invalidFormat(let chain):
-            return AppLocalization.format("The destination address format does not match %@.", chain.displayName)
+            AppLocalization.format("The destination address format does not match %@.", chain.displayName)
         case .newAddress:
-            return AppLocalization.string("This is a new destination address with no prior history in this wallet.")
+            AppLocalization.string("This is a new destination address with no prior history in this wallet.")
         case .ensResolved(let name, let address):
-            return AppLocalization.format(
+            AppLocalization.format(
                 "ENS name '%@' resolved to %@. Confirm this resolved address before sending.", name, address)
         case .largeSend(let percent, let symbol):
-            let formatted = (Double(percent) / 100.0).formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.locale))
-            return AppLocalization.format("This send is %@ of your %@ balance.", formatted, symbol)
+            AppLocalization.format(
+                "This send is %@ of your %@ balance.",
+                (Double(percent) / 100.0).formatted(.percent.precision(.fractionLength(0)).locale(AppLocalization.locale)),
+                symbol)
         case .nonEvmOnEvm(let chain):
-            return AppLocalization.format("Destination appears to be a non-EVM address while sending on %@.", chain.displayName)
+            AppLocalization.format("Destination appears to be a non-EVM address while sending on %@.", chain.displayName)
         case .ensOffEthereum(let chain):
-            return AppLocalization.format(
+            AppLocalization.format(
                 "ENS names are Ethereum-specific. For %@, verify the resolved EVM address very carefully.", chain.displayName)
         case .ethOnUtxo(let chain):
-            return AppLocalization.format("Destination appears to be an Ethereum-style address while sending on %@.", chain.displayName)
+            AppLocalization.format("Destination appears to be an Ethereum-style address while sending on %@.", chain.displayName)
         case .foreignAddressFormat(let chain):
-            return AppLocalization.format("Destination appears to be another network's address format while sending on %@.", chain.displayName)
+            AppLocalization.format("Destination appears to be another network's address format while sending on %@.", chain.displayName)
         case .chainMismatch:
-            return AppLocalization.string("Wallet-chain context mismatch detected for this send.")
+            AppLocalization.string("Wallet-chain context mismatch detected for this send.")
+        }
+    }
+}
+
+extension SendArtifact {
+    /// What core's review says before this transaction is signed, worded:
+    /// the same list wherever an artifact is reviewed. Exhaustive, so a new
+    /// warning does not compile until it has words.
+    @MainActor
+    var reviewWarningMessages: [String] {
+        review.warnings.map { warning in
+            switch warning {
+            case .risk(let warning): warning.localizedText
+            case .contract(let warning): warning.localizedText
+            case .ownAddress:
+                AppLocalization.string("This destination belongs to your wallet. Confirm intentional self-send.")
+            case .tokenFee(let fee, let received):
+                AppLocalization.format(
+                    "The token takes %@ %@ of this amount on the way; the recipient receives %@ %@.",
+                    AmountPresentation.localizedDecimal(fee), symbol,
+                    AmountPresentation.localizedDecimal(received), symbol)
+            case .carriesNative(let amount):
+                AppLocalization.format(
+                    "The token goes with %@ %@, the least its output can hold; the recipient keeps it.",
+                    AmountPresentation.localizedDecimal(amount), chainId.gasTokenSymbol)
+            case .registersRecipient(let deposit):
+                AppLocalization.format(
+                    "The token has not registered the recipient. This send registers it first for %@ %@, which the token keeps for the recipient.",
+                    AmountPresentation.localizedDecimal(deposit), chainId.gasTokenSymbol)
+            case .transferHook(let program):
+                AppLocalization.format("This token runs program %@ on every transfer, and it can refuse this one.", program)
+            }
         }
     }
 }

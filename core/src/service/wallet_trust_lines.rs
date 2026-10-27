@@ -223,13 +223,11 @@ impl WalletService {
             WalletOperation::RemoveTrustLine {
                 asset: asset.clone(),
                 reserve,
-                network_fee: network_fee.clone(),
             }
         } else {
             WalletOperation::TrustAsset {
                 asset: asset.clone(),
                 reserve,
-                network_fee: network_fee.clone(),
             }
         };
         let request = crate::send::SendExecutionRequest {

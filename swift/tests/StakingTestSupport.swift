@@ -17,13 +17,13 @@ enum StakingTestSupport {
                 validatorId: "validator", positionId: nil, amount: "1.234567891", lockupSeconds: nil),
             operation: nil, createdAt: 0, reviewDigest: "immutable-review",
             review: SendArtifactReview(
-                warnings: [], recipientWarnings: [], requiresSelfSendConfirmation: false,
+                warnings: [],
                 staking: StakingReview(
-                    networkFee: "0.000005", feeIsUpperBound: false,
                     feeIsDeductedFromAmount: false,
                     fundingAlreadyCompleted: false,
                     refundableDeposit: "0.00228288", lockupSeconds: nil, rewardPayoutIsDelayed: false),
-                transferTerms: nil),
+                transferTerms: nil,
+                networkFee: NetworkFee(amount: "0.000005", bound: .exact, value: nil)),
             preparedDetails: "reviewed content", signingPayloadHex: "0102",
             signedPayload: stage == .signed ? "signed-content" : nil,
             transactionHash: submitted ? "exact-hash" : nil,
@@ -52,13 +52,24 @@ enum StakingTestSupport {
             amount: "1.234567891", address: "validator", transactionHash: "exact-hash")
     }
 
+    /// Core's answer for a staged staking action, as the stages reach it:
+    /// a submitted one has its pending record, can be checked again, and an
+    /// interrupted ICP stake can be repaired.
+    static func progress(_ artifact: SendArtifact) -> SendProgress {
+        let submitted = !artifact.attempts.isEmpty
+        return .staged(
+            artifact, transaction: submitted ? transaction(artifact.id) : nil,
+            canRepair: submitted && artifact.chainId == .icp && artifact.staking?.action == .stake,
+            canRecheck: submitted)
+    }
+
     static func operations() -> StakingOperations {
         StakingOperations(
             validators: { _ in [] }, positions: { _, _, _, _ in [] }, saved: { [] },
             build: { _, _ in artifact() }, endpoints: { _ in ["node-a", "node-b"] },
             sign: { _, _, _ in artifact(stage: .signed) },
             broadcast: { _, _ in artifact(stage: .signed, submitted: true) },
-            inspect: { id in artifact(id) }, transaction: { id in transaction(id) },
+            inspect: { id in artifact(id) }, progress: progress,
             recheck: { id, _ in artifact(id, stage: .signed, submitted: true) },
             repair: { id, _ in
                 var reviewed = artifact(id, chain: .icp)

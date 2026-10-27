@@ -149,93 +149,66 @@ private struct MwebTransactionView: View {
     let store: AppState
     let wallet: WalletView
     let flow: PrivateFundsFlow
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
     @State private var recipient = ""
     @State private var amount = ""
 
-    private var symbol: String { wallet.chain.gasTokenSymbol }
+    private var formIsComplete: Bool {
+        (flow != .send || !recipient.trimmingCharacters(in: .whitespaces).isEmpty)
+            && !amount.trimmingCharacters(in: .whitespaces).isEmpty
+    }
 
     var body: some View {
-        Form {
-            if let artifact = session.artifact {
-                reviewSection(artifact)
-            } else {
-                Section {
-                    if flow == .send {
-                        AddressEntryRow(
-                            title: AppLocalization.string("Destination Address"), text: $recipient, chain: wallet.chain,
-                            contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
-                    }
-                    TextField(AppLocalization.string("Amount"), text: $amount)
-                        .keyboardType(.decimalPad).monospacedDigit()
-                } footer: {
-                    Text(flow == .send
-                         ? AppLocalization.string(
-                            "An MWEB address is paid privately. Any other Litecoin address is paid by a peg-out, which shows the amount and the recipient on the chain.")
-                         : AppLocalization.string(
-                            "Transparent LTC moves into this wallet's MWEB funds. The transaction shows the transparent address it comes from."))
-                }
-                Section {
-                    Button(AppLocalization.string("Review")) { Task { await review() } }
-                        .disabled((flow == .send && recipient.trimmingCharacters(in: .whitespaces).isEmpty)
-                                  || amount.trimmingCharacters(in: .whitespaces).isEmpty || session.isBusy)
-                }
-            }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to send MWEB funds from %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The funds move once it confirms; scan again to see them."))
-        }
-        .navigationTitle(flow == .moveIn
-                         ? AppLocalization.string("Move LTC into MWEB")
-                         : AppLocalization.string("Send from MWEB"))
-        .navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
-    }
-
-    @ViewBuilder
-    private func reviewSection(_ artifact: SendArtifact) -> some View {
-        switch artifact.operation {
-        case let .shieldTransparent(amount, networkFee):
+        WalletOperationSheet(
+            store: store, wallet: wallet,
+            title: flow == .moveIn
+                ? AppLocalization.string("Move LTC into MWEB") : AppLocalization.string("Send from MWEB"),
+            authenticationReason: AppLocalization.format("Authenticate to send MWEB funds from %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The funds move once it confirms; scan again to see them."),
+            formIsComplete: formIsComplete,
+            build: build
+        ) {
             Section {
-                LabeledContent(AppLocalization.string("Into MWEB"), value: "\(amount) \(symbol)")
-                LabeledContent(AppLocalization.string("Network Fee"), value: "\(networkFee) \(symbol)")
-            }
-        case let .shieldedPayment(_, networkFee):
-            Section {
-                LabeledContent(AppLocalization.string("To")) {
-                    Text(verbatim: artifact.recipient).font(.caption.monospaced()).lineLimit(2)
-                        .truncationMode(.middle)
+                if flow == .send {
+                    AddressEntryRow(
+                        title: AppLocalization.string("Destination Address"), text: $recipient, chain: wallet.chain,
+                        contacts: store.addressBook.entries.filter { $0.chainId == wallet.chain })
                 }
-                LabeledContent(AppLocalization.string("Amount"), value: "\(artifact.amount) \(symbol)")
-                LabeledContent(AppLocalization.string("Network Fee"), value: "\(networkFee) \(symbol)")
+                TextField(AppLocalization.string("Amount"), text: $amount)
+                    .keyboardType(.decimalPad).monospacedDigit()
+            } footer: {
+                Text(flow == .send
+                     ? AppLocalization.string(
+                        "An MWEB address is paid privately. Any other Litecoin address is paid by a peg-out, which shows the amount and the recipient on the chain.")
+                     : AppLocalization.string(
+                        "Transparent LTC moves into this wallet's MWEB funds. The transaction shows the transparent address it comes from."))
             }
-            let warnings = highRiskSendMessages(artifact.review.warnings)
-            if !warnings.isEmpty {
+        } summary: { artifact in
+            switch artifact?.operation {
+            case let .shieldTransparent(amount):
                 Section {
-                    ForEach(warnings, id: \.self) { Text($0).foregroundStyle(Color.spectraWarning) }
+                    LabeledContent(
+                        AppLocalization.string("Into MWEB"),
+                        value: store.amounts.formattedNativeAmount(amount, chain: wallet.chain))
                 }
+            case .shieldedPayment:
+                if let artifact {
+                    PrivatePaymentSummary(store: store, wallet: wallet, artifact: artifact, memo: nil)
+                }
+            default:
+                EmptyView()
             }
-        default:
-            EmptyView()
         }
     }
 
-    private func review() async {
+    private func build() async throws -> SendArtifact {
         let recipient = recipient.trimmingCharacters(in: .whitespacesAndNewlines)
         let amount = AmountPresentation.canonicalDecimalInput(amount)
-        await session.load(
-            operation: .build,
-            prepare: {
-                switch flow {
-                case .moveIn:
-                    try await store.bridge.ready().buildLitecoinMwebPegin(walletId: wallet.id, amount: amount)
-                case .send:
-                    try await store.bridge.ready().buildLitecoinMwebSend(
-                        walletId: wallet.id, recipient: recipient, amount: amount)
-                }
-            },
-            endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
+        switch flow {
+        case .moveIn:
+            return try await store.bridge.ready().buildLitecoinMwebPegin(walletId: wallet.id, amount: amount)
+        case .send:
+            return try await store.bridge.ready().buildLitecoinMwebSend(
+                walletId: wallet.id, recipient: recipient, amount: amount)
+        }
     }
 }

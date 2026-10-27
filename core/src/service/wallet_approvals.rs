@@ -239,10 +239,6 @@ impl WalletService {
                 .unwrap_or_else(|| {
                     super::send_records::send_asset_names(&state, chain, Some(&token)).0
                 });
-            let network_fee = crate::amount::decimal::from_units(
-                prepared.maximum_fee_wei()?,
-                u32::from(chain.native_decimals()),
-            );
             let prepared = PreparedPayload::Evm(prepared);
             let signing_payload_hex = match &prepared {
                 PreparedPayload::Evm(p) => hex::encode(p.signing_payload()?),
@@ -253,11 +249,7 @@ impl WalletService {
                 asset: token.clone(),
                 symbol,
                 staking: None,
-                operation: Some(WalletOperation::RevokeApproval {
-                    token,
-                    spender,
-                    network_fee,
-                }),
+                operation: Some(WalletOperation::RevokeApproval { token, spender }),
                 review: SendArtifactReview::default(),
                 signing_payload_hex,
                 request,

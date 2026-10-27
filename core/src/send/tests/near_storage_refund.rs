@@ -32,11 +32,17 @@ fn refund() -> StoredSend {
             operation: Some(WalletOperation::RefundTokenStorage {
                 contract: TOKEN.into(),
                 refund: "0.00125".into(),
-                network_fee: "0.0003".into(),
             }),
             created_at: 1.0,
             review_digest: String::new(),
-            review: SendArtifactReview::default(),
+            review: SendArtifactReview {
+                network_fee: Some(NetworkFee {
+                    amount: "0.0003".into(),
+                    bound: FeeBound::AtMost,
+                    value: None,
+                }),
+                ..SendArtifactReview::default()
+            },
             prepared_details: String::new(),
             signing_payload_hex: String::new(),
             signed_payload: None,

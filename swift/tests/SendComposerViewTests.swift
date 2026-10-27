@@ -12,7 +12,6 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
 
     @Test func composerScreensRenderAcrossAppearanceAndLargeType() async throws {
         let state = try await makeComposerFixture()
-        let resolution = SendDestinationResolution(address: recipient, usedEns: false)
         let cases: [(String, ComposerPage, ColorScheme, DynamicTypeSize, String)] = [
             ("01 Asset light", .asset, .light, .large, "0.25"),
             ("02 Recipient light", .recipient, .light, .large, "0.25"),
@@ -35,7 +34,7 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
             state.sendFlow.amount = amount
             applyPreviewFixture(to: state)
             #expect(state.sendAmountIsValid, "The layout fixture must exercise a valid amount")
-            let content = composerPage(page, state: state, resolution: resolution)
+            let content = composerPage(page, state: state)
             let view = NavigationStack {
                 ZStack {
                     SpectraBackdrop().ignoresSafeArea()
@@ -100,18 +99,12 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
         case asset, recipient, amount, review
     }
 
-    private func composerPage(_ page: ComposerPage, state: AppState, resolution: SendDestinationResolution) -> AnyView {
+    private func composerPage(_ page: ComposerPage, state: AppState) -> AnyView {
         switch page {
-        case .asset:
-            AnyView(SendFromPage(store: state))
-        case .recipient:
-            AnyView(SendRecipientPage(
-                store: state, isShowingQRScanner: .constant(false), qrScannerErrorMessage: .constant(nil),
-                validationError: nil, isValidating: false, validatedResolution: resolution, retryValidation: {}))
-        case .amount:
-            AnyView(SendAmountPage(store: state, quoteIsCurrent: true, retryQuote: {}))
-        case .review:
-            AnyView(SendConfirmationStep(store: state, quoteIsCurrent: true, recipientAddress: recipient, retryQuote: {}))
+        case .asset: AnyView(SendFromPage(store: state))
+        case .recipient: AnyView(SendRecipientPage(store: state))
+        case .amount: AnyView(SendAmountPage(store: state))
+        case .review: AnyView(SendConfirmationStep(store: state))
         }
     }
 
@@ -159,5 +152,7 @@ struct SendComposerViewTests: IsolatedAppStateSuite {
             networkFeeValue: 1.26, amountValue: 750,
             shortcuts: [25: "0.374895", 50: "0.74979", 75: "1.124685", 100: "1.49958"],
             recipient: RecipientCheck(activity: nil, isOwnAddress: false)))
+        // The quote answers the form on screen, as a landed one would.
+        state.sendFlow.quotedInput = state.sendFlow.previewInput
     }
 }

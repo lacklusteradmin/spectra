@@ -148,14 +148,18 @@ async fn a_merge_budgets_its_dry_run_cost_with_a_fifth_to_spare() {
             .build_coin_merge(wallet.clone(), coin_type.clone())
             .await
             .unwrap();
-        // (1_000_000 + 2_000_000) × 6/5 MIST.
         assert_eq!(
             built.operation,
             Some(crate::send::stages::WalletOperation::MergeCoins {
                 coin_type,
                 objects: 3,
-                network_fee: "0.0036".into(),
             })
+        );
+        // (1_000_000 + 2_000_000) × 6/5 MIST, the gas budget.
+        let fee = built.review.network_fee.clone().unwrap();
+        assert_eq!(
+            (fee.amount.as_str(), fee.bound),
+            ("0.0036", crate::send::stages::FeeBound::AtMost)
         );
         let prepared: Value = serde_json::from_str(&built.prepared_details).unwrap();
         assert_eq!(prepared["SuiMerge"]["transaction"]["gas_budget"], 3_600_000);

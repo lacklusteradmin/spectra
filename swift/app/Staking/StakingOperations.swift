@@ -12,7 +12,8 @@ struct StakingOperations {
     var sign: @MainActor (String, String, String?) async throws -> SendArtifact
     var broadcast: @MainActor (String, [String]) async throws -> SendArtifact
     var inspect: @MainActor (String) async throws -> SendArtifact
-    var transaction: @MainActor (String) async throws -> TransactionRecord?
+    /// Core's answer for a staged artifact, read by its id.
+    var progress: @MainActor (SendArtifact) async throws -> SendProgress
     var recheck: @MainActor (String, String?) async throws -> SendArtifact
     var repair: @MainActor (String, String?) async throws -> SendArtifact
 
@@ -28,7 +29,7 @@ struct StakingOperations {
             sign: { try await bridge.ready().signSend(id: $0, reviewDigest: $1, password: $2) },
             broadcast: { try await bridge.ready().broadcastSend(id: $0, endpoints: $1) },
             inspect: { try await bridge.ready().inspectSend(id: $0) },
-            transaction: { try await bridge.ready().transaction(id: $0) },
+            progress: { try await bridge.ready().sendProgress(id: $0.id) },
             recheck: { try await bridge.ready().recheckStaking(id: $0, password: $1) },
             repair: { try await bridge.ready().repairStaking(id: $0, password: $1) }
         )

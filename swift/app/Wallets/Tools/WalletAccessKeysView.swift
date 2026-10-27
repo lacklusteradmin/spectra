@@ -99,11 +99,16 @@ private struct DeleteAccessKeyView: View {
     let store: AppState
     let wallet: WalletView
     let key: NearAccessKey
-    @Environment(\.dismiss) private var dismiss
-    @State private var session = SendSession()
 
     var body: some View {
-        Form {
+        WalletOperationSheet(
+            store: store, wallet: wallet, title: AppLocalization.string("Delete Key"),
+            authenticationReason: AppLocalization.format("Authenticate to delete a key from %@", wallet.name),
+            submittedText: AppLocalization.string("Submitted. The key is gone once it confirms."),
+            build: {
+                try await store.bridge.ready().buildAccessKeyDeletion(walletId: wallet.id, publicKey: key.publicKey)
+            }
+        ) { _ in
             Section {
                 LabeledContent(AppLocalization.string("Key")) {
                     Text(verbatim: key.publicKey).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
@@ -113,26 +118,9 @@ private struct DeleteAccessKeyView: View {
                         Text(verbatim: receiver).font(.caption.monospaced())
                     }
                 }
-                if case let .deleteAccessKey(_, _, networkFee) = session.artifact?.operation {
-                    LabeledContent(AppLocalization.string("Network Fee"), value: "≤ " + store.amounts.formattedNativeAmount(networkFee, chain: wallet.chain))
-                }
             } footer: {
                 Text(AppLocalization.string("The contract can no longer act for this account with this key. The dapp asks you to sign in again to get a new one."))
             }
-            SendArtifactStageSections(
-                store: store, wallet: wallet, session: session,
-                authenticationReason: AppLocalization.format("Authenticate to delete a key from %@", wallet.name),
-                submittedText: AppLocalization.string("Submitted. The key is gone once it confirms."))
-        }
-        .navigationTitle(AppLocalization.string("Delete Key")).navigationBarTitleDisplayMode(.inline)
-        .sendSheetDismissal(session: session) { dismiss() }
-        .task {
-            await session.load(
-                operation: .build,
-                prepare: {
-                    try await store.bridge.ready().buildAccessKeyDeletion(walletId: wallet.id, publicKey: key.publicKey)
-                },
-                endpoints: { try await store.bridge.ready().sendEndpoints(chain: $0) })
         }
     }
 }
