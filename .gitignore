@@ -15,3 +15,6 @@ __pycache__/
 
 # UniFFI-generated Swift bindings (regenerated from the Rust core)
 swift/generated/
+
+# Test vector generator SDKs (npm ci --prefix tests/vectors)
+tests/vectors/node_modules/

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# RUSTC_WORKSPACE_WRAPPER for unwritten-record-fields.sh: compiles a workspace
+# RUSTC_WORKSPACE_WRAPPER for unwritten-record-fields.py: compiles a workspace
 # crate as cargo asks, and core's library and the CLI's binary into MIR as
 # well, at $SPECTRA_MIR_DIR/core.mir and cli.mir. One build then emits both,
 # compiling core once.

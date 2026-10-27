@@ -1,5 +1,5 @@
 //! Sui multisig accounts against @mysten/sui's (`sui-multisig.json`, from
-//! tests/generate-sui-multisig-vectors.cjs).
+//! tests/vectors/generate-sui-multisig-vectors.cjs).
 
 use super::*;
 

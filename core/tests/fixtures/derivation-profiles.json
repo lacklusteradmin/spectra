@@ -1,5 +1,5 @@
 {
-  "provenance": "bip39 3.1.0, bip32 5.0.1, bitcoinjs-lib 7.0.2, bchaddrjs 0.5.2, ethers 6.17.0, ed25519-hd-key 2.0.0, @solana/web3.js 1.98.4, @stellar/stellar-base 14.0.1, ripple-keypairs 3.1.0, @mysten/sui 1.38.0, @aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/identity-secp256k1 3.4.3, @emurgo/cardano-serialization-lib-nodejs 17.0.0, blake-hash 2.0.0, kaspa-wasm 0.13.0",
+  "provenance": "bip39 3.1.0, bip32 5.0.1, bitcoinjs-lib 7.0.2, bchaddrjs 0.5.2, ethers 6.17.0, ed25519-hd-key 2.0.0, @solana/web3.js 1.98.4, @stellar/stellar-base 14.1.0, ripple-keypairs 3.1.0, @mysten/sui 1.45.2, @aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/identity-secp256k1 3.4.3, @emurgo/cardano-serialization-lib-nodejs 17.0.0, blake-hash 2.0.0, kaspa-wasm 0.13.0",
   "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
   "vectors": [
     {

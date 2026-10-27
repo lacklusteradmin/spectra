@@ -1,5 +1,5 @@
 //! Tron permissions and multi-signed transactions against TronWeb's
-//! (`tron-multisig.json`, from tests/generate-tron-multisig-vectors.cjs).
+//! (`tron-multisig.json`, from tests/vectors/generate-tron-multisig-vectors.cjs).
 
 use super::*;
 use crate::api::tron_http::{BlockReference, TronPermissions};

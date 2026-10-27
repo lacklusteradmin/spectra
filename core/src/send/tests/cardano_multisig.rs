@@ -1,6 +1,6 @@
 //! Cardano native-script spends against the Cardano Serialization
 //! Library's (`cardano-multisig.json`, from
-//! tests/generate-cardano-multisig-vectors.cjs).
+//! tests/vectors/generate-cardano-multisig-vectors.cjs).
 
 use super::*;
 use crate::registry::Chain;

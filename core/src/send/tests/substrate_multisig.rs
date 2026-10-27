@@ -1,6 +1,6 @@
 //! Substrate multisig accounts and approvals against polkadot.js's
 //! (`substrate-multisig.json`, from
-//! tests/generate-substrate-multisig-vectors.cjs).
+//! tests/vectors/generate-substrate-multisig-vectors.cjs).
 
 use super::*;
 use crate::derivation::substrate_multisig::SubstrateMultisig;

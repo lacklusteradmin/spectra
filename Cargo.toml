@@ -19,7 +19,7 @@ opt-level = 3
 [profile.dev]
 debug = "line-tables-only"
 
-# The MIR scan's build (scripts/unwritten-record-fields.sh), kept apart so
+# The MIR scan's build (scripts/unwritten-record-fields.py), kept apart so
 # that emitting MIR never invalidates the dev build the tests and the CLI
 # use. MIR carries no debug info, and the binary is never run, so nothing
 # is stripped from it either.

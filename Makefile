@@ -19,29 +19,29 @@ verify: lint test test-cli test-ios
 # Source scans: nothing exported, public or shipped may go unused, no FFI
 # record field may go unwritten, and the app may not spell chain names or
 # amount precision itself.
-SOURCE_SCANS := scripts/unreachable-exports.sh scripts/uncalled-core-fns.sh \
-	scripts/unwritten-record-fields.sh scripts/unused-strings.sh \
-	scripts/swift-shell-literals.sh
+SOURCE_SCANS := scripts/unreachable-exports.py scripts/uncalled-core-fns.py \
+	scripts/unwritten-record-fields.py scripts/unused-strings.py \
+	scripts/swift-shell-literals.py
 
 lint:
 	cargo fmt --all -- --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	python3 -B scripts/test-source-scan.py
 	python3 -B scripts/test-record-writers.py
-	@set -e; for scan in $(SOURCE_SCANS); do echo "$$scan"; $$scan; done
+	@set -e; for scan in $(SOURCE_SCANS); do echo "$$scan"; python3 -B $$scan; done
 
 fmt:
 	cargo fmt --all
 
 check-ui:
-	scripts/check-design-tokens.sh
+	python3 -B scripts/check-design-tokens.py
 	scripts/normalize-icons.sh --check
 
 test:
 	cargo test --workspace
 
 test-cli:
-	tests/cli-acceptance.sh
+	python3 -B tests/acceptance
 
 # No sysdiagnose: a failing test's own output says what failed, and the
 # collection can wait out a ten-minute timeout on a simulator another tool is

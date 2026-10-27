@@ -1,5 +1,5 @@
 //! TON multisig v2 data, orders and messages against @ton/core's
-//! (`ton-multisig.json`, from tests/generate-ton-multisig-vectors.cjs).
+//! (`ton-multisig.json`, from tests/vectors/generate-ton-multisig-vectors.cjs).
 
 use super::*;
 use crate::derivation::ton::cell_from_boc;

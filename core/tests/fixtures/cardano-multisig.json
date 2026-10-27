@@ -1,5 +1,5 @@
 {
-  "provenance": "@emurgo/cardano-serialization-lib-nodejs 15.0.3, bip39 3.1.0, @noble/hashes 1.8.0 (tests/generate-cardano-multisig-vectors.cjs)",
+  "provenance": "@emurgo/cardano-serialization-lib-nodejs 17.0.0, bip39 3.1.0, @noble/hashes 1.8.0 (tests/vectors/generate-cardano-multisig-vectors.cjs)",
   "encoding": {
     "body_inputs_tag_258": true,
     "vkey_witnesses_tag_258": true,

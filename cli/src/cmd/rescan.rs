@@ -4,12 +4,17 @@
 
 use clap::Args;
 use colored::Colorize as _;
-use spectra_core::derivation::funds_finder::FundsFinderRequest;
+use serde::Serialize;
+use spectra_core::api::endpoint::EndpointCapability;
+use spectra_core::catalog::chains::DerivationProfile;
+use spectra_core::derivation::funds_finder::{FundsFinderCandidate, FundsFinderRequest};
+use spectra_core::derivation::ton::TonWalletVersion;
+use spectra_core::registry::Chain;
 
 use super::resolve_chain;
 use crate::ctx::{Ctx, SecretSource};
-use crate::error::{CliError, CliResult};
-use crate::out::{self, Out};
+use crate::error::CliResult;
+use crate::out::{self, Out, Report};
 
 #[derive(Args)]
 pub struct RescanArgs {
@@ -30,6 +35,130 @@ pub struct RescanArgs {
     dry_run: bool,
 }
 
+/// Whom the candidate addresses are sent to.
+#[derive(Serialize)]
+struct EndpointRow {
+    chain: Chain,
+    endpoint: String,
+    capabilities: Vec<EndpointCapability>,
+}
+
+/// Where a candidate sits: its network, profile, account and path, or on
+/// TON its wallet version.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CandidateRow {
+    chain: Chain,
+    profile: Option<DerivationProfile>,
+    account: u32,
+    path: String,
+    ton_wallet: Option<TonWalletVersion>,
+    address: String,
+}
+
+impl From<&FundsFinderCandidate> for CandidateRow {
+    fn from(candidate: &FundsFinderCandidate) -> Self {
+        Self {
+            chain: candidate.chain_id,
+            profile: candidate.profile,
+            account: candidate.account,
+            path: candidate.derivation_path.clone(),
+            ton_wallet: candidate.ton_wallet_version,
+            address: candidate.address.clone(),
+        }
+    }
+}
+
+impl CandidateRow {
+    fn position(&self) -> String {
+        match &self.ton_wallet {
+            Some(version) => out::serde_name(version),
+            None => self.path.clone(),
+        }
+    }
+}
+
+/// The addresses a scan would check, none of them checked.
+#[derive(Serialize)]
+struct CandidatesReport {
+    checked: bool,
+    endpoints: Vec<EndpointRow>,
+    candidates: Vec<CandidateRow>,
+}
+
+impl Report for CandidatesReport {
+    fn render(&self) {
+        println!();
+        for candidate in &self.candidates {
+            println!(
+                "  {}  {:<16} {:<22} {}",
+                out::hint("·"),
+                candidate.chain.str_id(),
+                candidate.position(),
+                out::hint(&candidate.address),
+            );
+        }
+        println!();
+        println!(
+            "  {}, none checked",
+            out::count(self.candidates.len(), "candidate")
+        );
+    }
+}
+
+/// One candidate address as the network answered for it.
+#[derive(Serialize)]
+struct ReadRow {
+    #[serde(flatten)]
+    candidate: CandidateRow,
+    amount: Option<String>,
+    funded: bool,
+    used: bool,
+    error: Option<String>,
+}
+
+/// Every candidate checked, in the scan's order: default profile first,
+/// accounts ascending.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScanReport {
+    checked: bool,
+    candidate_count: usize,
+    unreachable: usize,
+    endpoints: Vec<EndpointRow>,
+    reads: Vec<ReadRow>,
+}
+
+impl Report for ScanReport {
+    fn render(&self) {
+        println!();
+        let funded: Vec<&ReadRow> = self.reads.iter().filter(|read| read.funded).collect();
+        if funded.is_empty() {
+            println!("  {}", out::hint("no funded addresses found"));
+        }
+        for read in &funded {
+            println!(
+                "  {}  {:<16} {:<22} {}  {}",
+                out::ok_mark(),
+                read.candidate.chain.str_id(),
+                read.candidate.position(),
+                read.candidate.address,
+                read.amount.as_deref().unwrap_or("").bold(),
+            );
+        }
+        println!(
+            "  {} of {} funded{}",
+            out::accent(&funded.len().to_string()).bold(),
+            self.candidate_count,
+            if self.unreachable > 0 {
+                format!(", {} unreachable", self.unreachable)
+            } else {
+                String::new()
+            },
+        );
+    }
+}
+
 pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
     let seed_phrase = SecretSource {
         file: args.seed_file.clone(),
@@ -37,157 +166,71 @@ pub fn rescan(ctx: &Ctx, out: Out, args: RescanArgs) -> CliResult<()> {
     }
     .resolve("seed phrase", "seed-file")?;
 
-    let chain = args.chain.as_ref().map(|n| resolve_chain(n)).transpose()?;
+    let chain = args.chain.as_deref().map(resolve_chain).transpose()?;
     // On one network core judges the phrase in that network's formats.
     if chain.is_none() {
         crate::cmd::reject_bad_seed_phrase(None, &seed_phrase)?;
     }
 
     let service = ctx.service()?;
-    let scan = service
-        .begin_funds_scan(
-            FundsFinderRequest {
-                seed_phrase,
-                passphrase: args.passphrase.clone(),
-            },
-            chain,
-        )
-        .map_err(CliError::from)?;
+    let scan = service.begin_funds_scan(
+        FundsFinderRequest {
+            seed_phrase,
+            passphrase: args.passphrase.clone(),
+        },
+        chain,
+    )?;
     let candidates = scan.candidates();
     // Named before anything is sent: whom the candidate addresses go to.
-    let endpoints = ctx.rt.block_on(scan.endpoints());
-    let endpoints_json: Vec<_> = endpoints
-        .iter()
-        .map(|endpoint| {
-            serde_json::json!({
-                "chain": endpoint.chain_id,
-                "endpoint": endpoint.endpoint,
-                "capabilities": endpoint.capabilities,
-            })
+    let endpoints: Vec<EndpointRow> = ctx
+        .rt
+        .block_on(scan.endpoints())
+        .into_iter()
+        .map(|endpoint| EndpointRow {
+            chain: endpoint.chain_id,
+            endpoint: endpoint.endpoint,
+            capabilities: endpoint.capabilities,
         })
         .collect();
 
     if args.dry_run {
-        out.text(|| {
-            println!();
-            for candidate in &candidates {
-                println!(
-                    "  {}  {:<16} {:<22} {}",
-                    out::hint("·"),
-                    candidate.chain_id.str_id(),
-                    position(candidate),
-                    out::hint(&candidate.address),
-                );
-            }
-            println!();
-            println!(
-                "  {} {}",
-                out::accent(&candidates.len().to_string()).bold(),
-                out::hint("candidates, none checked")
-            );
+        return out.report(&CandidatesReport {
+            checked: false,
+            endpoints,
+            candidates: candidates.iter().map(CandidateRow::from).collect(),
         });
-        out.emit(serde_json::json!({
-            "ok": true,
-            "checked": false,
-            "endpoints": endpoints_json,
-            "candidates": candidates
-                .iter()
-                .map(|candidate| serde_json::json!({
-                    "chain": candidate.chain_id,
-                    "profile": candidate.profile,
-                    "account": candidate.account,
-                    "path": candidate.derivation_path,
-                    "tonWallet": candidate.ton_wallet_version,
-                    "address": candidate.address,
-                }))
-                .collect::<Vec<_>>(),
-        }));
-        return Ok(());
     }
 
-    out.text(|| {
-        for endpoint in &endpoints {
-            println!(
-                "  {} asks {}",
-                out::hint(endpoint.chain_id.str_id()),
-                endpoint.endpoint
-            );
-        }
-        println!(
-            "  {} checking {} candidate addresses…",
-            out::hint("→"),
-            candidates.len()
-        )
-    });
-
-    let mut funded = Vec::new();
-    // Every read, in the candidates' order: default profile first, accounts
-    // ascending.
+    for endpoint in &endpoints {
+        out::progress(&format!(
+            "{} asks {}",
+            endpoint.chain.str_id(),
+            endpoint.endpoint
+        ));
+    }
+    out::progress(&format!(
+        "checking {} candidate addresses…",
+        candidates.len()
+    ));
     let mut reads = Vec::new();
-    let mut unreachable = 0u32;
     loop {
         let batch = ctx.rt.block_on(scan.next_batch());
-        for read in batch.reads {
-            if read.error.is_some() {
-                unreachable += 1;
-            }
-            let row = serde_json::json!({
-                "chain": read.candidate.chain_id,
-                "profile": read.candidate.profile,
-                "account": read.candidate.account,
-                "path": read.candidate.derivation_path,
-                "tonWallet": read.candidate.ton_wallet_version,
-                "address": read.candidate.address,
-                "amount": read.balance.as_ref().map(|balance| balance.amount_display.clone()),
-                "funded": read.funded,
-                "used": read.used,
-                "error": read.error.as_ref().map(ToString::to_string),
-            });
-            if read.funded {
-                funded.push(row.clone());
-            }
-            reads.push(row);
-        }
+        reads.extend(batch.reads.into_iter().map(|read| ReadRow {
+            candidate: CandidateRow::from(&read.candidate),
+            amount: read.balance.map(|balance| balance.amount_display),
+            funded: read.funded,
+            used: read.used,
+            error: read.error.as_ref().map(ToString::to_string),
+        }));
         if batch.complete {
             break;
         }
     }
-
-    out.text(|| {
-        println!();
-        if funded.is_empty() {
-            println!("  {}", out::hint("no funded addresses found"));
-        }
-        println!(
-            "  {} of {} funded{}",
-            out::accent(&funded.len().to_string()).bold(),
-            candidates.len(),
-            if unreachable > 0 {
-                format!(", {unreachable} unreachable")
-            } else {
-                String::new()
-            },
-        );
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "checked": true,
-        "candidateCount": candidates.len(),
-        "unreachable": unreachable,
-        "endpoints": endpoints_json,
-        "funded": funded,
-        "reads": reads,
-    }));
-    Ok(())
-}
-
-/// Where a candidate sits: its path, or on TON its wallet version.
-fn position(candidate: &spectra_core::derivation::funds_finder::FundsFinderCandidate) -> String {
-    match candidate.ton_wallet_version {
-        Some(version) => serde_json::to_value(version)
-            .ok()
-            .and_then(|name| name.as_str().map(str::to_string))
-            .unwrap_or_default(),
-        None => candidate.derivation_path.clone(),
-    }
+    out.report(&ScanReport {
+        checked: true,
+        candidate_count: candidates.len(),
+        unreachable: reads.iter().filter(|read| read.error.is_some()).count(),
+        endpoints,
+        reads,
+    })
 }

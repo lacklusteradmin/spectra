@@ -1,5 +1,5 @@
 {
-  "provenance": "tronweb 6.0.4 official protobuf and crypto, generated offline (tests/generate-tron-multisig-vectors.cjs)",
+  "provenance": "tronweb 6.0.4 official protobuf and crypto, generated offline (tests/vectors/generate-tron-multisig-vectors.cjs)",
   "sources": [
     "https://github.com/tronprotocol/java-tron/blob/develop/protocol/src/main/protos/core/Tron.proto",
     "https://github.com/tronprotocol/java-tron/blob/develop/chainbase/src/main/java/org/tron/common/utils/WalletUtil.java",

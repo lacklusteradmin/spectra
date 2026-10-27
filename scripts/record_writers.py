@@ -34,7 +34,6 @@ provider's response. Every field of such a record counts as written.
 
 import pathlib
 import re
-import sys
 from collections import defaultdict
 
 # --- MIR places ---------------------------------------------------------------
@@ -489,23 +488,3 @@ def analyse(mir_files, records, root, front_ends):
                for index in range(len(fields))}
     return unwritten(writes, names, written), sorted(set(records) - set(names))
 
-
-def main(mir_files):
-    sys.path.insert(0, str(pathlib.Path(__file__).parent))
-    from source_scan import frontend_test, hand_written
-
-    records = records_in(sorted(pathlib.Path('core/src').rglob('*.rs')))
-    front_ends = '\n'.join(path.read_text() for path in hand_written('swift', '.swift')
-                           if not frontend_test(path) and 'generated' not in path.parts)
-    fields, unbuilt = analyse(mir_files, records, '.', front_ends)
-    for record, field in fields:
-        where = f'{records[record].path}:{records[record].line}'
-        print(f'  {record + "." + field:<56} {where}')
-    for record in unbuilt:
-        print(f'  {record:<56} no struct literal in the MIR')
-    print(f'\n  {len(fields)} unwritten record field(s), {len(unbuilt)} unbuilt record(s)')
-    return 1 if fields or unbuilt else 0
-
-
-if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))

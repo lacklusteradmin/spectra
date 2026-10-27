@@ -147,7 +147,7 @@ choose their own corner, so they take a step from the table above instead, and a
 card reads the same wherever it is nested. A concentric shape is an exception a
 view argues for in a comment, never a substitute for a step.
 
-`scripts/check-design-tokens.sh` (also `make check-ui`) fails when a view
+`scripts/check-design-tokens.py` (also `make check-ui`) fails when a view
 restates a spacing, a radius or a white glass tint that `SpectraLayout` owns,
 or draws glass in a shape only a surface inside a card has — `Radius.inner`,
 `Radius.control`, a circle or a capsule. `spectraCardFill` and

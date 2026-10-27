@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
-# A loopback lightwalletd for `tests/cli-zcash-shielded.py`: a synthetic
+# A loopback lightwalletd for `tests/acceptance/zcash_shielded.py`: a synthetic
 # Zcash chain funding a wallet's shielded and transparent receivers with real
 # transactions, served over gRPC, that checks each transaction it is handed
 # as a node would before mining it.

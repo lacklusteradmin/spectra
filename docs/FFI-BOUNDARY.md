@@ -25,7 +25,7 @@ English `template` with a `%@` for each of its `args`. The template is the key a
 front end looks up in its string tables, so a sentence a person reads names its
 values as `args` (`SpectraBridgeError::refused`, `failed`,
 `DerivationError::refused`) rather than interpolating them with `format!`.
-`scripts/unused-strings.sh` fails on a templated sentence the tables do not
+`scripts/unused-strings.py` fails on a templated sentence the tables do not
 translate. Transport, parser and library text arrives with no args and reads
 as sent.
 
@@ -63,22 +63,22 @@ Search both Rust names and generated camelCase names before deleting an export.
 implementations need no Swift caller. A dead Swift wrapper does not prove that
 the export behind it is unused.
 
-Use `scripts/unreachable-exports.sh` to find candidates. Cross-check generated
+Use `scripts/unreachable-exports.py` to find candidates. Cross-check generated
 bindings when macros are involved.
 
-`scripts/uncalled-core-fns.sh` checks the layer below. A `pub fn` that no
+`scripts/uncalled-core-fns.py` checks the layer below. A `pub fn` that no
 longer carries `#[uniffi::export]` is invisible to both gates rustc offers —
 `dead_code` treats it as API because the crate is a library, and the bindings
 never mentioned it — so it can lose its last caller and keep compiling.
 `derive_bitcoin_account_xpub_typed` did, for long enough that its doc comment
 still said it was exported.
 
-`scripts/unwritten-record-fields.sh` checks the fields of every
+`scripts/unwritten-record-fields.py` checks the fields of every
 `uniffi::Record`: one that production code never sets to anything but `None`,
 `0` or empty still crosses, renders and reads as data. rustc cannot see it on
 a `pub` struct and a name match cannot tell which struct `x.field` writes, so
 the scan reads the MIR rustc emits, where every place carries its type.
-`scripts/record_writers.py` says what counts as a write. All four scripts run
+`scripts/record_writers.py` says what counts as a write. All three scans run
 in `make lint` and in CI.
 
 An export used only by the app still needs its rule covered: test that rule in

@@ -23,22 +23,6 @@ Found by the 2026-10-26 code audit and not yet paid down. Each item names
 where the duplication or misplaced rule lives; fix the cause, not the
 symptom, and delete the item with the change.
 
-### CLI and tests
-
-- [ ] **CLI output.** About fifteen commands print nothing in text mode and
-  seven print Rust `{:?}`; `send`'s offline calculators format amounts with
-  `{:.6}` and some wallet commands spell tickers. Emit one `Serialize` report
-  per command with its own text rendering, then split `cmd/wallet.rs` and
-  `cmd/tx.rs` along their sections. Wallet selection is positional,
-  `--wallet` or `--from` depending on the command.
-- [ ] **One acceptance harness.** The 25 Python suites each re-implement the
-  CLI runner, a loopback JSON-RPC server and fixture loading; only five refuse
-  `-O`. Share one helper module and run the shell checks from Python too.
-  The SDK generators have no shared `package.json`, and their pinned SDK
-  versions drift.
-- [ ] **Source scans are Python inside bash heredocs** with copied helpers.
-  Make them modules on `scripts/source_scan.py`.
-
 ### iOS app
 
 - [ ] **The send composer's requests live in a view.** `SendFlowViews.swift`

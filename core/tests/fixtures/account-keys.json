@@ -1,5 +1,5 @@
 {
-  "provenance": "bip39 3.1.0, bip32 5.0.1, tiny-secp256k1 2.2.4 (tests/generate-account-key-vectors.cjs)",
+  "provenance": "bip39 3.1.0, bip32 5.0.1, tiny-secp256k1 2.2.4 (tests/vectors/generate-account-key-vectors.cjs)",
   "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
   "vectors": [
     {

@@ -1,5 +1,5 @@
 {
-  "provenance": "xrpl 4.7.0, ripple-binary-codec 2.11.0, ripple-keypairs 2.1.0, @scure/bip32 1.7.0, @scure/bip39 1.6.0",
+  "provenance": "xrpl 4.7.0, ripple-binary-codec 2.11.0, ripple-keypairs 3.1.0, @scure/bip32 1.7.0, @scure/bip39 1.6.0",
   "notes": [
     "Keys: BIP-39 phrase, empty passphrase, secp256k1 BIP-32 from the \"Bitcoin seed\" master at derivation_path; private_key is the 32-byte scalar (ripple-keypairs takes it with a 00 prefix).",
     "A multi-signed transaction carries SigningPubKey \"\" and costs base_fee_drops * (1 + signer_count) drops: https://xrpl.org/docs/concepts/transactions/transaction-cost",

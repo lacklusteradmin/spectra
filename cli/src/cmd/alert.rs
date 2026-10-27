@@ -1,15 +1,19 @@
-//! Price-alert commands. Core owns storage, validation, and evaluation.
+//! Price alerts and the large-movement check. Core owns storage, validation
+//! and evaluation.
 
 use clap::{Args, Subcommand};
 use colored::Colorize as _;
-use spectra_core::store::state::{StateCommand, StateEvent};
+use serde::Serialize;
+use spectra_core::registry::Chain;
+use spectra_core::service::LargeMovementEvaluation;
+use spectra_core::store::state::{FiatCurrency, StateCommand, StateEvent};
 use spectra_core::store::wallet_domain::PriceAlertCondition;
-use spectra_core::store::{PriceAlertRejection, PriceAlertRule};
+use spectra_core::store::{PriceAlertNotification, PriceAlertRejection, PriceAlertRule};
 
 use super::resolve_chain;
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
-use crate::out::{self, Out};
+use crate::out::{self, Done, Out, Report};
 
 #[derive(Subcommand)]
 pub enum AlertCommand {
@@ -67,72 +71,132 @@ pub fn run(ctx: &Ctx, out: Out, command: AlertCommand) -> CliResult<()> {
             let notification = ctx
                 .rt
                 .block_on(ctx.service()?.evaluate_portfolio_movement(active))?;
-            out.emit(serde_json::json!({"ok":true,"notification":notification}));
-            Ok(())
+            out.report(&MovementReport { notification })
         }
         AlertCommand::Add(args) => add(ctx, out, args),
         AlertCommand::Remove(args) => remove(ctx, out, args),
         AlertCommand::Toggle { id } => {
-            apply_alert(ctx, StateCommand::TogglePriceAlert { id })?;
-            out.emit(serde_json::json!({"ok":true}));
-            Ok(())
+            apply_alert(ctx, StateCommand::TogglePriceAlert { id: id.clone() })?;
+            out.report(&Done::new(format!("toggled {id}")))
         }
         AlertCommand::Check { stored } => check(ctx, out, stored),
     }
 }
 
-fn describe(alert: &PriceAlertRule) -> String {
-    format!(
-        "{} {} {:.2}",
-        alert.symbol,
-        match alert.condition {
-            PriceAlertCondition::Above => "≥",
-            PriceAlertCondition::Below => "≤",
-        },
-        alert.target_price
-    )
+fn condition_mark(condition: PriceAlertCondition) -> &'static str {
+    match condition {
+        PriceAlertCondition::Above => "≥",
+        PriceAlertCondition::Below => "≤",
+    }
 }
 
-fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
-    let alerts = ctx.state()?.price_alerts;
-    out.text(|| {
+/// Whether the portfolio moved past the large-movement threshold since its
+/// baseline.
+#[derive(Serialize)]
+struct MovementReport {
+    notification: Option<LargeMovementEvaluation>,
+}
+
+impl Report for MovementReport {
+    fn render(&self) {
+        let Some(movement) = &self.notification else {
+            println!("  {}", out::hint("no baseline to compare with yet"));
+            return;
+        };
+        let direction = if movement.direction_up {
+            out::up("up")
+        } else {
+            out::down("down")
+        };
+        println!(
+            "  {} {} {} ({:.1}%){}",
+            direction,
+            out::fiat(Some(movement.absolute_delta), movement.currency).bold(),
+            movement.currency.code(),
+            movement.ratio * 100.0,
+            if movement.should_alert {
+                "  — past the threshold"
+            } else {
+                ""
+            }
+        );
+    }
+}
+
+#[derive(Serialize)]
+struct AlertRow {
+    id: String,
+    symbol: String,
+    chain: Chain,
+    target: f64,
+    condition: &'static str,
+    enabled: bool,
+    triggered: bool,
+    #[serde(skip)]
+    mark: &'static str,
+}
+
+impl From<&PriceAlertRule> for AlertRow {
+    fn from(alert: &PriceAlertRule) -> Self {
+        Self {
+            id: alert.id.clone(),
+            symbol: alert.symbol.clone(),
+            chain: alert.chain_id,
+            target: alert.target_price,
+            condition: match alert.condition {
+                PriceAlertCondition::Above => "above",
+                PriceAlertCondition::Below => "below",
+            },
+            enabled: alert.is_enabled,
+            triggered: alert.has_triggered,
+            mark: condition_mark(alert.condition),
+        }
+    }
+}
+
+/// The stored alerts; targets are in USD, which core converts entries into.
+#[derive(Serialize)]
+struct AlertsReport {
+    alerts: Vec<AlertRow>,
+}
+
+impl Report for AlertsReport {
+    fn render(&self) {
         println!();
-        if alerts.is_empty() {
+        if self.alerts.is_empty() {
             println!("  {}", out::hint("no alerts"));
             return;
         }
-        for alert in &alerts {
+        for alert in &self.alerts {
+            let rule = format!(
+                "{} {} {} USD",
+                alert.symbol,
+                alert.mark,
+                out::fiat(Some(alert.target), FiatCurrency::Usd)
+            );
+            let state = match (alert.enabled, alert.triggered) {
+                (false, _) => "off",
+                (true, true) => "triggered",
+                (true, false) => "armed",
+            };
             println!(
-                "  {}  {:<22} {}",
-                out::tint("●", alert.chain_id).bold(),
-                describe(alert).bold(),
-                out::hint(if alert.has_triggered {
-                    "triggered"
-                } else {
-                    "armed"
-                }),
+                "  {}  {:<26} {}",
+                out::tint("●", alert.chain).bold(),
+                rule.bold(),
+                out::hint(state),
             );
         }
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "alerts": alerts
-            .iter()
-            .map(|alert| serde_json::json!({
-                "id": alert.id,
-                "symbol": alert.symbol,
-                "chain": alert.chain_id,
-                "target": alert.target_price,
-                "condition": match alert.condition {
-                    PriceAlertCondition::Above => "above",
-                    PriceAlertCondition::Below => "below",
-                },
-                "enabled": alert.is_enabled,
-                "triggered": alert.has_triggered,
-            }))
-            .collect::<Vec<_>>(),
-    }));
-    Ok(())
+    }
+}
+
+fn list(ctx: &Ctx, out: Out) -> CliResult<()> {
+    let alerts = ctx
+        .state()?
+        .price_alerts
+        .iter()
+        .map(AlertRow::from)
+        .collect();
+    out.report(&AlertsReport { alerts })
 }
 
 fn apply_alert(ctx: &Ctx, command: StateCommand) -> CliResult<()> {
@@ -157,6 +221,7 @@ fn rejection_text(reason: PriceAlertRejection) -> &'static str {
         PriceAlertRejection::AlertNotFound => "no such alert",
     }
 }
+
 fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let key = match args.holding {
         Some(key) => key,
@@ -165,29 +230,34 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
             .native_deployment_id
             .clone(),
     };
+    let currency = FiatCurrency::from_code(&args.currency).ok_or_else(|| {
+        CliError::rejected(format!(
+            "{:?} is not a currency this app quotes in",
+            args.currency
+        ))
+    })?;
+    let condition = if args.above {
+        PriceAlertCondition::Above
+    } else {
+        PriceAlertCondition::Below
+    };
     apply_alert(
         ctx,
         StateCommand::AddPriceAlert {
-            holding_key: key,
-            target_price: args.target,
-            currency: spectra_core::store::state::FiatCurrency::from_code(&args.currency)
-                .ok_or_else(|| {
-                    CliError::rejected(format!(
-                        "{:?} is not a currency this app quotes in",
-                        args.currency
-                    ))
-                })?,
-            condition: if args.above {
-                PriceAlertCondition::Above
-            } else {
-                PriceAlertCondition::Below
-            },
+            holding_key: key.clone(),
+            target_price: args.target.clone(),
+            currency,
+            condition,
         },
     )?;
-    out.text(|| println!("Alert added"));
-    out.emit(serde_json::json!({"ok":true}));
-    Ok(())
+    out.report(&Done::new(format!(
+        "alert added: {key} {} {} {}",
+        condition_mark(condition),
+        args.target,
+        currency.code()
+    )))
 }
+
 fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
     let matches: Vec<_> = ctx
         .state()?
@@ -200,11 +270,70 @@ fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
     if matches.is_empty() {
         return Err(CliError::rejected("Alert not found"));
     }
+    let count = matches.len();
     for alert in matches {
         apply_alert(ctx, StateCommand::RemovePriceAlert { id: alert.id })?;
     }
-    out.emit(serde_json::json!({"ok":true}));
-    Ok(())
+    out.report(&Done::new(format!(
+        "removed {}",
+        out::count(count, "alert")
+    )))
+}
+
+#[derive(Serialize)]
+struct FiredRow {
+    symbol: String,
+    chain: Chain,
+    target: f64,
+    price: f64,
+    currency: &'static str,
+    #[serde(skip)]
+    fiat: FiatCurrency,
+}
+
+impl From<&PriceAlertNotification> for FiredRow {
+    fn from(notification: &PriceAlertNotification) -> Self {
+        Self {
+            symbol: notification.symbol.clone(),
+            chain: notification.chain_id,
+            target: notification.target_price,
+            price: notification.live_price,
+            currency: notification.currency.code(),
+            fiat: notification.currency,
+        }
+    }
+}
+
+/// Which alerts the current prices fire.
+#[derive(Serialize)]
+struct CheckReport {
+    checked: usize,
+    fired: Vec<FiredRow>,
+}
+
+impl Report for CheckReport {
+    fn render(&self) {
+        println!();
+        if self.fired.is_empty() {
+            println!("  {}", out::hint("nothing fired"));
+        }
+        for fired in &self.fired {
+            println!(
+                "  {}  {} crossed {} {}, now {}",
+                out::tint("!", fired.chain).bold(),
+                fired.symbol.bold(),
+                out::fiat(Some(fired.target), fired.fiat),
+                fired.currency,
+                out::fiat(Some(fired.price), fired.fiat),
+            );
+        }
+        println!();
+        println!(
+            "  {} checked, {} fired",
+            out::accent(&self.checked.to_string()).bold(),
+            self.fired.len(),
+        );
+    }
 }
 
 fn check(ctx: &Ctx, out: Out, stored: bool) -> CliResult<()> {
@@ -212,44 +341,13 @@ fn check(ctx: &Ctx, out: Out, stored: bool) -> CliResult<()> {
     if alerts.is_empty() {
         return Err(CliError::rejected("no alerts to check"));
     }
-
     let service = ctx.service()?;
     if !stored {
         ctx.rt.block_on(service.refresh_owned_prices(true))?;
     }
     let notifications = ctx.rt.block_on(service.evaluate_price_alerts())?;
-
-    out.text(|| {
-        println!();
-        if notifications.is_empty() {
-            println!("  {}", out::hint("nothing fired"));
-        }
-        for notification in &notifications {
-            println!(
-                "  {}  {} crossed {:.2}",
-                out::tint("!", notification.chain_id).bold(),
-                notification.symbol.bold(),
-                notification.target_price,
-            );
-        }
-        println!();
-        println!(
-            "  {} checked, {} fired",
-            out::accent(&alerts.len().to_string()).bold(),
-            notifications.len(),
-        );
-    });
-    out.emit(serde_json::json!({
-        "ok": true,
-        "checked": alerts.len(),
-        "fired": notifications
-            .iter()
-            .map(|n| serde_json::json!({
-                "symbol": n.symbol,
-                "chain": n.chain_id,
-                "target": n.target_price,
-            }))
-            .collect::<Vec<_>>(),
-    }));
-    Ok(())
+    out.report(&CheckReport {
+        checked: alerts.len(),
+        fired: notifications.iter().map(FiredRow::from).collect(),
+    })
 }

@@ -62,7 +62,7 @@ make verify
 
 That is `make lint test test-cli test-ios` — `cargo fmt --check`,
 `cargo clippy -- -D warnings` and the unused-code source scans, then `cargo test --workspace`,
-`tests/cli-acceptance.sh`, and `xcodebuild test` on an iPhone simulator. Run
+`python3 -B tests/acceptance`, and `xcodebuild test` on an iPhone simulator. Run
 a single one by name when iterating. Report which checks actually ran.
 CI runs everything but `test-ios`, which needs Xcode and a simulator.
 

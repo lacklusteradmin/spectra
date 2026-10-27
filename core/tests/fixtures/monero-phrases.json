@@ -1,5 +1,5 @@
 {
-  "provenance": "monero-python 1.1.1; tevador/polyseed dd998e2 via tests/polyseed-vectors.c",
+  "provenance": "monero-python 1.1.1; tevador/polyseed dd998e2 via tests/vectors/polyseed-vectors.c",
   "electrum": [
     {
       "language": "en",
