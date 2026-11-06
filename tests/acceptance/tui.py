@@ -270,9 +270,13 @@ def a_hidden_prompt_stays_hidden(spectra):
     password = 'typed-at-the-prompt'
     with Interface(spectra) as interface:
         interface.opened()
+        # A prompt is drawn just before it turns the terminal's echo off, so wait
+        # for the drawing to stop before answering, as a person would.
         interface.run('wallet import --chain Solana --name Windowed', 'seed phrase:')
+        interface.settle()
         interface.keys(LEGAL + '\r')
         interface.see('password:')
+        interface.settle()
         interface.keys(password + '\r')
         screen = interface.run('', 'Windowed')
         assert password not in screen

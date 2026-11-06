@@ -97,13 +97,15 @@ actually ran.
 | Docs, copy, resources | Only what the edit can affect |
 | Swift views, design tokens, icons | `make check-ui`, plus the target covering any logic touched |
 | A localized code change | The target that covers it |
-| Broad refactors, core domain behaviour, persistence, funds or keys, FFI and cross-platform changes | `make verify`, unless I say otherwise |
+| Core behaviour or persistence, with no funds, keys or FFI change | `make lint test`, plus `make test-cli` when a CLI flow is affected |
+| Broad refactors, funds or keys, FFI and cross-platform changes | `make verify`, unless I say otherwise |
 
 `make verify` is `make lint test test-cli check-ui test-ios`: formatting, clippy
-at `-D warnings` and the source scans, then `cargo test --workspace`,
+at `-D warnings` and the source scans, then `cargo test`,
 `python3 -B tests/acceptance`, the design-token and icon checks, and
 `xcodebuild test` on an iPhone simulator. The Makefile holds the exact commands.
-Run a single target by name when iterating;
+Run a single target by name when iterating, and `cargo test <filter>` for one
+rule; `-p` selects other features and rebuilds dependencies;
 `make fmt` applies the formatting. When another task is building the same Xcode
 project, give yours its own directory with
 `make test-ios IOS_TEST_DERIVED_DATA=<dir>`.

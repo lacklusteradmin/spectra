@@ -106,10 +106,10 @@ class Run:
 
 def build():
     """The CLI, and the fixture programs the Zcash and MWEB suites run beside it."""
-    subprocess.run(
-        ['cargo', 'build', '-p', 'spectra_cli', '-p', 'spectra_zcash_fixture',
-         '-p', 'spectra_litecoin_mweb_fixture', '--quiet'],
-        cwd=ROOT, check=True)
+    # All targets, so these resolve the features `cargo test` does and reuse its
+    # dependencies: a dev-dependency's features would otherwise split off a
+    # second build of hyper, regex and everything above them, core included.
+    subprocess.run(['cargo', 'build', '--quiet', '--all-targets'], cwd=ROOT, check=True)
     return ROOT / 'target/debug/spectra'
 
 

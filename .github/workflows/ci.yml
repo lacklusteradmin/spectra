@@ -54,7 +54,8 @@ jobs:
       - name: Tool versions
         run: python3 --version
 
-      # Builds the CLI and the Zcash and MWEB fixtures, then runs the suite.
+      # Builds every target, the CLI and the Zcash and MWEB fixtures among them,
+      # then runs the suite.
       - name: Acceptance suite
         run: make test-cli
 

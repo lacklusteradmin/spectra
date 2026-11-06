@@ -294,10 +294,12 @@ pub(crate) async fn probe(
         Ok(checks) => checks,
         Err(error) => return (false, false, error.to_string()),
     };
+    // A retry waits out a blip. A test scripts every answer, so it has none.
+    let retry_pause = std::time::Duration::from_millis(if cfg!(test) { 0 } else { 600 });
     for check in &checks {
         let mut result = check.run(chain).await;
         if result.is_err() {
-            tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+            tokio::time::sleep(retry_pause).await;
             result = check.run(chain).await;
         }
         if let Err(error) = result {

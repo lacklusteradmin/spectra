@@ -14,6 +14,7 @@ publish = false
 [[bin]]
 name = "spectra-litecoin-mweb-fixture"
 path = "src/main.rs"
+test = false
 
 [dependencies]
 litecoin = "=0.32.8-rc.1"

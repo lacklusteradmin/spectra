@@ -77,8 +77,8 @@ make verify
 
 | Target | What it runs |
 |---|---|
-| `make lint` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, unused-code source scans |
-| `make test` | `cargo test --workspace` |
+| `make lint` | `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, unused-code source scans |
+| `make test` | `cargo test` |
 | `make test-cli` | `python3 -B tests/acceptance` — the real binary end to end, offline, throwaway data directory |
 | `make check-ui` | design-token and icon-normalization checks; needs `svgo` |
 | `make test-ios` | `xcodebuild test` on an iPhone simulator |
