@@ -114,11 +114,11 @@ pub fn progress(text: &str) {
 
 // ─── Palette ────────────────────────────────────────────────────────────────
 
-const ACCENT: (u8, u8, u8) = (165, 130, 255);
+pub const ACCENT: (u8, u8, u8) = (165, 130, 255);
 const INFO: (u8, u8, u8) = (130, 200, 255);
-const HINT: (u8, u8, u8) = (150, 150, 170);
-const UP: (u8, u8, u8) = (120, 230, 160);
-const DOWN: (u8, u8, u8) = (255, 110, 130);
+pub const HINT: (u8, u8, u8) = (150, 150, 170);
+pub const UP: (u8, u8, u8) = (120, 230, 160);
+pub const DOWN: (u8, u8, u8) = (255, 110, 130);
 
 pub fn accent(s: &str) -> colored::ColoredString {
     s.truecolor(ACCENT.0, ACCENT.1, ACCENT.2)

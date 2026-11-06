@@ -1,7 +1,7 @@
 # Open items
 
-Engineering work that remains. Rule 0 in [AGENTS.md](../AGENTS.md) applies.
-Delete an item once it is done.
+Engineering work that remains. Delete an item once it is done. Rule 0 and
+[Funds and keys](../AGENTS.md#funds-and-keys) in `AGENTS.md` apply to all of it.
 
 ## Tasks
 
@@ -20,15 +20,9 @@ Delete an item once it is done.
 ## Supported chain scope
 
 [CHAIN-SUPPORT.md](CHAIN-SUPPORT.md) defines supported protocols, import formats,
-provider coverage, staking actions and explicit exclusions. The [follow-up asset
-audit](audits/token-verification-2026-10-04/README.md) reactivates 58 deployments
-and all associated identity/wiki records without changing original fields.
-
-The following gaps were identified in the 2026-10-04 code review. An absent
-feature is not a supported capability; add its registry capability only when
-core owns the complete operation and the CLI can prove it. Protocol and
-funds/key changes require independent vectors, CLI acceptance, the relevant
-refusal paths and `make verify`.
+provider coverage, staking actions and explicit exclusions. These are the gaps
+in it that the 2026-10-04 code review identified. An absent feature is not a
+supported capability.
 
 ### Asset and privacy protocols
 

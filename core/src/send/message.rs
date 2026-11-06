@@ -168,16 +168,10 @@ fn is_typed_data(message: &str) -> bool {
 /// versioned, which a signature over them would authorise.
 fn is_solana_transaction(bytes: &[u8]) -> bool {
     fn compact(bytes: &[u8], at: &mut usize) -> Option<usize> {
-        let mut value = 0usize;
-        for shift in [0, 7, 14] {
-            let byte = *bytes.get(*at)?;
-            *at += 1;
-            value |= usize::from(byte & 0x7f) << shift;
-            if byte & 0x80 == 0 {
-                return Some(value);
-            }
-        }
-        None
+        let mut rest = bytes.get(*at..)?;
+        let value = crate::send::leb128::read(&mut rest).ok()?;
+        *at = bytes.len() - rest.len();
+        (value <= u64::from(u16::MAX)).then_some(value as usize)
     }
     fn skip(bytes: &[u8], at: &mut usize, count: usize) -> Option<()> {
         *at = at.checked_add(count)?;

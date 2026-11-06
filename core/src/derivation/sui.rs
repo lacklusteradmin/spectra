@@ -7,13 +7,8 @@ use crate::derivation::primitives::derive_bip39_seed;
 use ed25519_dalek::SigningKey;
 
 pub(crate) fn address_from_public_key(public_key: &[u8; 32]) -> String {
-    let digest = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(&[0x00])
-        .update(public_key)
-        .finalize();
-    format!("0x{}", hex::encode(digest.as_bytes()))
+    let digest = crate::derivation::primitives::blake2b::<32>(&[&[0x00], public_key]);
+    format!("0x{}", hex::encode(digest))
 }
 
 // ── SLIP-10 ed25519 ──────────────────────────────────────────────────────

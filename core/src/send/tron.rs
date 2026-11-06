@@ -2,6 +2,7 @@
 //! `api::tron_http` reads.
 //! Wire schema: tronprotocol/protocol core/Tron.proto and contract/*.proto.
 
+use super::leb128;
 use crate::api::tron_http::BlockReference;
 use crate::derivation::tron::tron_base58_to_evm_hex;
 use crate::send::error::SendError;
@@ -114,25 +115,15 @@ fn address(value: &str) -> Result<[u8; 21], SendError> {
     out[1..].copy_from_slice(&bytes);
     Ok(out)
 }
-fn varint(mut n: u64, out: &mut Vec<u8>) {
-    loop {
-        let b = (n & 127) as u8;
-        n >>= 7;
-        out.push(b | if n == 0 { 0 } else { 128 });
-        if n == 0 {
-            break;
-        }
-    }
-}
 fn bytes(field: u64, value: &[u8], out: &mut Vec<u8>) {
-    varint(field * 8 + 2, out);
-    varint(value.len() as u64, out);
+    leb128::write(field * 8 + 2, out);
+    leb128::write(value.len() as u64, out);
     out.extend_from_slice(value);
 }
 fn integer(field: u64, value: u64, out: &mut Vec<u8>) {
     if value != 0 {
-        varint(field * 8, out);
-        varint(value, out);
+        leb128::write(field * 8, out);
+        leb128::write(value, out);
     }
 }
 fn positive_i64(value: u64) -> Result<(), SendError> {

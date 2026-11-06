@@ -123,7 +123,7 @@ so a fresh subaddress needs none.
 
 An account public key is watched on every
 account UTXO network below, in the encodings its wallets write
-(`Chain::account_key_versions`: `xpub`/`ypub`/`zpub` on Bitcoin, `Ltub`,
+(`Chain::account_key_versions`: `xpub`/`ypub`/`zpub` on Bitcoin and Peercoin, `Ltub`,
 `Mtub` and `zpub` on Litecoin, `dgub` on Dogecoin, `xpub` or `drkp` on Dash,
 `dpub` on Decred, `kpub` on Kaspa, `xpub` elsewhere, and each test
 network's own), only at an account's depth and only on its concrete
@@ -139,7 +139,7 @@ password. The scan runs once on its own before a restored or watched
 account's balance or history is first read, and again on request; what it
 finds is stored. The balance and history sum every address the account is
 known to hold, each read from the network's own indexer (Esplora, Blockbook,
-Blockcypher, Whatsonchain, Insight or Kaspa's REST API). A send spends the
+Blockcypher, Whatsonchain, Insight, Bitcoin Cash's REST v2 or Kaspa's REST API). A send spends the
 largest confirmed outputs it needs (on Litecoin, every confirmed output),
 across addresses, each signed with its own address's key derived along its
 stored path, and returns change to the

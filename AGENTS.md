@@ -4,10 +4,13 @@ Do not git commit or push unless I said so.
 
 ## Rule 0
 
-Rule 0 outranks every other rule here: **change behaviour, or remove
-functionality, when doing so makes the system simpler or more correct.**
-Preserving existing behaviour is not the goal. When the code as it stands and
-the code as it should be disagree, write the second and delete the first.
+**Change behaviour, or remove functionality, when doing so makes the system
+simpler or more correct.** Preserving existing behaviour is not the goal. When
+the code as it stands and the code as it should be disagree, write the second
+and delete the first.
+
+Rule 0 outranks any reason to keep something as it is: precedent, callers, an
+existing test. It does not suspend the other rules in this file.
 
 - **Fix an inconsistency instead of preserving it.** If twenty chains do one
   thing and three do another, pick the right one for all of them. Do not write
@@ -21,69 +24,108 @@ the code as it should be disagree, write the second and delete the first.
 
 What it does not license:
 
-- **Guessing at the safe side.** For funds, keys and addresses, refuse early,
-  validate before storing and derive rather than trust caller input.
+- **Guessing about funds, keys or addresses.** Refuse early, validate before
+  storing and derive rather than trust caller input.
 - **Dropping scope quietly.** Removing a feature is a decision stated in the
   change, not an omission to notice later.
+- **Widening a change unasked.** Fix what the task touches. Report an oddity
+  elsewhere instead of folding it in.
 
 If you find yourself writing "preserved exactly" or a test that asserts
 today's oddity, stop and fix the oddity instead.
 
-## Architecture
+## Docs
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains ownership and the
-boundary rules; [docs/OPEN-ITEMS.md](docs/OPEN-ITEMS.md) holds remaining work.
+Read the one that covers what you are changing:
+
+| Doc | Covers |
+|---|---|
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Ownership and boundary rules, module layout |
+| [CHAIN-SUPPORT.md](docs/CHAIN-SUPPORT.md) | What each network supports and refuses |
+| [FFI-BOUNDARY.md](docs/FFI-BOUNDARY.md) | UniFFI and Swift binding mechanics |
+| [IOS-UI.md](docs/IOS-UI.md) | Liquid Glass, typography, color, layout and corner radii |
+| [OPEN-ITEMS.md](docs/OPEN-ITEMS.md) | Remaining work |
+| [tests/README.md](tests/README.md) | Where tests live, acceptance suites, SDK vector generators |
+| [scripts/README.md](scripts/README.md) | Build, source-scan and icon tools |
+
+Keep them true:
+
+- A change that alters what a doc says updates that doc in the same change: a
+  capability or refusal in `CHAIN-SUPPORT.md`, a suite in `tests/README.md`, a
+  script in `scripts/README.md`.
+- A doc states what is true now. History belongs in git, and a file or symbol
+  is named only while it exists.
+- `OPEN-ITEMS.md` holds remaining work only. Delete an item when it is done.
+- `docs/audits/` is dated evidence. Add a new record rather than editing an old
+  one.
+
+## Architecture
 
 - Core owns domain state and decisions; Swift and the CLI render and forward.
   New domain logic belongs in `core/`, and its rules are tested there with
   `cargo test`, without a platform.
 - Per-chain facts belong on `registry::Chain`, not in caller-owned lists.
 - Every request to a chain service, broadcasts included, lives in
-  `core/src/api/<api>.rs`, one file per `EndpointApi` named after its
-  `as_str()`. `api` depends only on its transport and `registry`; `send`,
-  `staking` and `service` call it. `send/` builds and signs per chain and
-  never implements a client.
-- Do not add `core_plan_*` functions; core must own the state it decides about.
+  `core/src/api/`, one `<api>.rs` per `EndpointApi`, named after its `as_str()`
+  with underscores for hyphens. `send`, `staking` and `service` call `api`,
+  never the reverse. `send/` builds and signs per chain and never implements a
+  client.
+- Core must own the state it decides about: do not add an export that takes
+  data Swift read from core only to return a decision about it.
 - Swift may hold view state, not authoritative domain state. If losing data on
   restart would be a bug, core owns it.
 - Prefer deleting unnecessary Swift code over moving it into core.
 
+## Funds and keys
+
+- A registry capability is a promise. Add one only when core owns the complete
+  operation and the CLI can prove it; until then the operation is refused.
+- A protocol, derivation, signing or key change needs reference data from an
+  independent SDK (`tests/vectors/`) rather than core's own output, CLI
+  acceptance, its refusal paths and `make verify`.
+- No test broadcasts to a real chain, and a live endpoint probe stays
+  read-only.
+- A secret operation goes through `SecretStore`, so the CLI can exercise it.
+
 ## Verification
 
-Match verification to the scope and risk of the change. Small, localized edits
-(such as copy, styling, resources or documentation) need only relevant targeted
-checks; do not run the full suite by default. Run the full suite for major
-changes, such as broad refactors, core domain behaviour, persistence, funds/key
-handling or cross-platform/FFI integration changes, unless the user says otherwise:
+Match verification to the scope and risk of the change, and report which checks
+actually ran.
 
-```sh
-make verify
-```
+| Change | Run |
+|---|---|
+| Docs, copy, resources | Only what the edit can affect |
+| Swift views, design tokens, icons | `make check-ui`, plus the target covering any logic touched |
+| A localized code change | The target that covers it |
+| Broad refactors, core domain behaviour, persistence, funds or keys, FFI and cross-platform changes | `make verify`, unless I say otherwise |
 
-That is `make lint test test-cli test-ios` — `cargo fmt --check`,
-`cargo clippy -- -D warnings` and the unused-code source scans, then `cargo test --workspace`,
-`python3 -B tests/acceptance`, and `xcodebuild test` on an iPhone simulator. Run
-a single one by name when iterating. Report which checks actually ran.
-CI runs everything but `test-ios`, which needs Xcode and a simulator.
+`make verify` is `make lint test test-cli check-ui test-ios`: formatting, clippy
+at `-D warnings` and the source scans, then `cargo test --workspace`,
+`python3 -B tests/acceptance`, the design-token and icon checks, and
+`xcodebuild test` on an iPhone simulator. The Makefile holds the exact commands.
+Run a single target by name when iterating;
+`make fmt` applies the formatting. When another task is building the same Xcode
+project, give yours its own directory with
+`make test-ios IOS_TEST_DERIVED_DATA=<dir>`.
 
-The workspace is clippy-clean at `-D warnings` and rustfmt-clean; `make fmt`
-applies the formatting. Both are gates, so a new warning fails the build rather
-than accumulating.
+CI runs all of it but `test-ios`, which needs Xcode and a simulator, so that one
+guards a change only when you run it.
 
-CLI acceptance drives the real binary in a throwaway directory without
-network. A rule is tested in core; add an acceptance check only for what the
-binary alone shows: state across processes, files on disk, exit codes,
-confirmation gates, and send or staking flows against loopback nodes. No iOS
-test is expected to fail,
-including `ethereumTestNetworksExposeExpectedContextsAndEndpoints`.
+No test is expected to fail. Treat a failure as real even when it looks
+unrelated to the change, and report it; do not write it off as flaky or
+pre-existing without evidence.
+
+CLI acceptance drives the real binary in a throwaway directory without network.
+A rule is tested in core; add an acceptance check only for what the binary alone
+shows: state across processes, files on disk, exit codes, confirmation gates,
+and send or staking flows against loopback nodes.
 
 ## Platform constraints
 
-- Check APIs, syntax and generated bindings against **UniFFI 0.31 and Swift 6**
+- Check APIs, syntax and generated bindings against **UniFFI 0.31.2 and Swift 6**
   before changing FFI or Swift code. See [FFI-BOUNDARY.md](docs/FFI-BOUNDARY.md).
-- Never hand-edit `swift/generated/`. Change the Rust API and regenerate the
-  bindings.
-- iOS `reqwest` must use `rustls-tls-webpki-roots`. Native roots are empty on
+- Never hand-edit `swift/generated/`. Change the Rust API and rebuild.
+- Core's `reqwest` must use `rustls-tls-webpki-roots`. Native roots are empty on
   iOS and cause HTTPS `UnknownIssuer` failures.
 - [docs/IOS-UI.md](docs/IOS-UI.md) is the authority for Liquid Glass,
   typography, color, layout and corner radii.
@@ -111,44 +153,48 @@ including `ethereumTestNetworksExposeExpectedContextsAndEndpoints`.
   (with `Tools/`), `Send/`, `Receive/`, `History/`, `Staking/`, `Settings/`,
   `Diagnostics/`, `Wiki/` — with a feature's state beside its views. The
   folder is an Xcode synchronized group: adding or moving a file under it needs
-  no project edit, and file names stay unique across the module.
-- Name flow extensions `AppState+<Domain>.swift`, topic extensions/free functions
-  `Store+<Topic>.swift`, and other files after their type. Split growing topics
-  into siblings rather than moving code into unrelated files.
-- Never combine `withCheckedContinuation` and `withObservationTracking` in a
-  long-lived observation loop: cancellation does not resume the continuation
-  and can retain `self`. Use `didSet` with a debounced, cancellable `Task` and
-  `Task.sleep` instead.
+  no project edit, and file names stay unique across the module. The Live
+  Activity extension is in `swift/extensions/`, the tests in `swift/tests/`.
+- Name an extension file `<Type>+<Topic>.swift` (`AppState+SendFlow.swift`,
+  `SendFlowState+Preview.swift`), a file of free functions or of extensions
+  across several types after its topic, and any other file after its type.
+  Split growing topics into siblings rather than moving code into unrelated
+  files.
+- Do not build an observation loop from `withObservationTracking` and
+  `withCheckedContinuation`: cancellation does not resume the continuation and
+  can retain `self`. Debounce a reaction with a stored, cancellable `Task`
+  around `Task.sleep`, as `SendFlowState.scheduleRecipientResolution` does.
 - Tests use Swift Testing (`@Test`, `#expect`, `#require`), not XCTest. Tests
-  run in parallel, so a test that touches process-wide state (the Keychain,
-  the network runtime, windows) must stay correct alongside the others or sit
-  in a `.serialized` suite. A test that needs an `AppState` uses
-  `@Suite(.isolatedAppState)` and conforms to `IsolatedAppStateSuite`.
+  run in parallel, and `.serialized` orders only a suite's own tests, not that
+  suite against the others. A test touching process-wide state (the Keychain,
+  the network runtime, windows) must stay correct alongside every other suite;
+  tests that contend for it belong in one `.serialized` suite. A test that needs
+  an `AppState` uses `@Suite(.isolatedAppState)` and conforms to
+  `IsolatedAppStateSuite`.
 
 ## Resources
 
 `resources/` is the app target's synchronized group, and Xcode copies such a
 group in **flat**: every file under it lands at the bundle's resource root,
 whatever directory it sat in. `resources/strings/RuntimeStrings.en.json` ships
-as `RuntimeStrings.en.json`.
-
-Two rules follow, and both have already been broken once:
+as `RuntimeStrings.en.json`. Two rules follow:
 
 - **Nothing but a runtime resource belongs here.** Anything under `resources/`
   ships, read or not. Build-time inputs go elsewhere — icon sources in
   `icons/`, the translator glossary in `docs/LocalizationGlossary.json`.
-- **The file name is the only disambiguator.** Keep `resources/` flat, and put
-  the locale in the name (`RuntimeStrings.zh-Hans.json`). Per-locale
-  subdirectories look like they separate files and do not: drop the suffix
-  trusting the directory and the files silently overwrite each other in the
-  bundle.
+- **A file name must be unique across the whole tree.** A directory such as
+  `strings/` groups files for people and scripts; it does not separate them in
+  the bundle. Put the locale in the name (`RuntimeStrings.zh-Hans.json`):
+  per-locale subdirectories with one shared name would silently overwrite each
+  other.
 
 ## Icons
 
 Edit SVG sources in `icons/`, never `swift/Assets.xcassets/` by hand. Keep
 sources out of `resources/`; iOS renders the generated asset catalog.
 
-After adding or editing library icons, normalize and export:
+After adding or editing library icons, normalize and export. This needs `svgo`,
+and ImageMagick for app icons (`brew install svgo imagemagick`):
 
 ```sh
 scripts/normalize-icons.sh && scripts/export-swift-icons.sh

@@ -70,8 +70,6 @@ bindings when macros are involved.
 longer carries `#[uniffi::export]` is invisible to both gates rustc offers —
 `dead_code` treats it as API because the crate is a library, and the bindings
 never mentioned it — so it can lose its last caller and keep compiling.
-`derive_bitcoin_account_xpub_typed` did, for long enough that its doc comment
-still said it was exported.
 
 `scripts/unwritten-record-fields.py` checks the fields of every
 `uniffi::Record`: one that production code never sets to anything but `None`,

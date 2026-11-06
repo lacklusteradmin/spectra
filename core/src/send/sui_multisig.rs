@@ -10,8 +10,10 @@
 use base64::Engine;
 use sha2::{Digest, Sha256};
 
+use crate::derivation::primitives::blake2b;
 use crate::derivation::sui_multisig::{MULTISIG_FLAG, SuiMultisig, SuiScheme};
 use crate::send::error::SendError;
+use crate::send::leb128;
 use crate::send::sui::{GasCoin, encode_transfer};
 
 /// A SUI transfer, decoded.
@@ -50,23 +52,15 @@ impl SuiTransfer {
     }
 }
 
-fn blake2b(parts: &[&[u8]]) -> [u8; 32] {
-    let mut state = blake2b_simd::Params::new().hash_length(32).to_state();
-    for part in parts {
-        state.update(part);
-    }
-    state.finalize().as_bytes().try_into().expect("32 bytes")
-}
-
 /// What each member signs: BLAKE2b-256 of the transaction intent and the
 /// transaction.
 pub(crate) fn intent_digest(bytes: &[u8]) -> [u8; 32] {
-    blake2b(&[&[0, 0, 0], bytes])
+    blake2b::<32>(&[&[0, 0, 0], bytes])
 }
 
 /// The transaction's digest, as Sui names it.
 pub(crate) fn transaction_digest(bytes: &[u8]) -> String {
-    bs58::encode(blake2b(&[b"TransactionData::", bytes])).into_string()
+    bs58::encode(blake2b::<32>(&[b"TransactionData::", bytes])).into_string()
 }
 
 fn unread() -> SendError {
@@ -96,15 +90,8 @@ impl<'a> Reader<'a> {
     }
 
     fn uleb(&mut self) -> Result<usize, SendError> {
-        let mut value = 0usize;
-        for shift in (0..35).step_by(7) {
-            let byte = self.take(1)?[0];
-            value |= usize::from(byte & 0x7f) << shift;
-            if byte & 0x80 == 0 {
-                return Ok(value);
-            }
-        }
-        Err(unread())
+        let value = leb128::read(&mut self.bytes).map_err(|_| unread())?;
+        usize::try_from(value).map_err(|_| unread())
     }
 }
 

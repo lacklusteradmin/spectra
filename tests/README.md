@@ -1,13 +1,16 @@
 # Tests
 
-This directory holds the CLI acceptance suites in [`acceptance/`](acceptance/)
-and the independent SDK generators for the reference data in
-`core/tests/fixtures/` in [`vectors/`](vectors/). Build and source-check tools
-live in [`scripts/`](../scripts/README.md). Run from the repository root:
+| Where | What | Run with |
+|---|---|---|
+| `core/src/<domain>/tests/` | A module's rules, with private access | `make test` |
+| `core/tests/` | Core tests that need their own process; shared reference data in `fixtures/` | `make test` |
+| [`tests/acceptance/`](acceptance/) | The real `spectra` binary across processes, against loopback nodes | `make test-cli` |
+| [`tests/vectors/`](vectors/) | Independent SDK generators for `core/tests/fixtures/`; not tests themselves | By hand, below |
+| `swift/tests/` | The app, in Swift Testing | `make test-ios` |
 
-```sh
-make test-cli     # Build and run the offline CLI acceptance suite
-```
+This directory holds the acceptance suites and the generators. Build and
+source-check tools live in [`scripts/`](../scripts/README.md). Run everything
+from the repository root.
 
 ## CLI acceptance
 
@@ -18,8 +21,9 @@ when tests finish. The environment must allow binding local ports.
 
 `python3 -B tests/acceptance [path/to/spectra]` (what `make test-cli` runs)
 builds the CLI and the Zcash and MWEB fixture programs unless given a binary,
-starts every suite below at once — each owns its data directories and loopback
-nodes — and meanwhile checks what only the binary shows: state across
+starts every suite below but the optional `monero_regtest.py` at once — each
+owns its data directories and loopback nodes — and meanwhile checks what only
+the binary shows: state across
 processes, the SQLite store and sealed secret files, exit codes, confirmation
 gates and the loopback network guard. `SPECTRA_LOOPBACK_ONLY` makes core refuse
 and journal any request beyond loopback; a journaled request fails the run.
@@ -37,6 +41,7 @@ to load under `python -O` or `PYTHONOPTIMIZE`.
 | Suite | Purpose |
 |---|---|
 | `send.py` | A password-protected owned send: `send owned-broadcast` is refused without `--yes`; with it and the password from the environment it broadcasts exactly once. |
+| `tui.py` | `spectra` alone at a pseudo-terminal, read as a person reads it: refused anywhere but a terminal and inside its own windows, real commands with their output and exit codes, hidden password and phrase prompts that draw nothing and seal the wallet they create, tabs and windows keeping their output, closing a running command asking first, and a label copying a whole address. |
 | `endpoints.py` | The listing's built-in/custom source filter and the health verdict the CLI aggregates (networks without APIs, unreachable endpoints) against a loopback Blockbook node. |
 | `send_stages.py` | An EVM send built, signed and broadcast in separate processes: nothing submitted before `broadcast-signed --yes`, an identical retry, and two processes racing to sign at one nonce, one refused as reserved. |
 | `send_polkadot.py` | A Polkadot Asset Hub send across processes: a fee changed at broadcast submits nothing, one broadcast, an unchanged rebroadcast, polled finality, recovery after a lost status write, and a failed outcome with its cursor kept. |
@@ -163,7 +168,7 @@ source.
 
 ## Test organisation
 
-CLI integration tests check behavior across processes and persisted results.
-Rust unit tests cover pure-function details. Group new scenarios by feature,
+CLI acceptance suites check behavior across processes and persisted results.
+Rust unit tests cover the rules behind it. Group new scenarios by feature,
 rather than creating a file for each development batch; assertion counts are not
 a measure of coverage quality.

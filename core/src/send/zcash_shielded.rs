@@ -324,12 +324,7 @@ pub(crate) fn sapling_parameter_is_genuine(name: &str, bytes: &[u8]) -> bool {
         .find(|(file, _, _)| *file == name)
         .is_some_and(|(_, hash, size)| {
             bytes.len() == *size
-                && hex::encode(
-                    blake2b_simd::Params::new()
-                        .hash_length(64)
-                        .hash(bytes)
-                        .as_bytes(),
-                ) == *hash
+                && hex::encode(crate::derivation::primitives::blake2b::<64>(&[bytes])) == *hash
         })
 }
 

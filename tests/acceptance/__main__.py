@@ -57,6 +57,7 @@ SUITES = {
     'send_tokens': 'a TON jetton send resolved from its trace across processes',
     'send_icp_zcash': 'ICP and transparent Zcash sends with an identical retry',
     'endpoints': 'the endpoint listing and health verdict',
+    'tui': 'the windowed interface at a real terminal',
 }
 
 

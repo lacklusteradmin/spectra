@@ -8,8 +8,7 @@ use crate::api::utxo::Txid;
 
 use sha2::{Digest, Sha256};
 
-/// Bitcoin `CompactSize`, as rust-bitcoin writes it: the one writer of it
-/// in core, for these transactions and Litecoin's peer-to-peer messages.
+/// Bitcoin `CompactSize`, as rust-bitcoin writes it.
 pub(crate) fn varint(n: usize) -> Vec<u8> {
     bitcoin::consensus::encode::serialize(&bitcoin::consensus::encode::VarInt(n as u64))
 }

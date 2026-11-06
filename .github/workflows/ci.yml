@@ -1,7 +1,7 @@
 name: CI
 
-# The gate for the two suites that need no Xcode. The iOS suite
-# (`make test-ios`) needs a simulator and stays local; see AGENTS.md.
+# The gate for everything that needs no Xcode. The iOS suite (`make test-ios`)
+# needs a simulator and stays local; see AGENTS.md.
 on:
   push:
     branches: [main]
@@ -57,3 +57,17 @@ jobs:
       # Builds the CLI and the Zcash and MWEB fixtures, then runs the suite.
       - name: Acceptance suite
         run: make test-cli
+
+  ui:
+    name: Design tokens and icons
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The icon check compares bytes, and another svgo can format the same
+      # icon differently, so this is the version the sources were normalized by.
+      - name: Install svgo
+        run: npm install --global svgo@4.1.0
+
+      - name: UI checks
+        run: make check-ui

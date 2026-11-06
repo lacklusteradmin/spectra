@@ -12,9 +12,9 @@ IOS_TEST_DERIVED_DATA ?=
 
 # ── Verification ────────────────────────────────────────────────────
 # `verify` runs the full gate for major changes described in AGENTS.md.
-# CI runs `lint test test-cli`; `test-ios`
-# needs Xcode and a simulator, so it stays local.
-verify: lint test test-cli test-ios
+# CI runs all of it but `test-ios`, which needs Xcode and a simulator, so it
+# stays local.
+verify: lint test test-cli check-ui test-ios
 
 # Source scans: nothing exported, public or shipped may go unused, no FFI
 # record field may go unwritten, and the app may not spell chain names or

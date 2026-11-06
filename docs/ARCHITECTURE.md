@@ -1,17 +1,18 @@
 # Architecture decisions
 
-Spectra is one application with a shared Rust core and native front ends.
-Core owns both the data and the decisions, no platform persists a second
+Spectra is one Rust core with two front ends, the `spectra` CLI and a native iOS
+app. Core owns both the data and the decisions, no platform persists a second
 authoritative copy, and the CLI can drive every domain operation.
-[FFI-BOUNDARY.md](FFI-BOUNDARY.md) covers binding mechanics;
-[OPEN-ITEMS.md](OPEN-ITEMS.md) holds remaining work.
+[FFI-BOUNDARY.md](FFI-BOUNDARY.md) covers binding mechanics,
+[CHAIN-SUPPORT.md](CHAIN-SUPPORT.md) what each network supports and
+[OPEN-ITEMS.md](OPEN-ITEMS.md) remaining work.
 
 ## Workspace
 
 | Directory | Responsibility |
 |---|---|
 | `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the app's static library |
-| `cli/` | Argument parsing, password prompting and each command's report, as text or `--json` |
+| `cli/` | Argument parsing, password prompting and each command's report, as text or `--json`; with no command, windows that run those commands (`cli/src/tui/`) |
 | `swift/` | Native iOS UI and platform services |
 | `scripts/` | Build, source-check and runtime-data tools |
 | `tests/` | CLI acceptance suites on one harness (`tests/acceptance/`) and independent SDK test-data generators (`tests/vectors/`) |
@@ -38,6 +39,15 @@ command ends in one report (`out::Report`): a `Serialize` value that `--json`
 writes as one document and the terminal renders as text, so neither form can
 go missing. A command about one wallet takes it as its first argument;
 `--wallet` only narrows a command over many.
+
+`spectra` with no command, at a terminal, opens kitty's model around those
+commands: tabs, windows in switchable layouts and keys in kitty's table. It adds
+no operation and holds no domain state. Each window has a prompt and runs what
+is typed as a separate `spectra` process in a pseudo-terminal, so a command
+behaves there as it does in a shell: its own hidden password prompt, its colour,
+its exit code, a store opened fresh per command. What can be completed at the
+prompt is read from the clap definitions, so a new command needs nothing in the
+interface. Scripts and the acceptance suites keep calling subcommands directly.
 
 Swift owns navigation, sheets, text being edited, focus, animation and rendering
 caches. Keychain, biometrics, notifications, Live Activities and device signals
@@ -148,9 +158,9 @@ Keep differences that carry protocol meaning; share cryptographic primitives
 and wrappers that differ only in a chain name. Each primitive has one
 implementation: `derivation/bip32.rs` reads every derivation path and holds
 the secp256k1 extended keys (rust-bitcoin's), `derivation::primitives::blake2b`
-every plain BLAKE2b, `send/leb128.rs` every LEB128 number, rust-bitcoin's
-`VarInt` every CompactSize, and `api::evm_json_rpc::abi_u128` every uint256
-ABI word, EVM's and Tron's alike. Tests over the registry should assert
+every plain BLAKE2b, `send/leb128.rs` every LEB128 number read or written,
+rust-bitcoin's `VarInt` every CompactSize, and `api::evm_json_rpc::abi_u128`
+every uint256 ABI word, EVM's and Tron's alike. Tests over the registry should assert
 complete capability coverage, rather than only test named examples.
 
 ## Boundary design
@@ -161,7 +171,7 @@ distinct preview inputs into a wide command/response union just to lower the
 export count: Bitcoin's xpub and gap bounds are different inputs from an EVM
 nonce and fee configuration.
 
-The native UIs share domain code, not a cross-platform UI framework. Core must
+Front ends share domain code, not a UI framework. Core must
 not exit the process or install a global logger; the executable owns logging
 configuration and keeps stdout available for CLI JSON.
 
@@ -208,16 +218,17 @@ signed output. Solana's local builders likewise feed a broadcast-only stage.
 Independent SDK fixtures test real mnemonic derivation through these signing
 boundaries; mock-node tests exercise the stored-wallet execution route.
 
-
 ## Core module boundaries
 
 Production source files normally sit at `core/src/<domain>/<topic>.rs`, with
-no further directory nesting; `lib.rs` declares the domains and `error.rs`
-holds `SpectraBridgeError` and `LocalizableMessage`, and nothing else sits at
-the root. `registry/` is `Chain` with one `impl Chain` sibling per topic
+no further directory nesting; `api/litecoin_p2p/`, `api/substrate_json_rpc/`
+and `send/litecoin_mweb/` hold one large protocol's parts. `lib.rs` declares the
+domains and `error.rs` holds `SpectraBridgeError` and `LocalizableMessage`, and
+nothing else sits at the root. `registry/` is `Chain` with one `impl Chain` sibling per topic
 (`keys`, `address`, `endpoints`, `tokens`, `send`, `staking`, `utxo`,
-`networks`, `evm`); `catalog/` parses the embedded `core/data/` files (chains,
-tokens, endpoints, explorers, donations, the wiki and restore heights);
+`networks`, `evm`); `catalog/` parses the embedded `core/data/` files (chains
+with their wiki and staking copy, tokens and test-network tokens, endpoints,
+explorers, donations, the crypto wiki and restore heights);
 `amount/` holds exact decimals, typed input and optional presentation;
 `secrets/` holds the `SecretStore`, its backends, the device key, envelopes
 and password stretching. Chain names and topic prefixes identify siblings:
@@ -244,33 +255,37 @@ harness live in `tests/acceptance/`, and the independent SDK generators for that
 data, with one `package.json`, in `tests/vectors/`; their instructions are in
 [`tests/README.md`](../tests/README.md).
 
-Each layer reports failures in its own `thiserror` enum, named in its
-`error.rs`: `api::error::ApiError` (transport, status, decode, rejected, no
-endpoint, invalid input), `derivation::error::DerivationError`,
-`send::error::SendError` (which wraps the first two and adds
-`InsufficientFunds`), `wallet_db::error::DbError` and `registry::RegistryError`.
-Each converts into `SpectraBridgeError` at the FFI, choosing `Network`,
-`Decode`, `InvalidInput` or `Failure` where the error is raised, so the front
-end branches on a variant rather than a message. There is no conversion from a
-bare string: a new error names its category. Functions that take a caller's
-closure, such as `WalletDatabase::with_connection`, are generic over the
-caller's error type (`E: From<DbError>`). Embedded catalogs (`catalog::chains`,
-`tokens`, `endpoints`, `explorers`, `donations`) are validated on first use and
-panic when broken, since a broken embedded file is a build defect.
+Each layer reports failures in its own `thiserror` enum:
+`api::error::ApiError` (transport, status, decode, rejected, no endpoint,
+invalid input), `derivation::error::DerivationError`, `send::error::SendError`
+(which wraps the first two and adds `InsufficientFunds`, `Invalid` and
+`Internal`), `wallet_db::error::DbError`, `registry::RegistryError` and, in
+`secrets/`, `SecretStoreError`, `EnvelopeError` and `WalletSecretError`. Each
+converts into `SpectraBridgeError` at the FFI, choosing `Network`, `Decode`,
+`InvalidInput` or `Failure` where the error is raised, so the front end branches
+on a variant rather than a message; `service/staking.rs` maps
+`staking::StakingError` itself. `StoreUnreadable`, the fifth variant, comes only
+from `open_state`, so a front end can offer `discard_state`. There is no
+conversion from a bare string: a new error names its category. Functions that
+take a caller's closure, such as `WalletDatabase::with_connection`, are generic
+over the caller's error type (`E: From<DbError>`). Embedded catalogs are
+validated on first use and panic when broken, since a broken embedded file is a
+build defect.
 
 - `api/` owns every request to a chain service and the parsing of its answer:
   one module per `EndpointApi` (`api/esplora.rs`, `api/substrate_json_rpc.rs`,
   …), plus `utxo` (the UTXO family's client over several of them), the `http`
-  and `json_rpc` transport, the `tcp` connection that the `grpc` channel
-  `lightwalletd` speaks over and Litecoin's peer-to-peer protocol
-  (`litecoin_p2p`) dial (under the same Tor, proxy and loopback rules as
-  `http`) and provider `time` parsing. `endpoint` defines `EndpointApi` and
+  and `json_rpc` transport, `tcp` (the connection `lightwalletd`'s `grpc`
+  channel and Litecoin's peer-to-peer protocol `litecoin_p2p` dial, under the
+  same Tor, proxy and loopback rules as `http`) and provider `time` parsing. `endpoint` defines `EndpointApi` and
   the capabilities an adapter offers on each network; `tor` is the embedded
   Tor client every transport routes through when it is on.
   `litecoin_p2p::wire` holds MWEB's wire format, which `send::litecoin_mweb`
   builds with. `price` reads market quotes and fiat rates from their
-  keyless providers. It depends on nothing above it; `send`, `staking` and
-  `service` call it.
+  keyless providers. `send`, `staking` and `service` call `api`, never the
+  other way round. It may use what sits below them: `registry`, `catalog`,
+  `amount` and `derivation`'s address codecs and hashes; `tor` also reads the
+  committed `AppSettings`.
 - Every history adapter converts its own answer into one
   `api::history_page::HistoryEntry` — the units it reads, its timestamp
   scale and where it says which way a transfer went stay with the code that
@@ -287,9 +302,10 @@ panic when broken, since a broken embedded file is a build defect.
   dispatch. `network_tokens::token_decimals` is the one reader of a token's
   decimals: a send asks it `MetadataRead::Fresh`, while a balance read may
   reuse the TRC-20 metadata other balance reads cached.
-- `service/wallet_actions.rs::offers` is the one gate for what a wallet
-  does: its page lists the actions it answers yes to, and each operation
-  behind one fetches its wallet through `action_wallet`, which asks it again.
+- `service/wallet_actions.rs::offers` decides what a wallet's page lists. The
+  account operations behind that page (staking, NEAR keys and token storage,
+  Sui coins, Solana token accounts, EVM approvals and NFTs, trust lines) fetch
+  their wallet through `action_wallet`, which asks it again.
 - Staking: `registry::StakingModel` says how a network stakes — delegation
   (Solana, Sui, Aptos, NEAR), nomination pools (Polkadot) or neurons (ICP).
   `service/staking.rs` dispatches each operation once on it, to
@@ -321,12 +337,13 @@ panic when broken, since a broken embedded file is a build defect.
   Other UTXO protocols must establish byte compatibility before reusing it.
   Kaspa owns its own hash preimage encoding. Solana compiles a unique account
   list across all instructions before signing.
-- `wallet_db/` separates connection/schema, keypool, addresses, history,
-  wallets, state and teardown. A history row is its `TransactionRecord`; the
+- `wallet_db/` separates connection/schema, keypool, addresses, history (with
+  `history_query` and `history_pagination`), wallets, sends, multisig, the scan
+  cache and state. A history row is its `TransactionRecord`; the
   indexed columns beside it (lowercased id, wallet and hash, network, sort
   key) are derived from the record when it is written. A send made here keeps
   its signed transaction only in its send record, which a rebroadcast
-  submits. `state` and `teardown` keep their cross-table
+  submits. `state` keeps its cross-table
   transactions; splitting files does not split commits. `store/tests/` groups
   regressions by domain. `wallet_db::zcash` is the exception to one database:
   a Zcash wallet's shielded state is librustzcash's own database
@@ -411,8 +428,9 @@ probes by network, and when each ran. `chain_diagnostics` and
 `diagnostics_bundle` answer from that record for every front end; the platform
 supplies only its own version, OS, locale and time zone, and keeps which runs
 are in flight.
+
 `AmountPresentation` renders explicit projection values without AppState or
-storage. Its native formatter cache is presentation-only. `AssetPresentationCatalog`
-indexes core's immutable artwork and caches core-derived holding identities by
-network, token standard and contract; balances and display labels do not identify
-assets. Neither cache can authorize a domain mutation.
+storage. Its native formatter cache is presentation-only.
+`AssetPresentationCatalog` indexes core's immutable artwork and colours by
+deployment id; balances and display labels do not identify assets. Neither can
+authorize a domain mutation.

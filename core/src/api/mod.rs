@@ -9,9 +9,11 @@
 //! is the market-quote and fiat-rate providers. `network` proves an endpoint
 //! is the network it is configured for, and `health` probes its reads.
 //!
-//! `api` depends on nothing but the transport and `registry`: `send`,
-//! `staking` and `service` call it, never the other way round. Building and
-//! signing transactions is per chain and lives in `send`.
+//! `send`, `staking` and `service` call `api`, never the other way round. It
+//! may use what sits below them: `registry`, `catalog`, `amount` and
+//! `derivation`'s address codecs and hashes; `tor` also reads the committed
+//! `AppSettings`. Building and signing transactions is per chain and lives in
+//! `send`.
 
 pub mod endpoint;
 pub mod error;

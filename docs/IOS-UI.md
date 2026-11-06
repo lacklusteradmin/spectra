@@ -179,7 +179,7 @@ Shared values and helpers live in:
   `SpectraRowGroup` rows.
 - [SettingsViews.swift](../swift/app/Settings/SettingsViews.swift): a top-level tab
   of `SpectraRowSection` cards.
-- [SendFlowViews.swift](../swift/app/Send/SendFlowViews.swift): a flow with its
+- [SendView.swift](../swift/app/Send/SendView.swift): a flow with its
   action bar in `safeAreaBar`.
 
 Pages use `spectraScreenPadding()` with `sectionSpacing` between cards, and
