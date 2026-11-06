@@ -1,15 +1,69 @@
 [workspace]
 members = ["core", "cli", "tools/uniffi-bindgen", "tools/zcash-fixture", "tools/litecoin-mweb-fixture"]
+# What a bare `cargo build`, `test` or `clippy` selects, so all three resolve one
+# set of features and share their dependencies. The bindgen stays out: its
+# `uniffi/cli` would unify into core's uniffi and compile the generator into every
+# test build. scripts/build-ios.sh runs it by manifest path.
+default-members = ["core", "cli", "tools/zcash-fixture", "tools/litecoin-mweb-fixture"]
 resolver = "3"
 
-# Dependencies are optimized even in debug and test builds. Key stretching
-# (PBKDF2 through ring, see core/src/secrets/kdf.rs), curve arithmetic and hashing run
-# in dependency code, which unoptimized made each password unlock in a debug
-# CLI, app or test take about three seconds instead of under a tenth. Our own
-# crates stay unoptimized, so an edit rebuilds as fast as before; a
-# dependency is compiled once.
+# Debug and test builds optimize only the crates run time goes to: key stretching
+# (PBKDF2 through ring, see core/src/secrets/kdf.rs), hashing, curve arithmetic and
+# Zcash's proofs. Unoptimized, those made a password unlock take about three seconds
+# instead of under a tenth. Every other dependency stays unoptimized, which builds a
+# clean tree in under half the time and leaves the test suites about as fast. A
+# crate belongs here when a test or a debug build is slow in it. They are named
+# because an opt-level under `package."*"` would outrank `build-override` below.
+[profile.dev.package]
+bellman.opt-level = 3
+bitcoin_hashes.opt-level = 3
+blake2b_simd.opt-level = 3
+blake2s_simd.opt-level = 3
+blake3.opt-level = 3
+bls12_381.opt-level = 3
+crypto-bigint.opt-level = 3
+curve25519-dalek.opt-level = 3
+ed25519-dalek.opt-level = 3
+elliptic-curve.opt-level = 3
+ff.opt-level = 3
+grin_secp256k1zkp.opt-level = 3
+group.opt-level = 3
+halo2_gadgets.opt-level = 3
+halo2_poseidon.opt-level = 3
+halo2_proofs.opt-level = 3
+hmac.opt-level = 3
+ic_bls12_381.opt-level = 3
+jubjub.opt-level = 3
+keccak.opt-level = 3
+# SQLite's C at -O1: most of -O3's speed at about half its compile time.
+libsqlite3-sys.opt-level = 1
+num-bigint.opt-level = 3
+orchard.opt-level = 3
+p256.opt-level = 3
+pairing.opt-level = 3
+pasta_curves.opt-level = 3
+pbkdf2.opt-level = 3
+primeorder.opt-level = 3
+ring.opt-level = 3
+ripemd.opt-level = 3
+salsa20.opt-level = 3
+sapling-crypto.opt-level = 3
+schnorrkel.opt-level = 3
+scrypt.opt-level = 3
+secp256k1.opt-level = 3
+secp256k1-sys.opt-level = 3
+sha2.opt-level = 3
+sha3.opt-level = 3
+sinsemilla.opt-level = 3
+
+# Proc macros run on every compile of core, and rustc does not cache their
+# expansion, so unoptimized ones slow every incremental rebuild.
+[profile.dev.build-override]
+opt-level = 1
+
+# Dependencies carry no debug info; a backtrace still names our own files and lines.
 [profile.dev.package."*"]
-opt-level = 3
+debug = false
 
 # Line tables, not full debug info: a panic's backtrace still names its file
 # and line, while full variable info doubled core's compile time and grew the
@@ -18,15 +72,6 @@ opt-level = 3
 # CARGO_PROFILE_DEV_DEBUG=true.
 [profile.dev]
 debug = "line-tables-only"
-
-# The MIR scan's build (scripts/unwritten-record-fields.py), kept apart so
-# that emitting MIR never invalidates the dev build the tests and the CLI
-# use. MIR carries no debug info, and the binary is never run, so nothing
-# is stripped from it either.
-[profile.mir-scan]
-inherits = "dev"
-debug = false
-strip = false
 
 [profile.release]
 lto = true

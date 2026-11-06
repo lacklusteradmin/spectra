@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 
+# Core has no doc tests, and rustdoc would rebuild them to find that out.
+[lib]
+doctest = false
+
 [dependencies]
 bip39 = { version = "2", features = ["all-languages"] }
 unicode-normalization = "0.1"

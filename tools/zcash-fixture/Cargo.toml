@@ -11,6 +11,7 @@ publish = false
 [[bin]]
 name = "spectra-zcash-fixture"
 path = "src/main.rs"
+test = false
 
 [dependencies]
 zcash_client_backend = { version = "0.24", default-features = false, features = ["lightwalletd-tonic-transport", "orchard", "transparent-inputs"] }

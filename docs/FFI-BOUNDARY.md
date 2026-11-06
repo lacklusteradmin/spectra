@@ -71,13 +71,7 @@ longer carries `#[uniffi::export]` is invisible to both gates rustc offers —
 `dead_code` treats it as API because the crate is a library, and the bindings
 never mentioned it — so it can lose its last caller and keep compiling.
 
-`scripts/unwritten-record-fields.py` checks the fields of every
-`uniffi::Record`: one that production code never sets to anything but `None`,
-`0` or empty still crosses, renders and reads as data. rustc cannot see it on
-a `pub` struct and a name match cannot tell which struct `x.field` writes, so
-the scan reads the MIR rustc emits, where every place carries its type.
-`scripts/record_writers.py` says what counts as a write. All three scans run
-in `make lint` and in CI.
+Both scans run in `make lint` and in CI.
 
 An export used only by the app still needs its rule covered: test that rule in
 core with `cargo test`. Offline tests do not prove broadcasting works; the
