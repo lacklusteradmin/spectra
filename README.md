@@ -32,8 +32,11 @@ the front ends render its results and forward user intent.
   first. Read first.
 - [Open items](docs/OPEN-ITEMS.md): remaining work and known limitations.
 - [Architecture](docs/ARCHITECTURE.md): design decisions and ownership boundaries.
-- [FFI boundary](docs/FFI-BOUNDARY.md): UniFFI 0.31 and Swift 6 integration.
+- [Chain support](docs/CHAIN-SUPPORT.md): what each network supports and refuses.
+- [FFI boundary](docs/FFI-BOUNDARY.md): UniFFI 0.31.2 and Swift 6 integration.
 - [iOS UI](docs/IOS-UI.md): layout, typography and Liquid Glass rules.
+- [Tests](tests/README.md) and [scripts](scripts/README.md): the suites and tools
+  behind the Makefile.
 
 `rust-toolchain.toml` pins the toolchain, so `cargo` installs the right one on
 first use and no version needs naming here.
@@ -42,6 +45,15 @@ first use and no version needs naming here.
 
 The CLI is the front end with no platform under it. It needs nothing but a Rust
 toolchain:
+
+```sh
+cargo run -p spectra_cli
+```
+
+With no command, at a terminal, that opens tabs and windows in the manner of
+kitty, each window a prompt that runs the commands `--help` lists; `Tab`
+completes them and `Ctrl+B` then `?` lists the keys. The same commands work
+directly for scripts, with `--json` for a report to parse:
 
 ```sh
 cargo run -p spectra_cli -- --help
@@ -57,8 +69,7 @@ in; never hand-edit `swift/generated/` — change the Rust API and rebuild.
 
 ### Verification
 
-Four targets gate a change, and `make verify` runs all of them; `make check-ui`
-is a separate check run by hand:
+Five targets gate a change, and `make verify` runs all of them:
 
 ```sh
 make verify
@@ -69,14 +80,13 @@ make verify
 | `make lint` | `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, unused-code source scans |
 | `make test` | `cargo test --workspace` |
 | `make test-cli` | `python3 -B tests/acceptance` — the real binary end to end, offline, throwaway data directory |
+| `make check-ui` | design-token and icon-normalization checks; needs `svgo` |
 | `make test-ios` | `xcodebuild test` on an iPhone simulator |
-| `make check-ui` | design-token and icon-normalization checks |
 
 CI runs everything except `test-ios`, which needs Xcode and a simulator.
 
-CLI acceptance suites and independent SDK generators live in
-[`tests/`](tests/README.md). Their checked-in reference data stays in
-`core/tests/fixtures/`; normal tests do not regenerate it.
+The checked-in reference data for the SDK generators in `tests/vectors/` stays
+in `core/tests/fixtures/`; normal tests do not regenerate it.
 
 ## License
 

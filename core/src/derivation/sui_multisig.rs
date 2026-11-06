@@ -98,12 +98,8 @@ struct MemberText {
 }
 
 fn address_of(bytes: &[u8]) -> String {
-    let digest = blake2b_simd::Params::new()
-        .hash_length(32)
-        .to_state()
-        .update(bytes)
-        .finalize();
-    format!("0x{}", hex::encode(digest.as_bytes()))
+    let digest = crate::derivation::primitives::blake2b::<32>(&[bytes]);
+    format!("0x{}", hex::encode(digest))
 }
 
 impl SuiMultisig {

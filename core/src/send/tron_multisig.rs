@@ -82,21 +82,14 @@ struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     fn varint(&mut self) -> Result<u64, SendError> {
-        let mut value = 0u64;
-        for shift in (0..64).step_by(7) {
-            let (&byte, rest) = self
-                .bytes
-                .split_first()
-                .ok_or_else(|| SendError::invalid("The transaction's bytes end early."))?;
-            self.bytes = rest;
-            value |= u64::from(byte & 0x7f) << shift;
-            if byte & 0x80 == 0 {
-                return Ok(value);
+        crate::send::leb128::read(&mut self.bytes).map_err(|error| match error {
+            crate::send::leb128::ReadError::EndsEarly => {
+                SendError::invalid("The transaction's bytes end early.")
             }
-        }
-        Err(SendError::invalid(
-            "The transaction holds an overlong number.",
-        ))
+            crate::send::leb128::ReadError::Overlong => {
+                SendError::invalid("The transaction holds an overlong number.")
+            }
+        })
     }
 
     /// The next field: its number, and its value as a number (wire type 0)

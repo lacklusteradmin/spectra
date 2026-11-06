@@ -5,7 +5,7 @@ acceptance suites, their helpers and independent test-fixture generators live
 in [`tests/`](../tests/README.md). Use the Makefile for routine work:
 
 ```sh
-make verify       # Formatting, Rust lint/tests, CLI tests and iOS simulator tests
+make verify       # Formatting, Rust lint/tests, CLI tests, UI checks and iOS simulator tests
 make check-ui     # UI design tokens and SVG formatting
 ```
 
@@ -21,9 +21,8 @@ make check-ui     # UI design tokens and SVG formatting
 These source scans help identify problems. Review findings for dynamic calls and
 other cases a scan cannot resolve. Each scan is a Python script run as
 `python3 -B scripts/<scan>.py` from any directory; it prints its findings and
-a count, and exits non-zero when it found anything. `make lint` and
-CI run every scan below except `check-design-tokens.py`, which `make check-ui`
-runs.
+a count, and exits non-zero when it found anything. `make lint` runs every scan
+below except `check-design-tokens.py`, which `make check-ui` runs; CI runs both.
 
 | File | Purpose |
 |---|---|
@@ -47,6 +46,9 @@ follow a value through a function call, so a field set from a call's result
 counts as written whatever the call returns.
 
 ## Icons
+
+Normalizing needs `svgo`, and exporting app icons needs ImageMagick
+(`brew install svgo imagemagick`).
 
 | File | Purpose |
 |---|---|

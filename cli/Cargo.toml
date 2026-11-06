@@ -17,3 +17,8 @@ serde_json = "1"
 rpassword = "7"
 dirs = "5"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm"] }
+portable-pty = "0.9.0"
+vt100 = "0.18.1"
+unicode-width = "0.2.3"
+base64 = "0.23.1"

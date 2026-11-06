@@ -43,7 +43,7 @@ if [[ "$check_only" == true ]]; then
     for svg in "$dir"/*.svg; do
       if ! cmp -s "$svg" "$out/$(basename "$svg")"; then
         echo "  not normalized: ${svg#"$REPO_ROOT"/}"
-        ((drift++))
+        drift=$((drift + 1))
       fi
     done
   done

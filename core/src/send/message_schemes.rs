@@ -79,8 +79,7 @@ pub(super) mod cardano {
     }
 
     fn key_hash(public: &[u8; 32]) -> [u8; 28] {
-        let hash = blake2b_simd::Params::new().hash_length(28).hash(public);
-        hash.as_bytes().try_into().expect("28-byte hash")
+        crate::derivation::primitives::blake2b::<28>(&[public])
     }
 
     /// Whether `address` signs with a payment key at all.
@@ -268,16 +267,7 @@ pub(super) mod monero {
         data.extend(spend);
         data.extend(view);
         data.push(mode);
-        let mut length = message.len();
-        loop {
-            let byte = (length & 0x7f) as u8;
-            length >>= 7;
-            if length == 0 {
-                data.push(byte);
-                break;
-            }
-            data.push(byte | 0x80);
-        }
+        crate::send::leb128::write(message.len() as u64, &mut data);
         data.extend(message.as_bytes());
         monero_wallet::primitives::keccak256(&data)
     }

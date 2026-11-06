@@ -1,14 +1,19 @@
-//! `spectra`: a non-interactive, scriptable front end for `spectra_core`.
-//! `tests/cli-acceptance.sh` drives the built binary end to end.
+//! `spectra`: the front end for `spectra_core` that needs no platform.
+//!
+//! Every subcommand is non-interactive and scriptable, and `tests/acceptance`
+//! drives the built binary end to end. `spectra` alone, at a terminal, opens
+//! [`tui`]: windows that run those same subcommands.
 
 mod cmd;
 mod ctx;
 mod error;
 mod out;
+mod tui;
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::error::ErrorKind;
+use clap::{CommandFactory, Parser, Subcommand};
 
 use ctx::Ctx;
 use error::CliError;
@@ -19,7 +24,8 @@ use out::Out;
     name = "spectra",
     about = "Multi-chain self-custody wallet",
     version,
-    disable_help_subcommand = true
+    disable_help_subcommand = true,
+    after_help = "With no command, at a terminal: tabs and windows that run these commands."
 )]
 struct Cli {
     /// Emit machine-readable JSON instead of formatted text.
@@ -31,7 +37,7 @@ struct Cli {
     data_dir: Option<PathBuf>,
 
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -101,7 +107,16 @@ fn main() {
     let cli = Cli::parse();
     let out = Out::new(cli.json);
 
-    let result = Ctx::new(cli.data_dir).and_then(|ctx| dispatch(&ctx, out, cli.command));
+    let result = match cli.command {
+        Some(command) => Ctx::new(cli.data_dir).and_then(|ctx| dispatch(&ctx, out, command)),
+        None if tui::available(cli.json) => tui::run(cli.data_dir, Cli::command()),
+        None => Cli::command()
+            .error(
+                ErrorKind::MissingSubcommand,
+                "a command is required; only `spectra` alone at a terminal opens the interface",
+            )
+            .exit(),
+    };
 
     if let Err(error) = result {
         out.fail(&error);

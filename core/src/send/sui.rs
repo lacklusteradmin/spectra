@@ -2,6 +2,7 @@
 
 use super::bcs;
 use crate::api::sui_json_rpc::SuiClient;
+use crate::derivation::primitives::blake2b;
 use crate::send::error::SendError;
 use crate::send::keys::Ed25519Seed;
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -95,36 +96,20 @@ pub(crate) fn encode_transfer(
 }
 impl PreparedSuiTransfer {
     pub(crate) fn transaction_digest(&self) -> String {
-        let hash = blake2b_simd::Params::new()
-            .hash_length(32)
-            .to_state()
-            .update(b"TransactionData::")
-            .update(&self.bytes)
-            .finalize();
-        bs58::encode(hash.as_bytes()).into_string()
+        let hash = blake2b::<32>(&[b"TransactionData::", &self.bytes]);
+        bs58::encode(hash).into_string()
     }
 
     pub(crate) fn sign(self, key: &Ed25519Seed) -> Result<(String, String), SendError> {
         let public = key.public_key();
-        let expected = blake2b_simd::Params::new()
-            .hash_length(32)
-            .to_state()
-            .update(&[0])
-            .update(&public)
-            .finalize();
-        if self.sender != expected.as_bytes() {
+        if self.sender != blake2b::<32>(&[&[0], &public]) {
             return Err(SendError::Invalid(
                 "Sui sender does not match signing seed".into(),
             ));
         }
-        let digest = blake2b_simd::Params::new()
-            .hash_length(32)
-            .to_state()
-            .update(&[0, 0, 0])
-            .update(&self.bytes)
-            .finalize();
+        let digest = blake2b::<32>(&[&[0, 0, 0], &self.bytes]);
         let mut signature = vec![0];
-        signature.extend_from_slice(&key.sign(digest.as_bytes()));
+        signature.extend_from_slice(&key.sign(&digest));
         signature.extend_from_slice(&public);
         Ok((STANDARD.encode(self.bytes), STANDARD.encode(signature)))
     }
