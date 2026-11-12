@@ -5,7 +5,7 @@ acceptance suites, their helpers and independent test-fixture generators live
 in [`tests/`](../tests/README.md). Use the Makefile for routine work:
 
 ```sh
-make verify       # Formatting, Rust lint/tests, CLI tests, UI checks and iOS simulator tests
+make verify       # Formatting, Rust lint/tests, CLI tests, UI checks, iOS simulator and Mac tests
 make check-ui     # UI design tokens and SVG formatting
 ```
 
@@ -13,8 +13,8 @@ make check-ui     # UI design tokens and SVG formatting
 
 | File | Purpose |
 |---|---|
-| `build-ios.sh` | Run by the Xcode “Build Rust Core” phase: compiles core as a static library for the device or the arm64 simulator and generates the Swift bindings from it, replacing a binding only when its text changed so an edit that leaves the FFI as it was recompiles no Swift. |
-| `ios-rust-build-env.sh` | Sourced by build scripts to set a consistent minimum iOS version and clear incompatible iOS build caches when that version changes. |
+| `build-apple.sh` | Run by the Xcode “Build Rust Core” phase: compiles core as a static library for the device, the arm64 simulator or the Mac and generates the Swift bindings from it, replacing a binding only when its text changed so an edit that leaves the FFI as it was recompiles no Swift. |
+| `apple-rust-build-env.sh` | Sourced by build scripts to set a consistent minimum iOS or macOS version and clear that platform's incompatible build caches when the version changes. |
 
 ## Code and resource checks
 
@@ -48,7 +48,7 @@ Normalizing needs `svgo`, and exporting app icons needs ImageMagick
 |---|---|
 | `normalize-icons.sh` | Normalizes crypto SVGs to the project's format. `--check` reports drift without modifying files. |
 | `svgo.config.mjs` | SVG normalization rules used by the script above; this is a configuration file. |
-| `export-swift-icons.sh` | Converts and synchronizes sources from `icons/` into the Xcode asset catalog, rendering app icons as PNGs. |
+| `export-swift-icons.sh` | Converts and synchronizes sources from `icons/` into the Xcode asset catalog, rendering app icons as PNGs: each source at 1024 points for iOS, and the light one again in the Mac's shape and sizes. |
 
 After editing icon sources, run:
 

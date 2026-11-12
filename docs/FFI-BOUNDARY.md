@@ -83,10 +83,10 @@ remaining coverage gaps are listed in [OPEN-ITEMS.md](OPEN-ITEMS.md).
 make ios
 ```
 
-Change the Rust API, then build: in Xcode, or with `make ios`. Never edit
-`swift/generated/` by hand. The Xcode “Build Rust Core” phase runs
-`scripts/build-ios.sh`, which builds the iOS library and generates the bindings
-from that same library, replacing a file only when its text changed. It is the
+Change the Rust API, then build: in Xcode, or with `make ios` or `make mac`.
+Never edit `swift/generated/` by hand. The Xcode “Build Rust Core” phase runs
+`scripts/build-apple.sh`, which builds the library for the platform being built
+and generates the bindings from that same library, replacing a file only when its text changed. It is the
 only writer of the generated sources and
 post-processes nothing, so a Swift 6 problem in them is a UniFFI version or
 API-shape problem, not something to patch downstream. 0.31.2 is the floor

@@ -6,7 +6,7 @@
 | `core/tests/` | Core tests that need their own process; shared reference data in `fixtures/` | `make test` |
 | [`tests/acceptance/`](acceptance/) | The real `spectra` binary across processes, against loopback nodes | `make test-cli` |
 | [`tests/vectors/`](vectors/) | Independent SDK generators for `core/tests/fixtures/`; not tests themselves | By hand, below |
-| `swift/tests/` | The app, in Swift Testing | `make test-ios` |
+| `swift/tests/` | The app, in Swift Testing | `make test-ios`, `make test-mac` |
 
 This directory holds the acceptance suites and the generators. Build and
 source-check tools live in [`scripts/`](../scripts/README.md). Run everything

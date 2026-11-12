@@ -3,7 +3,7 @@ members = ["core", "cli", "tools/uniffi-bindgen", "tools/zcash-fixture", "tools/
 # What a bare `cargo build`, `test` or `clippy` selects, so all three resolve one
 # set of features and share their dependencies. The bindgen stays out: its
 # `uniffi/cli` would unify into core's uniffi and compile the generator into every
-# test build. scripts/build-ios.sh runs it by manifest path.
+# test build. scripts/build-apple.sh runs it by manifest path.
 default-members = ["core", "cli", "tools/zcash-fixture", "tools/litecoin-mweb-fixture"]
 resolver = "3"
 

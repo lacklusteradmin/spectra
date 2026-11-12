@@ -1,7 +1,7 @@
 # Architecture decisions
 
-Spectra is one Rust core with two front ends, the `spectra` CLI and a native iOS
-app. Core owns both the data and the decisions, no platform persists a second
+Spectra is one Rust core with two front ends, the `spectra` CLI and a native app
+for iOS and macOS. Core owns both the data and the decisions, no platform persists a second
 authoritative copy, and the CLI can drive every domain operation.
 [FFI-BOUNDARY.md](FFI-BOUNDARY.md) covers binding mechanics,
 [CHAIN-SUPPORT.md](CHAIN-SUPPORT.md) what each network supports and
@@ -13,7 +13,7 @@ authoritative copy, and the CLI can drive every domain operation.
 |---|---|
 | `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the app's static library |
 | `cli/` | Argument parsing, password prompting and each command's report, as text or `--json`; with no command, windows that run those commands (`cli/src/tui/`) |
-| `swift/` | Native iOS UI and platform services |
+| `swift/` | Native iOS and macOS UI and platform services, one target and one set of sources |
 | `scripts/` | Build, source-check and runtime-data tools |
 | `tests/` | CLI acceptance suites on one harness (`tests/acceptance/`) and independent SDK test-data generators (`tests/vectors/`) |
 | `tools/uniffi-bindgen/` | Binding generation binary |
@@ -24,7 +24,7 @@ Core stays one crate. A crate per domain would add Cargo overhead without an
 external consumer that needs the isolation. There are no published library APIs
 or semver commitments between these crates. Core builds and tests without Xcode.
 
-Xcode builds the Rust core through `scripts/build-ios.sh` into its own
+Xcode builds the Rust core through `scripts/build-apple.sh` into its own
 DerivedData (`spectra-rust/cargo-target`), not the workspace `target/`. Keeping
 them apart means terminal cargo and Xcode never wait on each other's build lock
 or invalidate each other's cache with different environments, and Clean Build
@@ -51,7 +51,12 @@ interface. Scripts and the acceptance suites keep calling subcommands directly.
 
 Swift owns navigation, sheets, text being edited, focus, animation and rendering
 caches. Keychain, biometrics, notifications, Live Activities and device signals
-stay on the platform and supply inputs to core-owned policy. Losing view state
+stay on the platform and supply inputs to core-owned policy. The Mac app is
+the iOS app's sources built for macOS: every page and flow is the same view,
+and a file splits on `#if os(macOS)` only where the platform itself differs —
+AppKit's text views, the camera, the pasteboard, the window that covers a
+locked app. A Mac has no Live Activity, so a send there is followed by its
+notification alone. Losing view state
 on restart may cost a redraw; losing domain state must not lose user data.
 
 `ResidentState` holds small resident collections. Unbounded history is a separate

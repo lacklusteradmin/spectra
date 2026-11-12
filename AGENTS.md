@@ -43,7 +43,7 @@ Read the one that covers what you are changing:
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Ownership and boundary rules, module layout |
 | [CHAIN-SUPPORT.md](docs/CHAIN-SUPPORT.md) | What each network supports and refuses |
 | [FFI-BOUNDARY.md](docs/FFI-BOUNDARY.md) | UniFFI and Swift binding mechanics |
-| [IOS-UI.md](docs/IOS-UI.md) | Liquid Glass, typography, color, layout and corner radii |
+| [IOS-UI.md](docs/IOS-UI.md) | Liquid Glass, typography, color, layout and corner radii, and what the Mac app does differently |
 | [OPEN-ITEMS.md](docs/OPEN-ITEMS.md) | Remaining work |
 | [tests/README.md](tests/README.md) | Where tests live, acceptance suites, SDK vector generators |
 | [scripts/README.md](scripts/README.md) | Build, source-scan and icon tools |
@@ -100,18 +100,21 @@ actually ran.
 | Core behaviour or persistence, with no funds, keys or FFI change | `make lint test`, plus `make test-cli` when a CLI flow is affected |
 | Broad refactors, funds or keys, FFI and cross-platform changes | `make verify`, unless I say otherwise |
 
-`make verify` is `make lint test test-cli check-ui test-ios`: formatting, clippy
-at `-D warnings` and the source scans, then `cargo test`,
+`make verify` is `make lint test test-cli check-ui test-ios test-mac`:
+formatting, clippy at `-D warnings` and the source scans, then `cargo test`,
 `python3 -B tests/acceptance`, the design-token and icon checks, and
-`xcodebuild test` on an iPhone simulator. The Makefile holds the exact commands.
+`xcodebuild test` on an iPhone simulator and on this Mac. The Makefile holds the
+exact commands. `test-mac` needs the Mac app signed with its keychain access
+group (Xcode's automatic signing, with a Mac development profile for the
+team): its Keychain tests use the real data protection keychain.
 Run a single target by name when iterating, and `cargo test <filter>` for one
 rule; `-p` selects other features and rebuilds dependencies;
 `make fmt` applies the formatting. When another task is building the same Xcode
 project, give yours its own directory with
 `make test-ios IOS_TEST_DERIVED_DATA=<dir>`.
 
-CI runs all of it but `test-ios`, which needs Xcode and a simulator, so that one
-guards a change only when you run it.
+CI runs all of it but `test-ios` and `test-mac`, which need Xcode, so those two
+guard a change only when you run them.
 
 No test is expected to fail. Treat a failure as real even when it looks
 unrelated to the change, and report it; do not write it off as flaky or
@@ -131,8 +134,12 @@ and send or staking flows against loopback nodes.
   iOS and cause HTTPS `UnknownIssuer` failures.
 - [docs/IOS-UI.md](docs/IOS-UI.md) is the authority for Liquid Glass,
   typography, color, layout and corner radii.
-- The app targets **iOS 26** (the deployment target in the Xcode project) in
-  the **Swift 6** language mode. Write for that floor with the current idiom:
+- The app targets **iOS 26** and **macOS 26** (the deployment targets in the
+  Xcode project) from one target and one set of sources, in the **Swift 6**
+  language mode. A view names a platform through the helpers in
+  `PlatformChrome.swift`; `#if os(macOS)` belongs where the platform itself
+  differs (AppKit views, the camera, the pasteboard), not in a page's layout.
+  A change to shared Swift is built for both: `make ios` and `make mac`. Write for that floor with the current idiom:
   no `#available` checks or fallbacks for older releases, `@Observable` rather
   than `ObservableObject`/`@Published`, `NavigationStack` rather than
   `NavigationView`, and async/await rather than completion handlers or GCD

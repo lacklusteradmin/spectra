@@ -25,7 +25,7 @@ upsells.
 ## Development
 
 One Rust wallet core serves two front ends: the `spectra` CLI and a native
-SwiftUI iOS app. Core owns domain state and decisions;
+SwiftUI app for iOS and macOS. Core owns domain state and decisions;
 the front ends render its results and forward user intent.
 
 - [AGENTS.md](AGENTS.md): the rules for working in this repository, Rule 0
@@ -34,7 +34,8 @@ the front ends render its results and forward user intent.
 - [Architecture](docs/ARCHITECTURE.md): design decisions and ownership boundaries.
 - [Chain support](docs/CHAIN-SUPPORT.md): what each network supports and refuses.
 - [FFI boundary](docs/FFI-BOUNDARY.md): UniFFI 0.31.2 and Swift 6 integration.
-- [iOS UI](docs/IOS-UI.md): layout, typography and Liquid Glass rules.
+- [iOS UI](docs/IOS-UI.md): layout, typography and Liquid Glass rules, and
+  what the Mac does differently.
 - [Tests](tests/README.md) and [scripts](scripts/README.md): the suites and tools
   behind the Makefile.
 
@@ -59,17 +60,24 @@ directly for scripts, with `--json` for a report to parse:
 cargo run -p spectra_cli -- --help
 ```
 
-### The iOS app
+### The iOS and macOS app
 
-Open `swift/Spectra.xcodeproj` and build. The Xcode “Build Rust Core” phase
-runs `scripts/build-ios.sh`, which compiles the Rust core for the device or the
-arm64 simulator and generates `swift/generated/` from it, so a fresh clone needs
-no separate step. Simulators are arm64 only. The Swift bindings are **not** checked
-in; never hand-edit `swift/generated/` — change the Rust API and rebuild.
+Open `swift/Spectra.xcodeproj`, pick an iPhone or My Mac as the destination and
+build: one target and one set of sources make both apps. The Xcode “Build Rust
+Core” phase runs `scripts/build-apple.sh`, which compiles the Rust core for the
+device, the arm64 simulator or the Mac and generates `swift/generated/` from it,
+so a fresh clone needs no separate step. Simulators and Macs are arm64 only. The
+Swift bindings are **not** checked in; never hand-edit `swift/generated/` —
+change the Rust API and rebuild.
+
+The Mac app is sandboxed and keeps its secrets in the data protection keychain,
+which macOS opens only to an app signed with its keychain access group. Xcode's
+automatic signing does that with a Mac development profile for the team; an
+unsigned or ad-hoc build runs, and is refused the Keychain.
 
 ### Verification
 
-Five targets gate a change, and `make verify` runs all of them:
+Six targets gate a change, and `make verify` runs all of them:
 
 ```sh
 make verify
@@ -82,8 +90,9 @@ make verify
 | `make test-cli` | `python3 -B tests/acceptance` — the real binary end to end, offline, throwaway data directory |
 | `make check-ui` | design-token and icon-normalization checks; needs `svgo` |
 | `make test-ios` | `xcodebuild test` on an iPhone simulator |
+| `make test-mac` | `xcodebuild test` on this Mac, the app signed for its Keychain |
 
-CI runs everything except `test-ios`, which needs Xcode and a simulator.
+CI runs everything except `test-ios` and `test-mac`, which need Xcode.
 
 The checked-in reference data for the SDK generators in `tests/vectors/` stays
 in `core/tests/fixtures/`; normal tests do not regenerate it.

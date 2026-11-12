@@ -1,7 +1,7 @@
 name: CI
 
-# The gate for everything that needs no Xcode. The iOS suite (`make test-ios`)
-# needs a simulator and stays local; see AGENTS.md.
+# The gate for everything that needs no Xcode. The app's suites (`make test-ios`
+# and `make test-mac`) need Xcode and stay local; see AGENTS.md.
 on:
   push:
     branches: [main]

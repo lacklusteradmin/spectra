@@ -7,14 +7,16 @@ IOS_SIM_DEST ?= generic/platform=iOS Simulator
 IOS_TEST_SIM ?= $(shell xcrun simctl list --json devices available | python3 -c "import json, sys; print(next(d['udid'] for r in json.load(sys.stdin)['devices'].values() for d in r if d['name'].startswith('iPhone')))")
 # Optional isolation when another task is building the same Xcode project.
 IOS_TEST_DERIVED_DATA ?=
+# Macs are arm64 only, as the project's simulators are.
+MAC_DEST ?= platform=macOS,arch=arm64
 
-.PHONY: verify fmt lint check-ui test test-cli test-ios ios iosr clean
+.PHONY: verify fmt lint check-ui test test-cli test-ios test-mac ios iosr mac macr clean
 
 # ── Verification ────────────────────────────────────────────────────
 # `verify` runs the full gate for major changes described in AGENTS.md.
-# CI runs all of it but `test-ios`, which needs Xcode and a simulator, so it
-# stays local.
-verify: lint test test-cli check-ui test-ios
+# CI runs all of it but `test-ios` and `test-mac`, which need Xcode, so they
+# stay local.
+verify: lint test test-cli check-ui test-ios test-mac
 
 # Source scans: nothing exported, public or shipped may go unused, and the app
 # may not spell chain names or amount precision itself. They read source and
@@ -54,12 +56,26 @@ test-ios:
 		-destination "platform=iOS Simulator,id=$(IOS_TEST_SIM)" -collect-test-diagnostics never \
 		$(if $(IOS_TEST_DERIVED_DATA),-derivedDataPath "$(IOS_TEST_DERIVED_DATA)")
 
+# The same suite, hosted by the Mac app. It needs the app signed with its
+# keychain access group — Xcode's automatic signing, with a Mac development
+# profile for the team — because the Keychain tests use the real data
+# protection keychain, which refuses an app without one.
+test-mac:
+	xcodebuild test -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" \
+		-destination "$(MAC_DEST)" -collect-test-diagnostics never
+
 # ── Builds ──────────────────────────────────────────────────────────
 ios:
 	xcodebuild -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" -configuration Debug -destination "$(IOS_SIM_DEST)" build
 
 iosr:
 	xcodebuild -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" -configuration Release -destination "$(IOS_SIM_DEST)" build
+
+mac:
+	xcodebuild -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" -configuration Debug -destination "$(MAC_DEST)" build
+
+macr:
+	xcodebuild -project "$(XCODE_PROJECT)" -scheme "$(XCODE_SCHEME)" -configuration Release -destination "$(MAC_DEST)" build
 
 clean:
 	cargo clean
