@@ -82,7 +82,7 @@ Keep them true:
   operation and the CLI can prove it; until then the operation is refused.
 - A protocol, derivation, signing or key change needs reference data from an
   independent SDK (`tests/vectors/`) rather than core's own output, CLI
-  acceptance, its refusal paths and `make verify`.
+  acceptance, its refusal paths and all six verification targets.
 - No test broadcasts to a real chain, and a live endpoint probe stays
   read-only.
 - A secret operation goes through `SecretStore`, so the CLI can exercise it.
@@ -98,22 +98,23 @@ actually ran.
 | Swift views, design tokens, icons | `make check-ui`, plus the target covering any logic touched |
 | A localized code change | The target that covers it |
 | Core behaviour or persistence, with no funds, keys or FFI change | `make lint test`, plus `make test-cli` when a CLI flow is affected |
-| Broad refactors, funds or keys, FFI and cross-platform changes | `make verify`, unless I say otherwise |
+| Broad refactors, funds or keys, FFI and cross-platform changes | All six targets, unless I say otherwise |
 
-`make verify` is `make lint test test-cli check-ui test-ios test-mac`:
-formatting, clippy at `-D warnings` and the source scans, then `cargo test`,
-`python3 -B tests/acceptance`, the design-token and icon checks, and
-`xcodebuild test` on an iPhone simulator and on this Mac. The Makefile holds the
-exact commands. `test-mac` needs the Mac app signed with its keychain access
-group (Xcode's automatic signing, with a Mac development profile for the
-team): its Keychain tests use the real data protection keychain.
-Run a single target by name when iterating, and `cargo test <filter>` for one
+The six targets are `make lint`, `test`, `test-cli`, `check-ui`, `test-ios` and
+`test-mac`: formatting, clippy at `-D warnings` and the source scans, then
+`cargo test`, `python3 -B tests/acceptance`, the design-token and icon checks,
+and `xcodebuild test` on an iPhone simulator and on this Mac. No target runs
+them all: each is run by name. The Makefile holds the exact commands.
+`test-mac` needs the Mac app signed with its keychain access group (Xcode's
+automatic signing, with a Mac development profile for the team): its Keychain
+tests use the real data protection keychain.
+Run `cargo test <filter>` for one
 rule; `-p` selects other features and rebuilds dependencies;
 `make fmt` applies the formatting. When another task is building the same Xcode
 project, give yours its own directory with
 `make test-ios IOS_TEST_DERIVED_DATA=<dir>`.
 
-CI runs all of it but `test-ios` and `test-mac`, which need Xcode, so those two
+CI runs all of them but `test-ios` and `test-mac`, which need Xcode, so those two
 guard a change only when you run them.
 
 No test is expected to fail. Treat a failure as real even when it looks

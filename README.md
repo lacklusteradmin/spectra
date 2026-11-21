@@ -77,11 +77,8 @@ unsigned or ad-hoc build runs, and is refused the Keychain.
 
 ### Verification
 
-Six targets gate a change, and `make verify` runs all of them:
-
-```sh
-make verify
-```
+Six targets gate a change, each run by name; [AGENTS.md](AGENTS.md#verification)
+says which a change needs:
 
 | Target | What it runs |
 |---|---|
@@ -92,7 +89,7 @@ make verify
 | `make test-ios` | `xcodebuild test` on an iPhone simulator |
 | `make test-mac` | `xcodebuild test` on this Mac, the app signed for its Keychain |
 
-CI runs everything except `test-ios` and `test-mac`, which need Xcode.
+CI runs all of them except `test-ios` and `test-mac`, which need Xcode.
 
 The checked-in reference data for the SDK generators in `tests/vectors/` stays
 in `core/tests/fixtures/`; normal tests do not regenerate it.

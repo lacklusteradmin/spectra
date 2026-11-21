@@ -5,7 +5,7 @@ acceptance suites, their helpers and independent test-fixture generators live
 in [`tests/`](../tests/README.md). Use the Makefile for routine work:
 
 ```sh
-make verify       # Formatting, Rust lint/tests, CLI tests, UI checks, iOS simulator and Mac tests
+make lint         # Formatting, clippy and the source scans
 make check-ui     # UI design tokens and SVG formatting
 ```
 

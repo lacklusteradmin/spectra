@@ -15,7 +15,7 @@ Engineering work that remains. Delete an item once it is done. Rule 0 and
   against the same core rules. Record dated, reproducible evidence per endpoint,
   remove or correct unsupported entries, and prove routing/refusal paths through
   offline CLI fixtures. Keep live probes read-only; any resulting behaviour
-  changes need `make verify`.
+  changes need all six verification targets.
 
 - [ ] **Walk the Mac app's flows by hand.** `make test-mac` passes on the
   signed app, the Keychain and Secure Enclave tests included, and the app

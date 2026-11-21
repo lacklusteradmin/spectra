@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real-node integration, entirely offline: --monerod /path/to/verified/monerod.
 
-Separate from make verify because the official daemon is an optional test tool.
+Separate from make test-cli because the official daemon is an optional test tool.
 Production has no fakechain bypass; only this loopback proxy normalizes nettype.
 
 After a send the official daemon accepts, the wallet pays its fresh receive

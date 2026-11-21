@@ -10,13 +10,12 @@ IOS_TEST_DERIVED_DATA ?=
 # Macs are arm64 only, as the project's simulators are.
 MAC_DEST ?= platform=macOS,arch=arm64
 
-.PHONY: verify fmt lint check-ui test test-cli test-ios test-mac ios iosr mac macr clean
+.PHONY: fmt lint check-ui test test-cli test-ios test-mac ios iosr mac macr clean
 
 # ── Verification ────────────────────────────────────────────────────
-# `verify` runs the full gate for major changes described in AGENTS.md.
-# CI runs all of it but `test-ios` and `test-mac`, which need Xcode, so they
-# stay local.
-verify: lint test test-cli check-ui test-ios test-mac
+# Six targets, each run by name: lint, test, test-cli, check-ui, test-ios and
+# test-mac. AGENTS.md says which a change needs. CI runs all but `test-ios`
+# and `test-mac`, which need Xcode, so they stay local.
 
 # Source scans: nothing exported, public or shipped may go unused, and the app
 # may not spell chain names or amount precision itself. They read source and
