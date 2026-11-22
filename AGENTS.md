@@ -37,8 +37,8 @@ today's oddity, stop and fix the oddity instead.
 ## Repositories
 
 Spectra is three repositories. This one holds the Rust core, the CLI and the
-crypto icon library. The apps live beside it, each cloned next to a checkout
-of this repository (`../Spectra`) that it builds against:
+crypto icon library. The apps live in their own repositories and link core as
+a package built here:
 
 | Repository | Holds |
 |---|---|
@@ -46,10 +46,11 @@ of this repository (`../Spectra`) that it builds against:
 | `spectra-apple` | The iOS and macOS app |
 | `spectra-android` | The Android app, not started |
 
-An app builds against whatever that checkout holds: spectra-apple's
-`make core` packages it, so a change here reaches the app on its next
-`make core`. Check an FFI change against the app before it lands: run
-spectra-apple's checks against this checkout.
+`make apple` writes the package spectra-apple links to `target/SpectraCore/`,
+which a developer copies into that repository; a change here reaches the app
+only through a rebuilt, copied package. Check an FFI change against the app
+before it lands: copy the package into spectra-apple and run its checks, with
+this checkout as its `SPECTRA`.
 
 ## Docs
 
@@ -115,7 +116,7 @@ actually ran.
 | Crypto icons | `make check-icons` |
 | A localized code change | The target that covers it |
 | Core behaviour or persistence, with no funds, keys or FFI change | `make lint test`, plus `make test-cli` when a CLI flow is affected |
-| Broad refactors, funds or keys, and FFI changes | All four targets, and spectra-apple's checks against this checkout, unless I say otherwise |
+| Broad refactors, funds or keys, and FFI changes | All four targets, and spectra-apple's checks against a package and `SPECTRA` from this checkout, unless I say otherwise |
 
 The four targets are `make lint`, `test`, `test-cli` and `check-icons`:
 formatting, clippy at `-D warnings` and the source scans, then `cargo test`,

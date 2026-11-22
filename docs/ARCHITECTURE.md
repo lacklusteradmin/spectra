@@ -1,8 +1,8 @@
 # Architecture decisions
 
 Spectra is one Rust core with front ends: the `spectra` CLI in this repository
-and the native app for iOS and macOS in spectra-apple, which builds against a
-checkout of this repository beside it. An Android app, spectra-android, is not
+and the native app for iOS and macOS in spectra-apple, which links core as a
+package built here. An Android app, spectra-android, is not
 started. Core owns both the data and the decisions, no platform persists a second
 authoritative copy, and the CLI can drive every domain operation.
 [FFI-BOUNDARY.md](FFI-BOUNDARY.md) covers binding mechanics,
@@ -28,8 +28,9 @@ or semver commitments between these crates. Core builds and tests without Xcode.
 
 An Apple app links core as the SpectraCore Swift package that
 `scripts/build-apple-package.sh` builds: a static library per platform, bundled
-as an XCFramework, and the Swift bindings generated from it. spectra-apple's
-`make core` runs it, and Xcode compiles no Rust. It builds in `target/apple/`,
+as an XCFramework, and the Swift bindings generated from it. `make apple` runs
+it into `target/SpectraCore/`, a developer copies that directory into
+spectra-apple, and Xcode compiles no Rust. It builds in `target/apple/`,
 not the workspace's own `target/`: its builds set the app's minimum OS
 versions, which would otherwise rebuild what terminal cargo builds without
 them, and terminal cargo and a package build never wait on each other's build

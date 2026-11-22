@@ -1,11 +1,11 @@
 SHELL := /bin/bash
 
-.PHONY: fmt lint check-icons test test-cli clean
+.PHONY: fmt lint check-icons test test-cli apple clean
 
 # ── Verification ────────────────────────────────────────────────────
 # Four targets, each run by name: lint, test, test-cli and check-icons.
 # AGENTS.md says which a change needs. The app's own checks run in
-# spectra-apple, against a checkout of this repository beside it.
+# spectra-apple, given this checkout as its SPECTRA.
 
 # Source scans: nothing public may go unused. They read source and compile
 # nothing, so lint's only build is clippy's.
@@ -28,6 +28,19 @@ test:
 
 test-cli:
 	python3 -B tests/acceptance
+
+# ── Apple package ───────────────────────────────────────────────────
+# The SpectraCore Swift package spectra-apple links, written to
+# target/SpectraCore/; copy that directory to the app repository's root. The
+# minimums are spectra-apple's deployment targets. PROFILE (dev or release)
+# and PLATFORMS (a subset of `ios ios-sim macos`) pass through to the script.
+IPHONEOS_DEPLOYMENT_TARGET ?= 26.0
+MACOSX_DEPLOYMENT_TARGET ?= 26.0
+
+apple:
+	IPHONEOS_DEPLOYMENT_TARGET="$(IPHONEOS_DEPLOYMENT_TARGET)" \
+	MACOSX_DEPLOYMENT_TARGET="$(MACOSX_DEPLOYMENT_TARGET)" \
+		scripts/build-apple-package.sh target/SpectraCore
 
 clean:
 	cargo clean

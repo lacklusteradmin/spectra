@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build the Rust core as a local Swift package for an Apple app.
 #
+#   make apple    # into target/SpectraCore/, for spectra-apple's minimums
+#
 #   IPHONEOS_DEPLOYMENT_TARGET=26.0 MACOSX_DEPLOYMENT_TARGET=26.0 \
 #     scripts/build-apple-package.sh <package-dir>
 #
@@ -21,7 +23,8 @@
 # The package directory is this script's output; give it one of its own. A run
 # that finds nothing changed leaves it as it was, and the header and bindings
 # are rewritten only when their text changed, so an edit that leaves the FFI as
-# it was recompiles no app Swift. The generator patches nothing: a Swift 6
+# it was recompiles no Swift in an app that copies the package with its
+# modification times (a Finder drag, `cp -Rp` or `ditto`). The generator patches nothing: a Swift 6
 # problem in the bindings is a UniFFI version or API-shape problem.
 set -euo pipefail
 

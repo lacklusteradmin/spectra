@@ -8,6 +8,7 @@ work:
 ```sh
 make lint         # Formatting, clippy and the source scan
 make check-icons  # SVG formatting of the icon library
+make apple        # The SpectraCore package spectra-apple links
 ```
 
 The app-source checks live in spectra-apple, beside the app they read.
@@ -16,7 +17,7 @@ The app-source checks live in spectra-apple, beside the app they read.
 
 | File | Purpose |
 |---|---|
-| `build-apple-package.sh` | Builds core as the SpectraCore Swift package an Apple app links: a static library for the iPhone, the arm64 simulator and the Mac, bundled as an XCFramework, the C header of its FFI as a module of its own, and the UniFFI Swift bindings generated from it. It takes the app's minimum OS versions, a `dev` or `release` profile and the platforms to build; a run that finds nothing changed leaves the package as it was, and the header and bindings are rewritten only when their text changed, so a core edit that leaves the FFI as it was recompiles no app Swift. spectra-apple's `make core` runs it. |
+| `build-apple-package.sh` | Builds core as the SpectraCore Swift package an Apple app links: a static library for the iPhone, the arm64 simulator and the Mac, bundled as an XCFramework, the C header of its FFI as a module of its own, and the UniFFI Swift bindings generated from it. It takes the app's minimum OS versions, a `dev` or `release` profile and the platforms to build; a run that finds nothing changed leaves the package as it was, and the header and bindings are rewritten only when their text changed, so a core edit that leaves the FFI as it was recompiles no app Swift while the app's copy keeps their modification times. `make apple` runs it into `target/SpectraCore/`, which a developer copies into spectra-apple. |
 
 ## Code checks
 
