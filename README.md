@@ -1,6 +1,6 @@
 # Spectra
 
-[![CI](https://github.com/Sheny6n/SpectraWallet/actions/workflows/ci.yml/badge.svg)](https://github.com/Sheny6n/SpectraWallet/actions/workflows/ci.yml)
+[![CI](https://github.com/lacklusteradmin/spectra/actions/workflows/ci.yml/badge.svg)](https://github.com/lacklusteradmin/spectra/actions/workflows/ci.yml)
 
 Spectra is a prelaunch, multi-chain self-custodial crypto wallet focused on
 custody, payments, recovery and staking. It aims to be approachable for everyday
@@ -24,18 +24,19 @@ upsells.
 
 ## Development
 
-One Rust wallet core serves two front ends: the `spectra` CLI and a native
-SwiftUI app for iOS and macOS. Core owns domain state and decisions;
-the front ends render its results and forward user intent.
+This repository is the Rust wallet core and the `spectra` CLI. The apps live
+in their own repositories and take this one as a git submodule:
+[spectra-apple](https://github.com/lacklusteradmin/spectra-apple), the SwiftUI
+app for iOS and macOS, and `spectra-android`, not started. Core owns domain
+state and decisions; the front ends render its results and forward user intent.
 
 - [AGENTS.md](AGENTS.md): the rules for working in this repository, Rule 0
   first. Read first.
 - [Open items](docs/OPEN-ITEMS.md): remaining work and known limitations.
 - [Architecture](docs/ARCHITECTURE.md): design decisions and ownership boundaries.
 - [Chain support](docs/CHAIN-SUPPORT.md): what each network supports and refuses.
-- [FFI boundary](docs/FFI-BOUNDARY.md): UniFFI 0.31.2 and Swift 6 integration.
-- [iOS UI](docs/IOS-UI.md): layout, typography and Liquid Glass rules, and
-  what the Mac does differently.
+- [FFI boundary](docs/FFI-BOUNDARY.md): what core exports to the apps through
+  UniFFI 0.31.2.
 - [Tests](tests/README.md) and [scripts](scripts/README.md): the suites and tools
   behind the Makefile.
 
@@ -60,36 +61,19 @@ directly for scripts, with `--json` for a report to parse:
 cargo run -p spectra_cli -- --help
 ```
 
-### The iOS and macOS app
-
-Open `swift/Spectra.xcodeproj`, pick an iPhone or My Mac as the destination and
-build: one target and one set of sources make both apps. The Xcode “Build Rust
-Core” phase runs `scripts/build-apple.sh`, which compiles the Rust core for the
-device, the arm64 simulator or the Mac and generates `swift/generated/` from it,
-so a fresh clone needs no separate step. Simulators and Macs are arm64 only. The
-Swift bindings are **not** checked in; never hand-edit `swift/generated/` —
-change the Rust API and rebuild.
-
-The Mac app is sandboxed and keeps its secrets in the data protection keychain,
-which macOS opens only to an app signed with its keychain access group. Xcode's
-automatic signing does that with a Mac development profile for the team; an
-unsigned or ad-hoc build runs, and is refused the Keychain.
-
 ### Verification
 
-Six targets gate a change, each run by name; [AGENTS.md](AGENTS.md#verification)
+Four targets gate a change, each run by name; [AGENTS.md](AGENTS.md#verification)
 says which a change needs:
 
 | Target | What it runs |
 |---|---|
-| `make lint` | `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, unused-code source scans |
+| `make lint` | `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, the unused-code source scan |
 | `make test` | `cargo test` |
 | `make test-cli` | `python3 -B tests/acceptance` — the real binary end to end, offline, throwaway data directory |
-| `make check-ui` | design-token and icon-normalization checks; needs `svgo` |
-| `make test-ios` | `xcodebuild test` on an iPhone simulator |
-| `make test-mac` | `xcodebuild test` on this Mac, the app signed for its Keychain |
+| `make check-icons` | the icon-normalization check; needs `svgo` |
 
-CI runs all of them except `test-ios` and `test-mac`, which need Xcode.
+CI runs all four.
 
 The checked-in reference data for the SDK generators in `tests/vectors/` stays
 in `core/tests/fixtures/`; normal tests do not regenerate it.

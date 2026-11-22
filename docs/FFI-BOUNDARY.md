@@ -1,7 +1,9 @@
 # FFI boundary
 
-Integration rules for **UniFFI 0.31.2 + Swift 6**. See
-[architecture](ARCHITECTURE.md) for ownership.
+What core exports to the apps through **UniFFI 0.31.2**, and the rules an
+export follows. See [architecture](ARCHITECTURE.md) for ownership. How an app
+builds core and generates its bindings is that app's own doc: spectra-apple's
+`docs/SWIFT-BINDINGS.md`.
 
 ## Export shapes
 
@@ -25,8 +27,8 @@ English `template` with a `%@` for each of its `args`. The template is the key a
 front end looks up in its string tables, so a sentence a person reads names its
 values as `args` (`SpectraBridgeError::refused`, `failed`,
 `DerivationError::refused`) rather than interpolating them with `format!`.
-`scripts/unused-strings.py` fails on a templated sentence the tables do not
-translate. Transport, parser and library text arrives with no args and reads
+The string tables are the app's: spectra-apple's `scripts/unused-strings.py`
+fails on a templated sentence its tables do not translate. Transport, parser and library text arrives with no args and reads
 as sent.
 
 Borrowed types, lifetimes, generics, closures and unexported trait objects do
@@ -63,41 +65,23 @@ Search both Rust names and generated camelCase names before deleting an export.
 implementations need no Swift caller. A dead Swift wrapper does not prove that
 the export behind it is unused.
 
-Use `scripts/unreachable-exports.py` to find candidates. Cross-check generated
-bindings when macros are involved.
+An export's callers are in the front ends, so the scan for unreachable exports
+is spectra-apple's `scripts/unreachable-exports.py`, which reads the app's Swift
+and this repository's CLI. Cross-check generated bindings when macros are
+involved.
 
-`scripts/uncalled-core-fns.py` checks the layer below. A `pub fn` that no
-longer carries `#[uniffi::export]` is invisible to both gates rustc offers —
-`dead_code` treats it as API because the crate is a library, and the bindings
-never mentioned it — so it can lose its last caller and keep compiling.
-
-Both scans run in `make lint` and in CI.
+`scripts/uncalled-core-fns.py` checks the layer below, here in `make lint` and
+CI. A `pub fn` that no longer carries `#[uniffi::export]` is invisible to both
+gates rustc offers — `dead_code` treats it as API because the crate is a
+library, and the bindings never mentioned it — so it can lose its last caller
+and keep compiling.
 
 An export used only by the app still needs its rule covered: test that rule in
 core with `cargo test`. Offline tests do not prove broadcasting works; the
 remaining coverage gaps are listed in [OPEN-ITEMS.md](OPEN-ITEMS.md).
 
-## Regenerating bindings
-
-```sh
-make ios
-```
-
-Change the Rust API, then build: in Xcode, or with `make ios` or `make mac`.
-Never edit `swift/generated/` by hand. The Xcode “Build Rust Core” phase runs
-`scripts/build-apple.sh`, which builds the library for the platform being built
-and generates the bindings from that same library, replacing a file only when its text changed. It is the
-only writer of the generated sources and
-post-processes nothing, so a Swift 6 problem in them is a UniFFI version or
-API-shape problem, not something to patch downstream. 0.31.2 is the floor
-because it is the release that emits `nonisolated(unsafe)` on the
-callback-interface `vtablePtr` statics itself.
-
 ## Common errors
 
 | Symptom | Check |
 |---|---|
-| `Cannot find type 'Foo' in scope` | Regenerate bindings and confirm the declaration is exported |
-| `does not conform to protocol 'Codable'` | UniFFI does not generate `Codable`; add the appropriate Swift conformance |
 | `Unknown network: …` | A stored row or TOML entry names an id the catalog does not have; chains cross the FFI as `Chain`, so the text came from storage or a file |
-| A key path into a subscript will not compile | Avoid `dict[key, default:]` in key paths; provide a suitable subscript |

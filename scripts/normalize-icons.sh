@@ -6,11 +6,9 @@
 #   scripts/normalize-icons.sh           normalize in place
 #   scripts/normalize-icons.sh --check   fail if any icon is not already normalized
 #
-# icons/appicon/ is deliberately left alone: those are 1024-point sources for a
-# PNG conversion, not members of the 64x64 library.
-#
 # The pass is idempotent, so --check is just "running it would change nothing".
-# Run scripts/export-swift-icons.sh afterwards to carry changes into the catalog.
+# Each front end carries changes into its own assets: spectra-apple runs
+# scripts/export-swift-icons.sh into its asset catalog.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

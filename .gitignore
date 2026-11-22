@@ -1,20 +1,11 @@
 # macOS
 .DS_Store
 
-# Xcode user data
-xcuserdata/
-*.xcworkspace/xcuserdata/
-*.xcodeproj/xcuserdata/
-*.xcodeproj/project.xcworkspace/xcuserdata/
-
 # Rust
 target/
 
 # Python bytecode
 __pycache__/
-
-# UniFFI-generated Swift bindings (regenerated from the Rust core)
-swift/generated/
 
 # Test vector generator SDKs (npm ci --prefix tests/vectors)
 tests/vectors/node_modules/

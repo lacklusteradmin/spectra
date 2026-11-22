@@ -4,11 +4,11 @@
 import contextlib
 import io
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
-from source_scan import (app_swift, calls_only, camel, frontend_test, production_text, report,
-                         strip_comments, test_modules)
+from source_scan import calls_only, exports, production_text, report, strip_comments, test_modules
 
 REPOSITORY = Path(__file__).resolve().parent.parent
 
@@ -78,29 +78,35 @@ class SourceSelectionTests(unittest.TestCase):
         path = self.write('diagnostics/self_tests.rs', 'pub fn run() { let copy = "runtime"; }\n')
         self.assertIn('runtime', production_text(path, set()))
 
-    def test_frontend_test_source_roots_do_not_produce_shipped_copy(self):
-        path = self.write('swift/tests/Fixture.swift', 'fixture copy')
-        self.assertTrue(frontend_test(path))
-        self.assertEqual(production_text(path, set()), '')
-        path = self.write('swift/app/Screen.swift', 'production copy')
-        self.assertFalse(frontend_test(path))
-        self.assertEqual(production_text(path, set()), 'production copy')
 
 
-class AppSwiftTests(unittest.TestCase):
-    def test_lists_the_app_without_its_tests_or_generated_bindings(self):
+class ExportTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='spectra-source-scan-')
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def test_functions_and_every_method_of_an_exported_impl(self):
+        (self.root / 'lib.rs').write_text(
+            '#[uniffi::export]\npub fn free() {}\n'
+            '#[uniffi::export(async_runtime = "tokio")]\npub async fn later() {}\n'
+            'pub fn internal() {}\n'
+            '#[uniffi::export]\nimpl Service {\n    pub fn method(&self) {}\n'
+            '    pub async fn other(&self) {}\n}\n'
+            'impl Service {\n    pub fn helper(&self) {}\n}\n')
+        with contextlib.chdir(self.root):
+            subprocess.run(['git', 'init', '-q'], check=True)
+            found = exports('.')
+        self.assertEqual(sorted(found), [('free', 'lib.rs', False), ('later', 'lib.rs', False),
+                                         ('method', 'lib.rs', True), ('other', 'lib.rs', True)])
+
+    def test_core_exports_are_found(self):
         with contextlib.chdir(REPOSITORY):
-            paths = app_swift()
-        self.assertIn(Path('swift/app/App/WalletServiceBridge.swift'), paths)
-        self.assertFalse([path for path in paths if path.parts[1] in {'tests', 'generated'}])
-        self.assertEqual(paths, sorted(paths))
+            names = {name for name, _, _ in exports()}
+        self.assertIn('token_artwork_name', names)
 
 
 class CallTextTests(unittest.TestCase):
-    def test_camel_follows_uniffi(self):
-        self.assertEqual(camel('core_wallet_state'), 'coreWalletState')
-        self.assertEqual(camel('new'), 'new')
-
     def test_comments_are_not_code(self):
         text = 'a()\n  // b()\n/// c()\n/* d()\n e() */ f()\nlet x = 1 // g()\n'
         stripped = strip_comments(text)
@@ -118,9 +124,6 @@ class CallTextTests(unittest.TestCase):
         self.assertNotIn('fn load', rust)
         self.assertNotIn('fn main', rust)
         self.assertIn('load();', rust)
-        swift = calls_only('func refresh() { reload() }\n', 'func')
-        self.assertNotIn('refresh', swift)
-        self.assertIn('reload()', swift)
 
 
 class ReportTests(unittest.TestCase):

@@ -1,5 +1,5 @@
 # Pinned so every machine and CI run the same rustc, rustfmt and clippy.
-# Apple targets are omitted: scripts/build-apple.sh adds them when needed.
+# Platform targets are omitted: each front end's build script adds its own.
 [toolchain]
 channel = "1.98.1"
 components = ["rustfmt", "clippy"]

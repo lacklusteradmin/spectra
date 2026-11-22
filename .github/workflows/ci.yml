@@ -1,7 +1,6 @@
 name: CI
 
-# The gate for everything that needs no Xcode. The app's suites (`make test-ios`
-# and `make test-mac`) need Xcode and stay local; see AGENTS.md.
+# Every verification target. The app's checks run in spectra-apple.
 on:
   push:
     branches: [main]
@@ -59,16 +58,16 @@ jobs:
       - name: Acceptance suite
         run: make test-cli
 
-  ui:
-    name: Design tokens and icons
+  icons:
+    name: Icon library
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # The icon check compares bytes, and another svgo can format the same
-      # icon differently, so this is the version the sources were normalized by.
+      # The check compares bytes, and another svgo can format the same icon
+      # differently, so this is the version the sources were normalized by.
       - name: Install svgo
         run: npm install --global svgo@4.1.0
 
-      - name: UI checks
-        run: make check-ui
+      - name: Icon check
+        run: make check-icons

@@ -38,25 +38,37 @@ def hand_written(root, suffix):
             if p.endswith(suffix) and pathlib.Path(p).exists()]
 
 
-def frontend_test(path):
-    """Swift test sources."""
-    return 'tests' in path.parts
+EXPORTED_FN = re.compile(r'#\[uniffi::export[^\]]*\]\s*\npub(?:\([^)]*\))? (?:async )?fn (\w+)')
+EXPORTED_IMPL = re.compile(r'#\[uniffi::export[^\]]*\]\s*\nimpl ([^\{]*)\{')
+METHOD = re.compile(r'\n    pub(?:\([^)]*\))? (?:async )?fn (\w+)')
 
 
-def app_swift(root='swift'):
-    """The app's Swift outside its tests. The generated bindings are ignored
-    output, so `hand_written` never lists them."""
-    return [path for path in hand_written(root, '.swift') if not frontend_test(path)]
+def block_end(text, i):
+    """Index just past the `}` closing the block whose `{` is just before `i`."""
+    depth = 1
+    while depth and i < len(text):
+        depth += (text[i] == '{') - (text[i] == '}')
+        i += 1
+    return i
 
 
-def camel(name):
-    """The Swift spelling UniFFI gives a Rust `snake_case` name."""
-    head, *rest = name.split('_')
-    return head + ''.join(part[:1].upper() + part[1:] for part in rest)
+def exports(root='core/src'):
+    """(name, file under `root`, is a method) for every UniFFI export.
+
+    Exporting an `impl` block exports every method in it.
+    """
+    found = []
+    for path in hand_written(root, '.rs'):
+        text, where = path.read_text(), str(path.relative_to(root))
+        found.extend((name, where, False) for name in EXPORTED_FN.findall(text))
+        for impl in EXPORTED_IMPL.finditer(text):
+            body = text[impl.end():block_end(text, impl.end())]
+            found.extend((name, where, True) for name in METHOD.findall(body))
+    return found
 
 
 def strip_comments(text):
-    """Block comments and whole-line `//` comments, in Rust or Swift."""
+    """Block comments and whole-line `//` comments."""
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)
     return re.sub(r'(?m)^\s*//.*$', '', text)
 
@@ -65,8 +77,7 @@ def calls_only(text, keyword):
     """`text` with what only looks like a call removed.
 
     Comments, `use` lines and the name a declaration introduces (after
-    `keyword`, `fn` or `func`) are not evidence of a call: a Swift helper may
-    share the camelCase name of an unused Rust export.
+    `keyword`) are not evidence of a call.
     """
     text = re.sub(r'(?m)^\s*(?:pub )?use .*$', '', strip_comments(text))
     return re.sub(r'\b' + keyword + r'\s+\w+', keyword + ' __declaration__', text)
@@ -150,7 +161,6 @@ def split_test_code(path, text, declared_tests):
 
 
 def production_text(path, declared_tests):
+    """A Rust file's text outside its tests."""
     text = path.read_text(errors='replace')
-    if path.suffix == '.rs':
-        return ''.join(line for _, line in split_test_code(path, text, declared_tests)[0])
-    return '' if frontend_test(path) else text
+    return ''.join(line for _, line in split_test_code(path, text, declared_tests)[0])
