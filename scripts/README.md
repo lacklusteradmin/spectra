@@ -1,16 +1,22 @@
 # Scripts
 
-This directory contains source-check, icon and runtime-data tools. CLI
-acceptance suites, their helpers and independent test-fixture generators live
-in [`tests/`](../tests/README.md). Use the Makefile for routine work:
+This directory contains source-check, icon, runtime-data and Apple package
+tools. CLI acceptance suites, their helpers and independent test-fixture
+generators live in [`tests/`](../tests/README.md). Use the Makefile for routine
+work:
 
 ```sh
 make lint         # Formatting, clippy and the source scan
 make check-icons  # SVG formatting of the icon library
 ```
 
-The app's build, binding and app-source checks live in spectra-apple, beside
-the app they read.
+The app-source checks live in spectra-apple, beside the app they read.
+
+## Apple package
+
+| File | Purpose |
+|---|---|
+| `build-apple-package.sh` | Builds core as the SpectraCore Swift package an Apple app links: a static library for the iPhone, the arm64 simulator and the Mac, bundled as an XCFramework, the C header of its FFI as a module of its own, and the UniFFI Swift bindings generated from it. It takes the app's minimum OS versions, a `dev` or `release` profile and the platforms to build; a run that finds nothing changed leaves the package as it was, and the header and bindings are rewritten only when their text changed, so a core edit that leaves the FFI as it was recompiles no app Swift. spectra-apple's `make core` runs it. |
 
 ## Code checks
 
@@ -18,7 +24,7 @@ A source scan helps identify problems. It reads source and compiles nothing.
 Review findings for dynamic calls and other cases a scan cannot resolve. A scan
 is a Python script run as `python3 -B scripts/<scan>.py` from any directory; it
 prints its findings and a count, and exits non-zero when it found anything.
-`make lint` runs it, and CI runs `make lint`.
+`make lint` runs it.
 
 | File | Purpose |
 |---|---|
@@ -32,7 +38,8 @@ review these candidates manually even when the scan passes.
 
 ## Icons
 
-Normalizing needs `svgo` (`brew install svgo`).
+Normalizing needs `svgo` 4.1.0 (`brew install svgo`). The check compares bytes,
+and another svgo version can format the same icon differently.
 
 | File | Purpose |
 |---|---|

@@ -4,9 +4,8 @@ SHELL := /bin/bash
 
 # ── Verification ────────────────────────────────────────────────────
 # Four targets, each run by name: lint, test, test-cli and check-icons.
-# AGENTS.md says which a change needs, and CI runs all four. The app's own
-# checks run in spectra-apple, against this repository as its `spectra`
-# submodule.
+# AGENTS.md says which a change needs. The app's own checks run in
+# spectra-apple, against a checkout of this repository beside it.
 
 # Source scans: nothing public may go unused. They read source and compile
 # nothing, so lint's only build is clippy's.

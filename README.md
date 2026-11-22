@@ -1,7 +1,5 @@
 # Spectra
 
-[![CI](https://github.com/lacklusteradmin/spectra/actions/workflows/ci.yml/badge.svg)](https://github.com/lacklusteradmin/spectra/actions/workflows/ci.yml)
-
 Spectra is a prelaunch, multi-chain self-custodial crypto wallet focused on
 custody, payments, recovery and staking. It aims to be approachable for everyday
 use while exposing the network settings, diagnostics and logs advanced users need.
@@ -25,7 +23,7 @@ upsells.
 ## Development
 
 This repository is the Rust wallet core and the `spectra` CLI. The apps live
-in their own repositories and take this one as a git submodule:
+in their own repositories, cloned beside this one, and build against it:
 [spectra-apple](https://github.com/lacklusteradmin/spectra-apple), the SwiftUI
 app for iOS and macOS, and `spectra-android`, not started. Core owns domain
 state and decisions; the front ends render its results and forward user intent.
@@ -72,8 +70,6 @@ says which a change needs:
 | `make test` | `cargo test` |
 | `make test-cli` | `python3 -B tests/acceptance` — the real binary end to end, offline, throwaway data directory |
 | `make check-icons` | the icon-normalization check; needs `svgo` |
-
-CI runs all four.
 
 The checked-in reference data for the SDK generators in `tests/vectors/` stays
 in `core/tests/fixtures/`; normal tests do not regenerate it.

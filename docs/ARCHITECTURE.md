@@ -1,8 +1,8 @@
 # Architecture decisions
 
 Spectra is one Rust core with front ends: the `spectra` CLI in this repository
-and the native app for iOS and macOS in spectra-apple, which takes this
-repository as its `spectra` submodule. An Android app, spectra-android, is not
+and the native app for iOS and macOS in spectra-apple, which builds against a
+checkout of this repository beside it. An Android app, spectra-android, is not
 started. Core owns both the data and the decisions, no platform persists a second
 authoritative copy, and the CLI can drive every domain operation.
 [FFI-BOUNDARY.md](FFI-BOUNDARY.md) covers binding mechanics,
@@ -26,12 +26,14 @@ Core stays one crate. A crate per domain would add Cargo overhead without an
 external consumer that needs the isolation. There are no published library APIs
 or semver commitments between these crates. Core builds and tests without Xcode.
 
-spectra-apple's Xcode build compiles core from its `spectra/` checkout through
-its `scripts/build-apple.sh`, into its own DerivedData
-(`spectra-rust/cargo-target`), not the workspace `target/`. Keeping
-them apart means terminal cargo and Xcode never wait on each other's build lock
-or invalidate each other's cache with different environments, and Clean Build
-Folder clears the Rust side too. Deleting `target/` does not affect Xcode.
+An Apple app links core as the SpectraCore Swift package that
+`scripts/build-apple-package.sh` builds: a static library per platform, bundled
+as an XCFramework, and the Swift bindings generated from it. spectra-apple's
+`make core` runs it, and Xcode compiles no Rust. It builds in `target/apple/`,
+not the workspace's own `target/`: its builds set the app's minimum OS
+versions, which would otherwise rebuild what terminal cargo builds without
+them, and terminal cargo and a package build never wait on each other's build
+lock.
 
 ## Ownership
 

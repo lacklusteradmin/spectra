@@ -1,9 +1,9 @@
 # FFI boundary
 
 What core exports to the apps through **UniFFI 0.31.2**, and the rules an
-export follows. See [architecture](ARCHITECTURE.md) for ownership. How an app
-builds core and generates its bindings is that app's own doc: spectra-apple's
-`docs/SWIFT-BINDINGS.md`.
+export follows. See [architecture](ARCHITECTURE.md) for ownership. An Apple app
+links core and its Swift bindings as the package `scripts/build-apple-package.sh`
+builds; how spectra-apple builds and uses it is its `docs/SWIFT-BINDINGS.md`.
 
 ## Export shapes
 
@@ -70,8 +70,8 @@ is spectra-apple's `scripts/unreachable-exports.py`, which reads the app's Swift
 and this repository's CLI. Cross-check generated bindings when macros are
 involved.
 
-`scripts/uncalled-core-fns.py` checks the layer below, here in `make lint` and
-CI. A `pub fn` that no longer carries `#[uniffi::export]` is invisible to both
+`scripts/uncalled-core-fns.py` checks the layer below, here in `make lint`.
+A `pub fn` that no longer carries `#[uniffi::export]` is invisible to both
 gates rustc offers — `dead_code` treats it as API because the crate is a
 library, and the bindings never mentioned it — so it can lose its last caller
 and keep compiling.

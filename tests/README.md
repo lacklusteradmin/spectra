@@ -92,7 +92,7 @@ to compute its own expected results. Every `.cjs` generator has fixture data
 consumed by tests.
 
 The `.cjs` extension selects Node.js CommonJS, matching the scripts' `require()`
-imports. These are developer tools; the app, builds, CI and normal test runs use
+imports. These are developer tools; the app, builds and normal test runs use
 the checked-in fixtures and do not run the generators. Regenerate only when
 changing or extending the reference cases.
 
