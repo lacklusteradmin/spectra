@@ -744,18 +744,16 @@ mod tests {
     #[tokio::test]
     async fn maintenance_skips_confirmed_records_after_reopening_and_ignores_empty_hashes() {
         let (service, path) = stored_service().await;
-        use crate::store::state::{StateCommand, WalletState};
+        use crate::store::state::WalletState;
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    "wallet-1",
-                    "W",
-                    crate::registry::Chain::Ethereum,
-                    "0x1111111111111111111111111111111111111111",
-                    None,
-                    true,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                "wallet-1",
+                "W",
+                crate::registry::Chain::Ethereum,
+                "0x1111111111111111111111111111111111111111",
+                None,
+                true,
+            ))
             .await
             .unwrap();
         service

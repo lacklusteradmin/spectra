@@ -253,16 +253,14 @@ async fn a_setting_update_only_writes_its_metadata_and_noop_writes_nothing() {
     let s = service();
     let db = database();
     s.open_state(db.clone()).await.unwrap();
-    s.apply_state_command(StateCommand::UpsertWallet {
-        wallet: WalletState::single_address(
-            "w",
-            "Wallet",
-            crate::registry::Chain::Bitcoin,
-            "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
-            None,
-            true,
-        ),
-    })
+    s.upsert_wallet(WalletState::single_address(
+        "w",
+        "Wallet",
+        crate::registry::Chain::Bitcoin,
+        "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu",
+        None,
+        true,
+    ))
     .await
     .unwrap();
     sql(
@@ -575,16 +573,14 @@ async fn owned_receive_validates_scope_and_keeps_display_reads_read_only() {
     let path = database();
     service.open_state(path.clone()).await.unwrap();
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(
-                "watch",
-                "Watch",
-                crate::registry::Chain::Ethereum,
-                "0x1111111111111111111111111111111111111111",
-                None,
-                true,
-            ),
-        })
+        .upsert_wallet(WalletState::single_address(
+            "watch",
+            "Watch",
+            crate::registry::Chain::Ethereum,
+            "0x1111111111111111111111111111111111111111",
+            None,
+            true,
+        ))
         .await
         .unwrap();
     assert!(
@@ -851,17 +847,17 @@ async fn wallet_identity_revision_ignores_balances_and_other_state() {
             contract_address: None,
             amount: amount.into(),
         }];
-        StateCommand::UpsertWallet { wallet }
+        wallet
     };
 
     let empty = identity().await;
-    s.apply_state_command(wallet("W", "1")).await.unwrap();
+    s.upsert_wallet(wallet("W", "1")).await.unwrap();
     let added = identity().await;
     assert!(added > empty, "a new wallet");
-    s.apply_state_command(wallet("W", "2")).await.unwrap();
+    s.upsert_wallet(wallet("W", "2")).await.unwrap();
     assert_eq!(identity().await, added, "a balance");
     s.apply_state_command(currency("EUR")).await.unwrap();
     assert_eq!(identity().await, added, "a setting");
-    s.apply_state_command(wallet("Renamed", "2")).await.unwrap();
+    s.upsert_wallet(wallet("Renamed", "2")).await.unwrap();
     assert!(identity().await > added, "a rename");
 }

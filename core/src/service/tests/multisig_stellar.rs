@@ -113,19 +113,24 @@ async fn wallets() -> (Arc<WalletService>, MockServer, Arc<Mutex<Horizon>>) {
         .unwrap();
         assert_eq!(derived.address, Some(key(name, "address")));
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    name,
-                    name,
-                    CHAIN,
-                    key(name, "address"),
-                    Some(path.clone()),
-                    false,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                name,
+                name,
+                CHAIN,
+                key(name, "address"),
+                Some(path.clone()),
+                false,
+            ))
             .await
             .unwrap();
-        store_seed_phrase(&*secrets, name, &key(name, "phrase"), None).unwrap();
+        store_seed_phrase(
+            &*secrets,
+            name,
+            &key(name, "phrase"),
+            &Default::default(),
+            None,
+        )
+        .unwrap();
     }
     (service, server, live)
 }

@@ -205,7 +205,10 @@ impl AssetHolding {
         self
     }
 
-    /// Validate identity before persistence and derive catalog-owned display facts.
+    /// Validate identity and derive catalog-owned display facts: a holding a
+    /// test builds, put in the form core writes. Core writes holdings it
+    /// builds itself, and no front end supplies one.
+    #[cfg(test)]
     pub fn canonicalize(&mut self) -> Result<(), crate::error::SpectraBridgeError> {
         use crate::error::SpectraBridgeError as E;
         let network = self.chain_id;
@@ -254,6 +257,10 @@ impl AssetHolding {
 
 /// Exact derivation secrets supported consistently by import and signing.
 /// Algorithms and iteration settings come from the chain and derivation path.
+///
+/// An import commit carries these; a stored wallet does not. They are sealed
+/// in the `SecretStore` beside the phrase they derive with, under its
+/// password, and the wallet record keeps only [`WalletDerivationFlags`].
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WalletDerivationOverrides {
@@ -261,28 +268,72 @@ pub struct WalletDerivationOverrides {
     pub hmac_key: Option<String>,
 }
 
-impl WalletDerivationOverrides {
+/// Which derivation overrides a wallet was imported with, without what they
+/// say: what deciding where a wallet can go, or which of its keys it can
+/// export, needs to know before the wallet is unlocked.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WalletDerivationFlags {
+    /// A BIP-39 passphrase is sealed beside the phrase.
+    pub passphrase: bool,
+    /// A custom HMAC key is sealed beside the phrase.
+    pub hmac_key: bool,
+    /// The HMAC override is `uniform`: on Polkadot, the root seed expands in
+    /// schnorrkel's Uniform mode, the one meaning its override has.
+    pub uniform_expansion: bool,
+}
+
+impl WalletDerivationFlags {
     pub fn validate_for_chain(
         &self,
         chain: crate::registry::Chain,
     ) -> Result<(), crate::error::SpectraBridgeError> {
-        if self.passphrase.as_ref().is_some_and(|s| !s.is_empty())
-            && !chain.supports_derivation_passphrase()
-        {
+        if self.passphrase && !chain.supports_derivation_passphrase() {
             return Err(crate::error::SpectraBridgeError::invalid(format!(
                 "{} does not support a derivation passphrase",
                 chain.chain_display_name()
             )));
         }
-        if self.hmac_key.as_ref().is_some_and(|s| !s.is_empty())
-            && !chain.supports_derivation_hmac_override()
-        {
+        if self.hmac_key && !chain.supports_derivation_hmac_override() {
             return Err(crate::error::SpectraBridgeError::invalid(format!(
                 "{} does not support a custom HMAC key",
                 chain.chain_display_name()
             )));
         }
         Ok(())
+    }
+}
+
+impl WalletDerivationOverrides {
+    /// These overrides with an empty value read as none: a form's blank field
+    /// is no override.
+    pub fn normalized(mut self) -> Self {
+        for value in [&mut self.passphrase, &mut self.hmac_key] {
+            if value.as_deref().is_some_and(str::is_empty) {
+                if let Some(blank) = value.as_mut() {
+                    blank.zeroize();
+                }
+                *value = None;
+            }
+        }
+        self
+    }
+
+    /// Which overrides these are, an empty value counting as none.
+    pub fn flags(&self) -> WalletDerivationFlags {
+        let set = |value: &Option<String>| value.as_deref().is_some_and(|v| !v.is_empty());
+        WalletDerivationFlags {
+            passphrase: set(&self.passphrase),
+            hmac_key: set(&self.hmac_key),
+            uniform_expansion: self.hmac_key.as_deref().map(str::trim) == Some("uniform"),
+        }
+    }
+
+    pub fn validate_for_chain(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<(), crate::error::SpectraBridgeError> {
+        self.flags().validate_for_chain(chain)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -299,20 +350,11 @@ impl WalletDerivationOverrides {
     }
 }
 
-/// A wallet's derivation overrides, wiped when they go out of scope.
-///
-/// The passphrase and HMAC key are derivation secrets, and a
-/// cloned `WalletState` carries them in the clear — so whatever takes them
-/// out of one owes them a wipe. Two paths derive from a stored wallet, the
-/// send identity and Bitcoin's history xpub, and this is how both hold them.
-pub(crate) struct SensitiveOverrides(pub(crate) WalletDerivationOverrides);
+/// A wallet's derivation overrides as read from the `SecretStore`, wiped
+/// when they go out of scope.
+pub struct SensitiveOverrides(pub(crate) WalletDerivationOverrides);
 
 impl SensitiveOverrides {
-    /// Take the overrides out of a wallet record, leaving it with none.
-    pub(crate) fn take_from(wallet: &mut crate::store::state::WalletState) -> Self {
-        Self(std::mem::take(&mut wallet.derivation_overrides))
-    }
-
     /// The BIP39 passphrase, when there is a non-empty one.
     ///
     /// It belongs to the derivation as much as the phrase does: without it a
@@ -322,6 +364,11 @@ impl SensitiveOverrides {
             .passphrase
             .as_deref()
             .filter(|value| !value.is_empty())
+    }
+
+    /// The custom HMAC key, when there is a non-empty one.
+    pub(crate) fn hmac_key(&self) -> Option<&str> {
+        self.0.hmac_key.as_deref().filter(|value| !value.is_empty())
     }
 }
 
@@ -352,7 +399,7 @@ pub struct WalletView {
     /// The one path this wallet derives from: a profile's, or a custom one.
     /// `None` on a chain that derives without a path.
     pub derivation_path: Option<String>,
-    pub derivation_overrides: WalletDerivationOverrides,
+    pub derivation_flags: WalletDerivationFlags,
     pub holdings: Vec<AssetHolding>,
     pub include_in_portfolio_total: bool,
     /// What the wallet signs with and whether a password guards it — read
@@ -415,7 +462,7 @@ impl WalletView {
             include_in_portfolio_total: self.include_in_portfolio_total,
             xpub: self.account_xpub.clone(),
             derivation_path: self.derivation_path.clone(),
-            derivation_overrides: self.derivation_overrides.clone(),
+            derivation_flags: self.derivation_flags,
             holdings: self.holdings.clone(),
             // The wallet's own slot comes first and the rest follow by slot id:
             // `primary_address` takes the first `receive` entry, and a
@@ -480,7 +527,7 @@ impl crate::store::state::WalletState {
                 .collect(),
             account_xpub: self.xpub.clone(),
             derivation_path: self.derivation_path.clone(),
-            derivation_overrides: self.derivation_overrides.clone(),
+            derivation_flags: self.derivation_flags,
             holdings: self
                 .holdings
                 .iter()
@@ -621,6 +668,42 @@ mod direction_tests {
 mod derivation_override_tests {
     use super::*;
     use crate::registry::Chain;
+
+    /// A blank field is no override; anything else is kept exactly, its
+    /// whitespace included, and unknown fields are refused.
+    #[test]
+    fn overrides_keep_their_text_and_a_blank_is_none() {
+        let typed = WalletDerivationOverrides {
+            passphrase: Some(" secret ".into()),
+            hmac_key: Some(String::new()),
+        }
+        .normalized();
+        assert_eq!(typed.passphrase.as_deref(), Some(" secret "));
+        assert_eq!(typed.hmac_key, None);
+        assert_eq!(
+            typed.flags(),
+            WalletDerivationFlags {
+                passphrase: true,
+                hmac_key: false,
+                uniform_expansion: false,
+            }
+        );
+        for unknown in [r#"{"iterationCount":2048}"#, r#"{"curve":"ed25519"}"#] {
+            assert!(serde_json::from_str::<WalletDerivationOverrides>(unknown).is_err());
+        }
+    }
+
+    /// Polkadot's HMAC override `uniform` is a mode, and the flags name it so
+    /// the wallet can say which keys it exports without being unlocked.
+    #[test]
+    fn a_uniform_hmac_override_is_flagged_as_the_expansion_mode() {
+        let flags = WalletDerivationOverrides {
+            passphrase: None,
+            hmac_key: Some("uniform".into()),
+        }
+        .flags();
+        assert!(flags.hmac_key && flags.uniform_expansion && !flags.passphrase);
+    }
 
     /// A derivation secret is taken only by a network whose derivation reads
     /// it: a passphrase anywhere but Monero, a custom HMAC key only on the

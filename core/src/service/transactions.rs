@@ -367,16 +367,14 @@ mod audit_fix5_tests {
             .unwrap();
         for id in ["wallet-0", "wallet-1"] {
             service
-                .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-                    wallet: crate::store::state::WalletState::single_address(
-                        id,
-                        "W",
-                        crate::registry::Chain::Ethereum,
-                        "0x1111111111111111111111111111111111111111",
-                        None,
-                        true,
-                    ),
-                })
+                .upsert_wallet(crate::store::state::WalletState::single_address(
+                    id,
+                    "W",
+                    crate::registry::Chain::Ethereum,
+                    "0x1111111111111111111111111111111111111111",
+                    None,
+                    true,
+                ))
                 .await
                 .unwrap();
         }

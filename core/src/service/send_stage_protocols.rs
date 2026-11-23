@@ -10,14 +10,19 @@ use crate::send::payment_memo::PaymentMemo;
 use crate::send::stages::*;
 
 /// What preparation reads before a protocol builds: the endpoints that
-/// verify the network, and the amount at the asset's precision.
+/// verify the network, and the amount at the asset's precision. Each protocol
+/// narrows `amount` to its own wire type: [`protocol_u64`] where that is one
+/// `u64` of smallest units, while TRC-20 and jettons carry wider words.
 pub(super) struct StagedAmount {
     pub eps: Arc<Vec<String>>,
     pub decimals: u32,
     pub amount: u128,
-    /// The amount where the protocol takes one `u64` of smallest units;
-    /// 0 where it does not, and its arm reads `amount`.
-    pub amount_u64: u64,
+}
+
+/// `amount` as the one `u64` of smallest units a protocol's transfer carries,
+/// refused where it does not fit.
+pub(super) fn protocol_u64(amount: u128) -> Result<u64, SpectraBridgeError> {
+    u64::try_from(amount).map_err(|_| SpectraBridgeError::failure("Amount exceeds protocol range"))
 }
 
 impl WalletService {
@@ -121,24 +126,12 @@ impl WalletService {
             u32::from(chain.native_decimals())
         };
         let amount = crate::amount::input::parse_raw_amount(&request.amount_str, decimals)?;
-        // Where the amount is not one integer of smallest units on the wire —
-        // or not a u64 one — the protocol's own arm reads it.
-        let amount_u64 = if matches!(chain.mainnet_counterpart(), Chain::Near | Chain::Polkadot)
-            || (matches!(chain.mainnet_counterpart(), Chain::Ton | Chain::Xrp)
-                && request.contract_address.is_some())
-        {
-            0
-        } else {
-            u64::try_from(amount)
-                .map_err(|_| SpectraBridgeError::failure("Amount exceeds protocol range"))?
-        };
         self.require_payment_memo(chain, &request.to_address, request.memo.as_ref())
             .await?;
         let staged = StagedAmount {
             eps,
             decimals,
             amount,
-            amount_u64,
         };
         Ok(match chain.mainnet_counterpart() {
             Chain::Xrp => self.prepare_xrp(chain, request, sender, staged).await?,
@@ -164,19 +157,19 @@ impl WalletService {
             | Chain::Zcash
             | Chain::Decred
             | Chain::Kaspa => {
-                self.prepare_account_transfer(chain, request, sender, amount_u64)
+                self.prepare_account_transfer(chain, request, sender, protocol_u64(amount)?)
                     .await?
             }
             Chain::Litecoin => {
-                self.prepare_litecoin(chain, request, sender, amount_u64)
+                self.prepare_litecoin(chain, request, sender, protocol_u64(amount)?)
                     .await?
             }
             Chain::Peercoin => {
-                self.prepare_peercoin(chain, request, sender, amount_u64)
+                self.prepare_peercoin(chain, request, sender, protocol_u64(amount)?)
                     .await?
             }
             Chain::Monero => {
-                PreparedPayload::Monero(self.prepare_monero(request, amount_u64).await?)
+                PreparedPayload::Monero(self.prepare_monero(request, protocol_u64(amount)?).await?)
             }
             _ => {
                 return Err(SpectraBridgeError::failure(

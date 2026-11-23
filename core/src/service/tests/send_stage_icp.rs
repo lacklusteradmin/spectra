@@ -51,7 +51,7 @@ async fn an_icp_transfer_is_built_only_at_the_ledger_fee_to_a_checksummed_accoun
         .into_owned();
     service.open_state(database).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
-    store_seed_phrase(&*secrets, "w", SEED, None).unwrap();
+    store_seed_phrase(&*secrets, "w", SEED, &Default::default(), None).unwrap();
     service.set_secret_store(secrets);
     let path = crate::derivation::path::default_path_from_catalog(Chain::Icp).unwrap();
     let address = crate::derivation::dispatch::derive_for_chain(
@@ -69,16 +69,14 @@ async fn an_icp_transfer_is_built_only_at_the_ledger_fee_to_a_checksummed_accoun
     .address
     .unwrap();
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(
-                "w",
-                "ICP",
-                Chain::Icp,
-                address.clone(),
-                Some(path),
-                false,
-            ),
-        })
+        .upsert_wallet(WalletState::single_address(
+            "w",
+            "ICP",
+            Chain::Icp,
+            address.clone(),
+            Some(path),
+            false,
+        ))
         .await
         .unwrap();
     let request = |to: &str| SendExecutionRequest {

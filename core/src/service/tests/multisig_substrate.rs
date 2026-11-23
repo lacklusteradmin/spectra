@@ -165,19 +165,17 @@ async fn account() -> Account {
         .address
         .unwrap();
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    id,
-                    id,
-                    CHAIN,
-                    address.clone(),
-                    Some(path.clone()),
-                    false,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                id,
+                id,
+                CHAIN,
+                address.clone(),
+                Some(path.clone()),
+                false,
+            ))
             .await
             .unwrap();
-        store_seed_phrase(&*secrets, id, phrase, None).unwrap();
+        store_seed_phrase(&*secrets, id, phrase, &Default::default(), None).unwrap();
         addresses.insert(id, address);
     }
     let text =
@@ -187,10 +185,7 @@ async fn account() -> Account {
     let mut vault =
         WalletState::single_address("vault", "Vault", CHAIN, policy.address(), None, true);
     vault.multisig_policy = Some(text);
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet: vault })
-        .await
-        .unwrap();
+    service.upsert_wallet(vault).await.unwrap();
     let keys: HashMap<_, _> = addresses
         .iter()
         .map(|(id, address)| {

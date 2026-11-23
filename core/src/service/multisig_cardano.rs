@@ -364,19 +364,15 @@ impl WalletService {
         let (script, mut gathered, signed) = read(wallet, session)?;
         self.cardano_unchanged(wallet, &script, &session.transaction)
             .await?;
-        let phrase = crate::secrets::wallet::load_seed_phrase(
+        let mnemonic = crate::secrets::wallet::load_mnemonic(
             &*self.secrets()?,
             &signer.id,
             password.as_deref(),
         )?;
         let named = script.key_hashes();
         let keys = crate::derivation::cardano::cosigner_keys(
-            &phrase,
-            signer
-                .derivation_overrides
-                .passphrase
-                .as_deref()
-                .unwrap_or_default(),
+            &mnemonic.phrase,
+            mnemonic.overrides.passphrase().unwrap_or_default(),
             COSIGNER_KEYS,
         )?;
         let (private, public, hash) = keys

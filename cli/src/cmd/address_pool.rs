@@ -104,14 +104,7 @@ impl Report for DiscoveryReport {
 fn discover(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = wallet.chain_id;
-    let service = super::chain::service_for_chain(
-        ctx,
-        chain,
-        &[
-            super::chain::EndpointCapability::Balance,
-            super::chain::EndpointCapability::History,
-        ],
-    )?;
+    let service = ctx.service()?;
 
     let addresses = ctx
         .rt

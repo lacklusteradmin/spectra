@@ -36,10 +36,7 @@ async fn account(chain: Chain, server: &MockServer, path: &str) -> Arc<WalletSer
     );
     wallet.xpub =
         Some(UtxoDerivation::account_xpub(chain, SEED, path, &Default::default()).unwrap());
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet })
-        .await
-        .unwrap();
+    service.upsert_wallet(wallet).await.unwrap();
     service
 }
 

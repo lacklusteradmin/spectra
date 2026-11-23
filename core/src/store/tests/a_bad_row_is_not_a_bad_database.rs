@@ -25,7 +25,7 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         chain_id: crate::registry::Chain::Bitcoin,
         xpub: None,
         derivation_path: None,
-        derivation_overrides: Default::default(),
+        derivation_flags: Default::default(),
         holdings: Vec::new(),
         addresses: Vec::new(),
         restore_height: None,
@@ -88,7 +88,7 @@ fn an_unreadable_wallet_refuses_loading_without_deleting_rows() {
         chain_id: crate::registry::Chain::Bitcoin,
         xpub: None,
         derivation_path: None,
-        derivation_overrides: Default::default(),
+        derivation_flags: Default::default(),
         holdings: Vec::new(),
         addresses: Vec::new(),
         restore_height: None,
@@ -107,9 +107,8 @@ fn an_unreadable_wallet_refuses_loading_without_deleting_rows() {
     crate::wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state)
         .expect("save");
 
-    // Put the pre-shrink override shape back on one row, exactly as a build
-    // before the shrink left it — straight into the table, so no helper can
-    // normalise it on the way in.
+    // Put a field this build does not know on one row's override flags —
+    // straight into the table, so no helper can normalise it on the way in.
     let stale_payload = {
         let conn = rusqlite::Connection::open(&db).expect("open");
         let payload: String = conn
@@ -118,8 +117,8 @@ fn an_unreadable_wallet_refuses_loading_without_deleting_rows() {
             })
             .expect("read the row");
         let payload = payload.replace(
-            r#""derivationOverrides":{"passphrase":null,"hmacKey":null}"#,
-            r#""derivationOverrides":{"passphrase":null,"mnemonicWordlist":null,"hmacKey":null}"#,
+            r#""derivationFlags":{"passphrase":false,"hmacKey":false,"uniformExpansion":false}"#,
+            r#""derivationFlags":{"passphrase":false,"mnemonicWordlist":null,"hmacKey":false,"uniformExpansion":false}"#,
         );
         conn.execute(
             "UPDATE wallets SET payload = ?1 WHERE id = 'stale'",

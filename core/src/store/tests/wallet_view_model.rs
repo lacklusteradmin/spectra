@@ -13,7 +13,7 @@ fn summary() -> WalletState {
         chain_id: crate::registry::Chain::Bitcoin,
         xpub: Some("zpub123".to_string()),
         derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
-        derivation_overrides: Default::default(),
+        derivation_flags: Default::default(),
         holdings: vec![AssetHolding {
             id: "bitcoin:native".into(),
             name: "Bitcoin".to_string(),

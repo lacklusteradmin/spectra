@@ -1,7 +1,4 @@
-use crate::store::{
-    state::{StateCommand, WalletState},
-    wallet_domain::AssetHolding,
-};
+use crate::store::{state::WalletState, wallet_domain::AssetHolding};
 use crate::{registry::Chain, service::WalletService};
 
 fn native(chain: Chain) -> AssetHolding {
@@ -61,22 +58,10 @@ async fn invalid_protocol_identity_is_refused_before_storage() {
     let mut holding = native(Chain::Ethereum);
     holding.token_standard = Some(crate::registry::TokenStandard::Erc20);
     wallet.holdings.push(holding);
-    assert!(
-        service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: wallet.clone()
-            })
-            .await
-            .is_err()
-    );
+    assert!(service.upsert_wallet(wallet.clone()).await.is_err());
     assert!(service.app_state().await.wallets.is_empty());
     wallet.holdings[0].contract_address = Some("not-an-address".into());
-    assert!(
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .is_err()
-    );
+    assert!(service.upsert_wallet(wallet).await.is_err());
     assert!(service.app_state().await.wallets.is_empty());
 }
 

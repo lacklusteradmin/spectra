@@ -1,6 +1,6 @@
 //! Tron: building, revalidating, signing and expiring its staged
 //! transactions.
-use super::send_stage_protocols::StagedAmount;
+use super::send_stage_protocols::{StagedAmount, protocol_u64};
 use super::*;
 use crate::send::payload::SignedPayload;
 use crate::send::stages::*;
@@ -59,12 +59,7 @@ impl WalletService {
         sender: &str,
         staged: StagedAmount,
     ) -> Result<PreparedPayload, SpectraBridgeError> {
-        let StagedAmount {
-            eps,
-            amount,
-            amount_u64,
-            ..
-        } = staged;
+        let StagedAmount { eps, amount, .. } = staged;
         let to = request.to_address.as_str();
         Ok(match chain.mainnet_counterpart() {
             Chain::Tron => {
@@ -81,7 +76,7 @@ impl WalletService {
                         Transfer::Trc10 {
                             asset_id,
                             to,
-                            amount: amount_u64,
+                            amount: protocol_u64(amount)?,
                         }
                     }
                     Some(contract) => Transfer::Token {
@@ -92,7 +87,7 @@ impl WalletService {
                     },
                     None => Transfer::Native {
                         to,
-                        amount: amount_u64,
+                        amount: protocol_u64(amount)?,
                     },
                 };
                 let client = TronHttpClient::new(eps);

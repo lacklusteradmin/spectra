@@ -130,7 +130,7 @@ impl Store {
             .to_string_lossy()
             .into_owned();
         let secrets = Arc::new(InMemorySecretStore::new());
-        store_seed_phrase(&*secrets, "w", SEED, Some(PASSWORD)).unwrap();
+        store_seed_phrase(&*secrets, "w", SEED, &Default::default(), Some(PASSWORD)).unwrap();
         let store = Self { database, secrets };
         let service = store.open(&[]).await;
         let mut wallet = WalletState::single_address(
@@ -144,10 +144,7 @@ impl Store {
         wallet.signing = WalletSigning::SeedPhrase {
             password_protected: true,
         };
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
         store
     }
 

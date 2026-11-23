@@ -209,12 +209,9 @@ async fn wallets() -> (Arc<WalletService>, MockServer, Arc<Mutex<Toncenter>>) {
     }
     for (wallet, phrase) in wallets {
         if let Some(phrase) = phrase {
-            store_seed_phrase(&*secrets, &wallet.id, &phrase, None).unwrap();
+            store_seed_phrase(&*secrets, &wallet.id, &phrase, &Default::default(), None).unwrap();
         }
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
     }
     (service, server, live)
 }

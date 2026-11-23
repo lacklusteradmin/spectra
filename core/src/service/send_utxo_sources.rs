@@ -3,7 +3,6 @@ use super::*;
 use crate::secrets::wallet::SigningMaterial;
 use crate::send::stages::UtxoSendSource;
 use crate::store::state::{WalletSigning, WalletState};
-use crate::store::wallet_domain::SensitiveOverrides;
 use std::collections::BTreeMap;
 use zeroize::Zeroizing;
 
@@ -94,7 +93,7 @@ impl WalletService {
                 "Unsupported account UTXO network",
             ));
         }
-        let mut wallet = self
+        let wallet = self
             .wallet_state
             .read()
             .await
@@ -103,7 +102,6 @@ impl WalletService {
             .find(|w| w.id == wallet_id)
             .cloned()
             .ok_or_else(|| SpectraBridgeError::invalid("send wallet does not exist"))?;
-        let _overrides = SensitiveOverrides::take_from(&mut wallet);
         let root = wallet
             .address_on(chain)
             .ok_or_else(|| SpectraBridgeError::invalid("wallet has no UTXO address"))?;
@@ -164,23 +162,22 @@ impl WalletService {
         wallet: &WalletState,
         chain: Chain,
         material: &SigningMaterial,
-        overrides: &SensitiveOverrides,
     ) -> Result<Vec<UtxoSigningSource>, SpectraBridgeError> {
         let sources = self.account_utxo_send_sources(&wallet.id, chain).await?;
         sources
             .into_iter()
             .map(|source| {
                 let private_key_hex = match material {
-                    SigningMaterial::Mnemonic(seed) => {
+                    SigningMaterial::Mnemonic(mnemonic) => {
                         let path = source.derivation_path.as_deref().ok_or_else(|| {
                             SpectraBridgeError::invalid("UTXO source has no derivation path")
                         })?;
                         let mut derived = crate::derivation::dispatch::derive_for_chain(
                             chain,
-                            seed,
+                            &mnemonic.phrase,
                             path,
-                            overrides.passphrase(),
-                            overrides.0.hmac_key.as_deref().filter(|s| !s.is_empty()),
+                            mnemonic.overrides.passphrase(),
+                            mnemonic.overrides.hmac_key(),
                             Some(crate::derivation::dispatch::script_type_for_path(path)),
                             true,
                             false,

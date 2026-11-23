@@ -143,12 +143,24 @@ async fn key_wallet(service: &WalletService, secrets: &InMemorySecretStore, name
     .unwrap();
     assert_eq!(derived.address.as_deref(), Some(address.as_str()));
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(name, name, Chain::Xrp, address, Some(path), false),
-        })
+        .upsert_wallet(WalletState::single_address(
+            name,
+            name,
+            Chain::Xrp,
+            address,
+            Some(path),
+            false,
+        ))
         .await
         .unwrap();
-    store_seed_phrase(secrets, name, &key(name, "phrase"), None).unwrap();
+    store_seed_phrase(
+        secrets,
+        name,
+        &key(name, "phrase"),
+        &Default::default(),
+        None,
+    )
+    .unwrap();
 }
 
 /// The account (p0's key, its master disabled) and the list's p1 and p2.

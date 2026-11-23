@@ -1,6 +1,6 @@
 //! XRP Ledger: building, revalidating, signing and expiring its staged
 //! transactions.
-use super::send_stage_protocols::StagedAmount;
+use super::send_stage_protocols::{StagedAmount, protocol_u64};
 use super::*;
 use crate::send::payload::SignedPayload;
 use crate::send::payment_memo::PaymentMemo;
@@ -85,9 +85,7 @@ impl WalletService {
         sender: &str,
         staged: StagedAmount,
     ) -> Result<PreparedPayload, SpectraBridgeError> {
-        let StagedAmount {
-            eps, amount_u64, ..
-        } = staged;
+        let StagedAmount { eps, amount, .. } = staged;
         let to = request.to_address.as_str();
         Ok(match chain.mainnet_counterpart() {
             Chain::Xrp => {
@@ -123,7 +121,7 @@ impl WalletService {
                     None => PreparedPayload::Xrp {
                         sequence: client.fetch_sequence(sender).await?,
                         fee_drops,
-                        amount_drops: amount_u64,
+                        amount_drops: protocol_u64(amount)?,
                     },
                 }
             }

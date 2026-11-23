@@ -13,7 +13,7 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         chain_id: chain,
         xpub: None,
         derivation_path: None,
-        derivation_overrides: Default::default(),
+        derivation_flags: Default::default(),
         holdings: Vec::new(),
         addresses: addresses
             .iter()
@@ -362,9 +362,7 @@ async fn a_chain_no_explorer_serves_counts_a_failure_and_reports_it() {
         .into_owned();
     service.open_state(db).await.expect("open");
     service
-        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-            wallet: wallet("w1", Chain::Cronos, &[(Chain::Ethereum, "0xabc")]),
-        })
+        .upsert_wallet(wallet("w1", Chain::Cronos, &[(Chain::Ethereum, "0xabc")]))
         .await
         .expect("wallet");
 
@@ -398,9 +396,7 @@ async fn a_utxo_wallet_with_no_known_addresses_is_not_exhausted() {
         .into_owned();
     service.open_state(db).await.expect("open");
     service
-        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-            wallet: wallet("w1", Chain::Litecoin, &[(Chain::Litecoin, "ltc1")]),
-        })
+        .upsert_wallet(wallet("w1", Chain::Litecoin, &[(Chain::Litecoin, "ltc1")]))
         .await
         .expect("wallet");
 
@@ -464,9 +460,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
         .into_owned();
     service.open_state(db).await.expect("open");
     service
-        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-            wallet: wallet("w1", Chain::Litecoin, &[(Chain::Litecoin, ANSWERS)]),
-        })
+        .upsert_wallet(wallet("w1", Chain::Litecoin, &[(Chain::Litecoin, ANSWERS)]))
         .await
         .expect("wallet");
     // The second address is the wallet's keypool, which is where the
@@ -553,9 +547,7 @@ async fn owned_history_scope_and_failed_clock_are_core_decisions() {
         .await
         .unwrap();
     service
-        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-            wallet: wallet("w1", Chain::Cronos, &[(Chain::Ethereum, "0xabc")]),
-        })
+        .upsert_wallet(wallet("w1", Chain::Cronos, &[(Chain::Ethereum, "0xabc")]))
         .await
         .unwrap();
     assert!(
@@ -648,9 +640,7 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
     // Cronos has no keyless history provider: refusal is offline and remains retryable.
     for id in ["a", "b"] {
         service
-            .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-                wallet: wallet(id, Chain::Cronos, &[(Chain::Ethereum, "0xabc")]),
-            })
+            .upsert_wallet(wallet(id, Chain::Cronos, &[(Chain::Ethereum, "0xabc")]))
             .await
             .unwrap();
     }
@@ -696,10 +686,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         )],
     );
     w.chain_id = Chain::EthereumSepolia;
-    service
-        .apply_state_command(crate::store::state::StateCommand::UpsertWallet { wallet: w })
-        .await
-        .unwrap();
+    service.upsert_wallet(w).await.unwrap();
     let page = EvmHistoryPageDecoded {
         native: vec![EvmNativeTransferItem {
             status: crate::store::wallet_domain::TransactionStatus::Failed,
@@ -921,10 +908,7 @@ async fn a_full_token_page_of_unknown_contracts_is_not_the_end_of_the_history() 
     }
     let mut sepolia = wallet("w1", Chain::Ethereum, &[(Chain::EthereumSepolia, OWNER)]);
     sepolia.chain_id = Chain::EthereumSepolia;
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet: sepolia })
-        .await
-        .expect("wallet");
+    service.upsert_wallet(sepolia).await.expect("wallet");
 
     let first = service
         .refresh_evm_chain_history(Chain::Ethereum, Vec::new(), false, Some(20))
@@ -1033,9 +1017,7 @@ async fn a_solana_page_that_stores_nothing_still_pages_on_from_its_last_signatur
     }])
     .await;
     service
-        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-            wallet: wallet("w1", Chain::Solana, &[(Chain::Solana, OWNER)]),
-        })
+        .upsert_wallet(wallet("w1", Chain::Solana, &[(Chain::Solana, OWNER)]))
         .await
         .expect("wallet");
 

@@ -418,11 +418,8 @@ mod tests {
             wallet.signing = crate::store::state::WalletSigning::SeedPhrase {
                 password_protected: password.is_some(),
             };
-            service
-                .apply_state_command(StateCommand::UpsertWallet { wallet })
-                .await
-                .unwrap();
-            store_seed_phrase(&*secrets, "w", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", password).unwrap();
+            service.upsert_wallet(wallet).await.unwrap();
+            store_seed_phrase(&*secrets, "w", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", &Default::default(), password).unwrap();
             let input = input();
             if password.is_some() {
                 for supplied in [None, Some("wrong-password".into())] {

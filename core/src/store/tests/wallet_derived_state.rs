@@ -1,5 +1,4 @@
 use crate::service::WalletService;
-use crate::store::state::StateCommand;
 use crate::store::wallet_domain::AssetHolding;
 
 fn coin(symbol: &str, chain: crate::registry::Chain, amount: f64) -> AssetHolding {
@@ -44,10 +43,7 @@ async fn service_with(
                 amount: c.amount,
             })
             .collect();
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet: summary })
-            .await
-            .expect("upsert");
+        service.upsert_wallet(summary).await.expect("upsert");
     }
     service
 }
@@ -135,10 +131,7 @@ async fn sending_needs_signing_material_on_a_live_chain() {
 
     let mut wallet = service.app_state().await.wallets[0].clone();
     wallet.signing = crate::store::state::WalletSigning::WatchOnly;
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet })
-        .await
-        .expect("upsert");
+    service.upsert_wallet(wallet).await.expect("upsert");
     let watch_only = service.wallet_derived_state().await.expect("derived");
     assert!(watch_only.send_enabled_wallet_ids.is_empty());
     // Receiving never needs a key.

@@ -23,7 +23,6 @@ pub mod evm;
 pub mod funds_finder;
 pub mod icp;
 pub mod import;
-pub mod input;
 pub mod kaspa;
 pub(crate) mod key_formats;
 pub mod litecoin;

@@ -1,7 +1,6 @@
 //! Resolve a stored wallet into one signing identity before any provider reads.
 use super::*;
 use crate::secrets::wallet::{SigningMaterial, load_signing_material};
-use crate::store::wallet_domain::SensitiveOverrides;
 use zeroize::Zeroizing;
 
 pub(super) struct ResolvedSendIdentity {
@@ -64,24 +63,24 @@ impl WalletService {
         password: Option<&str>,
         no_seed: &str,
     ) -> Result<Zeroizing<Vec<u8>>, SpectraBridgeError> {
-        let mut wallet = self
+        if !self
             .wallet_state
             .read()
             .await
             .wallets
             .iter()
-            .find(|wallet| wallet.id == wallet_id)
-            .cloned()
-            .ok_or_else(|| invalid("send wallet does not exist"))?;
-        let overrides = SensitiveOverrides::take_from(&mut wallet);
+            .any(|wallet| wallet.id == wallet_id)
+        {
+            return Err(invalid("send wallet does not exist"));
+        }
         let secrets = self.secrets()?;
         match load_signing_material(&*secrets, wallet_id, password)
             .map_err(|error| invalid(&error.to_string()))?
         {
-            SigningMaterial::Mnemonic(phrase) => {
+            SigningMaterial::Mnemonic(mnemonic) => {
                 let seed = crate::derivation::primitives::derive_bip39_seed(
-                    &phrase,
-                    overrides.passphrase().unwrap_or(""),
+                    &mnemonic.phrase,
+                    mnemonic.overrides.passphrase().unwrap_or(""),
                     0,
                     None,
                     None,
@@ -98,7 +97,7 @@ impl WalletService {
         wallet_id: &str,
         password: Option<&str>,
     ) -> Result<ResolvedSendIdentity, SpectraBridgeError> {
-        let mut wallet = self
+        let wallet = self
             .wallet_state
             .read()
             .await
@@ -107,7 +106,6 @@ impl WalletService {
             .find(|wallet| wallet.id == wallet_id)
             .cloned()
             .ok_or_else(|| invalid("send wallet does not exist"))?;
-        let sensitive_overrides = SensitiveOverrides::take_from(&mut wallet);
         if wallet.is_watch_only() {
             return Err(invalid("a watch-only wallet cannot send"));
         }
@@ -125,19 +123,14 @@ impl WalletService {
         let material = load_signing_material(&*secrets, wallet_id, password)
             .map_err(|error| invalid(&error.to_string()))?;
         let account_utxo_sources = if chain.uses_account_utxo() {
-            sensitive_overrides.0.validate_for_chain(chain)?;
-            self.resolve_account_utxo_signing_sources(
-                &wallet,
-                chain,
-                &material,
-                &sensitive_overrides,
-            )
-            .await?
+            wallet.derivation_flags.validate_for_chain(chain)?;
+            self.resolve_account_utxo_signing_sources(&wallet, chain, &material)
+                .await?
         } else {
             Vec::new()
         };
         let (derived, private_key_hex) = match material {
-            SigningMaterial::Mnemonic(seed) => {
+            SigningMaterial::Mnemonic(mnemonic) => {
                 let owner = if wallet.chain_id.is_evm() && chain.is_evm() {
                     wallet.chain_id
                 } else {
@@ -153,15 +146,14 @@ impl WalletService {
                     })
                     .unwrap_or_default();
                 let path = crate::derivation::path::resolve_derivation_path(id, path.into())?;
-                let overrides = &sensitive_overrides.0;
-                overrides.validate_for_chain(chain)?;
+                mnemonic.overrides.0.validate_for_chain(chain)?;
                 let script = crate::derivation::dispatch::script_type_for_path(&path);
                 let mut derived = crate::derivation::dispatch::derive_for_chain(
                     id,
-                    &seed,
+                    &mnemonic.phrase,
                     &path,
-                    sensitive_overrides.passphrase(),
-                    overrides.hmac_key.as_deref().filter(|s| !s.is_empty()),
+                    mnemonic.overrides.passphrase(),
+                    mnemonic.overrides.hmac_key(),
                     Some(script),
                     true,
                     true,

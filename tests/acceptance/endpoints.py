@@ -1,12 +1,26 @@
 #!/usr/bin/env python3
-"""The CLI's own endpoint views, offline: the listing's source filter and the
-health verdict it aggregates from core's probes."""
-from harness import Handler, Spectra, scratch, serve
+"""The CLI's own endpoint views, offline: the listing's source filter, the
+health verdict it aggregates from core's probes, and a network known only by
+an endpoint added here."""
+from harness import LEGAL, Handler, Spectra, scratch, serve
 
 
 class Node(Handler):
+    """A Blockbook backend whose first address asked about holds 123456
+    duffs and has a transaction; every other address is unused."""
+
     def do_GET(self):
-        self.reply({"error": "Internal server error"} if self.state["fail"] else {"blockbook": {"bestHeight": 123}})
+        if self.state["fail"]:
+            self.reply({"error": "Internal server error"})
+        elif self.path.startswith("/api/v2/address/"):
+            address = self.path.split("/")[4].split("?")[0]
+            funded = self.state.setdefault("funded", address) == address
+            self.reply({"balance": "123456" if funded else "0", "unconfirmedBalance": "0",
+                        "txs": 1 if funded else 0, "unconfirmedTxs": 0})
+        elif self.path.startswith("/api/v2/utxo/"):
+            self.reply([])
+        else:
+            self.reply({"blockbook": {"bestHeight": 123}})
 
 
 with scratch("endpoints") as directory:
@@ -41,4 +55,15 @@ with scratch("endpoints") as directory:
         health = spectra.run("endpoints", "--chain", "dash-testnet")
         assert not health["ok"] and health["unreachable"] == 1, health
         assert health["endpoints"][0]["detail"], health
-    print("The health verdict counts networks without APIs and unreachable endpoints")
+        print("The health verdict counts networks without APIs and unreachable endpoints")
+
+    # The catalog lists no endpoint for dash-testnet: its balance is read
+    # from an endpoint added here.
+    with serve(Node, fail=False) as node:
+        spectra.run("endpoints", "--chain", "dash-testnet", "--api", "blockbook", "--capabilities",
+                    "balance,history,utxo,verification", "--add", node.url)
+        spectra.run("wallet", "import", "--chain", "dash-testnet", "--name", "Custom DASH",
+                    env={"SPECTRA_SEED": LEGAL, "SPECTRA_PASSWORD": "fixture-password"})
+        balance = spectra.run("balance", "Custom DASH")
+        assert (balance["amount"], balance["smallestUnit"]) == ("0.00123456", "123456"), balance
+    print("A network with only a custom endpoint reads its balance from it")

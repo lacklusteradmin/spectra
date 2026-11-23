@@ -59,7 +59,7 @@ async fn the_shielded_account_is_the_one_the_standard_path_names() {
     assert!(shielded_account(&at_path(&testnet, "m/44'/133'/0'/0/0")).is_err());
 
     let mut custom = wallet.clone();
-    custom.derivation_overrides.hmac_key = Some("Spectra".into());
+    custom.derivation_flags.hmac_key = true;
     assert!(shielded_account(&custom).is_err());
     let bitcoin = imported(&service, Chain::Bitcoin, WalletSetupMethod::ImportPhrase).await;
     assert_eq!(

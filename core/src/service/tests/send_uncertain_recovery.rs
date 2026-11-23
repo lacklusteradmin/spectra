@@ -75,11 +75,9 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
             .await
             .unwrap();
         service
-            .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-                wallet: crate::store::state::WalletState::single_address(
-                    "w", "TON", chain, &sender, None, false,
-                ),
-            })
+            .upsert_wallet(crate::store::state::WalletState::single_address(
+                "w", "TON", chain, &sender, None, false,
+            ))
             .await
             .unwrap();
         crate::secrets::wallet::store_private_key(&*secrets, "w", &hex::encode([1; 32]), None)
@@ -238,11 +236,9 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             .await
             .unwrap();
         service
-            .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-                wallet: crate::store::state::WalletState::single_address(
-                    "w", "TON", chain, &sender, None, false,
-                ),
-            })
+            .upsert_wallet(crate::store::state::WalletState::single_address(
+                "w", "TON", chain, &sender, None, false,
+            ))
             .await
             .unwrap();
         service

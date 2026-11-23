@@ -455,3 +455,47 @@ async fn a_token_2022_fee_raised_after_review_refuses_signing() {
     *basis_points.lock().unwrap() = 50;
     assert_eq!(wallet.sign(&built).await.unwrap().stage, SendStage::Signed);
 }
+
+/// A TRC-20 amount is a 256-bit word on the wire, not one `u64`: 100 of a
+/// token at 18 places, 10^20 base units, builds with every unit in its
+/// transfer call.
+#[tokio::test]
+async fn a_trc20_amount_past_u64_builds_whole() {
+    let contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+    let server = node(|path, body| {
+        Some(match path {
+            "/wallet/getblockbynum" => {
+                json!({"blockID": Chain::Tron.tron_genesis_block_id().unwrap()})
+            }
+            "/wallet/getnowblock" => json!({
+                "blockID": format!("0000000000000007{}", "33".repeat(24)),
+                "block_header": {"raw_data": {"number": 7}}}),
+            "/wallet/getaccount" => {
+                json!({"address": body["address"], "balance": 10_000_000_000u64})
+            }
+            "/wallet/triggerconstantcontract" => {
+                let result = if body["function_selector"] == "decimals()" {
+                    format!("{:064x}", 18)
+                } else {
+                    format!("{:064x}{:064x}{:0<64}", 32, 4, hex::encode("TEST"))
+                };
+                json!({"result": {"result": true}, "constant_result": [result]})
+            }
+            _ => return None,
+        })
+    })
+    .await;
+    let wallet = Wallet::import(Chain::Tron, &server.uri(), Secret::Key(KEY)).await;
+    let amount = 10u128.pow(20);
+    assert!(amount > u128::from(u64::MAX));
+    let built = wallet
+        .build(wallet.token_request("THHsfg2eNiv6MSXC4y5d4t5wkvRVADRKiF", "100", contract, 18))
+        .await
+        .unwrap();
+    let call =
+        prepared(&built)["Tron"]["body"]["raw_data"]["contract"][0]["parameter"]["value"]["data"]
+            .as_str()
+            .unwrap()
+            .to_string();
+    assert!(call.ends_with(&format!("{amount:064x}")), "{call}");
+}

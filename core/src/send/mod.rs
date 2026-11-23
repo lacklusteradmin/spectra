@@ -379,52 +379,53 @@ mod tests {
         }
     }
 
-    /// Every EVM chain runs the EVM destination checks, and every one that is
-    /// not Ethereum flags an ENS name.
+    /// A destination's first letters say nothing about its network: an ENS
+    /// name beginning `a`, `d` or `t` and a Solana address beginning `T` raise
+    /// no warning of their shape, and every EVM chain but Ethereum flags the
+    /// ENS name.
     #[test]
-    fn every_evm_chain_runs_the_evm_destination_checks() {
+    fn destination_warnings_do_not_guess_a_network_from_letters() {
         use crate::registry::Chain;
         use crate::send::flow::{HighRiskSendRequest, evaluate_high_risk_send_reasons};
 
-        let request = |chain: Chain, destination: &str| HighRiskSendRequest {
-            chain_id: chain,
-            symbol: chain.coin_symbol().to_string(),
-            amount: "1".into(),
-            holding_amount: "100".into(),
-            destination_address: destination.to_string(),
-            destination_input: destination.to_string(),
-            used_ens_resolution: false,
-            wallet_chain_id: chain,
-            address_book_entries: Vec::new(),
-            tx_addresses: Vec::new(),
-        };
-        let codes = |w: Vec<crate::send::flow::HighRiskSendWarning>| -> Vec<String> {
-            w.into_iter().map(|w| w.code().to_string()).collect()
+        let raised = |chain: Chain, input: &str, address: &str| -> Vec<String> {
+            evaluate_high_risk_send_reasons(HighRiskSendRequest {
+                chain_id: chain,
+                symbol: chain.coin_symbol().to_string(),
+                amount: "1".into(),
+                holding_amount: "100".into(),
+                destination_address: address.to_string(),
+                destination_input: input.to_string(),
+                used_ens_resolution: false,
+                wallet_chain_id: chain,
+                address_book_entries: Vec::new(),
+                tx_addresses: Vec::new(),
+            })
+            .into_iter()
+            .map(|w| w.code().to_string())
+            // A destination never sent to is new on every chain.
+            .filter(|code| code != "new_address")
+            .collect()
         };
 
+        let resolved = format!("0x{}", "22".repeat(20));
         for chain in Chain::all().filter(|c| c.is_evm()) {
-            // A native SegWit address is not an EVM address on any chain.
-            let bitcoin_address = "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq";
-            assert!(
-                codes(evaluate_high_risk_send_reasons(request(
-                    chain,
-                    bitcoin_address
-                )))
-                .contains(&"non_evm_on_evm".to_string()),
-                "{} accepted a Bitcoin address with no warning",
-                chain.str_id()
-            );
-
-            let ens = "vitalik.eth";
-            let raised = codes(evaluate_high_risk_send_reasons(request(chain, ens)));
-            let expected = chain.mainnet_counterpart() != Chain::Ethereum;
-            assert_eq!(
-                raised.contains(&"ens_off_ethereum".to_string()),
-                expected,
-                "{} handled an ENS name wrongly",
-                chain.str_id()
-            );
+            for name in ["vitalik.eth", "alice.eth", "dave.eth", "tim.eth"] {
+                let expected: &[&str] = if chain.mainnet_counterpart() == Chain::Ethereum {
+                    &[]
+                } else {
+                    &["ens_off_ethereum"]
+                };
+                assert_eq!(
+                    raised(chain, name, &resolved),
+                    expected,
+                    "{} {name}",
+                    chain.str_id()
+                );
+            }
         }
+        let solana = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+        assert!(raised(Chain::Solana, solana, solana).is_empty());
     }
 
     fn asset(chain: Chain, symbol: &str, kind: SendAssetKind) -> SendAsset {

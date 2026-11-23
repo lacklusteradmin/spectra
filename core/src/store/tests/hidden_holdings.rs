@@ -43,10 +43,7 @@ async fn a_hidden_holding_counts_nowhere_but_stays_sendable() {
     let service = service(None).await;
     let mut wallet = WalletState::single_address("w", "W", Chain::Ethereum, "0xabc", None, false);
     wallet.holdings = vec![holding("ethereum:native", "1"), holding(&token, "10")];
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet })
-        .await
-        .unwrap();
+    service.upsert_wallet(wallet).await.unwrap();
     {
         let mut state = service.wallet_state.write().await;
         state.quotes.prices.insert("ethereum:native".into(), 3000.0);
@@ -97,10 +94,7 @@ async fn only_a_held_asset_can_be_hidden() {
     let service = service(None).await;
     let mut wallet = WalletState::single_address("w", "W", Chain::Ethereum, "0xabc", None, false);
     wallet.holdings = vec![holding("ethereum:native", "1")];
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet })
-        .await
-        .unwrap();
+    service.upsert_wallet(wallet).await.unwrap();
     service
         .apply_state_command(hide("solana:native", true))
         .await
@@ -122,10 +116,7 @@ async fn a_hidden_holding_stays_hidden_after_reopening() {
         let mut wallet =
             WalletState::single_address("w", "W", Chain::Ethereum, "0xabc", None, false);
         wallet.holdings = vec![holding("ethereum:native", "1")];
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
         service
             .apply_state_command(hide("ethereum:native", true))
             .await

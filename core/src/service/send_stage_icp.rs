@@ -1,6 +1,6 @@
 //! Internet Computer: building, revalidating, signing and expiring its staged
 //! transactions.
-use super::send_stage_protocols::StagedAmount;
+use super::send_stage_protocols::{StagedAmount, protocol_u64};
 use super::*;
 use crate::send::payload::SignedPayload;
 use crate::send::stages::*;
@@ -13,7 +13,8 @@ impl WalletService {
         sender: &str,
         staged: StagedAmount,
     ) -> Result<PreparedPayload, SpectraBridgeError> {
-        let StagedAmount { amount_u64, .. } = staged;
+        let StagedAmount { amount, .. } = staged;
+        let amount_u64 = protocol_u64(amount)?;
         let to = request.to_address.as_str();
         Ok(match chain.mainnet_counterpart() {
             Chain::Icp => PreparedPayload::Icp(

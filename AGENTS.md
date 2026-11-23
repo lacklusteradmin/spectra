@@ -1,6 +1,7 @@
 ## Git
 
-Do not git commit or push unless I said so.
+Do not git commit or push unless I said so. Before a commit, tidy the
+CHANGELOG as [CHANGELOG](#changelog) says.
 
 ## Rule 0
 
@@ -62,6 +63,7 @@ Read the one that covers what you are changing:
 | [CHAIN-SUPPORT.md](docs/CHAIN-SUPPORT.md) | What each network supports and refuses |
 | [FFI-BOUNDARY.md](docs/FFI-BOUNDARY.md) | What core exports to the apps, and how |
 | [OPEN-ITEMS.md](docs/OPEN-ITEMS.md) | Remaining work |
+| [CHANGELOG.md](docs/CHANGELOG.md) | What each commit changed, and why |
 | [tests/README.md](tests/README.md) | Where tests live, acceptance suites, SDK vector generators |
 | [scripts/README.md](scripts/README.md) | Source-scan, icon and data tools |
 
@@ -70,11 +72,61 @@ Keep them true:
 - A change that alters what a doc says updates that doc in the same change: a
   capability or refusal in `CHAIN-SUPPORT.md`, a suite in `tests/README.md`, a
   script in `scripts/README.md`.
-- A doc states what is true now. History belongs in git, and a file or symbol
-  is named only while it exists.
+- A doc states what is true now, and names a file or symbol only while it
+  exists. History belongs in `CHANGELOG.md` and git.
 - `OPEN-ITEMS.md` holds remaining work only. Delete an item when it is done.
 - `docs/audits/` is dated evidence. Add a new record rather than editing an old
   one.
+
+## CHANGELOG
+
+[CHANGELOG.md](docs/CHANGELOG.md) records what each commit changed and why,
+newest first. Record a change under `## Uncommitted` as it is made. A section
+written before the split covers only this repository's part of that commit;
+spectra-apple and spectra-android keep their own.
+
+**Tidy it before a commit.** When I am about to commit, or ask for the
+CHANGELOG to be tidied, check `## Uncommitted` against the actual change
+(`git diff`). Every sub-item matches one change in the diff: delete one that
+does not, which is usually an unchanged part, the whole picture after the
+change, or process. Add what the diff has and the entries lack. Numbers match
+the code, and no claim goes beyond what was done. Then rename the heading to
+the commit's title, such as `## Beta Commit 252`.
+
+How to write it:
+
+- **Voice.** An objective record. Do not address the reader, and write no
+  asides. A decision for me goes in the conversation or in `OPEN-ITEMS.md`.
+- **The result, not the process.** Write what the changed part is now, with
+  the before or the reason in one parenthesised sentence when it helps. No
+  process ("first … then", "found … so", "tried …", debugging), and no whole
+  picture after the change: the docs hold that, so point there in a few words.
+- **One sub-item per change.** Each change is a bullet whose bold headline
+  states the result, with where in parentheses (files, exports, commands).
+  Under it, one sub-item per change, in one or two sentences. A change is one
+  thing `git diff` shows: a behaviour, a number or default, an export or file
+  that moved, whether stored data still loads. A change with only one such
+  thing is the headline alone, with no sub-items.
+- **No padding.** Leave out unchanged parts, unless a reader would think they
+  changed; per-item visual or algorithm detail, which the docs and code
+  comments hold; lists of functions and call sites; mechanical edits such as
+  an added field or a rename; anything that repeats the headline. A refactor
+  that keeps behaviour is one line naming what moved where.
+- **Names as they were.** A section names files and symbols as they were at
+  that commit, even after they move or go.
+- **Measurements.** The record goes in `docs/audits/`; the CHANGELOG gives the
+  conclusion and links it.
+- **Each section ends with these, in order, when they apply:**
+  - `Measured:` one line per run: date, conditions, result, key numbers only,
+    before → after.
+  - `Tests: N new`: one line per area, "area N: what it guards against". Not
+    what each test checks. An existing test that was only updated is left out
+    unless what it guards changed.
+  - `Docs:` which doc, and which sections.
+  - `Total:` always, last: N .rs files changed (M new), +X −Y lines; data and
+    config files by name, or none; dependencies unchanged, or what was added
+    or removed; `cargo test` passing before → after. "No code changed" when
+    the change is docs alone.
 
 ## Architecture
 

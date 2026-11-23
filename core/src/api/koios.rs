@@ -137,16 +137,22 @@ fn cardano_history_from_transactions(
     address: &str,
     decimals: &std::collections::HashMap<CardanoAssetId, u8>,
 ) -> Result<Vec<CardanoHistoryEntry>, ApiError> {
-    let paid = |ios: &[KoiosTxIo]| -> i128 {
+    let paid = |ios: &[KoiosTxIo]| -> Result<i128, ApiError> {
         ios.iter()
             .filter(|io| io.payment_addr.bech32 == address)
-            .map(|io| io.value.parse::<i128>().unwrap_or(0))
+            .map(|io| {
+                io.value
+                    .parse::<i128>()
+                    .ok()
+                    .or_decode("Koios lovelace value")
+            })
             .sum()
     };
     // Koios lists only transactions already in a block.
     let mut entries = Vec::new();
     for tx in txs {
-        let net = paid(&tx.outputs) - paid(&tx.inputs);
+        let net = paid(&tx.outputs)? - paid(&tx.inputs)?;
+        let fee_lovelace: u64 = tx.fee.parse().ok().or_decode("Koios transaction fee")?;
         let mut assets: std::collections::BTreeMap<CardanoAssetId, i128> = Default::default();
         for (ios, sign) in [(&tx.outputs, 1i128), (&tx.inputs, -1)] {
             for io in ios.iter().filter(|io| io.payment_addr.bech32 == address) {
@@ -166,7 +172,7 @@ fn cardano_history_from_transactions(
             block: tx.block_height.to_string(),
             is_incoming,
             amount_lovelace,
-            fee_lovelace: tx.fee.parse().unwrap_or(0),
+            fee_lovelace,
             contract: None,
             amount_display: None,
         };
@@ -690,6 +696,27 @@ mod history_tests {
         assert_eq!(entries[1].txid, "receive");
         assert!(entries[1].is_incoming);
         assert_eq!(entries[1].amount_lovelace, 2_000_000);
+    }
+
+    /// A lovelace value or fee the provider sent malformed is refused, not
+    /// read as 0.
+    #[test]
+    fn a_malformed_value_or_fee_is_refused_rather_than_read_as_zero() {
+        for (value, fee) in [("1x", "170000"), ("2000000", "")] {
+            let txs: Vec<KoiosTxInfo> = serde_json::from_value(serde_json::json!([{
+                "tx_hash": "bad", "block_height": 1, "tx_timestamp": 100, "fee": fee,
+                "inputs": [{"payment_addr": {"bech32": THEM}, "value": "9000000"}],
+                "outputs": [{"payment_addr": {"bech32": ME}, "value": value}]
+            }]))
+            .unwrap();
+            assert!(
+                matches!(
+                    cardano_history_from_transactions(txs, ME, &Default::default()),
+                    Err(ApiError::Decode(_))
+                ),
+                "{value} {fee}"
+            );
+        }
     }
 
     /// Each native asset is its own row, net of what came back as change,

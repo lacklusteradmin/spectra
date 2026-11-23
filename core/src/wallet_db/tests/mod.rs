@@ -345,7 +345,7 @@ fn wallet(id: &str, chain: crate::registry::Chain) -> WalletState {
         include_in_portfolio_total: true,
         xpub: None,
         derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
-        derivation_overrides: Default::default(),
+        derivation_flags: Default::default(),
         holdings: Vec::new(),
         addresses: vec![WalletAddress {
             chain_id: chain,

@@ -303,17 +303,8 @@ pub fn warning_text(warning: &HighRiskSendWarning) -> String {
         W::NewAddress => "nothing has been sent to this address before".into(),
         W::EnsResolved { name, address } => format!("{name} resolved to {address}"),
         W::LargeSend { percent, symbol } => format!("{percent}% of the {symbol} held"),
-        W::NonEvmOnEvm { chain } => format!(
-            "shaped like another network's address, on {}",
-            chain.chain_display_name()
-        ),
         W::EnsOffEthereum { chain } => format!(
             "an ENS name, on {}, whose names ENS does not resolve",
-            chain.chain_display_name()
-        ),
-        W::EthOnUtxo { chain } => format!("an Ethereum address, on {}", chain.chain_display_name()),
-        W::ForeignAddressFormat { chain } => format!(
-            "an address format {} does not use",
             chain.chain_display_name()
         ),
         W::ChainMismatch => "the address belongs to another network".into(),

@@ -177,7 +177,7 @@ impl Account {
             .into_owned();
         service.open_state(database).await.unwrap();
         let secrets = Arc::new(InMemorySecretStore::new());
-        store_seed_phrase(&*secrets, "w", SEED, None).unwrap();
+        store_seed_phrase(&*secrets, "w", SEED, &Default::default(), None).unwrap();
         service.set_secret_store(secrets);
         let path = crate::derivation::path::default_path_from_catalog(chain).unwrap();
         let context = UtxoDerivation::new(chain, SEED, path.clone()).unwrap();
@@ -192,10 +192,7 @@ impl Account {
         );
         wallet.xpub =
             Some(UtxoDerivation::account_xpub(chain, SEED, &path, &Default::default()).unwrap());
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
         let receive = context.derive(7).unwrap();
         let change = context.derive_on_branch(1, 3).unwrap();
         for ((address, path), branch, index) in [(&receive, "external", 7), (&change, "change", 3)]

@@ -81,10 +81,7 @@ async fn wallets(endpoints: Vec<String>, elsewhere: &str) -> Arc<WalletService> 
             true,
         ),
     ] {
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
     }
     service
 }

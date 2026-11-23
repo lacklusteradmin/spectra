@@ -79,19 +79,8 @@ via_bridge!(
     spectra_core::send::error::SendError,
     spectra_core::wallet_db::error::DbError,
     spectra_core::registry::RegistryError,
+    spectra_core::secrets::wallet::WalletSecretError,
 );
-
-impl From<spectra_core::secrets::wallet::WalletSecretError> for CliError {
-    fn from(error: spectra_core::secrets::wallet::WalletSecretError) -> Self {
-        use spectra_core::secrets::wallet::WalletSecretError as Secret;
-        match error {
-            Secret::IncorrectPassword | Secret::NotSealed | Secret::EmptyPassword => {
-                Self::rejected(error.to_string())
-            }
-            other => Self::failure(other.to_string()),
-        }
-    }
-}
 
 impl From<String> for CliError {
     fn from(message: String) -> Self {

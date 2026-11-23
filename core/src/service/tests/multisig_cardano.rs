@@ -153,7 +153,7 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
             Some(path.clone()),
             false,
         ));
-        store_seed_phrase(&*secrets, id, phrase, None).unwrap();
+        store_seed_phrase(&*secrets, id, phrase, &Default::default(), None).unwrap();
     }
     let mut key_only = wallets[1].clone();
     key_only.id = "key-only".into();
@@ -169,10 +169,7 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
     .unwrap();
     wallets.push(key_only);
     for wallet in wallets {
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
     }
     service
 }

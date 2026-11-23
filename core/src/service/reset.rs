@@ -113,7 +113,7 @@ mod tests {
             chain_id: crate::registry::Chain::Ethereum,
             xpub: None,
             derivation_path: None,
-            derivation_overrides: Default::default(),
+            derivation_flags: Default::default(),
             holdings: vec![],
             addresses: vec![],
             restore_height: None,
@@ -123,12 +123,7 @@ mod tests {
             multisig_policy: None,
             balances_read_at: None,
         };
-        service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: wallet.clone(),
-            })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet.clone()).await.unwrap();
         use crate::store::state::ResetScope;
         assert!(
             service
@@ -144,10 +139,7 @@ mod tests {
         assert_eq!(service.app_state().await.wallets.len(), 1);
         let mut watch = wallet;
         watch.signing = crate::store::state::WalletSigning::WatchOnly;
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet: watch })
-            .await
-            .unwrap();
+        service.upsert_wallet(watch).await.unwrap();
         service
             .record_status_poll("orphan".into(), StatusPollOutcome::Failed)
             .await;

@@ -1,5 +1,5 @@
 use crate::registry::Chain;
-use crate::store::wallet_domain::{AssetHolding, WalletDerivationOverrides, WalletView};
+use crate::store::wallet_domain::{AssetHolding, WalletDerivationFlags, WalletView};
 use std::collections::HashMap;
 
 fn bitcoin_wallet() -> WalletView {
@@ -10,8 +10,8 @@ fn bitcoin_wallet() -> WalletView {
         addresses: HashMap::from([("bitcoin".to_string(), "bc1qexample".to_string())]),
         account_xpub: Some("zpub123".to_string()),
         derivation_path: Some("m/84'/0'/2'/0/0".to_string()),
-        derivation_overrides: WalletDerivationOverrides {
-            passphrase: Some("secret".to_string()),
+        derivation_flags: WalletDerivationFlags {
+            passphrase: true,
             ..Default::default()
         },
         holdings: vec![AssetHolding {
@@ -45,12 +45,9 @@ fn keeps_the_path_the_wallet_uses() {
 }
 
 #[test]
-fn carries_overrides_xpub_and_holdings() {
+fn carries_override_flags_xpub_and_holdings() {
     let summary = bitcoin_wallet().to_wallet_state().unwrap();
-    assert_eq!(
-        summary.derivation_overrides.passphrase.as_deref(),
-        Some("secret")
-    );
+    assert!(summary.derivation_flags.passphrase);
     assert_eq!(summary.xpub.as_deref(), Some("zpub123"));
     assert_eq!(summary.holdings.len(), 1);
     assert_eq!(summary.holdings[0].amount, "1.5");

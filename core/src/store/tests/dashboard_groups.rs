@@ -24,10 +24,7 @@ async fn service_with(
         wallet.holdings = holdings;
         // The holdings given are balances, read.
         wallet.balances_read_at = Some(1.0);
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .expect("upsert");
+        service.upsert_wallet(wallet).await.expect("upsert");
     }
     service
 }
@@ -287,10 +284,7 @@ async fn a_pinned_asset_held_nowhere_has_no_row() {
     );
     held.holdings = vec![holding("SOL", crate::registry::Chain::Solana, 2.0)];
     held.balances_read_at = Some(2.0);
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet: held })
-        .await
-        .expect("upsert");
+    service.upsert_wallet(held).await.expect("upsert");
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     let solana = groups.iter().find(|g| g.id == "solana").expect("a row");
     assert!(solana.is_pinned);

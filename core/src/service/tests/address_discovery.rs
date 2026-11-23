@@ -82,16 +82,14 @@ async fn known_utxo_addresses_deduplicate_witness_addresses_by_their_canonical_c
             .into_owned();
         service.open_state(database).await.unwrap();
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    "watch",
-                    "Watch",
-                    chain,
-                    root.to_ascii_uppercase(),
-                    None,
-                    true,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                "watch",
+                "Watch",
+                chain,
+                root.to_ascii_uppercase(),
+                None,
+                true,
+            ))
             .await
             .unwrap();
         service
@@ -122,7 +120,8 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
         .into_owned();
     service.open_state(dir.clone()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
-    crate::secrets::wallet::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
+    crate::secrets::wallet::store_seed_phrase(&*secrets, "scan", SEED, &Default::default(), None)
+        .unwrap();
     service.set_secret_store(secrets);
     let mut wallet = WalletState::single_address(
         "scan",
@@ -141,10 +140,7 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
         )
         .unwrap(),
     );
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet })
-        .await
-        .unwrap();
+    service.upsert_wallet(wallet).await.unwrap();
     (service, dir)
 }
 
@@ -375,7 +371,14 @@ async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
                 .into_owned();
             service.open_state(database.clone()).await.unwrap();
             let secrets = Arc::new(InMemorySecretStore::new());
-            crate::secrets::wallet::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
+            crate::secrets::wallet::store_seed_phrase(
+                &*secrets,
+                "scan",
+                SEED,
+                &Default::default(),
+                None,
+            )
+            .unwrap();
             service.set_secret_store(secrets);
             let mut wallet = WalletState::single_address(
                 "scan",
@@ -388,10 +391,7 @@ async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
             wallet.xpub = Some(
                 UtxoDerivation::account_xpub(chain, SEED, &base, &Default::default()).unwrap(),
             );
-            service
-                .apply_state_command(StateCommand::UpsertWallet { wallet })
-                .await
-                .unwrap();
+            service.upsert_wallet(wallet).await.unwrap();
 
             let reserved = service
                 .receive_address("scan".into(), chain, true)
@@ -530,16 +530,20 @@ async fn imported_litecoin_root_paths_raise_receive_and_change_floors() {
             .into_owned();
         service.open_state(database).await.unwrap();
         let secrets = Arc::new(InMemorySecretStore::new());
-        crate::secrets::wallet::store_seed_phrase(&*secrets, "scan", SEED, None).unwrap();
+        crate::secrets::wallet::store_seed_phrase(
+            &*secrets,
+            "scan",
+            SEED,
+            &Default::default(),
+            None,
+        )
+        .unwrap();
         service.set_secret_store(secrets);
         let mut wallet =
             WalletState::single_address("scan", "Scan", chain, &root, Some(base.clone()), false);
         wallet.xpub =
             Some(UtxoDerivation::account_xpub(chain, SEED, &base, &Default::default()).unwrap());
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
         let state = service.keypool_state("scan".into(), chain).await.unwrap();
         assert_eq!(
             state.next_external_index,
@@ -677,10 +681,7 @@ async fn protected_account_utxo_public_context_receives_after_restart_without_op
             .into_owned();
         let service = WalletService::new(Vec::new()).unwrap();
         service.open_state(database.clone()).await.unwrap();
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
         let receiver = service
             .receive_address("sealed".into(), chain, true)
             .await

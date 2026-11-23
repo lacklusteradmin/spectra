@@ -27,5 +27,4 @@ mod transaction_store;
 mod wallet_derived_state;
 mod wallet_import;
 mod wallet_model_conversion;
-mod wallet_update_if_present;
 mod wallet_view_model;

@@ -128,7 +128,7 @@ impl IcpClient {
             .pointer("/balances/0/value")
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
+            .or_decode("ICP balance")?;
         Ok(IcpBalance { e8s })
     }
 
@@ -241,7 +241,7 @@ fn icp_history_from_transactions(
         let block_index: u64 = item
             .pointer("/block_identifier/index")
             .and_then(Value::as_u64)
-            .unwrap_or(0);
+            .or_decode("ICP block index")?;
         let timestamp = item
             .pointer("/transaction/metadata/timestamp")
             .and_then(Value::as_u64);
@@ -258,15 +258,25 @@ fn icp_history_from_transactions(
                 .pointer("/account/address")
                 .and_then(Value::as_str)
                 .unwrap_or("");
+            // An approval moves nothing and states no amount; every
+            // operation this reads states one.
+            let kind = op.get("type").and_then(Value::as_str).unwrap_or("");
+            if !matches!(kind, "TRANSACTION" | "MINT" | "BURN" | "FEE") {
+                continue;
+            }
             let value: i128 = op
                 .pointer("/amount/value")
                 .and_then(Value::as_str)
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            match op.get("type").and_then(Value::as_str).unwrap_or("") {
+                .or_decode("ICP operation amount")?;
+            match kind {
                 "TRANSACTION" | "MINT" | "BURN" if addr == account_address => delta += value,
                 "TRANSACTION" => counterparty = addr.to_string(),
-                "FEE" => fee_e8s = u64::try_from(value.unsigned_abs()).unwrap_or(0),
+                "FEE" => {
+                    fee_e8s = u64::try_from(value.unsigned_abs())
+                        .ok()
+                        .or_decode("ICP fee")?
+                }
                 _ => {}
             }
         }
@@ -391,6 +401,24 @@ mod history_tests {
                 (2, true, 5, THEM),
                 (3, true, 700, "")
             ]
+        );
+    }
+
+    /// An amount the provider sent malformed is refused rather than read as
+    /// 0; an approval, which states none, still moves nothing.
+    #[test]
+    fn a_malformed_amount_is_refused_rather_than_read_as_zero() {
+        for bad in [op("TRANSACTION", ME, "lots"), op("FEE", ME, "")] {
+            assert!(matches!(
+                icp_history_from_transactions(&[tx(1, json!([bad]))], ME),
+                Err(ApiError::Decode(_))
+            ));
+        }
+        let approval = json!({"type": "APPROVE", "account": {"address": ME}});
+        assert!(
+            icp_history_from_transactions(&[tx(1, json!([approval]))], ME)
+                .unwrap()
+                .is_empty()
         );
     }
 }

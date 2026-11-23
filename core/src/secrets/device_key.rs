@@ -103,8 +103,17 @@ pub(super) fn open(
     let key = stored(store)?.ok_or_else(|| unavailable("none is stored for sealed material"))?;
     seed_envelope::decrypt(sealed.as_bytes(), &key)
         .map(Zeroizing::new)
-        .map_err(|e| WalletSecretError::Backend {
-            message: format!("signing material could not be opened: {e}"),
+        .map_err(|e| match e {
+            // What the store returned is not what was sealed under this
+            // device's key: changed, or never sealed here.
+            seed_envelope::EnvelopeError::Malformed(_) | seed_envelope::EnvelopeError::Decrypt => {
+                WalletSecretError::Corrupt {
+                    message: format!("sealed material could not be opened: {e}"),
+                }
+            }
+            _ => WalletSecretError::Backend {
+                message: format!("sealed material could not be opened: {e}"),
+            },
         })
 }
 

@@ -19,16 +19,14 @@ async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
     service.open_state(db.clone()).await.expect("open");
     // A fetched page is merged only for a wallet stored on its network.
     service
-        .apply_state_command(crate::store::state::StateCommand::UpsertWallet {
-            wallet: crate::store::state::WalletState::single_address(
-                "w1",
-                "W",
-                crate::registry::Chain::Bitcoin,
-                "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
-                None,
-                true,
-            ),
-        })
+        .upsert_wallet(crate::store::state::WalletState::single_address(
+            "w1",
+            "W",
+            crate::registry::Chain::Bitcoin,
+            "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+            None,
+            true,
+        ))
         .await
         .expect("wallet");
     (service, db)

@@ -73,7 +73,7 @@ mod send_chain_tests {
             chain_id: chain_id.unwrap_or(chain),
             xpub: None,
             derivation_path: None,
-            derivation_overrides: Default::default(),
+            derivation_flags: Default::default(),
             holdings: Vec::new(),
             addresses: Vec::new(),
             restore_height: None,

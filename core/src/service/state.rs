@@ -203,13 +203,6 @@ impl WalletService {
         let this = self.clone();
         crate::service::worker::run(async move {
             let this = &this;
-            let validate =
-                |wallet: &mut crate::store::state::WalletState| -> Result<(), SpectraBridgeError> {
-                    for holding in &mut wallet.holdings {
-                        holding.canonicalize()?;
-                    }
-                    Ok(())
-                };
             match &mut command {
                 StateCommand::SetPinnedDashboardAssets { token_ids } => {
                     let options = this.dashboard_pin_options().await?;
@@ -235,13 +228,6 @@ impl WalletService {
                         return Err(SpectraBridgeError::InvalidInput {
                             message: format!("unknown or unpinnable token ID: {id}").into(),
                         });
-                    }
-                }
-                StateCommand::UpsertWallet { wallet }
-                | StateCommand::UpdateWalletIfPresent { wallet } => validate(wallet)?,
-                StateCommand::ReplaceState { state } => {
-                    for wallet in &mut state.wallets {
-                        validate(wallet)?;
                     }
                 }
                 _ => {}
@@ -384,6 +370,30 @@ impl WalletService {
 }
 
 impl WalletService {
+    // Not in the exported block above: UniFFI exports every method there,
+    // whatever its visibility, and a front end must not write a whole wallet.
+    /// Store `wallet` whole, replacing the stored wallet with its id or adding
+    /// it: how a test puts a wallet in a given state. Core adds wallets by
+    /// import and changes them through its own operations; a front end
+    /// changes one through the intents of [`StateCommand`].
+    #[cfg(test)]
+    pub(crate) async fn upsert_wallet(
+        &self,
+        mut wallet: crate::store::state::WalletState,
+    ) -> Result<StateTransition, SpectraBridgeError> {
+        for holding in &mut wallet.holdings {
+            holding.canonicalize()?;
+        }
+        let this = self.clone();
+        crate::service::worker::run(async move {
+            this.mutate_persisted_state(move |state| {
+                crate::store::state::upsert_wallet_in_place(state, wallet)
+            })
+            .await
+        })
+        .await
+    }
+
     /// Store freshly fetched fiat cross-rates.
     ///
     /// Not a `StateCommand`: the rates are a fetch result, not an intent, so

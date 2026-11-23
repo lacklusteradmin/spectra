@@ -662,7 +662,7 @@ mod refresh_entry_tests {
             chain_id: chain,
             xpub: None,
             derivation_path: None,
-            derivation_overrides: Default::default(),
+            derivation_flags: Default::default(),
             holdings: Vec::new(),
             addresses: addresses
                 .iter()
@@ -769,7 +769,6 @@ mod refresh_entry_tests {
         use crate::service::WalletService;
         use crate::service::app_refresh::AppRefreshResult;
         use crate::service::refresh_policy::DeviceConditions;
-        use crate::store::state::StateCommand;
         use std::sync::Arc;
         use std::sync::atomic::{AtomicU32, Ordering};
         use std::time::Duration;
@@ -821,16 +820,14 @@ mod refresh_entry_tests {
         );
 
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    "w",
-                    "W",
-                    crate::registry::Chain::Ethereum,
-                    "0x1111111111111111111111111111111111111111",
-                    None,
-                    true,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                "w",
+                "W",
+                crate::registry::Chain::Ethereum,
+                "0x1111111111111111111111111111111111111111",
+                None,
+                true,
+            ))
             .await
             .unwrap();
         // Nobody tells the engine about the wallet: it follows core's state.
@@ -875,19 +872,19 @@ mod refresh_entry_tests {
             .await
             .unwrap();
         let engine = RefreshEngine::new(service.clone());
-        let upsert = |name: &str| StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(
+        let upsert = |name: &str| {
+            WalletState::single_address(
                 "w",
                 name,
                 crate::registry::Chain::Ethereum,
                 "0x1111111111111111111111111111111111111111",
                 None,
                 true,
-            ),
+            )
         };
 
         assert!(!engine.reconcile_wallets().await, "no wallets, no entries");
-        service.apply_state_command(upsert("W")).await.unwrap();
+        service.upsert_wallet(upsert("W")).await.unwrap();
         assert!(engine.reconcile_wallets().await, "a new wallet is a change");
         assert!(
             !engine.reconcile_wallets().await,
@@ -895,10 +892,7 @@ mod refresh_entry_tests {
         );
 
         // A rename reaches the list and not the fetch.
-        service
-            .apply_state_command(upsert("Renamed"))
-            .await
-            .unwrap();
+        service.upsert_wallet(upsert("Renamed")).await.unwrap();
         assert!(!engine.reconcile_wallets().await);
 
         service

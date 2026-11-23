@@ -161,8 +161,8 @@ def checks(run):
     run.section('an unreadable store')
     with tempfile.TemporaryDirectory() as copy:
         shutil.copytree(run.data, copy, dirs_exist_ok=True)
-        fresh = '"derivationOverrides":{"passphrase":null,"hmacKey":null}'
-        stale = '"derivationOverrides":{"passphrase":null,"mnemonicWordlist":null,"hmacKey":null}'
+        fresh = '"derivationFlags":{"passphrase":false,"hmacKey":false,"uniformExpansion":false}'
+        stale = '"derivationFlags":{"passphrase":false,"mnemonicWordlist":null,"hmacKey":false,"uniformExpansion":false}'
         with sqlite3.connect(pathlib.Path(copy) / 'spectra.sqlite') as store:
             store.execute('UPDATE wallets SET payload = REPLACE(payload, ?, ?)', (fresh, stale))
         run.check('an unreadable store names the way out', FAILED,
@@ -190,6 +190,9 @@ def checks(run):
     run.check('a whitespace-only password is refused', REJECTED,
               'wallet', 'import', '--chain', 'Solana', '--name', 'Blank SOL',
               SPECTRA_PASSWORD='   ', SPECTRA_SEED=LEGAL)
+    run.check('and so is one shorter than four characters', REJECTED,
+              'wallet', 'import', '--chain', 'Solana', '--name', 'Short SOL',
+              SPECTRA_PASSWORD='abc', SPECTRA_SEED=LEGAL)
     run.check('and so is an empty password file', REJECTED,
               'wallet', 'new', '--chain', 'Solana', '--name', 'Blank SOL', '--password-file', '/dev/null')
 

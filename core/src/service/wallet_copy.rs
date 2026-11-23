@@ -50,10 +50,7 @@ pub(crate) fn copy_targets(wallet: &WalletState) -> Vec<Chain> {
         .filter(|chain| match wallet.signing {
             WalletSigning::SeedPhrase { .. } => {
                 chain.created_phrase_format() == source.created_phrase_format()
-                    && wallet
-                        .derivation_overrides
-                        .validate_for_chain(*chain)
-                        .is_ok()
+                    && wallet.derivation_flags.validate_for_chain(*chain).is_ok()
             }
             WalletSigning::PrivateKey { .. } => {
                 source.key_scheme().is_some() && chain.key_scheme() == source.key_scheme()
@@ -183,7 +180,7 @@ impl WalletService {
                 import
             }
             WalletSigning::SeedPhrase { .. } => {
-                let phrase = crate::secrets::wallet::load_seed_phrase(
+                let mnemonic = crate::secrets::wallet::load_mnemonic(
                     &*self.secrets()?,
                     &source.id,
                     password.as_deref().map(String::as_str),
@@ -192,8 +189,8 @@ impl WalletService {
                     request(WalletImportKind::Phrase),
                     password.as_deref().cloned(),
                 );
-                import.seed_phrase = Some(phrase.to_string());
-                import.derivation_overrides = source.derivation_overrides.clone();
+                import.seed_phrase = Some(mnemonic.phrase.to_string());
+                import.derivation_overrides = mnemonic.overrides.0.clone();
                 import
             }
             WalletSigning::PrivateKey { .. } => {

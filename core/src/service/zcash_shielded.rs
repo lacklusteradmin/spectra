@@ -123,12 +123,7 @@ pub(super) fn shielded_account(wallet: &WalletState) -> Result<u32, SpectraBridg
             "Shielded funds need a Zcash wallet restored from its seed phrase.",
         ));
     }
-    if wallet
-        .derivation_overrides
-        .hmac_key
-        .as_deref()
-        .is_some_and(|key| !key.is_empty())
-    {
+    if wallet.derivation_flags.hmac_key {
         return Err(SpectraBridgeError::invalid(
             "Shielded funds use the standard key derivation; this wallet's custom HMAC key has none.",
         ));

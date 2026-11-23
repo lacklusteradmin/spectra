@@ -398,14 +398,13 @@ impl WalletService {
         if !chain.uses_account_utxo() {
             return Ok(None);
         }
-        let mut wallet = {
+        let wallet = {
             let state = self.wallet_state.read().await;
             let Some(wallet) = state.wallets.iter().find(|w| w.id == wallet_id).cloned() else {
                 return Ok(None);
             };
             wallet
         };
-        let _overrides = crate::store::wallet_domain::SensitiveOverrides::take_from(&mut wallet);
         // A multisig account is its policy, whoever signs it.
         if let Some(descriptor) = wallet.multisig_policy.as_deref() {
             return UtxoDerivation::from_multisig(chain, descriptor).map(Some);

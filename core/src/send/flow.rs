@@ -208,14 +208,8 @@ pub enum HighRiskSendWarning {
     EnsResolved { name: String, address: String },
     /// The send is `percent` of the `symbol` holding, at 25% or more.
     LargeSend { percent: u64, symbol: String },
-    /// An EVM `chain`, and a destination shaped like another family's address.
-    NonEvmOnEvm { chain: Chain },
     /// An ENS name on an EVM `chain` whose names do not resolve through ENS.
     EnsOffEthereum { chain: Chain },
-    /// A chain that is not EVM, and a destination shaped like an EVM address.
-    EthOnUtxo { chain: Chain },
-    /// A destination shaped like another chain's address on `chain`.
-    ForeignAddressFormat { chain: Chain },
     /// The holding's chain is not the wallet's.
     ChainMismatch,
 }
@@ -229,10 +223,7 @@ impl HighRiskSendWarning {
             Self::NewAddress => "new_address",
             Self::EnsResolved { .. } => "ens_resolved",
             Self::LargeSend { .. } => "large_send",
-            Self::NonEvmOnEvm { .. } => "non_evm_on_evm",
             Self::EnsOffEthereum { .. } => "ens_off_ethereum",
-            Self::EthOnUtxo { .. } => "eth_on_utxo",
-            Self::ForeignAddressFormat { .. } => "foreign_address_format",
             Self::ChainMismatch => "chain_mismatch",
         }
     }
@@ -306,61 +297,19 @@ pub fn evaluate_high_risk_send_reasons(request: HighRiskSendRequest) -> Vec<High
         }
     }
 
-    // 5-10. Cross-chain prefix mismatch checks.
-    let lowered = request.destination_input.to_lowercase();
-    // Membership is the registry's. Seven of the twenty-three EVM mainnets were
-    // named here, and this gate decides whether the EVM destination checks run
-    // at all — a name list here silently means "no warning" for whichever
-    // chains it forgets.
-    let is_evm = chain.is_evm();
-    // ENS resolves on Ethereum; anywhere else the resolved address is worth a
-    // second look.
-    let is_ens_foreign_chain = is_evm && chain.mainnet_counterpart() != Chain::Ethereum;
-    let is_ens_candidate = is_ens_name_candidate(&lowered);
-
-    if is_evm {
-        let looks_non_evm = lowered.starts_with("bc1")
-            || lowered.starts_with("tb1")
-            || lowered.starts_with("ltc1")
-            || lowered.starts_with("bnb1")
-            || lowered.starts_with('t')
-            || lowered.starts_with('d')
-            || lowered.starts_with('a');
-        if looks_non_evm {
-            warnings.push(HighRiskSendWarning::NonEvmOnEvm { chain });
-        }
-        if is_ens_foreign_chain && is_ens_candidate {
-            warnings.push(HighRiskSendWarning::EnsOffEthereum { chain });
-        }
-    } else if chain.flags_evm_address_as_wrong_chain() {
-        if lowered.starts_with("0x") || is_ens_candidate {
-            warnings.push(HighRiskSendWarning::EthOnUtxo { chain });
-        }
-    } else {
-        // Each family's testnets too: a Tron Nile destination shaped like a
-        // Bitcoin address is as wrong as a mainnet one.
-        let foreign = match chain.mainnet_counterpart() {
-            Chain::Tron => lowered.starts_with("0x") || lowered.starts_with("bc1"),
-            Chain::Solana => {
-                lowered.starts_with("0x")
-                    || lowered.starts_with("bc1")
-                    || lowered.starts_with("ltc1")
-                    || lowered.starts_with('t')
-            }
-            Chain::Xrp => {
-                lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('t')
-            }
-            Chain::Monero => {
-                lowered.starts_with("0x") || lowered.starts_with("bc1") || lowered.starts_with('r')
-            }
-            _ => false,
-        };
-        if foreign {
-            warnings.push(HighRiskSendWarning::ForeignAddressFormat { chain });
-        }
+    // 5. ENS resolves on Ethereum; on another EVM chain the address a name
+    // resolved to is worth a second look. No check guesses a family from a
+    // destination's first letters: every caller has had the destination
+    // accepted by the chain's own address rule first, so such a guess could
+    // only flag valid input — an ENS name, or a Solana address beginning `T`.
+    if chain.is_evm()
+        && chain.mainnet_counterpart() != Chain::Ethereum
+        && is_ens_name_candidate(&request.destination_input.to_lowercase())
+    {
+        warnings.push(HighRiskSendWarning::EnsOffEthereum { chain });
     }
 
-    // 11. Wallet-chain context mismatch.
+    // 6. Wallet-chain context mismatch.
     if request.wallet_chain_id != chain {
         warnings.push(HighRiskSendWarning::ChainMismatch);
     }
@@ -670,14 +619,15 @@ mod high_risk_warning_shape {
         })
     }
 
-    /// A foreign address is one reason, and the chain it was raised on travels
-    /// with it rather than being in its name.
+    /// Another network's address fails the chain's own address rule, and the
+    /// chain it was raised on travels with the reason rather than being in
+    /// its name.
     #[test]
-    fn a_foreign_address_is_one_reason_that_names_its_chain() {
+    fn another_networks_address_is_an_invalid_format_that_names_its_chain() {
         for chain in [Chain::Tron, Chain::Solana, Chain::Xrp, Chain::Monero] {
             assert!(
                 warnings(chain, "0x1111111111111111111111111111111111111111")
-                    .contains(&HighRiskSendWarning::ForeignAddressFormat { chain }),
+                    .contains(&HighRiskSendWarning::InvalidFormat { chain }),
                 "{chain} did not flag an EVM-shaped destination"
             );
         }

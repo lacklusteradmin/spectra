@@ -148,10 +148,7 @@ async fn field_intents_do_not_overwrite_each_other_or_resurrect_wallets() {
         None,
         true,
     );
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet })
-        .await
-        .unwrap();
+    service.upsert_wallet(wallet).await.unwrap();
     let (rename, inclusion) = tokio::join!(
         service.apply_state_command(StateCommand::RenameWallet {
             wallet_id: "intent".into(),

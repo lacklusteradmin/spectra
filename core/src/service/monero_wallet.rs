@@ -1,6 +1,5 @@
 //! Core-owned local Monero sync cache and send preparation.
 use super::*;
-use crate::secrets::store::SecretClass;
 use crate::send::monero_local::{self, LocalWallet, PreparedMoneroTransaction};
 use ::monero_wallet::address::MoneroAddress;
 use sha2::{Digest, Sha256};
@@ -120,10 +119,10 @@ impl WalletService {
                 let keys = monero_local::ScanKeys::signing(chain, &signer.private_key_hex)?;
                 // A wallet copied from another network's phrase first meets
                 // its view key here.
-                this.secrets()?.save_secret(
-                    SecretClass::Generic,
-                    format!("{wallet_id}.scan-key"),
-                    hex::encode(*keys.view.view),
+                crate::secrets::wallet::store_scan_key(
+                    &*this.secrets()?,
+                    &wallet_id,
+                    &hex::encode(*keys.view.view),
                 )?;
                 keys
             } else {
@@ -194,13 +193,9 @@ impl WalletService {
         chain: Chain,
         address: &str,
     ) -> Result<Option<crate::derivation::monero::ViewKeys>, SpectraBridgeError> {
-        let view = match self
-            .secrets()?
-            .load_secret(SecretClass::Generic, format!("{wallet_id}.scan-key"))
-        {
-            Ok(view) => Zeroizing::new(view),
-            Err(crate::secrets::store::SecretStoreError::NotFound) => return Ok(None),
-            Err(error) => return Err(error.into()),
+        let Some(view) = crate::secrets::wallet::load_scan_key(&*self.secrets()?, wallet_id)?
+        else {
+            return Ok(None);
         };
         Ok(Some(crate::derivation::monero::view_keys(
             chain, address, &view,
@@ -329,10 +324,8 @@ impl WalletService {
         &self,
         wallet_id: &str,
     ) -> Result<(u64, LocalWallet, Zeroizing<Vec<u8>>), SpectraBridgeError> {
-        let view = Zeroizing::new(
-            self.secrets()?
-                .load_secret(SecretClass::Generic, format!("{wallet_id}.scan-key"))?,
-        );
+        let view = crate::secrets::wallet::load_scan_key(&*self.secrets()?, wallet_id)?
+            .ok_or_else(|| SpectraBridgeError::failure("This Monero wallet has no view key"))?;
         let view = Zeroizing::new(hex::decode(view.as_str())?);
         if view.len() != 32 {
             return Err(SpectraBridgeError::failure("Invalid Monero local view key"));

@@ -45,7 +45,7 @@ zeroize = { version = "1", features = ["alloc", "derive"] }
 uniffi = { version = "0.31.2", features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }
 ciborium = "0.2"
-serde_json = { version = "1", features = ["float_roundtrip"] }
+serde_json = { version = "1", features = ["float_roundtrip", "raw_value"] }
 thiserror = "2"
 hex = { version = "0.4", features = ["serde"] }
 base64 = "0.22"

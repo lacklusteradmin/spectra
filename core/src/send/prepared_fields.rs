@@ -2,8 +2,8 @@
 //! name, with its exact value. The details panel lists these instead of the
 //! JSON they come from, which led with the payload enum's variant tag.
 
-use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
-use serde_json::Value;
+use serde::de::{Deserialize, Deserializer, MapAccess, Visitor};
+use serde_json::value::RawValue;
 
 /// One field of a prepared transaction.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -21,7 +21,9 @@ pub struct PreparedField {
 /// prepared. Details that are not JSON come back as one unnamed field.
 #[uniffi::export]
 pub fn prepared_fields(prepared_details: String) -> Vec<PreparedField> {
-    let Ok(mut node) = serde_json::from_str::<Node>(&prepared_details) else {
+    let Ok(mut node) =
+        serde_json::from_str::<&RawValue>(&prepared_details).and_then(Node::from_raw)
+    else {
         return vec![PreparedField {
             name: String::new(),
             value: prepared_details,
@@ -40,59 +42,70 @@ pub fn prepared_fields(prepared_details: String) -> Vec<PreparedField> {
     fields
 }
 
-/// JSON as it was written. `serde_json::Value` sorts a record's keys; the
-/// rows keep the order the transaction was prepared in.
+/// JSON as it was written: a record's keys in the order the transaction was
+/// prepared in, and each number as its text. `serde_json::Value` sorts the
+/// keys, and reads an integer past `u64` — a NEAR amount in yoctoNEAR, a wei
+/// value — as a float.
 enum Node {
     Map(Vec<(String, Node)>),
     List(Vec<Node>),
-    Leaf(Value),
+    Leaf(Leaf),
 }
 
-impl<'de> Deserialize<'de> for Node {
+enum Leaf {
+    /// The number exactly as written.
+    Number(String),
+    Text(String),
+    Bool(bool),
+    Null,
+}
+
+impl Node {
+    fn from_raw(raw: &RawValue) -> Result<Self, serde_json::Error> {
+        let text = raw.get().trim();
+        Ok(match text.as_bytes().first() {
+            Some(b'{') => Node::Map(
+                serde_json::from_str::<Entries>(text)?
+                    .0
+                    .into_iter()
+                    .map(|(key, value)| Ok((key, Node::from_raw(value)?)))
+                    .collect::<Result<_, serde_json::Error>>()?,
+            ),
+            Some(b'[') => Node::List(
+                serde_json::from_str::<Vec<&RawValue>>(text)?
+                    .into_iter()
+                    .map(Node::from_raw)
+                    .collect::<Result<_, _>>()?,
+            ),
+            Some(b'"') => Node::Leaf(Leaf::Text(serde_json::from_str(text)?)),
+            Some(b't' | b'f') => Node::Leaf(Leaf::Bool(serde_json::from_str(text)?)),
+            Some(b'n') => Node::Leaf(Leaf::Null),
+            // The whole document parsed as JSON, so the rest is a number.
+            _ => Node::Leaf(Leaf::Number(text.to_string())),
+        })
+    }
+}
+
+/// A record's entries in the order they were written, each value unread.
+struct Entries<'a>(Vec<(String, &'a RawValue)>);
+
+impl<'de: 'a, 'a> Deserialize<'de> for Entries<'a> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        deserializer.deserialize_any(NodeVisitor)
-    }
-}
-
-struct NodeVisitor;
-
-impl<'de> Visitor<'de> for NodeVisitor {
-    type Value = Node;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("JSON")
-    }
-    fn visit_bool<E>(self, value: bool) -> Result<Node, E> {
-        Ok(Node::Leaf(Value::from(value)))
-    }
-    fn visit_i64<E>(self, value: i64) -> Result<Node, E> {
-        Ok(Node::Leaf(Value::from(value)))
-    }
-    fn visit_u64<E>(self, value: u64) -> Result<Node, E> {
-        Ok(Node::Leaf(Value::from(value)))
-    }
-    fn visit_f64<E>(self, value: f64) -> Result<Node, E> {
-        Ok(Node::Leaf(Value::from(value)))
-    }
-    fn visit_str<E>(self, value: &str) -> Result<Node, E> {
-        Ok(Node::Leaf(Value::from(value)))
-    }
-    fn visit_unit<E>(self) -> Result<Node, E> {
-        Ok(Node::Leaf(Value::Null))
-    }
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Node, A::Error> {
-        let mut items = Vec::new();
-        while let Some(item) = seq.next_element()? {
-            items.push(item);
+        struct EntriesVisitor;
+        impl<'de> Visitor<'de> for EntriesVisitor {
+            type Value = Entries<'de>;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a JSON record")
+            }
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Entries<'de>, A::Error> {
+                let mut entries = Vec::new();
+                while let Some(entry) = map.next_entry()? {
+                    entries.push(entry);
+                }
+                Ok(Entries(entries))
+            }
         }
-        Ok(Node::List(items))
-    }
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Node, A::Error> {
-        let mut entries = Vec::new();
-        while let Some(entry) = map.next_entry()? {
-            entries.push(entry);
-        }
-        Ok(Node::Map(entries))
+        deserializer.deserialize_map(EntriesVisitor)
     }
 }
 
@@ -121,9 +134,9 @@ fn flatten(node: Node, path: String, fields: &mut Vec<PreparedField>) {
                 }
             }
         },
-        Node::Leaf(value) => fields.push(PreparedField {
+        Node::Leaf(leaf) => fields.push(PreparedField {
             name: path,
-            value: leaf_text(&value),
+            value: leaf_text(leaf),
         }),
         // An empty list or record: nothing prepared.
         Node::Map(_) | Node::List(_) => fields.push(PreparedField {
@@ -139,19 +152,19 @@ fn as_bytes(items: &[Node]) -> Option<Vec<u8>> {
     items
         .iter()
         .map(|item| match item {
-            Node::Leaf(value) => value.as_u64().and_then(|n| u8::try_from(n).ok()),
+            Node::Leaf(Leaf::Number(text)) => text.parse::<u8>().ok(),
             _ => None,
         })
         .collect()
 }
 
-fn leaf_text(value: &Value) -> String {
-    match value {
-        Value::String(text) if !text.is_empty() => text.clone(),
-        Value::Number(number) => number.to_string(),
-        Value::Bool(flag) => flag.to_string(),
+fn leaf_text(leaf: Leaf) -> String {
+    match leaf {
+        Leaf::Text(text) if !text.is_empty() => text,
+        Leaf::Number(text) => text,
+        Leaf::Bool(flag) => flag.to_string(),
         // Null or an empty string: nothing prepared.
-        _ => "—".to_string(),
+        Leaf::Text(_) | Leaf::Null => "—".to_string(),
     }
 }
 
@@ -218,6 +231,24 @@ mod tests {
         assert_eq!(
             prepared_fields("Nonce: 7".into()),
             vec![field("", "Nonce: 7")]
+        );
+    }
+
+    /// An integer past `u64` reads as written, not as a float: 1 NEAR is
+    /// 10^24 yoctoNEAR, and a wei value can be as wide.
+    #[test]
+    fn integers_past_u64_read_exactly() {
+        let near = 10u128.pow(24);
+        let wei = u128::MAX;
+        let details =
+            format!(r#"{{"Near": {{"amount": {near}, "fee": 1.5}}, "value_wei": {wei}}}"#);
+        assert_eq!(
+            prepared_fields(details),
+            vec![
+                field("Near.amount", "1000000000000000000000000"),
+                field("Near.fee", "1.5"),
+                field("value_wei", &wei.to_string()),
+            ]
         );
     }
 }

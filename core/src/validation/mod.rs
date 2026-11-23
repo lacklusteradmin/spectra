@@ -453,6 +453,13 @@ pub enum WalletPasswordRejection {
 /// The fewest characters a wallet password may have.
 pub const MIN_WALLET_PASSWORD_CHARS: u32 = 4;
 
+/// Whether `password` is shorter than a wallet password may be. Surrounding
+/// whitespace does not count. Sealing applies the same rule, so no front end's
+/// form is the only thing standing between a wallet and a one-letter password.
+pub fn wallet_password_is_too_short(password: &str) -> bool {
+    password.trim().chars().count() < MIN_WALLET_PASSWORD_CHARS as usize
+}
+
 #[uniffi::export]
 pub fn validate_wallet_password(
     password: String,
@@ -461,14 +468,12 @@ pub fn validate_wallet_password(
     if password.is_empty() && confirmation.is_empty() {
         return None;
     }
-    let p = password.trim();
-    let c = confirmation.trim();
-    if p.chars().count() < MIN_WALLET_PASSWORD_CHARS as usize {
+    if wallet_password_is_too_short(&password) {
         return Some(WalletPasswordRejection::TooShort {
             min_chars: MIN_WALLET_PASSWORD_CHARS,
         });
     }
-    if p != c {
+    if password.trim() != confirmation.trim() {
         return Some(WalletPasswordRejection::ConfirmationMismatch);
     }
     None

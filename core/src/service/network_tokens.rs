@@ -145,12 +145,19 @@ impl WalletService {
                     .fetch_all_spl_balances(address)
                     .await?
                     .into_iter()
-                    .map(|b| crate::api::HeldToken {
-                        contract: b.mint,
-                        balance_raw: b.balance_raw.parse().unwrap_or(0),
-                        decimals: Some(b.decimals),
+                    .map(|b| {
+                        use crate::api::error::OrDecode;
+                        Ok(crate::api::HeldToken {
+                            balance_raw: b
+                                .balance_raw
+                                .parse()
+                                .ok()
+                                .or_decode("Solana token balance")?,
+                            contract: b.mint,
+                            decimals: Some(b.decimals),
+                        })
                     })
-                    .collect()
+                    .collect::<Result<_, crate::api::error::ApiError>>()?
             }
             Chain::Sui | Chain::SuiTestnet => {
                 let endpoints = self.endpoints_for(chain, &discovery).await;

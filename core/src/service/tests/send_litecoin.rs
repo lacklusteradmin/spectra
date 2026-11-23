@@ -56,7 +56,7 @@ async fn service(
         .into_owned();
     service.open_state(db.clone()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
-    store_seed_phrase(&*secrets, "w", SEED, password).unwrap();
+    store_seed_phrase(&*secrets, "w", SEED, &Default::default(), password).unwrap();
     service.set_secret_store(secrets.clone());
     let mut wallet = WalletState::single_address(
         "w",
@@ -78,10 +78,7 @@ async fn service(
         )
         .unwrap(),
     );
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet })
-        .await
-        .unwrap();
+    service.upsert_wallet(wallet).await.unwrap();
     (service, db, secrets)
 }
 
@@ -353,10 +350,7 @@ async fn litecoin_private_key_wallet_uses_its_actual_network_and_needs_no_path()
         state.signing = WalletSigning::PrivateKey {
             password_protected: false,
         };
-        wallet
-            .apply_state_command(StateCommand::UpsertWallet { wallet: state })
-            .await
-            .unwrap();
+        wallet.upsert_wallet(state).await.unwrap();
         assert_eq!(
             wallet
                 .send_identity_address("w".into(), chain, None)
@@ -615,10 +609,7 @@ async fn an_owned_litecoin_build_pays_the_fee_its_preview_quoted() {
         let mut coin = chain.native_holding_template();
         coin.amount = "0.003".into();
         state.holdings.push(coin);
-        wallet
-            .apply_state_command(StateCommand::UpsertWallet { wallet: state })
-            .await
-            .unwrap();
+        wallet.upsert_wallet(state).await.unwrap();
         let input = crate::service::send_review::SendReviewInput {
             wallet_id: "w".into(),
             holding_key: "litecoin:native".into(),

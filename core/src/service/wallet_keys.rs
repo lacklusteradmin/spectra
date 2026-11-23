@@ -71,7 +71,7 @@ pub(crate) fn exportable_keys(wallet: &WalletState) -> Vec<WalletKeyKind> {
                     && (!chain.derives_along_junctions()
                         || crate::derivation::substrate_path::derives_importable_seed(
                             wallet.derivation_path.as_deref().unwrap_or_default(),
-                            wallet.derivation_overrides.hmac_key.as_deref() == Some("uniform"),
+                            wallet.derivation_flags.uniform_expansion,
                         )),
                 WalletKeyKind::PrivateKey,
             ),
@@ -143,9 +143,9 @@ impl WalletService {
                 export_private_key(chain, &key)?
             }
             (WalletSigning::SeedPhrase { .. }, kind) => {
-                let phrase =
-                    crate::secrets::wallet::load_seed_phrase(&*store()?, &wallet.id, password)?;
-                let overrides = &wallet.derivation_overrides;
+                let crate::secrets::wallet::Mnemonic { phrase, overrides } =
+                    crate::secrets::wallet::load_mnemonic(&*store()?, &wallet.id, password)?;
+                let overrides = &overrides.0;
                 match kind {
                     WalletKeyKind::MoneroSpendKey | WalletKeyKind::MoneroViewKey => {
                         let (_, _, keys) = crate::derivation::monero::derive_from_seed_phrase(

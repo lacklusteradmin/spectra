@@ -155,19 +155,24 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             ),
         };
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    "w",
-                    "Test",
-                    chain,
-                    address,
-                    Some(path.into()),
-                    false,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                "w",
+                "Test",
+                chain,
+                address,
+                Some(path.into()),
+                false,
+            ))
             .await
             .unwrap();
-        store_seed_phrase(&*secrets, "w", fixture["mnemonic"].as_str().unwrap(), None).unwrap();
+        store_seed_phrase(
+            &*secrets,
+            "w",
+            fixture["mnemonic"].as_str().unwrap(),
+            &Default::default(),
+            None,
+        )
+        .unwrap();
         let destination = match chain {
             Chain::Solana => bs58::encode([0x22; 32]).into_string(),
             Chain::Tron => fixture["tron"]["to"].as_str().unwrap().into(),
@@ -347,11 +352,15 @@ async fn aptos_build_and_sign_bind_the_reviewed_total_gas_budget() {
         let mut holding = chain.native_holding_template();
         holding.amount = "1".into();
         wallet.holdings = vec![holding];
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
-        store_seed_phrase(&*secrets, "w", fixture["mnemonic"].as_str().unwrap(), None).unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
+        store_seed_phrase(
+            &*secrets,
+            "w",
+            fixture["mnemonic"].as_str().unwrap(),
+            &Default::default(),
+            None,
+        )
+        .unwrap();
         let quote = service
             .quote_owned_send(
                 "w".into(),
@@ -432,19 +441,17 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(
-                "w",
-                "W",
-                crate::registry::Chain::Ethereum,
-                "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
-                Some("m/44'/60'/0'/0/0".into()),
-                false,
-            ),
-        })
+        .upsert_wallet(WalletState::single_address(
+            "w",
+            "W",
+            crate::registry::Chain::Ethereum,
+            "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
+            Some("m/44'/60'/0'/0/0".into()),
+            false,
+        ))
         .await
         .unwrap();
-    store_seed_phrase(&*secrets, "w", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", None).unwrap();
+    store_seed_phrase(&*secrets, "w", "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", &Default::default(), None).unwrap();
     let lose_response = Arc::new(AtomicBool::new(true));
     let fault = lose_response.clone();
     let database = db.clone();
@@ -689,22 +696,21 @@ mod signed_world_chain_fee_budget {
         let secrets = Arc::new(InMemorySecretStore::new());
         service.set_secret_store(secrets.clone());
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    "w",
-                    "World Chain",
-                    chain,
-                    "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
-                    Some("m/44'/60'/0'/0/0".into()),
-                    false,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                "w",
+                "World Chain",
+                chain,
+                "0x9858EfFD232B4033E47d90003D41EC34EcaEda94",
+                Some("m/44'/60'/0'/0/0".into()),
+                false,
+            ))
             .await
             .unwrap();
         store_seed_phrase(
             &*secrets,
             "w",
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            &Default::default(),
             None,
         )
         .unwrap();
@@ -852,13 +858,11 @@ mod owned_world_chain_nonce_rollover {
             amount: "1".into(),
         });
         let holding_key = wallet.holdings[0].deployment_id();
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
         store_seed_phrase(
             &*secrets, "w",
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            &Default::default(),
             None,
         ).unwrap();
         let destination = format!("0x{}", "22".repeat(20));

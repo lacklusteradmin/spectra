@@ -1,6 +1,6 @@
 //! TON: building, revalidating, signing and expiring its staged
 //! transactions.
-use super::send_stage_protocols::StagedAmount;
+use super::send_stage_protocols::{StagedAmount, protocol_u64};
 use super::*;
 use crate::send::payload::SignedPayload;
 use crate::send::stages::*;
@@ -87,12 +87,7 @@ impl WalletService {
         sender: &str,
         staged: StagedAmount,
     ) -> Result<PreparedPayload, SpectraBridgeError> {
-        let StagedAmount {
-            eps,
-            amount,
-            amount_u64,
-            ..
-        } = staged;
+        let StagedAmount { eps, amount, .. } = staged;
         Ok(match chain.mainnet_counterpart() {
             Chain::Ton => {
                 if amount >= 1u128 << 120 {
@@ -114,7 +109,10 @@ impl WalletService {
                 } else {
                     None
                 };
-                let value = jetton.as_ref().map_or(amount_u64, |j| j.attached_nanotons);
+                let value = match &jetton {
+                    Some(jetton) => jetton.attached_nanotons,
+                    None => protocol_u64(amount)?,
+                };
                 let network_fee = chain
                     .static_fee_units()
                     .ok_or_else(|| SpectraBridgeError::failure("TON fee unavailable"))?;

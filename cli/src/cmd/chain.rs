@@ -2,9 +2,9 @@
 //! and donation addresses, and a wallet's balance and history read from its
 //! network.
 //!
-//! Endpoint selection is core's — `endpoints::records_for_chain` picks
-//! them from the catalog by API and capability. The CLI names the capabilities
-//! it is about to use and nothing else.
+//! Endpoint selection is core's: a command asks the service, and core picks
+//! the network's endpoints, built-in and custom, for each read. Where it has
+//! none, core says so.
 
 use std::sync::Arc;
 
@@ -68,26 +68,6 @@ pub struct HistoryArgs {
     /// Override the selected network's history endpoint (also useful for local fixtures).
     #[arg(long)]
     endpoint: Option<String>,
-}
-
-/// A service bound to one chain's endpoints for the capabilities a command needs.
-pub fn service_for_chain(
-    ctx: &Ctx,
-    chain: Chain,
-    any_of: &[EndpointCapability],
-) -> CliResult<Arc<WalletService>> {
-    let service = ctx.service()?;
-    let records = spectra_core::catalog::endpoints::records_for_chain(chain, any_of);
-    if !records
-        .iter()
-        .any(|row| chain.endpoint_apis().contains(&row.api))
-    {
-        return Err(CliError::failure(format!(
-            "no compatible endpoints registered for {}",
-            chain.chain_display_name()
-        )));
-    }
-    Ok(service)
 }
 
 // ─── chains ─────────────────────────────────────────────────────────────────
@@ -733,7 +713,7 @@ impl Report for BalanceReport {
 pub fn balance(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
     let chain = wallet.chain_id;
-    let service = service_for_chain(ctx, chain, &[EndpointCapability::Balance])?;
+    let service = ctx.service()?;
 
     let summary = if chain.uses_account_utxo() {
         let updated = ctx
@@ -902,11 +882,7 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
     let service = if let Some(endpoint) = &args.endpoint {
         ctx.service_with_endpoints(network, vec![endpoint.clone()])?
     } else {
-        service_for_chain(
-            ctx,
-            network,
-            &[EndpointCapability::History, EndpointCapability::Balance],
-        )?
+        ctx.service()?
     };
     if args.save {
         return save_history(

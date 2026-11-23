@@ -287,10 +287,7 @@ mod tests {
             .open_state(db.to_string_lossy().into())
             .await
             .unwrap();
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
         let entry = refresh_entries_for(&service.app_state().await).remove(0);
         current.amount = "2.5".into();
         current = current.identified();
@@ -422,10 +419,7 @@ mod tests {
             .holding_template();
         token10.amount = "9".into();
         wallet.holdings = vec![token20, token10];
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
         let updated = service
             .refresh_wallet_balances("mixed".into())
             .await
@@ -485,10 +479,7 @@ mod tests {
         );
         let coin = crate::registry::Chain::Ethereum.native_holding_template();
         w.holdings = vec![coin.clone()];
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet: w })
-            .await
-            .unwrap();
+        service.upsert_wallet(w).await.unwrap();
         assert!(
             service.app_state().await.wallets[0]
                 .balances_read_at
@@ -537,10 +528,7 @@ mod tests {
         let mut coin = crate::registry::Chain::Ethereum.native_holding_template();
         coin.amount = "4".into();
         w.holdings = vec![coin.clone()];
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet: w })
-            .await
-            .unwrap();
+        service.upsert_wallet(w).await.unwrap();
         let entry = refresh_entries_for(&service.app_state().await).remove(0);
         coin.amount = "0".into();
         let updated = service
@@ -579,10 +567,7 @@ mod tests {
         // A result fetched for the wallet's previous network does not land.
         let mut moved = service.app_state().await.wallets[0].clone();
         moved.chain_id = crate::registry::Chain::EthereumSepolia;
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet: moved })
-            .await
-            .unwrap();
+        service.upsert_wallet(moved).await.unwrap();
         coin.amount = "99".into();
         service
             .commit_balance_result(entry, vec![coin])
@@ -624,21 +609,20 @@ mod lifecycle_tests {
             &*secrets,
             "w",
             "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+            &Default::default(),
             None,
         )
         .unwrap();
         service.set_secret_store(secrets);
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    "w",
-                    "W",
-                    crate::registry::Chain::Ethereum,
-                    "0x1111111111111111111111111111111111111111",
-                    None,
-                    false,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                "w",
+                "W",
+                crate::registry::Chain::Ethereum,
+                "0x1111111111111111111111111111111111111111",
+                None,
+                false,
+            ))
             .await
             .unwrap();
         service
@@ -732,16 +716,14 @@ mod concurrency_tests {
             .unwrap();
         for i in 0..10 {
             service
-                .apply_state_command(StateCommand::UpsertWallet {
-                    wallet: WalletState::single_address(
-                        format!("w{i}"),
-                        "Concurrent",
-                        crate::registry::Chain::Stellar,
-                        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
-                        None,
-                        true,
-                    ),
-                })
+                .upsert_wallet(WalletState::single_address(
+                    format!("w{i}"),
+                    "Concurrent",
+                    crate::registry::Chain::Stellar,
+                    "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+                    None,
+                    true,
+                ))
                 .await
                 .unwrap();
         }

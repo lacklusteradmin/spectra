@@ -169,7 +169,7 @@ async fn owned_addresses_survive_reopening_the_database() {
 /// it was handed out — its path included — and not the wallet's account path.
 #[tokio::test]
 async fn keypool_diagnostics_report_the_recorded_reservation() {
-    use crate::store::state::{StateCommand, WalletState};
+    use crate::store::state::WalletState;
 
     let db = std::env::temp_dir()
         .join(format!(
@@ -181,16 +181,14 @@ async fn keypool_diagnostics_report_the_recorded_reservation() {
     let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(db.clone()).await.expect("open");
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(
-                "w1",
-                "Savings",
-                crate::registry::Chain::Bitcoin,
-                "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-                None,
-                true,
-            ),
-        })
+        .upsert_wallet(WalletState::single_address(
+            "w1",
+            "Savings",
+            crate::registry::Chain::Bitcoin,
+            "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+            None,
+            true,
+        ))
         .await
         .expect("upsert");
 
@@ -237,7 +235,7 @@ async fn keypool_diagnostics_report_the_recorded_reservation() {
 /// A wallet's known addresses come from core's own tables, each once.
 #[tokio::test]
 async fn known_wallet_addresses_merge_the_wallet_and_its_owned_rows() {
-    use crate::store::state::{StateCommand, WalletState};
+    use crate::store::state::WalletState;
 
     let db = std::env::temp_dir()
         .join(format!(
@@ -249,16 +247,14 @@ async fn known_wallet_addresses_merge_the_wallet_and_its_owned_rows() {
     let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(db.clone()).await.expect("open");
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(
-                "w1",
-                "Watch",
-                crate::registry::Chain::Ethereum,
-                "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
-                None,
-                true,
-            ),
-        })
+        .upsert_wallet(WalletState::single_address(
+            "w1",
+            "Watch",
+            crate::registry::Chain::Ethereum,
+            "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+            None,
+            true,
+        ))
         .await
         .expect("upsert");
     for address in [

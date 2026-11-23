@@ -194,10 +194,7 @@ mod service {
                 "contractAddress": "holding.near", "amount": "0"}))
             .unwrap(),
         );
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet: stored })
-            .await
-            .unwrap();
+        service.upsert_wallet(stored).await.unwrap();
         let received: crate::store::persistence_models::TransactionRecord =
             serde_json::from_value(json!({"id": "received", "walletId": wallet,
                 "kind": "receive", "status": "confirmed", "walletName": "NEAR",

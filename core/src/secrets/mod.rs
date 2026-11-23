@@ -5,7 +5,6 @@
 pub mod backends;
 mod device_key;
 pub(crate) mod kdf;
-pub mod password_verifier;
 pub mod seed_envelope;
 pub mod store;
 pub mod wallet;

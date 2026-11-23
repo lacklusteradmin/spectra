@@ -1,7 +1,7 @@
 //! The Kaspa REST adapter (`api.kaspa.org`): balances, UTXOs, history,
 //! transaction status and submission, in sompi (1e-8 KAS).
 
-use crate::api::error::ApiError;
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 
 use crate::api::http::{HttpClient, RetryProfile, race};
@@ -167,21 +167,26 @@ impl KaspaClient {
 
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<KasUtxo>, ApiError> {
         let utxos: Vec<ApiUtxo> = self.get(&format!("/addresses/{address}/utxos")).await?;
-        Ok(utxos
+        utxos
             .into_iter()
             .filter(|u| u.address == address)
             .map(|u| {
-                let amount = u.utxo_entry.amount.parse::<u64>().unwrap_or(0);
-                KasUtxo {
+                let amount = u
+                    .utxo_entry
+                    .amount
+                    .parse::<u64>()
+                    .ok()
+                    .or_decode("Kaspa UTXO amount")?;
+                Ok(KasUtxo {
                     txid: u.outpoint.transaction_id,
                     vout: u.outpoint.index,
                     value_sompi: amount,
                     script_version: u.utxo_entry.script_public_key.version,
                     script_pubkey_hex: u.utxo_entry.script_public_key.script_public_key,
                     is_coinbase: u.utxo_entry.is_coinbase.unwrap_or(false),
-                }
+                })
             })
-            .collect())
+            .collect()
     }
 
     pub async fn fetch_history_page(

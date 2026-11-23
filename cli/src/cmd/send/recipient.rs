@@ -6,7 +6,6 @@ use serde::Serialize;
 use spectra_core::registry::Chain;
 use spectra_core::service::{SendDestinationActivity, WalletService};
 
-use crate::cmd::chain::service_for_chain;
 use crate::cmd::resolve_chain;
 use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
@@ -193,7 +192,7 @@ pub fn destination(ctx: &Ctx, out: Out, args: DestinationArgs) -> CliResult<()> 
     let chain = resolve_chain(&args.chain)?;
     // ENS needs the registry-selected EVM API; other chains validate locally.
     let service = if chain.resolves_ens_names() {
-        service_for_chain(ctx, chain, &[])?
+        ctx.service()?
     } else {
         WalletService::new(Vec::new())?
     };

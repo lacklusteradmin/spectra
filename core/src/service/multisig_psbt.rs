@@ -567,19 +567,15 @@ impl WalletService {
             _ => return Err(SpectraBridgeError::failure("not a UTXO multisig session")),
         };
         self.psbt_inputs_unspent(wallet, &policy, &review).await?;
-        let phrase = crate::secrets::wallet::load_seed_phrase(
+        let mnemonic = crate::secrets::wallet::load_mnemonic(
             &*self.secrets()?,
             &wallet.id,
             password.as_deref(),
         )?;
         let (cosigner, account) = policy.cosigner_of_phrase(
             stored.chain,
-            &phrase,
-            wallet
-                .derivation_overrides
-                .passphrase
-                .as_deref()
-                .unwrap_or_default(),
+            &mnemonic.phrase,
+            mnemonic.overrides.passphrase().unwrap_or_default(),
         )?;
         stored.body = match &stored.body {
             SessionBody::Psbt { psbt: encoded } => {

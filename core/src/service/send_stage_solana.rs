@@ -1,6 +1,6 @@
 //! Solana: building, revalidating, signing and expiring its staged
 //! transactions.
-use super::send_stage_protocols::StagedAmount;
+use super::send_stage_protocols::{StagedAmount, protocol_u64};
 use super::*;
 use crate::send::payload::SignedPayload;
 use crate::send::stages::*;
@@ -63,10 +63,9 @@ impl WalletService {
         staged: StagedAmount,
     ) -> Result<PreparedPayload, SpectraBridgeError> {
         let StagedAmount {
-            decimals,
-            amount_u64,
-            ..
+            decimals, amount, ..
         } = staged;
+        let amount_u64 = protocol_u64(amount)?;
         let to = request.to_address.as_str();
         Ok(match chain.mainnet_counterpart() {
             Chain::Solana => PreparedPayload::Solana(

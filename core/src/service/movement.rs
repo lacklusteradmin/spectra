@@ -157,7 +157,7 @@ mod tests {
             include_in_portfolio_total: true,
             xpub: None,
             derivation_path: None,
-            derivation_overrides: Default::default(),
+            derivation_flags: Default::default(),
             addresses: vec![],
             holdings: vec![crate::store::wallet_domain::AssetHolding {
                 id: String::new(),

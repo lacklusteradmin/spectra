@@ -304,16 +304,14 @@ mod tests {
             .await
             .unwrap();
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    "w",
-                    "W",
-                    crate::registry::Chain::Ethereum,
-                    "0x1111111111111111111111111111111111111111",
-                    None,
-                    true,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                "w",
+                "W",
+                crate::registry::Chain::Ethereum,
+                "0x1111111111111111111111111111111111111111",
+                None,
+                true,
+            ))
             .await
             .unwrap();
         let mut record: TransactionRecord = serde_json::from_value(json!({

@@ -108,7 +108,7 @@ impl ToncenterV2Client {
         let resp: Resp = self
             .get(&format!("/getAddressBalance?address={address}"))
             .await?;
-        let nanotons: u64 = resp.result.parse().unwrap_or(0);
+        let nanotons: u64 = resp.result.parse().ok().or_decode("TON balance")?;
         Ok(TonBalance { nanotons })
     }
 
@@ -275,7 +275,7 @@ impl ToncenterV2Client {
             None
         };
         Ok(crate::api::HistoryPage {
-            items: ton_history_from_transactions(resp.result),
+            items: ton_history_from_transactions(resp.result)?,
             next_cursor,
         })
     }
@@ -310,12 +310,12 @@ struct TonMsg {
 /// wallet's own send, carrying no value. One with no destination is an
 /// external log. Neither moves TON between accounts, so neither is an entry —
 /// the external request was read as a receipt of 0 TON beside every send.
-fn ton_history_from_transactions(txs: Vec<TonTx>) -> Vec<TonHistoryEntry> {
+fn ton_history_from_transactions(txs: Vec<TonTx>) -> Result<Vec<TonHistoryEntry>, ApiError> {
     let mut entries = Vec::new();
     for tx in txs {
         let txid = tx.transaction_id.hash;
         let timestamp = tx.utime;
-        let fee: u64 = tx.fee.parse().unwrap_or(0);
+        let fee: u64 = tx.fee.parse().ok().or_decode("TON transaction fee")?;
         let internal = |msg: &TonMsg| !msg.source.is_empty() && !msg.destination.is_empty();
 
         if let Some(msg) = tx.in_msg.as_ref().filter(|msg| internal(msg)) {
@@ -324,7 +324,7 @@ fn ton_history_from_transactions(txs: Vec<TonTx>) -> Vec<TonHistoryEntry> {
                 timestamp,
                 from: msg.source.clone(),
                 to: msg.destination.clone(),
-                amount_nanotons: msg.value.parse().unwrap_or(0),
+                amount_nanotons: msg.value.parse().ok().or_decode("TON message value")?,
                 fee_nanotons: fee,
                 is_incoming: true,
                 comment: Some(msg.message.clone()).filter(|m| !m.is_empty()),
@@ -336,14 +336,14 @@ fn ton_history_from_transactions(txs: Vec<TonTx>) -> Vec<TonHistoryEntry> {
                 timestamp,
                 from: msg.source.clone(),
                 to: msg.destination.clone(),
-                amount_nanotons: msg.value.parse().unwrap_or(0),
+                amount_nanotons: msg.value.parse().ok().or_decode("TON message value")?,
                 fee_nanotons: fee,
                 is_incoming: false,
                 comment: None,
             });
         }
     }
-    entries
+    Ok(entries)
 }
 
 impl ToncenterV2Client {
@@ -413,13 +413,33 @@ mod history_tests {
             "out_msgs": []
         }]))
         .unwrap();
-        let entries = ton_history_from_transactions(txs);
+        let entries = ton_history_from_transactions(txs).unwrap();
         assert_eq!(entries.len(), 2);
         assert!(!entries[0].is_incoming);
         assert_eq!(entries[0].amount_nanotons, 1_500_000_000);
         assert!(entries[1].is_incoming);
         assert_eq!(entries[1].amount_nanotons, 250_000_000);
         assert_eq!(entries[1].comment.as_deref(), Some("hi"));
+    }
+
+    /// A fee or value the provider sent malformed is refused, not read as a
+    /// transfer of 0 TON.
+    #[test]
+    fn a_malformed_number_is_refused_rather_than_read_as_zero() {
+        for (fee, value) in [("x", "1"), ("1", ""), ("1", "-5")] {
+            let txs: Vec<TonTx> = serde_json::from_value(serde_json::json!([{
+                "transaction_id": {"hash": "bad"},
+                "utime": 1_790_000_000u64,
+                "fee": fee,
+                "in_msg": {"source": THEM, "destination": ME, "value": value, "message": ""},
+                "out_msgs": []
+            }]))
+            .unwrap();
+            assert!(
+                matches!(ton_history_from_transactions(txs), Err(ApiError::Decode(_))),
+                "{fee} {value}"
+            );
+        }
     }
 }
 

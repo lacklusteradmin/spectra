@@ -95,16 +95,21 @@ impl WalletService {
         let this = self.clone();
         crate::service::worker::run(async move {
             let this = &this;
-            // `None` is the choice of no password; a blank `Some` is a request
-            // for one that has none. Refused before anything is planned or
-            // stored, rather than left to the secret store after the wallets
-            // were built.
+            // `None` is the choice of no password; a `Some` shorter than the
+            // minimum, blank included, is refused before anything is planned
+            // or stored, rather than left to the secret store after the
+            // wallets were built.
             if commit
                 .password
                 .as_deref()
-                .is_some_and(|p| p.trim().is_empty())
+                .is_some_and(crate::validation::wallet_password_is_too_short)
             {
-                return Err(crate::secrets::wallet::WalletSecretError::EmptyPassword.into());
+                return Err(
+                    crate::secrets::wallet::WalletSecretError::PasswordTooShort {
+                        min_chars: crate::validation::MIN_WALLET_PASSWORD_CHARS,
+                    }
+                    .into(),
+                );
             }
             let plan = plan_import(commit)?;
             // A named account is held only once the network confirms it.
@@ -167,7 +172,7 @@ impl WalletService {
                         .collect::<Result<Vec<_>, _>>()?,
                 };
                 for wallet in states {
-                    reduce_state_in_place(&mut snapshot, StateCommand::UpsertWallet { wallet });
+                    crate::store::state::upsert_wallet_in_place(&mut snapshot, wallet);
                 }
                 let changes =
                     crate::wallet_db::AppStateChanges::between(Some(&previous), &snapshot)?;
@@ -179,11 +184,7 @@ impl WalletService {
                 let result: Result<(), SpectraBridgeError> = async {
                     if let (Some(store), Some(view)) = (&secrets, &scan_key) {
                         for wallet in &wallets {
-                            store.save_secret(
-                                crate::secrets::store::SecretClass::Generic,
-                                format!("{}.scan-key", wallet.id),
-                                view.to_string(),
-                            )?;
+                            crate::secrets::wallet::store_scan_key(&**store, &wallet.id, view)?;
                         }
                     }
                     if let Some(store) = secrets.as_ref().filter(|_| !is_watch_only) {
@@ -200,6 +201,7 @@ impl WalletService {
                                     &**store,
                                     &wallet.id,
                                     seed.as_ref().unwrap().as_str(),
+                                    &commit.derivation_overrides,
                                     password.as_ref().map(|s| s.as_str()),
                                 )
                             };
@@ -222,10 +224,8 @@ impl WalletService {
                             // A watched Monero wallet the import would have
                             // upgraded keeps its view key.
                             if let (Some(_), Some(view)) = (&upgrade, &scan_key)
-                                && let Err(e) = store.save_secret(
-                                    crate::secrets::store::SecretClass::Generic,
-                                    format!("{}.scan-key", wallet.id),
-                                    view.to_string(),
+                                && let Err(e) = crate::secrets::wallet::store_scan_key(
+                                    &**store, &wallet.id, view,
                                 )
                             {
                                 cleanup_errors.push(format!("{}: {e}", wallet.id));
@@ -318,6 +318,8 @@ pub(super) fn plan_import(
         commit.private_key =
             Some(crate::derivation::key_formats::parse_private_key(chain, &typed)?.to_string());
     }
+    // A blank field is no override, whichever front end left it.
+    commit.derivation_overrides = std::mem::take(&mut commit.derivation_overrides).normalized();
     if commit.request.kind != WalletImportKind::Phrase
         && (!commit.derivation_overrides.is_empty()
             || commit
@@ -728,7 +730,7 @@ fn place_import(
         let mut upgraded = bound.clone();
         upgraded.signing = plan.wallets[0].signing;
         upgraded.derivation_path = Some(format!("m/{}", policy.cosigners[cosigner].origin));
-        upgraded.derivation_overrides = plan.commit.derivation_overrides.clone();
+        upgraded.derivation_flags = plan.commit.derivation_overrides.flags();
         upgraded.xpub = None;
         plan.wallets = vec![upgraded.to_wallet_view()];
         return Ok(Placed {

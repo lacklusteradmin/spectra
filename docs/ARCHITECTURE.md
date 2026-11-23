@@ -118,7 +118,10 @@ core to unlock, without keeping it in application state.
 
 Core drives secret reads, writes and password encryption through `SecretStore`.
 The platform implements storage; native file and in-memory backends let the CLI
-and tests use the same domain operations.
+and tests use the same domain operations. A phrase wallet's derivation
+overrides — a BIP-39 passphrase, a custom HMAC key — are sealed beside its
+phrase and opened with it; the wallet record, stored and sent to the front
+ends, keeps only which ones it has (`WalletDerivationFlags`).
 
 ## Chain rules
 
@@ -363,7 +366,8 @@ build defect.
   removal deletes with the wallet's secrets. `wallet_db::scan_cache` holds
   what a scan with a wallet's own key finds — a Monero wallet's outputs, a
   Litecoin wallet's MWEB outputs — encrypted under a key derived from that
-  scan key, which the SecretStore keeps as `{wallet id}.scan-key`.
+  scan key, which the SecretStore keeps device-sealed as
+  `{wallet id}.scan-key`.
 
 ### Persistent send stages
 

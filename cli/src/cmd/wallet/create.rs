@@ -537,12 +537,10 @@ fn phrase_commit(
     commit.seed_phrase = Some(seed_phrase.to_string());
     commit.restore_height = restore_height;
     if let Some(path) = &args.derivation_input_file {
-        let input = serde_json::from_str(
+        commit.derivation_overrides = serde_json::from_str(
             &std::fs::read_to_string(path).map_err(|e| CliError::usage(e.to_string()))?,
         )
         .map_err(|e| CliError::usage(format!("invalid derivation input: {e}")))?;
-        commit.derivation_overrides =
-            spectra_core::derivation::input::parse_wallet_derivation_input(input);
     }
     Ok(commit)
 }

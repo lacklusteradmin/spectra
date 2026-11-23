@@ -104,7 +104,7 @@ async fn service(
         .await
         .unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
-    store_seed_phrase(&*secrets, "w", SEED, Some("secret")).unwrap();
+    store_seed_phrase(&*secrets, "w", SEED, &Default::default(), Some("secret")).unwrap();
     service.set_secret_store(secrets.clone());
     let mut wallet = WalletState::single_address(
         "w",
@@ -126,10 +126,7 @@ async fn service(
         )
         .unwrap(),
     );
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet })
-        .await
-        .unwrap();
+    service.upsert_wallet(wallet).await.unwrap();
     (service, directory, secrets)
 }
 
@@ -444,10 +441,7 @@ async fn an_owned_peercoin_build_pays_the_fee_its_preview_quoted() {
     let mut coin = chain.native_holding_template();
     coin.amount = "2".into();
     state.holdings.push(coin);
-    wallet
-        .apply_state_command(StateCommand::UpsertWallet { wallet: state })
-        .await
-        .unwrap();
+    wallet.upsert_wallet(state).await.unwrap();
     let input = crate::service::send_review::SendReviewInput {
         wallet_id: "w".into(),
         holding_key: "peercoin:native".into(),

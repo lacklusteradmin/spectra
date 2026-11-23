@@ -207,10 +207,7 @@ impl Wallet {
         };
         let mut wallet = self.service.stored_wallet(&self.id).await.unwrap();
         wallet.holdings = vec![holding.clone()];
-        self.service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        self.service.upsert_wallet(wallet).await.unwrap();
         holding.deployment_id()
     }
 

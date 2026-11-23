@@ -28,22 +28,4 @@ impl Chain {
             _ => AddressNormalization::None,
         }
     }
-
-    pub fn flags_evm_address_as_wrong_chain(self) -> bool {
-        matches!(
-            self,
-            Chain::Bitcoin
-                | Chain::BitcoinCash
-                | Chain::Litecoin
-                | Chain::Dogecoin
-                | Chain::BitcoinTestnet
-                | Chain::BitcoinTestnet4
-                | Chain::BitcoinSignet
-                | Chain::BitcoinCashTestnet
-                | Chain::LitecoinTestnet
-                | Chain::DogecoinTestnet
-                | Chain::Peercoin
-                | Chain::PeercoinTestnet
-        )
-    }
 }

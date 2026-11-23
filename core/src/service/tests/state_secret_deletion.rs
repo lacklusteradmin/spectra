@@ -10,18 +10,17 @@ async fn deleting_stored_secrets_requires_a_durable_state_binding() {
     let service = WalletService::new(vec![]).unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
-    crate::secrets::wallet::store_seed_phrase(&*secrets, "w", MNEMONIC, None).unwrap();
+    crate::secrets::wallet::store_seed_phrase(&*secrets, "w", MNEMONIC, &Default::default(), None)
+        .unwrap();
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: crate::store::state::WalletState::single_address(
-                "w",
-                "W",
-                crate::registry::Chain::Ethereum,
-                "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
-                None,
-                false,
-            ),
-        })
+        .upsert_wallet(crate::store::state::WalletState::single_address(
+            "w",
+            "W",
+            crate::registry::Chain::Ethereum,
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            None,
+            false,
+        ))
         .await
         .unwrap();
     let before = service.app_state().await;
@@ -218,12 +217,7 @@ async fn partial_secret_cleanup_removes_the_wallet_and_retries_after_reopening()
         })
         .await
         .unwrap();
-    assert!(
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .is_err()
-    );
+    assert!(service.upsert_wallet(wallet).await.is_err());
     let reopened = WalletService::new(vec![]).unwrap();
     reopened.set_secret_store(secrets.clone());
     assert!(

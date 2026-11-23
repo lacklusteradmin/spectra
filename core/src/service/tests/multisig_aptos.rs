@@ -92,10 +92,7 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
             .collect::<Vec<_>>()})
         .to_string(),
     );
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet: vault })
-        .await
-        .unwrap();
+    service.upsert_wallet(vault).await.unwrap();
     for (id, key) in [("signer0", &keys[0]), ("signer1", &keys[1])] {
         let (phrase, path) = (
             key["phrase"].as_str().unwrap(),
@@ -108,19 +105,17 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
         .address
         .unwrap();
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    id,
-                    id,
-                    CHAIN,
-                    address,
-                    Some(path.into()),
-                    false,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                id,
+                id,
+                CHAIN,
+                address,
+                Some(path.into()),
+                false,
+            ))
             .await
             .unwrap();
-        store_seed_phrase(&*secrets, id, phrase, None).unwrap();
+        store_seed_phrase(&*secrets, id, phrase, &Default::default(), None).unwrap();
     }
     service
 }

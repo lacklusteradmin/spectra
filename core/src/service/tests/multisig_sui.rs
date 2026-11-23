@@ -135,17 +135,14 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
             Some(path.into()),
             false,
         ));
-        store_seed_phrase(&*secrets, id, phrase, None).unwrap();
+        store_seed_phrase(&*secrets, id, phrase, &Default::default(), None).unwrap();
     }
     assert_eq!(
         wallets[2].primary_address(),
         fixture["keys"][0]["address"].as_str()
     );
     for wallet in wallets {
-        service
-            .apply_state_command(StateCommand::UpsertWallet { wallet })
-            .await
-            .unwrap();
+        service.upsert_wallet(wallet).await.unwrap();
     }
     service
 }

@@ -35,16 +35,14 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
     // A unique id: the diagnostics registry is shared by every test.
     let wallet_id = format!("feed-{}", crate::store::new_event_id());
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(
-                wallet_id.clone(),
-                "Watch",
-                crate::registry::Chain::Bitcoin,
-                "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-                None,
-                true,
-            ),
-        })
+        .upsert_wallet(WalletState::single_address(
+            wallet_id.clone(),
+            "Watch",
+            crate::registry::Chain::Bitcoin,
+            "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+            None,
+            true,
+        ))
         .await
         .expect("upsert");
     service

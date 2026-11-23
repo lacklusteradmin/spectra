@@ -83,9 +83,14 @@ async fn reopened_account_holding(
     let service = WalletService::new(endpoints.clone()).unwrap();
     service.open_state(database.clone()).await.unwrap();
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address("w", "Account", chain, root, Some(base), true),
-        })
+        .upsert_wallet(WalletState::single_address(
+            "w",
+            "Account",
+            chain,
+            root,
+            Some(base),
+            true,
+        ))
         .await
         .unwrap();
     for (address, path, branch, index) in [

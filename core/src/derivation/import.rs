@@ -400,7 +400,7 @@ pub(crate) fn wallets_for_import(
                     .collect(),
                 account_xpub,
                 derivation_path: commit.derivation_path.clone(),
-                derivation_overrides: commit.derivation_overrides.clone(),
+                derivation_flags: commit.derivation_overrides.flags(),
                 holdings: vec![chain.native_holding_template()],
                 include_in_portfolio_total: true,
                 signing: commit.signing(),

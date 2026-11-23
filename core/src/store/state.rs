@@ -64,8 +64,9 @@ pub struct WalletState {
     /// The single path this wallet derives from: a profile's or a custom one,
     /// fixed at import. `None` on a chain that derives without a path.
     pub derivation_path: Option<String>,
-    /// Power-user derivation overrides, if the wallet was imported with any.
-    pub derivation_overrides: crate::store::wallet_domain::WalletDerivationOverrides,
+    /// Which power-user derivation overrides the wallet was imported with.
+    /// The overrides themselves are sealed in the `SecretStore`.
+    pub derivation_flags: crate::store::wallet_domain::WalletDerivationFlags,
     pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
     pub addresses: Vec<WalletAddress>,
     /// The block height a scanning wallet starts from, fixed when it is
@@ -140,7 +141,7 @@ impl WalletState {
             include_in_portfolio_total: true,
             xpub: None,
             derivation_path: derivation_path.clone(),
-            derivation_overrides: Default::default(),
+            derivation_flags: Default::default(),
             holdings: Vec::new(),
             addresses: vec![WalletAddress {
                 chain_id,
@@ -691,20 +692,15 @@ pub enum AppSettingUpdate {
     },
 }
 
-/// An intent to change the resident state.
+/// An intent to change the resident state: what a front end may ask for.
 ///
-/// `ReplaceState` and `UpsertWallet` carry whole records, so every value is as
-/// large as those — clippy's `large_enum_variant`. Boxing them would not help:
-/// this is a UniFFI enum, and what crosses the boundary is the encoded form,
-/// not the Rust layout. Commands are constructed a handful of times per user
-/// action, not in a loop.
-#[allow(clippy::large_enum_variant)]
+/// None carries a whole wallet or the whole state. A front end changes a
+/// wallet through these intents and core decides the record; core's own
+/// writes of a whole wallet go through `WalletService::upsert_wallet`, which
+/// does not cross the FFI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Enum)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StateCommand {
-    ReplaceState {
-        state: ResidentState,
-    },
     RenameWallet {
         wallet_id: String,
         name: String,
@@ -719,17 +715,6 @@ pub enum StateCommand {
         wallet_id: String,
         deployment_id: String,
         hidden: bool,
-    },
-    UpsertWallet {
-        wallet: WalletState,
-    },
-    /// Update a wallet only if it is still stored.
-    ///
-    /// Balance refresh uses this: a refresh result that arrives after the user
-    /// deleted the wallet must not bring it back. Creating is a separate
-    /// intent, and `UpsertWallet` is the command for it.
-    UpdateWalletIfPresent {
-        wallet: WalletState,
     },
     SelectWallet {
         wallet_id: String,
@@ -1148,14 +1133,39 @@ fn set_pinned_dashboard_assets(
     }
 }
 
+/// Store `wallet` whole: replace the stored wallet with its id, or add it
+/// and select it when nothing is selected. Core's own writes only; see
+/// `WalletService::upsert_wallet`.
+pub(crate) fn upsert_wallet_in_place(
+    state: &mut ResidentState,
+    wallet: WalletState,
+) -> Vec<StateEvent> {
+    let wallet_id = wallet.id.clone();
+    let event = if let Some(index) = state
+        .wallets
+        .iter()
+        .position(|candidate| candidate.id == wallet_id)
+    {
+        state.wallets[index] = wallet;
+        StateEvent::WalletUpdated {
+            wallet_id: wallet_id.clone(),
+        }
+    } else {
+        state.wallets.push(wallet);
+        StateEvent::WalletAdded {
+            wallet_id: wallet_id.clone(),
+        }
+    };
+    if state.selected_wallet_id.is_none() {
+        state.selected_wallet_id = Some(wallet_id);
+    }
+    vec![event]
+}
+
 pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -> Vec<StateEvent> {
     let mut events = Vec::new();
 
     match command {
-        StateCommand::ReplaceState { state: next_state } => {
-            *state = next_state;
-            events.push(StateEvent::StateReplaced);
-        }
         StateCommand::RenameWallet { wallet_id, name } => {
             let name = name.trim();
             if !name.is_empty()
@@ -1196,37 +1206,6 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                     wallet.hidden_holdings.retain(|id| *id != deployment_id);
                     events.push(StateEvent::WalletUpdated { wallet_id });
                 }
-            }
-        }
-        StateCommand::UpsertWallet { wallet } => {
-            let wallet_id = wallet.id.clone();
-            if let Some(index) = state
-                .wallets
-                .iter()
-                .position(|candidate| candidate.id == wallet_id)
-            {
-                state.wallets[index] = wallet;
-                events.push(StateEvent::WalletUpdated {
-                    wallet_id: wallet_id.clone(),
-                });
-            } else {
-                state.wallets.push(wallet);
-                events.push(StateEvent::WalletAdded {
-                    wallet_id: wallet_id.clone(),
-                });
-            }
-
-            if state.selected_wallet_id.is_none() {
-                state.selected_wallet_id = Some(wallet_id);
-            }
-        }
-        StateCommand::UpdateWalletIfPresent { wallet } => {
-            if let Some(index) = state.wallets.iter().position(|w| w.id == wallet.id)
-                && state.wallets[index] != wallet
-            {
-                let wallet_id = wallet.id.clone();
-                state.wallets[index] = wallet;
-                events.push(StateEvent::WalletUpdated { wallet_id });
             }
         }
         StateCommand::SelectWallet { wallet_id } => {
@@ -1659,7 +1638,7 @@ mod tests {
             chain_id: chain,
             include_in_portfolio_total: true,
             xpub: None,
-            derivation_overrides: Default::default(),
+            derivation_flags: Default::default(),
             derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             holdings: Vec::new(),
             addresses: vec![WalletAddress {
@@ -2131,21 +2110,13 @@ mod tests {
 
     #[test]
     fn upsert_wallet_selects_first_wallet() {
-        let state = ResidentState::default();
-        let transition = reduce_state(
-            state,
-            StateCommand::UpsertWallet {
-                wallet: test_wallet("wallet-1", crate::registry::Chain::Bitcoin),
-            },
+        let mut state = ResidentState::default();
+        let events = upsert_wallet_in_place(
+            &mut state,
+            test_wallet("wallet-1", crate::registry::Chain::Bitcoin),
         );
 
-        assert_eq!(
-            transition.state.selected_wallet_id.as_deref(),
-            Some("wallet-1")
-        );
-        assert!(matches!(
-            transition.events[0],
-            StateEvent::WalletAdded { .. }
-        ));
+        assert_eq!(state.selected_wallet_id.as_deref(), Some("wallet-1"));
+        assert!(matches!(events[0], StateEvent::WalletAdded { .. }));
     }
 }

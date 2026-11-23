@@ -28,7 +28,6 @@ use crate::api::litecoin_p2p::{
     display, parse_display,
 };
 use crate::api::utxo::UtxoClient;
-use crate::secrets::store::{SecretClass, SecretStoreError};
 use crate::send::litecoin_mweb::keys::{self, ViewKeys};
 use crate::send::litecoin_mweb::output::{self, OwnedOutput};
 use crate::send::litecoin_mweb::prepared::{self, PreparedMwebSpend};
@@ -224,14 +223,10 @@ impl WalletService {
         &self,
         wallet_id: &str,
     ) -> Result<Option<Zeroizing<String>>, SpectraBridgeError> {
-        match self
-            .secrets()?
-            .load_secret(SecretClass::Generic, format!("{wallet_id}.scan-key"))
-        {
-            Ok(stored) => Ok(Some(Zeroizing::new(stored))),
-            Err(SecretStoreError::NotFound) => Ok(None),
-            Err(error) => Err(error.into()),
-        }
+        Ok(crate::secrets::wallet::load_scan_key(
+            &*self.secrets()?,
+            wallet_id,
+        )?)
     }
 
     /// The wallet's view keys and scan cache, as its last sync left them.
@@ -571,11 +566,7 @@ impl WalletService {
                 let (view, _) = ViewKeys::from_seed(&seed)?;
                 let scan = Zeroizing::new(hex::encode(view.scan.secret_bytes()));
                 self.mweb_keys_unclaimed(&wallet, &scan).await?;
-                self.secrets()?.save_secret(
-                    SecretClass::Generic,
-                    format!("{wallet_id}.scan-key"),
-                    scan.to_string(),
-                )?;
+                crate::secrets::wallet::store_scan_key(&*self.secrets()?, wallet_id, &scan)?;
                 (None, Cache::new(&wallet, &view), view)
             }
         };

@@ -16,19 +16,17 @@ async fn wallet(
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     service
-        .apply_state_command(StateCommand::UpsertWallet {
-            wallet: WalletState::single_address(
-                "w",
-                "Wallet",
-                crate::registry::Chain::Ethereum,
-                address,
-                Some("m/44'/60'/0'/0/0".into()),
-                false,
-            ),
-        })
+        .upsert_wallet(WalletState::single_address(
+            "w",
+            "Wallet",
+            crate::registry::Chain::Ethereum,
+            address,
+            Some("m/44'/60'/0'/0/0".into()),
+            false,
+        ))
         .await
         .unwrap();
-    store_seed_phrase(&*secrets, "w", SEED, password).unwrap();
+    store_seed_phrase(&*secrets, "w", SEED, &Default::default(), password).unwrap();
     (service, secrets)
 }
 
@@ -73,10 +71,7 @@ async fn mismatched_missing_and_watch_only_wallets_are_refused() {
     );
     let mut stored = service.app_state().await.wallets[0].clone();
     stored.signing = crate::store::state::WalletSigning::WatchOnly;
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet: stored })
-        .await
-        .unwrap();
+    service.upsert_wallet(stored).await.unwrap();
     assert!(
         service
             .send_identity_address("w".into(), crate::registry::Chain::Ethereum, None)
@@ -108,10 +103,7 @@ async fn private_key_wallet_needs_no_caller_or_stored_derivation_path() {
     store_private_key(&*secrets, "w", &format!("0x{:064x}", 1), None).unwrap();
     let mut stored = service.app_state().await.wallets[0].clone();
     stored.derivation_path = None;
-    service
-        .apply_state_command(StateCommand::UpsertWallet { wallet: stored })
-        .await
-        .unwrap();
+    service.upsert_wallet(stored).await.unwrap();
     assert_eq!(
         service
             .send_identity_address("w".into(), crate::registry::Chain::Ethereum, None)
@@ -171,19 +163,17 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
         .unwrap();
         let address = derived.address.unwrap();
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    "w",
-                    "Wallet",
-                    chain,
-                    &address,
-                    Some(path.into()),
-                    false,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                "w",
+                "Wallet",
+                chain,
+                &address,
+                Some(path.into()),
+                false,
+            ))
             .await
             .unwrap();
-        store_seed_phrase(&*secrets, "w", seed, None).unwrap();
+        store_seed_phrase(&*secrets, "w", seed, &Default::default(), None).unwrap();
         let resolved = service.send_identity_address("w".into(), chain, None).await;
         assert_eq!(
             resolved.unwrap_or_else(|e| panic!("{chain:?}: {e}")),
@@ -197,19 +187,17 @@ async fn near_named_accounts_are_resolved_but_implicit_accounts_must_match_the_k
     let service = WalletService::new(vec![]).unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
-    store_seed_phrase(&*secrets, "w", SEED, None).unwrap();
+    store_seed_phrase(&*secrets, "w", SEED, &Default::default(), None).unwrap();
     for (address, valid) in [("alice.near".to_string(), true), ("11".repeat(32), false)] {
         service
-            .apply_state_command(StateCommand::UpsertWallet {
-                wallet: WalletState::single_address(
-                    "w",
-                    "Wallet",
-                    crate::registry::Chain::Near,
-                    &address,
-                    None,
-                    false,
-                ),
-            })
+            .upsert_wallet(WalletState::single_address(
+                "w",
+                "Wallet",
+                crate::registry::Chain::Near,
+                &address,
+                None,
+                false,
+            ))
             .await
             .unwrap();
         assert_eq!(

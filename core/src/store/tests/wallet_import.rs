@@ -470,10 +470,11 @@ async fn a_failed_seal_leaves_neither_a_wallet_nor_its_secret_and_retries() {
     );
 }
 
-/// A blank password is refused as bad input, for a seed and for a private
-/// key, and nothing is stored: only `None` means "no password".
+/// A password shorter than the minimum, blank included, is refused as bad
+/// input, for a seed and for a private key, and nothing is stored: only `None`
+/// means "no password".
 #[tokio::test]
-async fn a_blank_password_is_refused_rather_than_stored_unsealed() {
+async fn a_short_password_is_refused_rather_than_stored() {
     let path = std::env::temp_dir().join(format!(
         "spectra-import-{}.db",
         crate::store::new_transaction_id()
@@ -485,14 +486,14 @@ async fn a_blank_password_is_refused_rather_than_stored_unsealed() {
         .open_state(path.to_string_lossy().into())
         .await
         .unwrap();
-    for blank in ["", "   "] {
+    for short in ["", "   ", "abc", " abc "] {
         let mut seed = commit(crate::registry::Chain::Solana);
-        seed.password = Some(blank.into());
+        seed.password = Some(short.into());
         let mut key = commit(crate::registry::Chain::Ethereum);
         key.request.kind = WalletImportKind::PrivateKey;
         key.seed_phrase = None;
         key.private_key = Some(format!("{:064x}", 1));
-        key.password = Some(blank.into());
+        key.password = Some(short.into());
         for commit in [seed, key] {
             assert!(matches!(
                 service.import_wallets(commit).await,
@@ -1314,4 +1315,45 @@ async fn a_refused_key_import_seals_nothing() {
     );
     assert_eq!(secrets.len(), before);
     assert!(service.app_state().await.wallets.is_empty());
+}
+
+/// A passphrase is sealed beside the phrase: neither the wallet's stored row
+/// nor the state a front end reads carries it, only that the wallet has one.
+#[tokio::test]
+async fn a_passphrase_is_sealed_not_stored_with_the_wallet() {
+    const PASSPHRASE: &str = "a passphrase no row may hold";
+    let path = std::env::temp_dir().join(format!(
+        "spectra-import-{}.db",
+        crate::store::new_transaction_id()
+    ));
+    let service = WalletService::new(vec![]).unwrap();
+    let store = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
+    service.set_secret_store(store.clone());
+    service
+        .open_state(path.to_string_lossy().into())
+        .await
+        .unwrap();
+    let mut seed = commit(crate::registry::Chain::Bitcoin);
+    seed.password = Some("correct horse".into());
+    seed.derivation_overrides.passphrase = Some(PASSPHRASE.into());
+    let outcome = service.import_wallets(seed).await.unwrap();
+    let wallet = &outcome.wallets[0];
+    assert!(wallet.derivation_flags.passphrase && !wallet.derivation_flags.hmac_key);
+
+    let state = serde_json::to_string(&service.app_state().await).unwrap();
+    assert!(!state.contains(PASSPHRASE));
+    let rows: Vec<String> = rusqlite::Connection::open(&path)
+        .unwrap()
+        .prepare("SELECT payload FROM wallets")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(!rows.is_empty() && rows.iter().all(|row| !row.contains(PASSPHRASE)));
+
+    let mnemonic =
+        crate::secrets::wallet::load_mnemonic(&*store, &wallet.id, Some("correct horse")).unwrap();
+    assert_eq!(mnemonic.overrides.passphrase(), Some(PASSPHRASE));
+    let _ = std::fs::remove_file(&path);
 }

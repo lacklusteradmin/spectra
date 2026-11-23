@@ -2,7 +2,7 @@
 //! Blockscout and Routescan serve. EVM nodes cannot index by address, so EVM
 //! history and the list of tokens an address holds come from here.
 
-use crate::api::error::ApiError;
+use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -320,19 +320,20 @@ impl BlockscoutClient {
                     (Some("0"), _) | (_, Some("1")) => "confirmed",
                     _ => return Err(ApiError::Decode("history missing execution status".into())),
                 };
-                let fee_wei = tx
-                    .gas_price
-                    .parse::<u128>()
-                    .unwrap_or(0)
-                    .saturating_mul(tx.gas_used.parse::<u128>().unwrap_or(0))
-                    .to_string();
+                let gas_price: u128 = tx.gas_price.parse().ok().or_decode("history gas price")?;
+                let gas_used: u128 = tx.gas_used.parse().ok().or_decode("history gas used")?;
+                let fee_wei = gas_price.saturating_mul(gas_used).to_string();
                 // The explorer lists only mined transactions.
                 let timestamp =
                     crate::api::time::confirmed_history_time(tx.time_stamp.parse().ok(), &tx.hash)?;
                 Ok(EvmHistoryEntry {
                     status: status.into(),
                     txid: tx.hash,
-                    block_number: tx.block_number.parse().unwrap_or(0),
+                    block_number: tx
+                        .block_number
+                        .parse()
+                        .ok()
+                        .or_decode("history block number")?,
                     timestamp,
                     from: tx.from.clone(),
                     to: tx.to.clone(),
@@ -459,8 +460,16 @@ impl BlockscoutClient {
                     to: tx.to.to_lowercase(),
                     amount_raw: tx.value,
                     txid: tx.hash,
-                    block_number: tx.block_number.parse().unwrap_or(0),
-                    log_index: tx.log_index.parse().unwrap_or(0),
+                    block_number: tx
+                        .block_number
+                        .parse()
+                        .ok()
+                        .or_decode("history block number")?,
+                    log_index: tx
+                        .log_index
+                        .parse()
+                        .ok()
+                        .or_decode("token transfer log index")?,
                     timestamp,
                 })
             })
@@ -551,7 +560,11 @@ impl BlockscoutClient {
                     collection: tx.token_name.unwrap_or_default(),
                     from: tx.from.to_lowercase(),
                     to: tx.to.to_lowercase(),
-                    block_number: tx.block_number.parse().unwrap_or(0),
+                    block_number: tx
+                        .block_number
+                        .parse()
+                        .ok()
+                        .or_decode("history block number")?,
                     timestamp: crate::api::time::confirmed_history_time(
                         tx.time_stamp.parse().ok(),
                         &tx.hash,
