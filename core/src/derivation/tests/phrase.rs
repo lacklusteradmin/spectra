@@ -28,7 +28,13 @@ fn derive(
     passphrase: Option<&str>,
 ) -> crate::derivation::types::DerivationResult {
     crate::derivation::dispatch::derive_for_chain(
-        chain, phrase, "", passphrase, None, None, true, true, true,
+        chain,
+        phrase,
+        "",
+        passphrase,
+        None,
+        None,
+        crate::derivation::types::Wants::ALL,
     )
     .unwrap_or_else(|error| panic!("{chain}: {error}"))
 }
@@ -143,9 +149,7 @@ fn an_encrypted_polyseed_is_named_and_refused() {
             None,
             None,
             None,
-            true,
-            false,
-            false
+            crate::derivation::types::Wants::ADDRESS,
         )
         .is_err()
     );
@@ -170,9 +174,7 @@ fn a_bip39_phrase_is_not_a_monero_phrase() {
             None,
             None,
             None,
-            true,
-            false,
-            false
+            crate::derivation::types::Wants::ADDRESS,
         )
         .is_err()
     );
@@ -209,7 +211,7 @@ fn ton_mnemonics_restore_ton_cryptos_keys_and_every_wallet_version() {
             keys.public_key_hex.as_deref(),
             Some(&*text(vector, "public_key"))
         );
-        assert_eq!(keys.private_key_hex.unwrap(), text(vector, "private_key"));
+        assert_eq!(*keys.private_key_hex.unwrap(), text(vector, "private_key"));
         assert_eq!(keys.address.unwrap(), text(&w5[&mnemonic], "mainnet"));
         let testnet = derive(Chain::TonTestnet, &mnemonic, None);
         assert_eq!(testnet.address.unwrap(), text(&w5[&mnemonic], "testnet"));
@@ -260,9 +262,7 @@ fn a_bip39_phrase_is_not_a_ton_mnemonic() {
             None,
             None,
             None,
-            true,
-            false,
-            false
+            crate::derivation::types::Wants::ADDRESS,
         )
         .is_err()
     );

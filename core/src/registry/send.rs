@@ -46,9 +46,6 @@ impl Chain {
         self.has_send_preview()
     }
 
-    /// What a payment on this network can say about whose deposit it is,
-    /// the first the default: XRP's destination tag, Stellar's text and ID
-    /// memos. Empty where payments carry none.
     /// How a payment request to an address on this network is written for
     /// a QR code: the format wallets read, with the amount and memo in it.
     /// `None` where no format is widely read, and the address is shared alone.
@@ -74,6 +71,9 @@ impl Chain {
         }
     }
 
+    /// What a payment on this network can say about whose deposit it is,
+    /// the first the default: XRP's destination tag, Stellar's text and ID
+    /// memos. Empty where payments carry none.
     pub fn payment_memo_kinds(self) -> &'static [PaymentMemoKind] {
         match self.mainnet_counterpart() {
             Self::Xrp => &[PaymentMemoKind::DestinationTag],

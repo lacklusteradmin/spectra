@@ -299,10 +299,7 @@ mod tests {
             "rebroadcast-owned-{}.sqlite",
             crate::store::new_id()
         ));
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         service
             .upsert_wallet(WalletState::single_address(
                 "w",

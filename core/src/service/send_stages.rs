@@ -6,12 +6,8 @@ use crate::store::wallet_domain::TransactionStatus;
 use zeroize::Zeroizing;
 
 #[cfg(test)]
-#[path = "tests/send_uncertain_recovery.rs"]
-mod uncertain_recovery_tests;
-
-#[cfg(test)]
-#[path = "tests/send_progress.rs"]
-mod progress_tests;
+#[path = "tests/send_stages.rs"]
+mod tests;
 
 /// The one action that moves a staged transaction on. A node's acceptance is
 /// not a confirmation, but it ends what the stages can do: the history
@@ -1042,15 +1038,3 @@ impl WalletService {
         Ok(())
     }
 }
-
-#[cfg(test)]
-#[path = "tests/send_evm_funds.rs"]
-mod evm_funds_tests;
-
-#[cfg(test)]
-#[path = "tests/send_stage_evm.rs"]
-mod evm_stage_tests;
-
-#[cfg(test)]
-#[path = "tests/send_stage_icp.rs"]
-mod icp_stage_tests;

@@ -272,7 +272,7 @@ async fn only_an_evm_wallet_holds_nfts() {
 mod transfers {
     use super::*;
     use crate::send::stages::{SendArtifact, SendStage};
-    use crate::service::send_stage_protocols::send_stage_support::{Secret, Wallet, node, refusal};
+    use crate::service::send_stage_support::{Secret, Wallet, node, refusal};
     use std::sync::Mutex;
 
     const KEY: &str = "0101010101010101010101010101010101010101010101010101010101010101";

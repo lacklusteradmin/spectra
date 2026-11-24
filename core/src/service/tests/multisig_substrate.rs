@@ -149,17 +149,20 @@ async fn account() -> Account {
         "substrate-multisig-{}.sqlite",
         crate::store::new_id()
     ));
-    service
-        .open_state(db.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(db.to_string_lossy().into()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     let path = crate::derivation::path::default_path_from_catalog(CHAIN).unwrap();
     let mut addresses = HashMap::new();
     for (id, phrase) in PHRASES {
         let address = crate::derivation::dispatch::derive_for_chain(
-            CHAIN, phrase, &path, None, None, None, true, false, false,
+            CHAIN,
+            phrase,
+            &path,
+            None,
+            None,
+            None,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address

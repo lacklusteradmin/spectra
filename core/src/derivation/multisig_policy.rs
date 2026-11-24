@@ -107,9 +107,7 @@ pub(crate) mod tests {
                     None,
                     None,
                     None,
-                    false,
-                    true,
-                    false,
+                    crate::derivation::types::Wants::PUBLIC_KEY,
                 )
                 .unwrap();
                 hex::decode(derived.public_key_hex.unwrap())

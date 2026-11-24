@@ -264,3 +264,7 @@ impl WalletService {
         canonical(&wallet.address)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/send_stage_ton.rs"]
+mod tests;

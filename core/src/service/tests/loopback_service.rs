@@ -34,7 +34,7 @@ pub(crate) async fn open() -> OpenService {
     let service = WalletService::new_catalog().unwrap();
     service.set_secret_store(Arc::new(InMemorySecretStore::new()));
     service
-        .open_state(directory.join("state.db").to_string_lossy().into_owned())
+        .opened(directory.join("state.db").to_string_lossy().into_owned())
         .await
         .unwrap();
     OpenService { service, directory }
@@ -73,7 +73,7 @@ impl OpenService {
             crate::store::state::AppSettingUpdate::AddCustomEndpoint {
                 capabilities: capabilities.to_vec(),
                 chain_id: chain,
-                api: api.as_str().into(),
+                api,
                 endpoint: url.into(),
             },
             crate::store::state::AppSettingUpdate::CustomEndpointsOnly {

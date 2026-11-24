@@ -779,7 +779,7 @@ mod tests {
                 .is_empty()
         );
         let reopened = WalletService::new(vec![]).unwrap();
-        reopened.open_state(path).await.unwrap();
+        reopened.opened(path).await.unwrap();
         assert!(
             reopened
                 .pending_maintenance_chains()
@@ -795,7 +795,7 @@ mod tests {
             .join(format!("spectra-poll-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .into_owned();
-        service.open_state(path.clone()).await.unwrap();
+        service.opened(path.clone()).await.unwrap();
         (service, path)
     }
 
@@ -857,7 +857,7 @@ mod tests {
             crate::store::new_id()
         ));
         service
-            .open_state(path.to_string_lossy().into_owned())
+            .opened(path.to_string_lossy().into_owned())
             .await
             .unwrap();
         service
@@ -934,7 +934,7 @@ mod tests {
             crate::store::new_id()
         ));
         service
-            .open_state(path.to_string_lossy().into_owned())
+            .opened(path.to_string_lossy().into_owned())
             .await
             .unwrap();
         service
@@ -1003,7 +1003,7 @@ mod tests {
             crate::store::new_id()
         ));
         service
-            .open_state(db.to_string_lossy().into_owned())
+            .opened(db.to_string_lossy().into_owned())
             .await
             .unwrap();
         service

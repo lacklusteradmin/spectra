@@ -212,7 +212,9 @@ and `send/litecoin_mweb/` hold one large protocol's parts. `lib.rs` declares the
 domains and `error.rs` holds `SpectraBridgeError` and `LocalizableMessage`, and
 nothing else sits at the root. `registry/` is `Chain` with one `impl Chain` sibling per topic
 (`keys`, `address`, `endpoints`, `tokens`, `send`, `staking`, `utxo`,
-`networks`, `evm`); `catalog/` parses the embedded `core/data/` files (chains
+`networks`, `evm`), and the asset identities a token is named by
+(`NftStandard` in `tokens`, `xrpl_amount`, `stellar_asset`,
+`cardano_asset`), which `catalog/`, `api/` and `send/` share; `catalog/` parses the embedded `core/data/` files (chains
 with their wiki and staking copy, tokens and test-network tokens, endpoints,
 explorers, donations, the crypto wiki and restore heights);
 `amount/` holds exact decimals, typed input and optional presentation;
@@ -228,13 +230,19 @@ re-exports for moved modules. `wallet_db` is a root module owning relational
 storage; `store` owns resident state and wallet-domain rules; `secrets` owns
 what is sealed, not resident state.
 
-Out-of-line unit tests live in their domain's `tests/` directory, the one
-exception to the depth rule, named after the module they test:
-`service/tests/send_execution.rs`. Declare each as a child of that module with
-`#[cfg(test)]` and `#[path = "tests/send_execution.rs"]` so tests keep private
-access without widening production visibility. Where a domain's tests need only
-crate-visible items, `tests/mod.rs` owns them as one module instead, as in
-`store/tests/` and `wallet_db/tests/`. Crate-root tests use `src/tests/`.
+A module's unit tests sit in one place: inline when the block is small,
+otherwise in one file in their domain's `tests/` directory, the one exception
+to the depth rule, named after the module that hosts them:
+`service/tests/send_execution.rs`. Declare it as a child of that module with
+`#[cfg(test)]`, `#[path = "tests/send_execution.rs"]` and `mod tests;` so tests
+keep private access without widening production visibility. A module never
+keeps tests both inline and out of line, and a test sits with the module whose
+behaviour it exercises. A domain's root module keeps its own in `tests/mod.rs`,
+as `registry` and `send` do; where a domain's tests need only crate-visible
+items, that file groups them by domain in child files instead, as in
+`store/tests/` and `wallet_db/tests/`. The service fixtures other tests share
+(`loopback_service`, `send_stage_support`) are declared in `service/mod.rs`.
+Crate-root tests use `src/tests/`.
 Integration tests that need their own process sit in `core/tests/`, with shared
 test data in `core/tests/fixtures/`. The CLI acceptance suites and their shared
 harness live in `tests/acceptance/`, and the independent SDK generators for that
@@ -249,8 +257,7 @@ invalid input), `derivation::error::DerivationError`, `send::error::SendError`
 `secrets/`, `SecretStoreError`, `EnvelopeError` and `WalletSecretError`. Each
 converts into `SpectraBridgeError` at the FFI, choosing `Network`, `Decode`,
 `InvalidInput` or `Failure` where the error is raised, so the front end branches
-on a variant rather than a message; `service/staking.rs` maps
-`staking::StakingError` itself. `StoreUnreadable`, the fifth variant, comes only
+on a variant rather than a message. `StoreUnreadable`, the fifth variant, comes only
 from `open_state`, so a front end can offer `discard_state`. There is no
 conversion from a bare string: a new error names its category. Functions that
 take a caller's closure, such as `WalletDatabase::with_connection`, are generic

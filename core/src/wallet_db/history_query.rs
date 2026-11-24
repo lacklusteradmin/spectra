@@ -24,7 +24,6 @@ struct Cursor {
     filter: HistoryQueryFilter,
     search: String,
     oldest_first: bool,
-    #[serde(default)]
     hide_small_amounts: bool,
 }
 

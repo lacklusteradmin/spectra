@@ -1,54 +1,5 @@
-//! Bitcoin SV: BIP-39 + BIP-32 derivation, legacy P2PKH
-//! base58check encoding.
-
-use crate::derivation::bitcoin::derive_legacy_p2pkh;
-use crate::derivation::types::{BitcoinScriptType, DerivationResult};
-use crate::error::SpectraBridgeError;
-use crate::registry::Chain;
-
-/// Derive Bitcoin SV mainnet keys (P2PKH only).
-pub fn derive_bitcoin_sv(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    derive_legacy_p2pkh(
-        Chain::BitcoinSV.fixed_utxo_address_versions()?.0,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        script_type,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive Bitcoin SV testnet keys (P2PKH only).
-pub fn derive_bitcoin_sv_testnet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    derive_legacy_p2pkh(
-        Chain::BitcoinSVTestnet.fixed_utxo_address_versions()?.0,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        script_type,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
+//! Bitcoin SV: its networks' P2PKH and P2SH version bytes. Its keys and
+//! addresses derive with the Bitcoin family (`bitcoin::derive_from_seed_phrase`).
 
 /// A version byte names a network, and BSV has two of them.
 #[cfg(test)]

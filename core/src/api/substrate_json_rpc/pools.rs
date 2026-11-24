@@ -383,13 +383,3 @@ impl SubstrateClient {
 
 #[cfg(test)]
 pub(crate) mod tests;
-#[cfg(test)]
-mod ratio_tests {
-    use super::*;
-    #[test]
-    fn ratio_accounts_for_slashing_without_overflow() {
-        assert_eq!(ratio(100, 90, 100).unwrap(), 90);
-        assert_eq!(ratio(u128::MAX, u128::MAX, u128::MAX).unwrap(), u128::MAX);
-        assert!(ratio(1, 1, 0).is_err());
-    }
-}

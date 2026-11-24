@@ -7,7 +7,8 @@
 
 use crate::derivation::error::DerivationError;
 
-use crate::derivation::primitives::derive_bip39_seed;
+use crate::derivation::primitives::{derive_bip39_seed, derive_slip10_ed25519_key};
+use crate::derivation::types::{DerivationResult, Wants};
 use ed25519_dalek::SigningKey;
 
 // ── Address validation (preserved) ───────────────────────────────────────
@@ -88,108 +89,23 @@ pub(crate) fn address_from_public_key(public_key: &[u8; 32]) -> String {
     base32_no_pad(&payload)
 }
 
-// Derive Stellar address, public key, and private key from a mnemonic via BIP-39 + SLIP-10 ed25519.
+/// Derive a Stellar wallet (G-account strkey address) from a seed phrase via
+/// BIP-39 + SLIP-10 ed25519. Every Stellar network has the same addresses.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
     hmac_key: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, hmac_key)?;
     let signing_key = SigningKey::from_bytes(&private_key);
     let public_key = signing_key.verifying_key().to_bytes();
 
-    let address = if want_address {
-        Some(address_from_public_key(&public_key))
-    } else {
-        None
-    };
-
-    Ok((
-        address,
-        want_public_key.then(|| hex::encode(public_key)),
-        want_private_key.then(|| hex::encode(*private_key)),
-    ))
-}
-
-// ── Derivation entry points ────────────────────────────────────────────────────────
-
-use crate::derivation::primitives::derive_slip10_ed25519_key;
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
-use crate::error::SpectraBridgeError;
-
-// Shared derivation logic for all Stellar networks.
-fn stellar_internal(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    hmac_key: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        &seed_phrase,
-        &derivation_path,
-        passphrase.as_deref(),
-        hmac_key.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
     Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account,
-        branch,
-        index,
+        address: wants.address.then(|| address_from_public_key(&public_key)),
+        public_key_hex: wants.public_key_hex(&public_key),
+        private_key_hex: wants.private_key_hex(&*private_key),
     })
-}
-
-/// Derive Stellar mainnet wallet (G-account strkey address) from a seed phrase.
-pub fn derive_stellar(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    hmac_key: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    stellar_internal(
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        hmac_key,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive Stellar testnet wallet from a seed phrase.
-pub fn derive_stellar_testnet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    hmac_key: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    stellar_internal(
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        hmac_key,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
 }

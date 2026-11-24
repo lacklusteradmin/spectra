@@ -23,7 +23,6 @@ mod served_wallet;
 mod status_trackers;
 mod tracked_tokens_persist;
 mod transaction_merge;
-mod transaction_merge_strategy;
 mod transaction_store;
 mod wallet_derived_state;
 mod wallet_import;

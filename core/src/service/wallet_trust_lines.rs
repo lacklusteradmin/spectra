@@ -263,5 +263,5 @@ impl WalletService {
 }
 
 #[cfg(test)]
-#[path = "tests/issued_assets.rs"]
-mod issued_assets_tests;
+#[path = "tests/wallet_trust_lines.rs"]
+mod tests;

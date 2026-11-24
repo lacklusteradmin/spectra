@@ -29,7 +29,7 @@ pub struct EvmTokenTransferItem {
 /// One ERC-721 or ERC-1155 transfer: a token id and a whole quantity.
 #[derive(Debug, Clone)]
 pub struct EvmNftTransferItem {
-    pub standard: crate::api::evm_nft::NftStandard,
+    pub standard: crate::registry::NftStandard,
     pub contract_address: String,
     pub token_id: String,
     pub quantity: String,
@@ -294,7 +294,7 @@ mod tests {
     /// quantity is the amount, never a balance scaled by decimals.
     #[test]
     fn an_nft_transfer_is_recorded_as_its_own_token_and_quantity() {
-        use crate::api::evm_nft::NftStandard;
+        use crate::registry::NftStandard;
         let transfer = |standard,
                         contract: &str,
                         id: &str,
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn an_unreadable_amount_is_refused_not_stored_as_zero() {
         let transfer = |hash: &str, quantity: &str| EvmNftTransferItem {
-            standard: crate::api::evm_nft::NftStandard::Erc1155,
+            standard: crate::registry::NftStandard::Erc1155,
             contract_address: "0xdef".into(),
             token_id: "7".into(),
             quantity: quantity.into(),

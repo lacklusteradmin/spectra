@@ -2,6 +2,7 @@
 //! leave the device: what the wallet reports before it has scanned, what a
 //! sync refuses without sending anything but the daemon's own question, and
 //! what a view key alone can do until its phrase is given.
+
 use super::*;
 use crate::derivation::import::{WalletImportCommit, WalletImportKind, WalletImportRequest};
 use crate::secrets::backends::InMemorySecretStore;
@@ -59,7 +60,7 @@ async fn service(daemon: &MockServer) -> Arc<WalletService> {
         .join(format!("monero-wallet-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(database).await.unwrap();
+    service.opened(database).await.unwrap();
     service
 }
 
@@ -237,4 +238,130 @@ async fn a_view_key_receives_without_a_password_and_its_phrase_upgrades_it_in_pl
             .spends_known
     );
     assert!(daemon.received_requests().await.unwrap().is_empty());
+}
+
+#[test]
+fn real_daemon_fixture_keeps_keys_local_and_binds_reviewed_content() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/monero-local.json")).unwrap();
+    let private = crate::derivation::dispatch::derive_for_chain(
+        crate::registry::Chain::Monero,
+        crate::derivation::phrase::test_phrase(crate::registry::Chain::Monero),
+        "",
+        None,
+        None,
+        None,
+        crate::derivation::types::Wants::ALL,
+    )
+    .unwrap()
+    .private_key_hex
+    .unwrap();
+    let key = cache_key(
+        fixture["wallet_id"].as_str().unwrap(),
+        &hex::decode(&private).unwrap()[32..],
+    );
+    let wallet: LocalWallet = serde_json::from_str(
+        &crate::secrets::seed_envelope::decrypt(
+            fixture["cache"].as_str().unwrap().as_bytes(),
+            &key,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let prepared: PreparedMoneroTransaction =
+        serde_json::from_value(fixture["prepared"].clone()).unwrap();
+    assert!(wallet.balance().unwrap() > prepared.amount + prepared.fee);
+    let raw = hex::decode(fixture["accepted_raw"].as_str().unwrap()).unwrap();
+    let accepted = ::monero_wallet::transaction::Transaction::read(&mut raw.as_slice()).unwrap();
+    assert_eq!(hex::encode(accepted.hash()), fixture["txid"]);
+    let (raw, hash) = prepared.sign(&private, &key, &wallet).unwrap();
+    let raw = hex::decode(raw).unwrap();
+    let signed = ::monero_wallet::transaction::Transaction::read(&mut raw.as_slice()).unwrap();
+    assert_eq!(hash, hex::encode(signed.hash()));
+    assert_eq!(signed.prefix(), accepted.prefix());
+    let mut changed = prepared.clone();
+    changed.amount += 1;
+    assert!(changed.sign(&private, &key, &wallet).is_err());
+    changed = prepared.clone();
+    changed.recipient.push('1');
+    assert!(changed.sign(&private, &key, &wallet).is_err());
+    assert!(prepared.sign(&private, &[0; 32], &wallet).is_err());
+    let mut spent = wallet.clone();
+    for o in &mut spent.outputs {
+        o.spent = true;
+    }
+    assert!(prepared.sign(&private, &key, &spent).is_err());
+    let mut locked = wallet.clone();
+    locked.next_height = locked.restore_height + 1;
+    assert_eq!(locked.balance().unwrap(), 0);
+    assert!(prepared.sign(&private, &key, &locked).is_err());
+}
+
+/// The key derived from the stored plan is the one the daemon-accepted
+/// transaction was built with, and proves exactly the payment.
+#[test]
+fn the_tx_key_proves_the_payment_the_daemon_accepted() {
+    use curve25519_dalek::{constants::ED25519_BASEPOINT_TABLE, scalar::Scalar as Dalek};
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/monero-local.json")).unwrap();
+    let private = crate::derivation::dispatch::derive_for_chain(
+        crate::registry::Chain::Monero,
+        crate::derivation::phrase::test_phrase(crate::registry::Chain::Monero),
+        "",
+        None,
+        None,
+        None,
+        crate::derivation::types::Wants::ALL,
+    )
+    .unwrap()
+    .private_key_hex
+    .unwrap();
+    let key = cache_key(
+        fixture["wallet_id"].as_str().unwrap(),
+        &hex::decode(&private).unwrap()[32..],
+    );
+    let prepared: PreparedMoneroTransaction =
+        serde_json::from_value(fixture["prepared"].clone()).unwrap();
+    let tx_key = prepared.transaction_key(&key).unwrap();
+    let raw = hex::decode(fixture["accepted_raw"].as_str().unwrap()).unwrap();
+    let accepted = ::monero_wallet::transaction::Transaction::read(&mut raw.as_slice()).unwrap();
+    let recipient = MoneroAddress::from_str_with_unchecked_network(&prepared.recipient).unwrap();
+    // Its public half is the transaction's own key; no additional keys.
+    let (keys, additional) =
+        ::monero_wallet::extra::Extra::read(&mut accepted.prefix().extra.as_slice())
+            .unwrap()
+            .keys()
+            .unwrap();
+    assert!(additional.is_none());
+    let r = Dalek::from_canonical_bytes(*tx_key).unwrap();
+    let public = if recipient.is_subaddress() {
+        r * recipient.spend().into()
+    } else {
+        &r * ED25519_BASEPOINT_TABLE
+    };
+    assert_eq!(keys[0].compress().to_bytes(), public.compress().to_bytes());
+    // The fixture pays its own address: the payment and the change both
+    // go to it, and the payment is one of them.
+    assert_eq!(prepared.sender, prepared.recipient);
+    let received =
+        crate::send::monero_local::received_with_tx_key(&accepted, &tx_key, &recipient).unwrap();
+    assert_eq!(received.len(), 2);
+    assert!(received.contains(&prepared.amount));
+    // Another address received nothing, and another key proves nothing.
+    let other_address = MoneroAddress::from_str_with_unchecked_network(
+        "44AFFq5kSiGBoZ4NMDwYtN18obc8AemS33DBLWs3H7otXft3XjrpDtQGv7SqSsaBYBb98uNbr2VBBEt7f2wfn3RVGQBEP3A",
+    )
+    .unwrap();
+    assert!(
+        crate::send::monero_local::received_with_tx_key(&accepted, &tx_key, &other_address)
+            .unwrap()
+            .is_empty()
+    );
+    let mut other = *tx_key;
+    other[0] ^= 1;
+    assert!(
+        crate::send::monero_local::received_with_tx_key(&accepted, &other, &recipient)
+            .unwrap()
+            .is_empty()
+    );
 }

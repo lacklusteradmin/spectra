@@ -3,6 +3,50 @@ use crate::wallet_db::error::DbError;
 
 // ── Owned address types ───────────────────────────────────────────────────────
 
+/// Which branch of the account an address is on: BIP-44's external chain,
+/// which hands out receive addresses, or its internal one, for change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum AddressBranch {
+    Receive,
+    Change,
+}
+
+impl AddressBranch {
+    /// The branch's index in a derivation path.
+    pub fn index(self) -> u32 {
+        match self {
+            Self::Receive => 0,
+            Self::Change => 1,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Receive => "receive",
+            Self::Change => "change",
+        }
+    }
+}
+
+impl rusqlite::ToSql for AddressBranch {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        Ok(self.as_str().into())
+    }
+}
+
+impl rusqlite::types::FromSql for AddressBranch {
+    fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        match value.as_str()? {
+            "receive" => Ok(Self::Receive),
+            "change" => Ok(Self::Change),
+            other => Err(rusqlite::types::FromSqlError::Other(
+                format!("unknown address branch {other:?}").into(),
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct OwnedAddressRecord {
@@ -10,7 +54,7 @@ pub struct OwnedAddressRecord {
     pub chain_id: crate::registry::Chain,
     pub address: String,
     pub derivation_path: Option<String>,
-    pub branch: Option<String>,
+    pub branch: Option<AddressBranch>,
     pub branch_index: Option<i64>,
 }
 

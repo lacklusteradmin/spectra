@@ -120,9 +120,7 @@ pub(crate) fn chain_candidates(
                 passphrase,
                 None,
                 None,
-                true,
-                false,
-                false,
+                crate::derivation::types::Wants::ADDRESS,
             )
             .ok()?
             .address?;

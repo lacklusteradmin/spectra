@@ -60,7 +60,7 @@ async fn wallets(endpoints: Vec<String>, elsewhere: &str) -> Arc<WalletService> 
         .join(format!("owned-send-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(database).await.unwrap();
+    service.opened(database).await.unwrap();
     let mut source =
         WalletState::single_address("source", "Source", Chain::Ethereum, SOURCE, None, true);
     let mut ether = Chain::Ethereum.native_holding_template();
@@ -282,4 +282,149 @@ async fn a_replacement_resends_the_exact_amount_and_a_cancellation_sends_nothing
         ),
         (SOURCE, "0", 7)
     );
+}
+
+mod shortcut_amount_tests {
+    use super::{send_total, shortcut_amount};
+
+    #[test]
+    fn shares_are_cut_to_display_precision_and_the_maximum_is_exact() {
+        let exact = "0.012490233065563998".to_string();
+        assert_eq!(shortcut_amount(exact.clone(), 25, 18), "0.0124902");
+        assert_eq!(shortcut_amount(exact.clone(), 100, 18), exact);
+        // Dust has no display form; it stays exact rather than become zero.
+        let dust = "0.000000000000000001".to_string();
+        assert_eq!(shortcut_amount(dust.clone(), 25, 18), dust);
+    }
+
+    /// A coin's total is what leaves the wallet, exactly; a token's fee is
+    /// another asset's, so it has none, and nor does an unknown fee.
+    #[test]
+    fn a_total_adds_the_fee_only_where_the_coin_pays_it() {
+        assert_eq!(
+            send_total(true, "0.001", Some("0.000021")),
+            Some("0.001021".to_string())
+        );
+        assert_eq!(
+            send_total(true, "1", Some("0.000000000000000001")),
+            Some("1.000000000000000001".to_string())
+        );
+        assert_eq!(send_total(false, "20", Some("0.000021")), None);
+        assert_eq!(send_total(true, "0.001", None), None);
+    }
+}
+
+mod provisional_amount_tests {
+    use super::provisional_amount;
+
+    /// A tenth of the holding, cut to its precision; a holding too small for
+    /// a tenth to count is quoted at its smallest unit.
+    #[test]
+    fn an_empty_amount_is_quoted_for_a_tenth_of_the_holding() {
+        assert_eq!(provisional_amount("2.5", 8), "0.25");
+        assert_eq!(provisional_amount("0.123456789", 8), "0.01234567");
+        assert_eq!(provisional_amount("0.00000009", 8), "0.00000001");
+        assert_eq!(provisional_amount("0", 6), "0.000001");
+        assert_eq!(provisional_amount("7", 0), "1");
+    }
+}
+
+mod watch_only_preview {
+    //! Exercise app-facing adapters through protocol fixtures, not their decoders.
+    use super::*;
+    use wiremock::matchers::{body_partial_json, method};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn service(chain: crate::registry::Chain, server: &MockServer) -> Arc<WalletService> {
+        WalletService::new(vec![ChainEndpoints {
+            capabilities: EndpointCapability::ALL.to_vec(),
+            chain_id: chain,
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input() {
+        let server = MockServer::start().await;
+        let svc = service(crate::registry::Chain::Solana, &server);
+        let address = "11111111111111111111111111111111";
+        let mut wallet = crate::store::state::WalletState::single_address(
+            "watch",
+            "Watch",
+            crate::registry::Chain::Solana,
+            address,
+            None,
+            true,
+        );
+        wallet
+            .holdings
+            .push(crate::store::wallet_domain::AssetHolding {
+                name: "Solana".into(),
+                symbol: "SOL".into(),
+                chain_id: crate::registry::Chain::Solana,
+                token_standard: None,
+                amount: "2".into(),
+                id: String::new(),
+                coingecko_id: String::new(),
+                contract_address: None,
+            });
+        svc.wallet_state.write().await.wallets.push(wallet);
+        for (amount, nonce) in [("0.0000000001", None), ("NaN", None), ("1", Some(1))] {
+            assert!(
+                svc.preview_owned_send(
+                    "watch".into(),
+                    "solana:native".into(),
+                    amount.into(),
+                    "".into(),
+                    nonce,
+                    None
+                )
+                .await
+                .is_err()
+            );
+        }
+        assert!(server.received_requests().await.unwrap().is_empty());
+        Mock::given(method("POST"))
+            .and(body_partial_json(
+                json!({"method":"getBalance","params":[address]}),
+            ))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    json!({"jsonrpc":"2.0","id":1,"result":{"value":2_000_000_000u64}}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let result = svc
+            .preview_owned_send(
+                "watch".into(),
+                "solana:native".into(),
+                "1".into(),
+                "".into(),
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        let quote = result.expect("quote");
+        assert!(quote.shortcuts.contains_key(&100));
+        assert_eq!(quote.chain_id, crate::registry::Chain::Solana);
+        assert_eq!(quote.preview.max_sendable, "1.999995");
+        svc.wallet_state.write().await.wallets[0].address = None;
+        let count = server.received_requests().await.unwrap().len();
+        assert!(
+            svc.preview_owned_send(
+                "watch".into(),
+                "solana:native".into(),
+                "1".into(),
+                "".into(),
+                None,
+                None
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(server.received_requests().await.unwrap().len(), count);
+    }
 }

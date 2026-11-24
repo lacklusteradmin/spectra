@@ -12,7 +12,7 @@ pub use super::token_preferences::{
 };
 pub use super::wallet_domain::{WalletSigning, WalletState};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResidentState {
     /// Session-local committed-state version. Never persisted or supplied by a client.
@@ -21,7 +21,6 @@ pub struct ResidentState {
     pub movement_baseline: Option<crate::service::PortfolioMovementBaseline>,
     pub quotes: crate::service::QuoteRefreshState,
     pub diagnostics: crate::service::DiagnosticState,
-    pub schema_version: u32,
     pub wallets: Vec<WalletState>,
     pub selected_wallet_id: Option<String>,
     pub settings: AppSettings,
@@ -44,6 +43,8 @@ pub struct ResidentState {
     pub fiat_rates_from_usd: std::collections::HashMap<String, f64>,
 }
 
+/// The stored state's layout version, kept beside it in the database: a
+/// store written in any other is refused, never read.
 pub(crate) const APP_STATE_SCHEMA_VERSION: u32 = 3;
 
 impl Default for ResidentState {
@@ -52,7 +53,6 @@ impl Default for ResidentState {
             revision: 0,
             movement_baseline: None,
             quotes: Default::default(),
-            schema_version: APP_STATE_SCHEMA_VERSION,
             diagnostics: Default::default(),
             wallets: Vec::new(),
             selected_wallet_id: None,
@@ -254,10 +254,35 @@ pub enum StateEvent {
     DiagnosticsChanged,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+/// What a front end mirrors of core's state: the parts it shows and edits
+/// directly. Wallets, quotes and diagnostics reach it through their own
+/// projections, never through this.
+#[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
+pub struct CommittedState {
+    pub revision: u64,
+    pub settings: AppSettings,
+    pub address_book: Vec<AddressBookEntry>,
+    pub token_preferences: Vec<crate::store::wallet_domain::TokenPreferenceEntry>,
+    pub price_alerts: Vec<crate::store::PriceAlertRule>,
+}
+
+impl ResidentState {
+    pub fn committed(&self) -> CommittedState {
+        CommittedState {
+            revision: self.revision,
+            settings: self.settings.clone(),
+            address_book: self.address_book.clone(),
+            token_preferences: self.token_preferences.clone(),
+            price_alerts: self.price_alerts.clone(),
+        }
+    }
+}
+
+/// A command's result: the state it committed and what changed.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct StateTransition {
-    pub state: ResidentState,
+    pub state: CommittedState,
     pub events: Vec<StateEvent>,
 }
 
@@ -396,5 +421,5 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
 }
 
 #[cfg(test)]
-#[path = "tests/state_reducer.rs"]
+#[path = "tests/state.rs"]
 mod tests;

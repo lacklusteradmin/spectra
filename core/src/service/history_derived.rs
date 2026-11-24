@@ -113,7 +113,7 @@ mod tests {
         );
 
         let db = temp_db("bound");
-        service.open_state(db.clone()).await.expect("open");
+        service.opened(db.clone()).await.expect("open");
         service
             .upsert_history_records(vec![record(
                 "B1B2C3D4-E5F6-7890-ABCD-EF1234567890",
@@ -128,7 +128,7 @@ mod tests {
         // record is there, and it is there because the path came from the
         // binding rather than from the call.
         let reopened = WalletService::new(Vec::new()).expect("service");
-        reopened.open_state(db).await.expect("open");
+        reopened.opened(db).await.expect("open");
         assert_eq!(
             reopened
                 .fetch_all_history_records()
@@ -144,7 +144,7 @@ mod tests {
     async fn derived_views_use_the_rows_unix_timestamp() {
         let service = WalletService::new(Vec::new()).expect("service");
         let db = temp_db("timestamps");
-        service.open_state(db.clone()).await.expect("open");
+        service.opened(db.clone()).await.expect("open");
         crate::wallet_db::wallet_upsert(
             &service.bound_database().await.unwrap(),
             &crate::store::state::WalletState::single_address(
@@ -181,7 +181,7 @@ mod tests {
     #[tokio::test]
     async fn a_page_larger_than_the_cap_is_cut_to_it() {
         let service = WalletService::new(Vec::new()).expect("service");
-        service.open_state(temp_db("page_cap")).await.expect("open");
+        service.opened(temp_db("page_cap")).await.expect("open");
         crate::wallet_db::wallet_upsert(
             &service.bound_database().await.unwrap(),
             &crate::store::state::WalletState::single_address(
@@ -342,7 +342,7 @@ mod replaceable_tests {
     async fn the_store_answers_and_a_reopened_service_answers_the_same() {
         let service = Arc::new(WalletService::new(vec![]).unwrap());
         let db = database();
-        service.open_state(db.clone()).await.unwrap();
+        service.opened(db.clone()).await.unwrap();
         crate::wallet_db::wallet_upsert(
             &service.bound_database().await.unwrap(),
             &crate::store::state::WalletState::single_address(
@@ -399,7 +399,7 @@ mod replaceable_tests {
         assert_eq!(chains, expected);
 
         let reopened = Arc::new(WalletService::new(vec![]).unwrap());
-        reopened.open_state(db).await.unwrap();
+        reopened.opened(db).await.unwrap();
         assert_eq!(
             reopened.replaceable_sends().await.unwrap(),
             service.replaceable_sends().await.unwrap()
@@ -439,7 +439,7 @@ mod read_failure_tests {
         let path =
             std::env::temp_dir().join(format!("history-refusal-{}.sqlite", crate::store::new_id()));
         service
-            .open_state(path.to_string_lossy().into_owned())
+            .opened(path.to_string_lossy().into_owned())
             .await
             .unwrap();
         let db = rusqlite::Connection::open(&path).unwrap();

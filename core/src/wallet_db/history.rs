@@ -268,14 +268,20 @@ pub(crate) fn history_save_send_progress(
                 .source_address
                 .as_deref()
                 .ok_or_else(|| DbError::Invalid("missing EVM sender".into()))?;
-            let conflict: bool = tx.query_row(
+            let conflict: bool = tx
+                .query_row(
+                    concat!(
                 "SELECT EXISTS(SELECT 1 FROM history_records WHERE chain_id = ?1 AND id != ?2
                  AND lower(json_extract(payload, '$.sourceAddress')) = lower(?3)
                  AND json_extract(payload, '$.nonce') = ?4
-                 AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'refundTokenStorage', 'trustAsset', 'removeTrustLine', 'shield')
-                 AND json_extract(payload, '$.status') = 'pending')",
-                params![incoming.chain_id, incoming.id, source, nonce], |row| row.get(0)
-            ).map_err(DbError::from)?;
+                 AND ",
+                super::submitted_kind!(),
+                " AND json_extract(payload, '$.status') = 'pending')"
+                ),
+                    params![incoming.chain_id, incoming.id, source, nonce],
+                    |row| row.get(0),
+                )
+                .map_err(DbError::from)?;
             if conflict {
                 return Err(DbError::Invalid(
                     "EVM nonce was reserved by another send; retry with a fresh nonce".into(),
@@ -323,7 +329,11 @@ pub(crate) fn history_pending_for_sender(
 ) -> Result<Vec<TransactionRecord>, DbError> {
     history_fetch_where(
         database,
-        "chain_id = ?1 AND lower(json_extract(payload, '$.sourceAddress')) = lower(?2) AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'refundTokenStorage', 'trustAsset', 'removeTrustLine', 'shield') AND json_extract(payload, '$.status') = 'pending'",
+        concat!(
+            "chain_id = ?1 AND lower(json_extract(payload, '$.sourceAddress')) = lower(?2) AND ",
+            super::submitted_kind!(),
+            " AND json_extract(payload, '$.status') = 'pending'"
+        ),
         params![chain, sender],
     )
 }

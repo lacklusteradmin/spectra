@@ -1,13 +1,8 @@
 //! Solana staking validator queries.
 
+use crate::api::error::ApiError;
 use crate::api::solana_json_rpc::{SolanaClient, VoteAccount};
-use crate::staking::{StakingError, StakingValidator};
-
-pub struct SolanaStakingClient {
-    rpc_endpoints: Vec<String>,
-}
-
-// ── RPC response types ────────────────────────────────────────────────────────
+use crate::staking::StakingValidator;
 
 fn vote_account_to_validator(v: VoteAccount, is_active: bool, minimum: u64) -> StakingValidator {
     StakingValidator {
@@ -28,44 +23,40 @@ fn vote_account_to_validator(v: VoteAccount, is_active: bool, minimum: u64) -> S
     }
 }
 
-impl SolanaStakingClient {
-    pub fn new(rpc_endpoints: Vec<String>) -> Self {
-        Self { rpc_endpoints }
-    }
+/// Vote-account directory and commission; reward APY is unavailable.
+pub(crate) async fn fetch_validators(
+    rpc_endpoints: Vec<String>,
+) -> Result<Vec<StakingValidator>, ApiError> {
+    let client = SolanaClient::new(std::sync::Arc::new(rpc_endpoints));
+    let resp = client.fetch_staking_validators().await?;
+    let minimum = client.fetch_stake_minimum().await?;
 
-    /// Vote-account directory and commission; reward APY is unavailable.
-    pub async fn fetch_validators(&self) -> Result<Vec<StakingValidator>, StakingError> {
-        let client = SolanaClient::new(std::sync::Arc::new(self.rpc_endpoints.clone()));
-        let resp = client.fetch_staking_validators().await?;
-        let minimum = client.fetch_stake_minimum().await?;
+    let mut validators: Vec<StakingValidator> = resp
+        .current
+        .into_iter()
+        .map(|v| vote_account_to_validator(v, true, minimum))
+        .chain(
+            resp.delinquent
+                .into_iter()
+                .map(|v| vote_account_to_validator(v, false, minimum)),
+        )
+        .collect();
 
-        let mut validators: Vec<StakingValidator> = resp
-            .current
-            .into_iter()
-            .map(|v| vote_account_to_validator(v, true, minimum))
-            .chain(
-                resp.delinquent
-                    .into_iter()
-                    .map(|v| vote_account_to_validator(v, false, minimum)),
-            )
-            .collect();
+    // Sort by activated stake descending, show top 100.
+    validators.sort_by(|a, b| {
+        let a_stake = a
+            .total_stake_smallest_unit
+            .as_deref()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        let b_stake = b
+            .total_stake_smallest_unit
+            .as_deref()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        b_stake.cmp(&a_stake)
+    });
+    validators.truncate(100);
 
-        // Sort by activated stake descending, show top 100.
-        validators.sort_by(|a, b| {
-            let a_stake = a
-                .total_stake_smallest_unit
-                .as_deref()
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(0);
-            let b_stake = b
-                .total_stake_smallest_unit
-                .as_deref()
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(0);
-            b_stake.cmp(&a_stake)
-        });
-        validators.truncate(100);
-
-        Ok(validators)
-    }
+    Ok(validators)
 }

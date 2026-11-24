@@ -21,8 +21,8 @@ pub(crate) fn validate_drops(drops: u128) -> Result<(), SendError> {
 /// An issued-currency amount: a value of one issuer's currency.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct IssuedAmount {
-    pub issue: crate::api::xrpl_amount::XrplIssue,
-    pub value: crate::api::xrpl_amount::IouValue,
+    pub issue: crate::registry::xrpl_amount::XrplIssue,
+    pub value: crate::registry::xrpl_amount::IouValue,
 }
 
 impl IssuedAmount {

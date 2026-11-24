@@ -12,6 +12,11 @@ pub struct QuotedTotal {
     /// nothing, so the total leaves them out, and says how many it left.
     #[uniffi(default = 0)]
     pub test_network_count: u64,
+    /// Wallets in the total whose balances core has not read yet: their
+    /// holdings are the import's zeros, not balances.
+    pub unread_wallet_count: u64,
+    /// No wallet in the total has been read, so it has no figure yet.
+    pub is_unread: bool,
 }
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
@@ -127,7 +132,25 @@ pub(super) fn total<'a>(
         unpriced_count,
         fiat_total: rate.map(|rate| total * rate).filter(|v| v.is_finite()),
         test_network_count,
+        unread_wallet_count: 0,
+        is_unread: false,
     }
+}
+
+/// The total of `wallets`' counted holdings, and which of them core has not
+/// read yet.
+fn wallets_total(
+    state: &ResidentState,
+    wallets: &[&crate::store::wallet_domain::WalletState],
+) -> QuotedTotal {
+    let mut quoted = total(state, wallets.iter().flat_map(|w| w.counted_holdings()));
+    let unread = wallets
+        .iter()
+        .filter(|wallet| wallet.balances_read_at.is_none())
+        .count();
+    quoted.unread_wallet_count = unread as u64;
+    quoted.is_unread = !wallets.is_empty() && unread == wallets.len();
+    quoted
 }
 
 pub(super) fn portfolio_valuation(state: &ResidentState) -> PortfolioValuation {
@@ -159,18 +182,18 @@ pub(super) fn portfolio_valuation(state: &ResidentState) -> PortfolioValuation {
         holding_values,
         prices,
         alert_targets,
-        portfolio: total(
+        portfolio: wallets_total(
             state,
-            state
+            &state
                 .wallets
                 .iter()
                 .filter(|w| w.include_in_portfolio_total)
-                .flat_map(|w| w.counted_holdings()),
+                .collect::<Vec<_>>(),
         ),
         wallets: state
             .wallets
             .iter()
-            .map(|wallet| (wallet.id.clone(), total(state, wallet.counted_holdings())))
+            .map(|wallet| (wallet.id.clone(), wallets_total(state, &[wallet])))
             .collect(),
     }
 }
@@ -226,6 +249,24 @@ mod tests {
         assert_eq!(result.total, 0.0);
         assert_eq!(result.unpriced_count, 0);
         assert_eq!(result.test_network_count, 1);
+    }
+
+    /// A total says how many of its wallets core has not read, and has no
+    /// figure while none has been.
+    #[test]
+    fn a_total_counts_the_wallets_not_yet_read() {
+        let wallet = |read: Option<f64>| crate::store::state::WalletState {
+            balances_read_at: read,
+            ..crate::store::state::WalletState::fixture("w", crate::registry::Chain::Bitcoin)
+        };
+        let state = ResidentState::default();
+        let (read, unread) = (wallet(Some(1.0)), wallet(None));
+        let both = wallets_total(&state, &[&read, &unread]);
+        assert_eq!((both.unread_wallet_count, both.is_unread), (1, false));
+        let neither = wallets_total(&state, &[&unread, &unread]);
+        assert_eq!((neither.unread_wallet_count, neither.is_unread), (2, true));
+        let none = wallets_total(&state, &[]);
+        assert_eq!((none.unread_wallet_count, none.is_unread), (0, false));
     }
 
     /// A testnet coin is never quoted, even when a price is keyed by its id.

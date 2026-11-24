@@ -21,6 +21,11 @@ mod tests;
 mod tokens;
 mod utxo;
 
+pub(crate) mod cardano_asset;
+pub(crate) mod stellar_asset;
+pub(crate) mod xrpl_amount;
+pub use tokens::NftStandard;
+
 use crate::api::endpoint::{EndpointApi, EndpointCapability};
 
 /// Declares [`Chain`] and `ALL_CHAINS` from one list, so the enum and the
@@ -513,10 +518,12 @@ pub(crate) struct AccountKeyVersion {
     pub script: crate::derivation::types::BitcoinScriptType,
 }
 
-/// History service strategy; callers never select a protocol implementation.
+/// The family a chain's history is read and merged in: EVM (receipts and
+/// nonces), UTXO (an account's addresses and outputs) or a plain account.
+/// Callers never select a protocol implementation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HistoryRefreshKind {
+pub enum HistoryFamily {
     Evm,
     Utxo,
-    Normalized,
+    Account,
 }

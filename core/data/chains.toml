@@ -113,6 +113,7 @@ popular_rank = 10
 tags = ["utxo", "pow"]
 color = "orange"
 artwork_name = "bitcoincash"
+address_prefix_hint = "1… / bitcoincash:q…"
 
 [[chains]]
 id = "tron"
@@ -326,6 +327,7 @@ popular_rank = 39
 tags = ["utxo", "pow"]
 color = "orange"
 artwork_name = "bitcoinsv"
+address_prefix_hint = "1…"
 
 [[chains]]
 id = "bnb"
@@ -434,6 +436,7 @@ popular_rank = 13
 tags = ["utxo", "pow", "privacy"]
 color = "yellow"
 artwork_name = "zcash"
+address_prefix_hint = "t1…"
 
 [[chains]]
 id = "bitcoin-gold"
@@ -447,6 +450,7 @@ popular_rank = 46
 tags = ["utxo", "pow"]
 color = "yellow"
 artwork_name = "bitcoingold"
+address_prefix_hint = "G…"
 
 [[chains]]
 id = "decred"
@@ -460,6 +464,7 @@ popular_rank = 44
 tags = ["utxo", "pow"]
 color = "indigo"
 artwork_name = "decred"
+address_prefix_hint = "Ds…"
 
 [[chains]]
 id = "kaspa"
@@ -473,6 +478,7 @@ popular_rank = 30
 tags = ["utxo", "pow"]
 color = "teal"
 artwork_name = "kaspa"
+address_prefix_hint = "kaspa:q…"
 
 [[chains]]
 id = "sei"
@@ -608,6 +614,7 @@ popular_rank = 37
 tags = ["utxo", "pow", "privacy"]
 color = "blue"
 artwork_name = "dash"
+address_prefix_hint = "X…"
 
 [[chains]]
 id = "x-layer"
@@ -633,6 +640,7 @@ popular_rank = 20
 tags = ["substrate"]
 color = "gray"
 artwork_name = "bittensor"
+address_prefix_hint = "5…"
 
 [[chains]]
 id = "plasma"
@@ -707,7 +715,7 @@ derivation_path = [
 search_keywords = ["Bitcoin Testnet", "tBTC", "testnet"]
 color = "orange"
 artwork_name = "bitcointestnet"
-address_prefix_hint = ""
+address_prefix_hint = "tb1q…"
 
 [[chains]]
 id = "bitcoin-testnet-4"
@@ -724,7 +732,7 @@ derivation_path = [
 search_keywords = ["Bitcoin Testnet4", "testnet4", "tBTC"]
 color = "orange"
 artwork_name = "bitcointestnet"
-address_prefix_hint = ""
+address_prefix_hint = "tb1q…"
 
 [[chains]]
 id = "bitcoin-signet"
@@ -741,7 +749,7 @@ derivation_path = [
 search_keywords = ["Bitcoin Signet", "signet", "sBTC"]
 color = "orange"
 artwork_name = "bitcoinsignet"
-address_prefix_hint = ""
+address_prefix_hint = "tb1q…"
 
 [[chains]]
 id = "litecoin-testnet"
@@ -757,7 +765,7 @@ derivation_path = [
 search_keywords = ["Litecoin Testnet", "tLTC"]
 color = "blue"
 artwork_name = "litecoin"
-address_prefix_hint = ""
+address_prefix_hint = "tltc1… / m… / n…"
 
 [[chains]]
 id = "bitcoin-cash-testnet"
@@ -771,7 +779,7 @@ derivation_path = [
 search_keywords = ["Bitcoin Cash Testnet", "tBCH"]
 color = "orange"
 artwork_name = "bitcoincash"
-address_prefix_hint = ""
+address_prefix_hint = "m… / n…"
 
 [[chains]]
 id = "bitcoin-sv-testnet"
@@ -785,7 +793,7 @@ derivation_path = [
 search_keywords = ["Bitcoin SV Testnet", "tBSV"]
 color = "orange"
 artwork_name = "bitcoinsv"
-address_prefix_hint = ""
+address_prefix_hint = "m… / n…"
 
 [[chains]]
 id = "dogecoin-testnet"
@@ -798,7 +806,7 @@ derivation_path = [
 search_keywords = ["Dogecoin Testnet", "tDOGE"]
 color = "yellow"
 artwork_name = "dogecoin"
-address_prefix_hint = ""
+address_prefix_hint = "n…"
 
 [[chains]]
 id = "zcash-testnet"
@@ -812,7 +820,7 @@ derivation_path = [
 search_keywords = ["Zcash Testnet", "tZEC"]
 color = "yellow"
 artwork_name = "zcash"
-address_prefix_hint = ""
+address_prefix_hint = "tm…"
 
 [[chains]]
 id = "decred-testnet"
@@ -825,7 +833,7 @@ derivation_path = [
 search_keywords = ["Decred Testnet", "tDCR"]
 color = "indigo"
 artwork_name = "decred"
-address_prefix_hint = ""
+address_prefix_hint = "Ts…"
 
 [[chains]]
 id = "kaspa-testnet"
@@ -838,7 +846,7 @@ derivation_path = [
 search_keywords = ["Kaspa Testnet", "tKAS"]
 color = "teal"
 artwork_name = "kaspa"
-address_prefix_hint = ""
+address_prefix_hint = "kaspatest:q…"
 
 [[chains]]
 id = "dash-testnet"
@@ -852,7 +860,7 @@ derivation_path = [
 search_keywords = ["Dash Testnet", "tDASH"]
 color = "blue"
 artwork_name = "dash"
-address_prefix_hint = ""
+address_prefix_hint = "y…"
 
 [[chains]]
 id = "peercoin-testnet"
@@ -1121,7 +1129,7 @@ derivation_path = [
 search_keywords = ["Tron Nile", "Nile", "tTRX"]
 color = "red"
 artwork_name = "tron"
-address_prefix_hint = ""
+address_prefix_hint = "T…"
 
 [[chains]]
 id = "solana-devnet"
@@ -1136,7 +1144,7 @@ derivation_path = [
 search_keywords = ["Solana Devnet", "Devnet", "tSOL"]
 color = "green"
 artwork_name = "solana"
-address_prefix_hint = ""
+address_prefix_hint = "So111…"
 
 [[chains]]
 id = "xrp-testnet"
@@ -1150,7 +1158,7 @@ derivation_path = [
 search_keywords = ["XRP Ledger Testnet", "tXRP"]
 color = "cyan"
 artwork_name = "xrp"
-address_prefix_hint = ""
+address_prefix_hint = "r…"
 
 [[chains]]
 id = "stellar-testnet"
@@ -1164,7 +1172,7 @@ derivation_path = [
 search_keywords = ["Stellar Testnet", "tXLM"]
 color = "teal"
 artwork_name = "stellar"
-address_prefix_hint = ""
+address_prefix_hint = "G…"
 
 [[chains]]
 id = "cardano-preprod"
@@ -1178,7 +1186,7 @@ derivation_path = [
 search_keywords = ["Cardano Preprod", "Preprod", "tADA"]
 color = "indigo"
 artwork_name = "cardano"
-address_prefix_hint = ""
+address_prefix_hint = "addr_test1…"
 
 [[chains]]
 id = "sui-testnet"
@@ -1192,7 +1200,7 @@ derivation_path = [
 search_keywords = ["Sui Testnet", "tSUI"]
 color = "mint"
 artwork_name = "sui"
-address_prefix_hint = ""
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "aptos-testnet"
@@ -1206,7 +1214,7 @@ derivation_path = [
 search_keywords = ["Aptos Testnet", "tAPT"]
 color = "cyan"
 artwork_name = "aptos"
-address_prefix_hint = ""
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "ton-testnet"
@@ -1218,7 +1226,7 @@ derivation_path = []
 search_keywords = ["TON Testnet", "Test Gram", "tGRAM"]
 color = "blue"
 artwork_name = "ton"
-address_prefix_hint = ""
+address_prefix_hint = "0Q… / kQ…"
 
 [[chains]]
 id = "near-testnet"
@@ -1232,7 +1240,7 @@ derivation_path = [
 search_keywords = ["NEAR Testnet", "tNEAR"]
 color = "indigo"
 artwork_name = "near"
-address_prefix_hint = ""
+address_prefix_hint = "alice.testnet / 64-char hex"
 
 [[chains]]
 id = "polkadot-westend"
@@ -1244,7 +1252,7 @@ derivation_path = []
 search_keywords = ["Polkadot Westend", "Westend", "tDOT"]
 color = "pink"
 artwork_name = "polkadot"
-address_prefix_hint = ""
+address_prefix_hint = "5…"
 
 [[chains]]
 id = "monero-stagenet"
@@ -1256,4 +1264,4 @@ derivation_path = []
 search_keywords = ["Monero Stagenet", "Stagenet", "tXMR"]
 color = "orange"
 artwork_name = "monero"
-address_prefix_hint = ""
+address_prefix_hint = "5… / 7…"

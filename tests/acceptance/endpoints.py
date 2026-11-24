@@ -39,8 +39,9 @@ with scratch("endpoints") as directory:
     assert listed("built-in") == catalog
     print("The listing filters the catalog by source")
 
-    # A network with no API configured is reported apart, and is not healthy.
-    health = spectra.run("endpoints", "probe", "--chain", "dash-testnet")
+    # A network with no API configured is reported apart, and is not healthy:
+    # the probe reports it and exits 1.
+    health = spectra.fail("endpoints", "probe", "--chain", "dash-testnet", code=1)
     assert not health["ok"] and health["networksWithoutApis"] == ["dash-testnet"], health
     assert health["total"] == 0, health
 
@@ -52,7 +53,7 @@ with scratch("endpoints") as directory:
         assert health["ok"] and health["networksWithoutApis"] == [], health
         assert (health["total"], health["unreachable"], health["uncheckedApis"]) == (1, 0, 0), health
         node.state["fail"] = True
-        health = spectra.run("endpoints", "probe", "--chain", "dash-testnet")
+        health = spectra.fail("endpoints", "probe", "--chain", "dash-testnet", code=1)
         assert not health["ok"] and health["unreachable"] == 1, health
         assert health["endpoints"][0]["detail"], health
         print("The health verdict counts networks without APIs and unreachable endpoints")

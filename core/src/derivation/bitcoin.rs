@@ -131,12 +131,11 @@ pub(crate) fn encode_p2tr(
 
 // ── Derivation pipeline (shared by Bitcoin-family chains) ────────────────
 
-use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
-use crate::error::SpectraBridgeError;
+use crate::derivation::types::{BitcoinScriptType, DerivationResult, Wants};
+use crate::registry::Chain;
 
 /// BIP-39 → BIP-32 path walk → (compressed pubkey, raw private bytes).
-/// `pub(crate)` so BCH / BSV / LTC / DOGE / DASH / BTG chain files can reuse it.
-pub(crate) fn derive_secp_keypair(
+fn derive_secp_keypair(
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
@@ -166,152 +165,31 @@ pub(crate) fn encode_address_inner(
     }
 }
 
-/// Tuple-returning form of the seed derivation.
+/// Derive a secp256k1 UTXO wallet on `chain` (the Bitcoin, Litecoin,
+/// Peercoin, Bitcoin Cash, Bitcoin SV, Dogecoin, Dash, Bitcoin Gold, Zcash,
+/// Decred and Kaspa networks) from a seed phrase.
+///
+/// The address is `chain`'s encoding of the key for `script_type`, which
+/// [`Chain::encode_discovery_address`] owns: the P2PKH-only networks ignore
+/// the script type, and Litecoin refuses Taproot. It is encoded even when
+/// only keys are wanted, so a script the network does not take is refused
+/// either way.
 pub(crate) fn derive_from_seed_phrase(
-    params: BitcoinNetworkParams,
-    script_type: BitcoinScriptType,
+    chain: Chain,
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
+    script_type: BitcoinScriptType,
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
     let (public_key, private_bytes) =
         derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
-    let address = if want_address {
-        Some(encode_address_inner(params, script_type, &public_key)?)
-    } else {
-        None
-    };
-    Ok((
-        address,
-        want_public_key.then(|| hex::encode(public_key.serialize())),
-        want_private_key.then(|| hex::encode(private_bytes)),
-    ))
-}
-
-// ── Derivation entry points ────────────────────────────────────────────────────────
-
-// Validate and decode a 64-character hex private key string into 32 raw bytes.
-// Shared derivation logic for all Bitcoin networks; params selects mainnet/testnet version bytes.
-fn bitcoin_export_internal(
-    params: BitcoinNetworkParams,
-    script_type: BitcoinScriptType,
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        params,
-        script_type,
-        &seed_phrase,
-        &derivation_path,
-        passphrase.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
+    let address = chain.encode_discovery_address(&public_key, script_type)?;
     Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account,
-        branch,
-        index,
+        address: wants.address.then_some(address),
+        public_key_hex: wants.public_key_hex(&public_key.serialize()),
+        private_key_hex: wants.private_key_hex(&private_bytes),
     })
-}
-
-/// Derive Bitcoin mainnet wallet (P2PKH/P2SH-P2WPKH/P2WPKH/P2TR) from a seed phrase.
-pub fn derive_bitcoin(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    bitcoin_export_internal(
-        BTC_MAINNET,
-        script_type,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive Bitcoin testnet wallet from a seed phrase.
-pub fn derive_bitcoin_testnet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    bitcoin_export_internal(
-        BTC_TESTNET,
-        script_type,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive Bitcoin testnet4 wallet from a seed phrase.
-pub fn derive_bitcoin_testnet4(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    bitcoin_export_internal(
-        BTC_TESTNET,
-        script_type,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive Bitcoin signet wallet from a seed phrase.
-pub fn derive_bitcoin_signet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    bitcoin_export_internal(
-        BTC_TESTNET,
-        script_type,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
 }
 
 // ── Bitcoin address parsing (structural, for the validator) ──────────────
@@ -361,33 +239,4 @@ pub(crate) fn parse_bitcoin_address(s: &str) -> Result<ParsedBitcoinAddress, Der
         }
     };
     Ok(ParsedBitcoinAddress::Legacy { network })
-}
-
-/// Derive a P2PKH-only Bitcoin-family wallet for the supplied network version.
-pub(crate) fn derive_legacy_p2pkh(
-    version: u8,
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    if !matches!(script_type, BitcoinScriptType::P2pkh) {
-        return Err(SpectraBridgeError::InvalidInput {
-            message: "This chain only supports P2PKH addresses.".into(),
-        });
-    }
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (pk, priv_bytes) =
-        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
-    Ok(DerivationResult {
-        address: want_address.then(|| encode_p2pkh(version, &pk.serialize())),
-        public_key_hex: want_public_key.then(|| hex::encode(pk.serialize())),
-        private_key_hex: want_private_key.then(|| hex::encode(priv_bytes)),
-        account,
-        branch,
-        index,
-    })
 }

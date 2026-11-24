@@ -427,13 +427,17 @@ pub fn validate_protocol_identifier(
         .ok_or_else(|| E::invalid("protocol token requires an identifier"))?;
     let result = match standard {
         S::TrustLineToken => {
-            return Ok(crate::api::xrpl_amount::XrplIssue::parse(&identifier)?.identifier());
+            return Ok(crate::registry::xrpl_amount::XrplIssue::parse(&identifier)?.identifier());
         }
         S::StellarAsset => {
-            return Ok(crate::api::stellar_asset::StellarAsset::parse(&identifier)?.identifier());
+            return Ok(
+                crate::registry::stellar_asset::StellarAsset::parse(&identifier)?.identifier(),
+            );
         }
         S::CardanoNativeToken => {
-            return Ok(crate::api::cardano_asset::CardanoAssetId::parse(&identifier)?.identifier());
+            return Ok(
+                crate::registry::cardano_asset::CardanoAssetId::parse(&identifier)?.identifier(),
+            );
         }
         // A contract, mint or account: an address on the token's own network.
         S::Erc20 | S::Bep20 | S::Arc20 | S::Spl | S::Trc20 | S::Tep74 | S::Nep141 | S::Aip21 => {
@@ -519,7 +523,7 @@ pub fn deployment_id(
 /// not an asset with a balance: no catalog entry, price or holding has it.
 pub(crate) fn nft_deployment_id(
     chain: crate::registry::Chain,
-    standard: crate::api::evm_nft::NftStandard,
+    standard: crate::registry::NftStandard,
     contract: &str,
     token_id: &str,
 ) -> String {
@@ -587,17 +591,17 @@ pub fn normalize_token_identifier(
         // Currency and asset codes are case-sensitive, and so is an XRP
         // issuer's base58; each has one canonical spelling when it parses.
         Chain::Xrp | Chain::XrpTestnet => Some(
-            crate::api::xrpl_amount::XrplIssue::parse(trimmed)
+            crate::registry::xrpl_amount::XrplIssue::parse(trimmed)
                 .map(|issue| issue.identifier())
                 .unwrap_or_else(|_| trimmed.to_string()),
         ),
         Chain::Stellar | Chain::StellarTestnet => Some(
-            crate::api::stellar_asset::StellarAsset::parse(trimmed)
+            crate::registry::stellar_asset::StellarAsset::parse(trimmed)
                 .map(|asset| asset.identifier())
                 .unwrap_or_else(|_| trimmed.to_string()),
         ),
         Chain::Cardano | Chain::CardanoPreprod => Some(
-            crate::api::cardano_asset::CardanoAssetId::parse(trimmed)
+            crate::registry::cardano_asset::CardanoAssetId::parse(trimmed)
                 .map(|asset| asset.identifier())
                 .unwrap_or_else(|_| trimmed.to_lowercase()),
         ),

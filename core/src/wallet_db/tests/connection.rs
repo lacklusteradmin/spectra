@@ -79,10 +79,10 @@ fn cloned_handle_keeps_connection_until_last_owner_releases_it() {
 async fn service_holds_connection_until_rebind_or_drop() {
     let service = crate::service::WalletService::new(vec![]).unwrap();
     let first_path = path();
-    service.open_state(first_path.clone()).await.unwrap();
+    service.opened(first_path.clone()).await.unwrap();
     let weak = Arc::downgrade(&service.state_binding.connection().await.unwrap());
     assert!(weak.upgrade().is_some());
-    service.open_state(path()).await.unwrap();
+    service.opened(path()).await.unwrap();
     assert!(weak.upgrade().is_none());
     let active = Arc::downgrade(&service.state_binding.connection().await.unwrap());
     drop(service);
@@ -90,10 +90,10 @@ async fn service_holds_connection_until_rebind_or_drop() {
 }
 
 /// The history table takes only a record a page can read: a JSON payload
-/// with a text id, a known kind and a known status. Anything else is refused
-/// on write, before it can reach a page.
+/// with a text id and a known status. Anything else is refused on write,
+/// before it can reach a page.
 #[test]
-fn a_history_row_without_a_text_id_or_with_an_unknown_kind_or_status_is_refused() {
+fn a_history_row_without_a_text_id_or_with_an_unknown_status_is_refused() {
     let database = WalletDatabase::new(&path());
     database
         .with_connection(|conn| {
@@ -107,7 +107,6 @@ fn a_history_row_without_a_text_id_or_with_an_unknown_kind_or_status_is_refused(
             for payload in [
                 "{}",
                 r#"{"id":42,"kind":"receive","status":"confirmed"}"#,
-                r#"{"id":"row","kind":"airdrop","status":"confirmed"}"#,
                 r#"{"id":"row","kind":"receive","status":"unknown"}"#,
             ] {
                 let refused = insert(payload).unwrap_err().to_string();

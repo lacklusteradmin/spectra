@@ -1,5 +1,164 @@
 # Changelog
 
+## Beta Commit 255
+
+- **A change here is finished when the apps match it** (`AGENTS.md`): the
+  same task checks spectra-apple and spectra-android for what depends on the
+  change and updates them, and spectra-apple's checks run on the one
+  simulator its `AGENTS.md` names.
+- **Every report's verdict sets the CLI's exit code** (`cli/src/out.rs`
+  `Report::failure`): a report that found a failure — an unreachable
+  endpoint, a failed self-test, a wallet that did not refresh, failed pending
+  maintenance — prints, then exits 1 with what failed (before: only
+  `diagnostics configured` and `txs refresh-pending` exited non-zero, with 1
+  and 3; `endpoints probe`, `refresh` and `diagnostics self-test` exited 0).
+- **CLI commands name an asset by its deployment id, never its ticker**.
+  - `send probe` takes `--holding` and defaults to the chain's own coin
+    (before: `--asset` took a symbol, with `--chain` to narrow it).
+  - `wallet hide` and `show` take only a deployment id (before: a symbol only
+    one holding had also matched).
+  - `alert remove` takes an alert id and removes that alert (before: a symbol
+    removed every alert on it).
+  - `portfolio live` and `alert list` print each holding's and alert's id.
+- **`portfolio live` reads balances through core's refresh sweep**
+  (`cli/src/cmd/refresh.rs` `sweep`, shared with `refresh`; before: its own
+  loop over every wallet).
+- **The refresh observer hears every wallet's result**
+  (`RefreshObserver::on_balance_refreshed`): the engine reports each wallet
+  with why its balance could not be read, and `refresh` and `portfolio live`
+  print it (before: `on_balance_updated` carried the updated `WalletState`
+  on success and nothing on failure).
+- **Validator directories are plain functions returning `ApiError`**
+  (`staking/` `fetch_validators`; `StakingError` and the six one-method
+  `*StakingClient` types are deleted): the dispatcher answers `None` for a
+  chain that does not stake, which the service refuses.
+- **The explorer lookup is a catalog function** (`catalog::explorers::explorer`;
+  before: an `impl Chain` outside `registry/`), and the unused
+  `From<reqwest::Error> for SpectraBridgeError` is deleted.
+- **Fields, derives and defaults nothing reads are removed**.
+  - `ChainEntry.supports_staking`, `ChainSelfTestResult.chain_label` and
+    `DiagnosticsBundlePayload.schema_version` leave the FFI records.
+  - `ResidentState` no longer carries `schema_version`: the database keeps
+    the layout version beside the state and refuses any other, as before.
+  - The price-alert evaluation types and `PriceAlertNotification` no longer
+    derive `Deserialize`, and neither it nor the history cursor fills a
+    missing field with a default.
+  - Two orphaned doc lines in `store/settings.rs` are gone, and
+    `payment_memo_kinds`' doc comment is back on it (`registry/send.rs`).
+- **One parser reads Solana token accounts** (`api/solana_json_rpc.rs`
+  `sum_token_accounts`; `fetch_spl_balance` takes one mint).
+  - The holdings listing refuses an answer without its account list and an
+    account without its parsed data, mint or token amount (before: it
+    skipped them, reporting what they held as nothing).
+  - Listed decimals are capped at 38 as every other read's are, and
+    `SplBalance.balance_raw` is a `u128` (before: a string summed by
+    re-parsing it).
+- **A front end mirrors a narrow committed state**
+  (`store::state::CommittedState`: revision, settings, address book, token
+  preferences, price alerts).
+  - `apply_state_command`, `open_state` and `reset_data` return it, and the
+    new `committed_state` export reads it; `discard_state` returns nothing
+    (before: each returned the whole `ResidentState`, wallets, quotes and
+    diagnostics included, which the app never read).
+  - `ResidentState` no longer crosses the FFI: `app_state` is a Rust method
+    for core and the CLI, `PortfolioSnapshot` carries the committed state
+    and the quote state in `quotes`, and `AppRefreshResult` drops its
+    `state`.
+- **Closed sets are written once**.
+  - A submitted record is `kind <> 'receive'`, spelled once by
+    `wallet_db::submitted_kind!` for the pending-sender index and the two
+    queries it serves; the history table no longer checks `kind` against a
+    list (before: the same 13 kinds written out four times).
+  - `registry::HistoryFamily` (EVM, UTXO, account) is the one three-way
+    split: `Chain::history_family` replaces `history_refresh_kind` and
+    `transaction_merge_strategy`, whose enums are deleted, and the UTXO
+    family comes from `uses_account_utxo` alone, which the pending-status
+    poll reads too (before: the family listed three times).
+  - An owned address's branch is `AddressBranch` (`receive`, `change`),
+    stored and compared as one (before: the strings "external" and
+    "change", and 0 and 1 in two readers); `KeypoolDiagnostic` carries it.
+  - A custom endpoint's `api` is an `EndpointApi` in `AppSettingUpdate`
+    (before: a string matched by name).
+- **Core says whether a total is complete and whether a wallet needs its
+  account reserve**.
+  - `QuotedTotal` carries `unread_wallet_count`, the wallets in the total
+    whose balances have not been read, and `is_unread` when none has, for
+    the portfolio and each wallet (before: the app derived both from each
+    wallet's `balancesReadAt`).
+  - The `wallet_account_reserve` export answers for a wallet: its chain's
+    reserve until it holds its coin, `None` on a network without one;
+    `account_reserve` by chain is a Rust method the CLI's `wallet setup`
+    calls, and `ChainEntry.requires_account_reserve` goes (before: the app
+    checked the chain and the native balance and then asked by chain).
+- **Every network has an address hint** (`core/data/chains.toml`): the 30
+  networks without one, testnets included, now have theirs, and the catalog
+  refuses a chain without it (before: an empty default, which the app filled
+  from its own string tables for 11 chains).
+- **Core exports the reset scopes and TON wallet versions in order**
+  (`reset_scopes`, `ton_wallet_versions`), so a scope or version core adds
+  reaches the app's lists.
+- **Every big integer in a prepared payload is an exact decimal string**
+  (`send/stages.rs` `units_u128`, now with an `option` form): NEAR's amount,
+  fee budget and registration deposit, a NEAR function call's deposit and
+  fee budget, a key deletion's fee budget, EVM's fees, value and extra fee,
+  and Polkadot's amount and fee (before: TON's amount alone; the rest were
+  JSON numbers, or strings parsed back at each use). Stored artifacts change
+  format.
+- **One seed-phrase derivation per family, borrowing the phrase**
+  (`derivation/dispatch.rs` `derive_for_chain`, each family's
+  `derive_from_seed_phrase`; the 48 `derive_<network>` functions are
+  deleted).
+  - `derive_for_chain` borrows the phrase and takes the wanted outputs as one
+    `Wants` (before: the phrase copied into a `String`, and three positional
+    booleans); each family reads its network from the `Chain`, and the eleven
+    secp256k1 UTXO families derive through one function and
+    `Chain::encode_discovery_address`.
+  - `DerivationResult` holds the address, the public key and a `Zeroizing`
+    private key, and no longer derives `Debug` (before: a plain `String`, and
+    `account`, `branch` and `index`, which nothing read).
+  - The P2PKH-only networks' refusal of another script type is deleted
+    (unreachable: dispatch always passed P2PKH), and `derivation/dogecoin.rs`,
+    left empty, is deleted.
+- **Asset identities live in the registry** (`registry/xrpl_amount.rs`,
+  `stellar_asset.rs`, `cardano_asset.rs`; `NftStandard` in
+  `registry/tokens.rs`): `catalog/` no longer imports from `api/`, a layer
+  above it, and `api/evm_nft.rs` keeps only the ERC-165 and ABI call
+  encoding (before: all four in `api/`).
+- **Each module's tests sit in one place, named after it**
+  (`core/src/{service,send,api,derivation,store,registry}/tests/`).
+  - 10 test files are renamed after the module that hosts them, 7 move to
+    the module they test and 13 merge into their host's one file, so that
+    `tests/<module>.rs` belongs to the module declaring it as `mod tests;`
+    (before: hosts such as `send_stage_protocols`, `send_stages` and
+    `service/mod.rs`'s `app_boundary` loaded tests of other modules, under
+    other names).
+  - Inline test modules move out of line wherever the module also had a test
+    file, in 13 modules, `balance_refresh`'s 560 lines among them.
+  - The tests of wallet deletion, status-tracker pruning, UTXO discovery and
+    `Chain::history_family` move to `service::state`, `service::transactions`,
+    `service::address_discovery` and `registry`.
+  - `send_stage_support`, a shared fixture, is declared in `service/mod.rs`
+    beside `loopback_service` (before: in `send_stage_protocols`).
+- Tests: 3 new
+  - Address hints 1: a network the catalog lists without one.
+  - Exact amounts 1: a prepared big integer written as a JSON number, or
+    read back other than as written.
+  - Unread totals 1: a total that counts read wallets as unread, or claims a
+    figure while none has been read.
+  - The Solana account test also refuses a listing with an account missing
+    its mint and an answer for another mint; the wallet-reserve test covers
+    a funded, an unfunded and a reserve-free wallet; the history-row check
+    no longer refuses an unknown kind.
+- Docs: `ARCHITECTURE.md` "Core module boundaries" (the registry's asset
+  identities, where unit tests live, the error conversions);
+  `FFI-BOUNDARY.md` "Committed state" (new) and "Versions"; `AGENTS.md`
+  "Repositories" and "Verification".
+- Total: 253 .rs files changed (5 new, 16 deleted, 18 renamed), +9558 −11251
+  lines; data and config files: `core/data/chains.toml`,
+  `tests/acceptance/__main__.py`, `tests/acceptance/endpoints.py`;
+  dependencies unchanged; `#[test]` functions 1469 → 1472, `cargo test` 1472
+  passing.
+
 ## Beta Commit 254
 
 - **The CLI's windowed interface is deleted** (`cli/src/tui/`,

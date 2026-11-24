@@ -26,7 +26,7 @@ async fn service(chain: Chain, server: &MockServer) -> (std::sync::Arc<WalletSer
         .join(format!("spectra-recheck-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(path.clone()).await.unwrap();
+    service.opened(path.clone()).await.unwrap();
     (service, path)
 }
 async fn save(service: &WalletService, record: TransactionRecord) {
@@ -67,7 +67,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
             "only a new outcome is news"
         );
         let reopened = WalletService::new(vec![]).unwrap();
-        reopened.open_state(path.clone()).await.unwrap();
+        reopened.opened(path.clone()).await.unwrap();
         let rows = reopened.fetch_all_history_records().await.unwrap();
         let target = rows.iter().find(|r| r.id == "target").unwrap();
         assert_eq!(target.receipt_block_number, Some(123));
@@ -353,7 +353,7 @@ async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_reche
         endpoints: vec![server.uri()],
     }])
     .unwrap();
-    reopened.open_state(path).await.unwrap();
+    reopened.opened(path).await.unwrap();
     assert!(
         reopened
             .refresh_pending_transactions()

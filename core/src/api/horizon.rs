@@ -121,7 +121,7 @@ pub(crate) struct HorizonBalance {
 /// A Stellar account's trustline to one credit asset, in stroops.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StellarTrustline {
-    pub asset: crate::api::stellar_asset::StellarAsset,
+    pub asset: crate::registry::stellar_asset::StellarAsset,
     pub balance: i64,
     pub limit: i64,
     /// Committed to open offers buying the asset: room the line keeps.
@@ -147,7 +147,7 @@ pub(crate) struct StellarAccountState {
 impl StellarAccountState {
     pub fn trustline(
         &self,
-        asset: &crate::api::stellar_asset::StellarAsset,
+        asset: &crate::registry::stellar_asset::StellarAsset,
     ) -> Option<&StellarTrustline> {
         self.trustlines.iter().find(|line| line.asset == *asset)
     }
@@ -205,7 +205,7 @@ impl HorizonAccountState {
             ) {
                 continue;
             }
-            let asset = crate::api::stellar_asset::StellarAsset::new(
+            let asset = crate::registry::stellar_asset::StellarAsset::new(
                 &balance.asset_code,
                 &balance.asset_issuer,
             )
@@ -721,7 +721,7 @@ impl HorizonClient {
         &self,
         chain: crate::registry::Chain,
         holder: &str,
-        asset: &crate::api::stellar_asset::StellarAsset,
+        asset: &crate::registry::stellar_asset::StellarAsset,
         destination: Option<&str>,
     ) -> Result<StellarAssetState, ApiError> {
         crate::api::http::race(&self.endpoints, |endpoint| async move {
@@ -794,9 +794,12 @@ fn stellar_history_from_payments(
         .map(|r| {
             let contract = match r.asset_type.as_str() {
                 "credit_alphanum4" | "credit_alphanum12" if r.op_type == "payment" => Some(
-                    crate::api::stellar_asset::StellarAsset::new(&r.asset_code, &r.asset_issuer)
-                        .map_err(|_| ApiError::decode("Horizon payment: invalid credit asset"))?
-                        .identifier(),
+                    crate::registry::stellar_asset::StellarAsset::new(
+                        &r.asset_code,
+                        &r.asset_issuer,
+                    )
+                    .map_err(|_| ApiError::decode("Horizon payment: invalid credit asset"))?
+                    .identifier(),
                 ),
                 _ => None,
             };

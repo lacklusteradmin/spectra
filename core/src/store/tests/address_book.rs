@@ -182,7 +182,7 @@ async fn survives_a_restart_in_order() {
     let db = tmp_db("persist");
 
     let first = service();
-    first.open_state(db.clone()).await.expect("open");
+    first.opened(db.clone()).await.expect("open");
     first
         .apply_state_command(add("Cold", BTC))
         .await
@@ -193,7 +193,7 @@ async fn survives_a_restart_in_order() {
         .expect("add");
 
     let second = service();
-    let reopened = second.open_state(db.clone()).await.expect("reopen");
+    let reopened = second.opened(db.clone()).await.expect("reopen");
     let names: Vec<&str> = reopened
         .address_book
         .iter()

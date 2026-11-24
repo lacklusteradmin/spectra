@@ -5,6 +5,7 @@
 use super::*;
 use crate::api::endpoint::EndpointApi;
 use crate::derivation::setup::WalletSetupMethod;
+use crate::send::keys::Ed25519Seed;
 use crate::send::stages::SendStage;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
@@ -683,5 +684,169 @@ async fn signing_refuses_a_stake_the_network_no_longer_allows_as_reviewed() {
         }
         let signed = staking.sign(&built).await.unwrap();
         assert_eq!(signed.stage, SendStage::Signed, "{chain:?}");
+    }
+}
+
+fn fixtures() -> serde_json::Value {
+    serde_json::from_str(include_str!(
+        "../../../tests/fixtures/account-staking-vectors.json"
+    ))
+    .unwrap()
+}
+fn key() -> Ed25519Seed {
+    Ed25519Seed::from_hex(&hex::encode([1u8; 32])).unwrap()
+}
+
+#[test]
+fn solana_staking_matches_official_sdk_messages_signatures_and_derived_account() {
+    for vector in fixtures()["solana"].as_array().unwrap() {
+        let action = match vector["name"].as_str().unwrap() {
+            "stake" => StakingAction::Stake,
+            "unstake" => StakingAction::Unstake,
+            _ => StakingAction::Withdraw,
+        };
+        let owner = vector["owner"].as_str().unwrap();
+        let seed = vector["seed"].as_str().unwrap();
+        assert_eq!(
+            crate::send::solana::stake_account_address(owner, seed).unwrap(),
+            vector["account"]
+        );
+        let prepared = crate::send::solana::prepare_staking_data(
+            owner,
+            vector[if action == StakingAction::Stake {
+                "vote"
+            } else {
+                "account"
+            }]
+            .as_str()
+            .unwrap(),
+            2_000_000_000,
+            if action == StakingAction::Stake {
+                2_282_880
+            } else {
+                0
+            },
+            vector["blockhash"].as_str().unwrap(),
+            (action == StakingAction::Stake).then_some(seed),
+            action,
+        )
+        .unwrap();
+        assert_eq!(hex::encode(&prepared.message), vector["message"]);
+        assert_eq!(
+            hex::encode(prepared.sign(&key()).unwrap()),
+            vector["signed"]
+        );
+        assert!(
+            prepared
+                .sign(&Ed25519Seed::from_hex(&hex::encode([2u8; 32])).unwrap())
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn aptos_delegation_calls_match_official_sdk_signatures_and_local_hashes() {
+    for vector in fixtures()["aptos"].as_array().unwrap() {
+        let action = match vector["name"].as_str().unwrap() {
+            "add_stake" => StakingAction::Stake,
+            "unlock" => StakingAction::Unstake,
+            _ => StakingAction::Withdraw,
+        };
+        let prepared = crate::send::aptos::prepare_delegation(
+            vector["owner"].as_str().unwrap(),
+            &format!("0x{}", "22".repeat(32)),
+            2_000_000_000,
+            7,
+            100,
+            12_000,
+            1_800_000_000,
+            1,
+            action,
+        )
+        .unwrap();
+        assert_eq!(hex::encode(&prepared.message), vector["message"]);
+        let (signed, hash) = prepared.clone().sign(&key()).unwrap();
+        assert_eq!(
+            hex::encode(&signed[signed.len() - 64..]),
+            vector["signature"].as_str().unwrap()
+        );
+        assert_eq!(hash, vector["hash"]);
+        assert!(
+            prepared
+                .sign(&Ed25519Seed::from_hex(&hex::encode([2u8; 32])).unwrap())
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn sui_owned_object_staking_matches_official_sdk_ptbs_signatures_and_hashes() {
+    let gas = [crate::send::sui::GasCoin {
+        id: [0x33; 32],
+        version: 7,
+        digest: [0; 32],
+        balance: 3_000_000_000,
+    }];
+    let object = crate::api::sui_json_rpc::SuiStakedObject {
+        version: 8,
+        digest: [0; 32],
+        principal: 2_000_000_000,
+        pool_id: "0x99".into(),
+        activation_epoch: 10,
+    };
+    let validator = format!("0x{}", "22".repeat(32));
+    let stake = format!("0x{}", "44".repeat(32));
+    for vector in fixtures()["sui"].as_array().unwrap() {
+        let add = vector["name"] == "stake";
+        let prepared = crate::send::sui::prepare_staking_data(
+            vector["owner"].as_str().unwrap(),
+            add.then_some(validator.as_str()),
+            if add { 2_000_000_000 } else { 0 },
+            (!add).then_some((stake.as_str(), &object)),
+            10_000_000,
+            1000,
+            &gas,
+        )
+        .unwrap();
+        assert_eq!(hex::encode(&prepared.bytes), vector["raw"]);
+        assert_eq!(prepared.transaction_digest(), vector["hash"]);
+        assert_eq!(
+            prepared.clone().sign(&key()).unwrap().1,
+            vector["signature"]
+        );
+        assert!(
+            prepared
+                .sign(&Ed25519Seed::from_hex(&hex::encode([2u8; 32])).unwrap())
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn near_pool_calls_match_official_sdk_and_reject_message_field_tampering() {
+    for vector in fixtures()["near"].as_array().unwrap() {
+        let method = vector["name"].as_str().unwrap();
+        let add = method == "deposit_and_stake";
+        let mut prepared = crate::send::near::PreparedNearFunctionCall::prepare(
+            "alice.near",
+            key().public_key(),
+            7,
+            "validator.poolv1.near",
+            method,
+            if add {
+                b"{}".to_vec()
+            } else {
+                br#"{"amount":"2000000000"}"#.to_vec()
+            },
+            Chain::Near.near_staking_gas_limit().unwrap(),
+            if add { 2_000_000_000 } else { 0 },
+            [0x33; 32],
+        );
+        assert_eq!(hex::encode(&prepared.message), vector["message"]);
+        let (signed, hash) = prepared.sign(&key()).unwrap();
+        assert_eq!(hex::encode(signed), vector["signed"]);
+        assert_eq!(hash, vector["hash"]);
+        prepared.receiver = "foreign.poolv1.near".into();
+        assert!(prepared.sign(&key()).is_err());
     }
 }

@@ -216,7 +216,8 @@ impl Ctx {
 
     pub fn state(&self) -> CliResult<ResidentState> {
         let service = self.unopened_service()?;
-        Ok(self.rt.block_on(service.open_state(self.db_path()))?)
+        self.rt.block_on(service.open_state(self.db_path()))?;
+        Ok(self.rt.block_on(service.app_state()))
     }
 
     pub fn apply(&self, command: StateCommand) -> CliResult<StateTransition> {

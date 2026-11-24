@@ -437,4 +437,4 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/multisig_cardano.rs"]
-mod multisig_cardano_tests;
+mod tests;

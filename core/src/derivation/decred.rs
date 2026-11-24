@@ -1,5 +1,5 @@
-//! Decred: address validation, BIP-32 derivation, P2PKH (Ds…) BLAKE-256
-//! base58check encoding
+//! Decred: address validation and P2PKH (Ds…) BLAKE-256 base58check
+//! encoding
 //!
 //! Decred uses BLAKE-256 (SHA-3 finalist family — NOT BLAKE2) wherever
 //! Bitcoin uses double-SHA256:
@@ -14,7 +14,6 @@ use crate::derivation::utxo_address::ParsedUtxoAddress;
 use crate::registry::Chain;
 
 use ripemd::{Digest as RipemdDigest, Ripemd160};
-use secp256k1::{PublicKey, Secp256k1};
 
 // ── BLAKE-256 (SHA-3 finalist BLAKE-1 family) ─────────────────────────────
 
@@ -273,112 +272,6 @@ pub(crate) fn parse_decred_address(
     } else {
         Err(refused())
     }
-}
-
-// ── BIP-32 ───────────────────────────────────────────────────────────────
-
-// BIP-39 → BIP-32 path walk → (compressed secp256k1 pubkey, raw 32-byte private key).
-fn derive_secp_keypair(
-    seed_phrase: &str,
-    derivation_path: &str,
-    passphrase: Option<&str>,
-) -> Result<(PublicKey, [u8; 32]), DerivationError> {
-    let secp = Secp256k1::new();
-    let private_key =
-        crate::derivation::bip32::phrase_key(seed_phrase, passphrase, derivation_path)?;
-    let public_key = PublicKey::from_secret_key(&secp, &private_key);
-    Ok((public_key, private_key.secret_bytes()))
-}
-
-// Derive the Decred P2PKH address on `chain`'s network, public key and
-// private key from a mnemonic.
-fn derive_from_seed_phrase(
-    chain: Chain,
-    seed_phrase: &str,
-    derivation_path: &str,
-    passphrase: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
-    let (public_key, private_bytes) =
-        derive_secp_keypair(seed_phrase, derivation_path, passphrase)?;
-    let address = if want_address {
-        Some(encode_decred_p2pkh(
-            chain,
-            &dcr_hash160(&public_key.serialize()),
-        )?)
-    } else {
-        None
-    };
-    Ok((
-        address,
-        want_public_key.then(|| hex::encode(public_key.serialize())),
-        want_private_key.then(|| hex::encode(private_bytes)),
-    ))
-}
-
-// ── Derivation entry points ────────────────────────────────────────────────────────
-
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
-use crate::error::SpectraBridgeError;
-
-/// Derive Decred mainnet wallet (Ds… P2PKH address) from a seed phrase.
-pub fn derive_decred(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        Chain::Decred,
-        &seed_phrase,
-        &derivation_path,
-        passphrase.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
-    Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account,
-        branch,
-        index,
-    })
-}
-
-/// Derive Decred testnet wallet (Ts… P2PKH address) from a seed phrase.
-pub fn derive_decred_testnet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        Chain::DecredTestnet,
-        &seed_phrase,
-        &derivation_path,
-        passphrase.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
-    Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account,
-        branch,
-        index,
-    })
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 //! deposit, and is signed only while all of that still holds.
 use super::*;
 use crate::send::stages::SendStage;
-use crate::service::send_stage_protocols::send_stage_support::{Secret, Wallet, node, refusal};
+use crate::service::send_stage_support::{Secret, Wallet, node, refusal};
 use serde_json::{Value, json};
 use std::sync::Mutex;
 

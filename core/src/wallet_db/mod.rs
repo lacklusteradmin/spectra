@@ -3,6 +3,17 @@
 use crate::store::state::{AddressBookEntry, ResidentState, WalletState};
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+
+/// A stored record the wallet submitted: every kind but a receive
+/// (`TransactionKind::is_submitted`). One spelling, so the pending-sender
+/// index and the queries it serves cannot drift apart.
+macro_rules! submitted_kind {
+    () => {
+        "json_extract(payload, '$.kind') <> 'receive'"
+    };
+}
+pub(crate) use submitted_kind;
+
 mod addresses;
 mod connection;
 pub mod error;

@@ -5,7 +5,7 @@
 //! line without room, and balances short of the amount or the fee.
 
 use crate::api::horizon::HorizonClient;
-use crate::api::stellar_asset::StellarAsset;
+use crate::registry::stellar_asset::StellarAsset;
 use crate::send::error::SendError;
 use serde::{Deserialize, Serialize};
 

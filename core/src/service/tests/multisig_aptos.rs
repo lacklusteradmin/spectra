@@ -65,10 +65,7 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
     }])
     .unwrap();
     let db = std::env::temp_dir().join(format!("aptos-multikey-{}.sqlite", crate::store::new_id()));
-    service
-        .open_state(db.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(db.to_string_lossy().into()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     let fixture = fixture();
@@ -96,7 +93,13 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
             key["path"].as_str().unwrap(),
         );
         let address = crate::derivation::dispatch::derive_for_chain(
-            CHAIN, phrase, path, None, None, None, true, false, false,
+            CHAIN,
+            phrase,
+            path,
+            None,
+            None,
+            None,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address

@@ -91,10 +91,7 @@ async fn wallets() -> (Arc<WalletService>, MockServer, Arc<Mutex<Horizon>>) {
         "stellar-multisig-{}.sqlite",
         crate::store::new_id()
     ));
-    service
-        .open_state(db.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(db.to_string_lossy().into()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     let path = fixture()["derivation_path"].as_str().unwrap().to_string();
@@ -106,9 +103,7 @@ async fn wallets() -> (Arc<WalletService>, MockServer, Arc<Mutex<Horizon>>) {
             None,
             None,
             None,
-            true,
-            false,
-            false,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap();
         assert_eq!(derived.address, Some(key(name, "address")));

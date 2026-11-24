@@ -17,7 +17,7 @@ async fn service(db: Option<&std::path::Path>) -> std::sync::Arc<WalletService> 
     let service = WalletService::new(Vec::new()).unwrap();
     if let Some(db) = db {
         service
-            .open_state(db.to_string_lossy().into_owned())
+            .opened(db.to_string_lossy().into_owned())
             .await
             .unwrap();
     }

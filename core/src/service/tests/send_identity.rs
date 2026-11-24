@@ -144,7 +144,7 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
         .join(format!("send-identity-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(database).await.unwrap();
+    service.opened(database).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     for chain in Chain::all() {
@@ -155,7 +155,13 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
             _ => SEED,
         };
         let derived = crate::derivation::dispatch::derive_for_chain(
-            chain, seed, path, None, None, None, true, false, false,
+            chain,
+            seed,
+            path,
+            None,
+            None,
+            None,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap();
         let address = derived.address.unwrap();

@@ -29,7 +29,13 @@ fn public_children_match_full_derivation_for_every_discovery_network() {
                     let (address, path) = context.derive_on_branch(branch, index).unwrap();
                     let path = path.unwrap();
                     let expected = crate::derivation::dispatch::derive_for_chain(
-                        chain, SEED, &path, None, None, None, true, false, false,
+                        chain,
+                        SEED,
+                        &path,
+                        None,
+                        None,
+                        None,
+                        crate::derivation::types::Wants::ADDRESS,
                     )
                     .unwrap()
                     .address
@@ -80,7 +86,7 @@ async fn known_utxo_addresses_deduplicate_witness_addresses_by_their_canonical_c
             .join(format!("utxo-case-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .into_owned();
-        service.open_state(database).await.unwrap();
+        service.opened(database).await.unwrap();
         service
             .upsert_wallet(WalletState::single_address(
                 "watch",
@@ -118,7 +124,7 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
         .join(format!("discovery-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(dir.clone()).await.unwrap();
+    service.opened(dir.clone()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     crate::secrets::wallet::store_seed_phrase(&*secrets, "scan", SEED, &Default::default(), None)
         .unwrap();
@@ -366,7 +372,7 @@ async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
                 .join(format!("ltc-discovery-{}.sqlite", crate::store::new_id()))
                 .to_string_lossy()
                 .into_owned();
-            service.open_state(database.clone()).await.unwrap();
+            service.opened(database.clone()).await.unwrap();
             let secrets = Arc::new(InMemorySecretStore::new());
             crate::secrets::wallet::store_seed_phrase(
                 &*secrets,
@@ -419,8 +425,18 @@ async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
             assert_eq!(state.reserved_receive_index, Some(1));
             let tables = service.keypool.read().await;
             for (address, path, branch, index) in [
-                (&receive.0, &receive.1, "external", 7),
-                (&change.0, &change.1, "change", 4),
+                (
+                    &receive.0,
+                    &receive.1,
+                    crate::wallet_db::AddressBranch::Receive,
+                    7,
+                ),
+                (
+                    &change.0,
+                    &change.1,
+                    crate::wallet_db::AddressBranch::Change,
+                    4,
+                ),
             ] {
                 let row = tables
                     .owned_on(chain)
@@ -428,12 +444,12 @@ async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
                     .find(|row| &row.address == address)
                     .unwrap();
                 assert_eq!(row.derivation_path.as_deref(), path.as_deref());
-                assert_eq!(row.branch.as_deref(), Some(branch));
+                assert_eq!(row.branch, Some(branch));
                 assert_eq!(row.branch_index, Some(index));
             }
             drop(tables);
             let restored = WalletService::new(Vec::new()).unwrap();
-            restored.open_state(database).await.unwrap();
+            restored.opened(database).await.unwrap();
             assert_eq!(
                 restored.keypool_state("scan".into(), chain).await.unwrap(),
                 state
@@ -522,7 +538,7 @@ async fn imported_litecoin_root_paths_raise_receive_and_change_floors() {
             .join(format!("ltc-root-floor-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .into_owned();
-        service.open_state(database).await.unwrap();
+        service.opened(database).await.unwrap();
         let secrets = Arc::new(InMemorySecretStore::new());
         crate::secrets::wallet::store_seed_phrase(
             &*secrets,
@@ -674,7 +690,7 @@ async fn protected_account_utxo_public_context_receives_after_restart_without_op
             .to_string_lossy()
             .into_owned();
         let service = WalletService::new(Vec::new()).unwrap();
-        service.open_state(database.clone()).await.unwrap();
+        service.opened(database.clone()).await.unwrap();
         service.upsert_wallet(wallet).await.unwrap();
         let receiver = service
             .receive_address("sealed".into(), chain, true)
@@ -683,7 +699,7 @@ async fn protected_account_utxo_public_context_receives_after_restart_without_op
             .unwrap();
         assert_eq!(receiver, context.derive(1).unwrap().0);
         let reopened = WalletService::new(Vec::new()).unwrap();
-        reopened.open_state(database).await.unwrap();
+        reopened.opened(database).await.unwrap();
         assert_eq!(
             reopened
                 .receive_address("sealed".into(), chain, false)
@@ -713,9 +729,7 @@ fn owned_receive_derivation_uses_the_wallet_passphrase() {
         Some("different wallet"),
         None,
         None,
-        true,
-        false,
-        false,
+        crate::derivation::types::Wants::ADDRESS,
     )
     .unwrap()
     .address
@@ -729,4 +743,37 @@ fn owned_receive_derivation_uses_the_wallet_passphrase() {
             .unwrap()
             .0
     );
+}
+
+/// Every entry point answers empty for a chain without the walk rather
+/// than failing: the refresh loop asks for every chain a wallet is on.
+#[tokio::test]
+async fn a_chain_without_the_walk_does_nothing() {
+    let service = crate::service::WalletService::new(Vec::new()).expect("service");
+    let evm = Chain::Ethereum;
+    assert!(
+        service
+            .discover_utxo_addresses("w".into(), evm)
+            .await
+            .expect("ok")
+            .is_empty()
+    );
+    assert!(
+        service
+            .known_utxo_addresses("w".into(), evm)
+            .await
+            .expect("ok")
+            .is_empty()
+    );
+    assert!(
+        service
+            .utxo_receive_address("w".into(), evm, false)
+            .await
+            .expect("ok")
+            .is_none()
+    );
+    service
+        .advance_used_utxo_reservations(evm)
+        .await
+        .expect("a chain without the walk is a no-op, not an error");
 }

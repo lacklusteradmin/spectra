@@ -123,3 +123,7 @@ impl WalletService {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "tests/send_stage_substrate.rs"]
+mod tests;

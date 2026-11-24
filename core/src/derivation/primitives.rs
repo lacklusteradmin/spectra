@@ -7,8 +7,6 @@ use zeroize::Zeroizing;
 
 type HmacSha512 = Hmac<Sha512>;
 
-pub(crate) type OptionalKeyMaterial = (Option<String>, Option<String>, Option<String>);
-
 /// Map a wordlist name ("english", "zh-cn", etc.) to its BIP-39 language.
 ///
 /// There is no default: a caller without a name reads the phrase in whichever

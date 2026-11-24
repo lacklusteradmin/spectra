@@ -172,14 +172,7 @@ pub fn txs(ctx: &Ctx, out: Out, command: TxsCommand) -> CliResult<()> {
             let maintenance = ctx
                 .rt
                 .block_on(ctx.service()?.refresh_pending_transactions())?;
-            let failed = !maintenance.failures.is_empty();
-            out.report(&MaintenanceReport { maintenance })?;
-            if failed {
-                return Err(CliError::rejected(
-                    "pending maintenance failed for one or more networks",
-                ));
-            }
-            Ok(())
+            out.report(&MaintenanceReport { maintenance })
         }
         TxsCommand::Maintenance => {
             let chains = ctx
@@ -469,8 +462,9 @@ impl Report for MaintenanceReport {
         );
     }
 
-    fn ok(&self) -> bool {
-        self.maintenance.failures.is_empty()
+    fn failure(&self) -> Option<String> {
+        (!self.maintenance.failures.is_empty())
+            .then(|| "pending maintenance failed for one or more networks".to_string())
     }
 }
 

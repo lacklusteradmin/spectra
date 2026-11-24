@@ -12,7 +12,13 @@ const SEED: &str =
 
 fn address(chain: Chain, path: &str) -> String {
     crate::derivation::dispatch::derive_for_chain(
-        chain, SEED, path, None, None, None, true, false, false,
+        chain,
+        SEED,
+        path,
+        None,
+        None,
+        None,
+        crate::derivation::types::Wants::ADDRESS,
     )
     .unwrap()
     .address
@@ -54,7 +60,7 @@ async fn service(
         .join(format!("ltc-send-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(db.clone()).await.unwrap();
+    service.opened(db.clone()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     store_seed_phrase(&*secrets, "w", SEED, &Default::default(), password).unwrap();
     service.set_secret_store(secrets.clone());
@@ -114,8 +120,18 @@ async fn protected_litecoin_wallet_builds_and_signs_known_receive_and_change_aft
             let (wallet, db, secrets) =
                 service(chain, server.uri(), &root_path, Some("secret")).await;
             for (a, path, branch, index) in [
-                (&receive, &receive_path, "external", 4),
-                (&change, &change_path, "change", 3),
+                (
+                    &receive,
+                    &receive_path,
+                    crate::wallet_db::AddressBranch::Receive,
+                    4,
+                ),
+                (
+                    &change,
+                    &change_path,
+                    crate::wallet_db::AddressBranch::Change,
+                    3,
+                ),
             ] {
                 wallet
                     .register_owned_address(
@@ -123,7 +139,7 @@ async fn protected_litecoin_wallet_builds_and_signs_known_receive_and_change_aft
                         chain,
                         a.clone(),
                         Some(path.clone()),
-                        Some(branch.into()),
+                        Some(branch),
                         Some(index),
                     )
                     .await
@@ -166,7 +182,7 @@ async fn protected_litecoin_wallet_builds_and_signs_known_receive_and_change_aft
                 endpoints: vec![server.uri()],
             }])
             .unwrap();
-            resumed.open_state(db).await.unwrap();
+            resumed.opened(db).await.unwrap();
             resumed.set_secret_store(secrets);
             assert!(
                 resumed
@@ -253,7 +269,7 @@ async fn unsupported_and_other_account_litecoin_sources_fail_before_provider_rea
             Chain::Litecoin,
             address(Chain::Litecoin, path),
             Some(path.into()),
-            Some("external".into()),
+            Some(crate::wallet_db::AddressBranch::Receive),
             Some(0),
         )
         .await
@@ -383,7 +399,7 @@ async fn same_account_address_path_mismatch_is_refused_before_sign_provider_read
             Chain::Litecoin,
             address(Chain::Litecoin, "m/84'/2'/0'/0/4"),
             Some("m/84'/2'/0'/0/3".into()),
-            Some("external".into()),
+            Some(crate::wallet_db::AddressBranch::Receive),
             Some(3),
         )
         .await
@@ -600,7 +616,7 @@ async fn an_owned_litecoin_build_pays_the_fee_its_preview_quoted() {
                 chain,
                 address(chain, &change_path),
                 Some(change_path.clone()),
-                Some("change".into()),
+                Some(crate::wallet_db::AddressBranch::Change),
                 Some(3),
             )
             .await

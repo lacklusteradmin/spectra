@@ -246,7 +246,7 @@ pub struct EndpointSpecArgs {
 }
 
 impl EndpointSpecArgs {
-    fn resolve(self) -> CliResult<(Chain, String, Vec<EndpointCapability>)> {
+    fn resolve(self) -> CliResult<(Chain, EndpointApi, Vec<EndpointCapability>)> {
         let capabilities = self
             .capabilities
             .iter()
@@ -257,7 +257,19 @@ impl EndpointSpecArgs {
                     })
             })
             .collect::<CliResult<_>>()?;
-        Ok((resolve_chain(&self.chain)?, self.api, capabilities))
+        let chain = resolve_chain(&self.chain)?;
+        let api = chain
+            .compatible_endpoint_apis()
+            .into_iter()
+            .find(|api| api.as_str() == self.api)
+            .ok_or_else(|| {
+                CliError::usage(format!(
+                    "{} does not use the {} API",
+                    chain.str_id(),
+                    self.api
+                ))
+            })?;
+        Ok((chain, api, capabilities))
     }
 }
 
@@ -443,11 +455,19 @@ impl Report for HealthReport {
         );
     }
 
-    fn ok(&self) -> bool {
-        self.unreachable == 0
+    fn failure(&self) -> Option<String> {
+        let healthy = self.unreachable == 0
             && self.unchecked_apis == 0
             && self.networks_without_apis.is_empty()
-            && self.total > 0
+            && self.total > 0;
+        (!healthy).then(|| {
+            format!(
+                "{} unreachable, {} with no probe, {} networks without an API",
+                self.unreachable,
+                self.unchecked_apis,
+                self.networks_without_apis.len()
+            )
+        })
     }
 }
 
@@ -665,7 +685,7 @@ pub fn explorers(out: Out, args: ExplorersArgs) -> CliResult<()> {
     if let Some(chain) = chain
         && (args.tx.is_some() || args.address.is_some())
     {
-        let Some(explorer) = chain.explorer() else {
+        let Some(explorer) = spectra_core::catalog::explorers::explorer(chain) else {
             return Err(CliError::failure(format!(
                 "{} has no explorer",
                 chain.chain_display_name()

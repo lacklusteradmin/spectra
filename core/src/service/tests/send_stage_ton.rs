@@ -1,5 +1,6 @@
 //! A real expired TON signature stays resolvable after a lost submission reply.
 use super::*;
+use crate::store::wallet_domain::TransactionStatus;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
@@ -63,7 +64,7 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
         let secrets = Arc::new(crate::secrets::backends::InMemorySecretStore::new());
         service.set_secret_store(secrets.clone());
         service
-            .open_state(
+            .opened(
                 std::env::temp_dir()
                     .join(format!("ton-expiry-{}.sqlite", crate::store::new_id()))
                     .to_string_lossy()
@@ -228,10 +229,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             "ton-expired-recovery-{}.sqlite",
             crate::store::new_id()
         ));
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         service
             .upsert_wallet(crate::store::state::WalletState::single_address(
                 "w", "TON", chain, &sender, None, false,
@@ -242,7 +240,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             .apply_state_command(crate::store::state::StateCommand::SetAppSetting {
                 update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
                     chain_id: chain,
-                    api: "toncenter-v3".into(),
+                    api: crate::api::endpoint::EndpointApi::ToncenterV3,
                     endpoint: format!("{}/v3", server.uri()),
                     capabilities: vec![EndpointCapability::Verification],
                 },

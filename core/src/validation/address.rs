@@ -642,13 +642,14 @@ mod tests {
 
     #[test]
     fn rejects_mutated_checksum_addresses() {
-        let xrp = crate::derivation::xrp::derive_xrp(
-            MNEMONIC.to_string(),
-            "m/44'/144'/0'/0/0".to_string(),
+        let xrp = crate::derivation::dispatch::derive_for_chain(
+            Chain::Xrp,
+            MNEMONIC,
+            "m/44'/144'/0'/0/0",
             None,
-            true,
-            false,
-            false,
+            None,
+            None,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address
@@ -656,13 +657,14 @@ mod tests {
         assert!(validate(Chain::Xrp, xrp.clone()).is_valid);
         assert!(!validate(Chain::Xrp, mutate_last_char(&xrp)).is_valid);
 
-        let tron = crate::derivation::tron::derive_tron(
-            MNEMONIC.to_string(),
-            "m/44'/195'/0'/0/0".to_string(),
+        let tron = crate::derivation::dispatch::derive_for_chain(
+            Chain::Tron,
+            MNEMONIC,
+            "m/44'/195'/0'/0/0",
             None,
-            true,
-            false,
-            false,
+            None,
+            None,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address
@@ -670,14 +672,14 @@ mod tests {
         assert!(validate(Chain::Tron, tron.clone()).is_valid);
         assert!(!validate(Chain::Tron, mutate_last_char(&tron)).is_valid);
 
-        let stellar = crate::derivation::stellar::derive_stellar(
-            MNEMONIC.to_string(),
-            "m/44'/148'/0'".to_string(),
+        let stellar = crate::derivation::dispatch::derive_for_chain(
+            Chain::Stellar,
+            MNEMONIC,
+            "m/44'/148'/0'",
             None,
             None,
-            true,
-            false,
-            false,
+            None,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address
@@ -685,13 +687,14 @@ mod tests {
         assert!(validate(Chain::Stellar, stellar.clone()).is_valid);
         assert!(!validate(Chain::Stellar, mutate_last_char(&stellar)).is_valid);
 
-        let bittensor = crate::derivation::bittensor::derive_bittensor(
-            MNEMONIC.to_string(),
-            String::new(),
+        let bittensor = crate::derivation::dispatch::derive_for_chain(
+            Chain::Bittensor,
+            MNEMONIC,
+            "",
             None,
-            true,
-            false,
-            false,
+            None,
+            None,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address
@@ -706,14 +709,14 @@ mod tests {
         assert!(validate(Chain::BitcoinCash, bch_cashaddr.clone()).is_valid);
         assert!(!validate(Chain::BitcoinCash, mutate_last_char(&bch_cashaddr)).is_valid);
 
-        let doge = crate::derivation::dogecoin::derive_dogecoin(
-            MNEMONIC.to_string(),
-            "m/44'/3'/0'/0/0".to_string(),
+        let doge = crate::derivation::dispatch::derive_for_chain(
+            Chain::Dogecoin,
+            MNEMONIC,
+            "m/44'/3'/0'/0/0",
             None,
-            crate::derivation::types::BitcoinScriptType::P2pkh,
-            true,
-            false,
-            false,
+            None,
+            Some(crate::derivation::types::BitcoinScriptType::P2pkh),
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address
@@ -721,14 +724,14 @@ mod tests {
         assert!(validate(Chain::Dogecoin, doge.clone()).is_valid);
         assert!(!validate(Chain::DogecoinTestnet, doge).is_valid);
 
-        let ltc = crate::derivation::litecoin::derive_litecoin(
-            MNEMONIC.to_string(),
-            "m/44'/2'/0'/0/0".to_string(),
+        let ltc = crate::derivation::dispatch::derive_for_chain(
+            Chain::Litecoin,
+            MNEMONIC,
+            "m/44'/2'/0'/0/0",
             None,
-            crate::derivation::types::BitcoinScriptType::P2pkh,
-            true,
-            false,
-            false,
+            None,
+            Some(crate::derivation::types::BitcoinScriptType::P2pkh),
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address
@@ -800,7 +803,13 @@ mod every_chain_accepts_what_it_derives {
                 continue;
             };
             let derived = crate::derivation::dispatch::derive_for_chain(
-                chain, MNEMONIC, &path, None, None, None, true, false, false,
+                chain,
+                MNEMONIC,
+                &path,
+                None,
+                None,
+                None,
+                crate::derivation::types::Wants::ADDRESS,
             );
             let Ok(result) = derived else { continue };
             let Some(address) = result.address.filter(|a| !a.is_empty()) else {

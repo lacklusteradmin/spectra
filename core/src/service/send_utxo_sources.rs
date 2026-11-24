@@ -172,18 +172,20 @@ impl WalletService {
                             mnemonic.overrides.passphrase(),
                             mnemonic.overrides.hmac_key(),
                             Some(crate::derivation::dispatch::script_type_for_path(path)),
-                            true,
-                            false,
-                            true,
+                            crate::derivation::types::Wants {
+                                address: true,
+                                public_key: false,
+                                private_key: true,
+                            },
                         )?;
                         if derived.address.as_deref() != Some(source.address.as_str()) {
                             return Err(SpectraBridgeError::invalid(
                                 "UTXO source address does not match its wallet derivation path",
                             ));
                         }
-                        Zeroizing::new(derived.private_key_hex.take().ok_or_else(|| {
+                        derived.private_key_hex.take().ok_or_else(|| {
                             SpectraBridgeError::invalid("derivation returned no private key")
-                        })?)
+                        })?
                     }
                     SigningMaterial::PrivateKey(key) => Zeroizing::new(
                         key.trim()

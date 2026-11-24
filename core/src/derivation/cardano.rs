@@ -47,9 +47,6 @@ fn parse_bip32_path_segments(path: &str) -> Result<Vec<u32>, DerivationError> {
 
 const HARDENED: u32 = 0x8000_0000;
 
-/// The default payment path: account 0's first external address.
-const DEFAULT_PATH: &str = "m/1852'/1815'/0'/0/0";
-
 // Walk `segments` down from a 96-byte root xprv; return the extended key and its public key.
 fn derive_icarus_child_key(
     root: &[u8; 96],
@@ -333,109 +330,27 @@ pub(crate) fn cardano_stake_address(address: &str) -> Result<Option<String>, Der
     ))
 }
 
-// Derive a phrase's Cardano base address, payment public key and payment
-// private key via CIP-3 Icarus + BIP-32-Ed25519.
+/// Derive a phrase's Cardano base address on `chain`'s network, payment
+/// public key and payment private key via CIP-3 Icarus + BIP-32-Ed25519.
 pub(crate) fn derive_from_seed_phrase(
-    mainnet: bool,
+    chain: Chain,
     seed_phrase: &str,
-    derivation_path: Option<&str>,
+    derivation_path: &str,
     passphrase: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
-    let (private_key, public_key, stake_public) = derive_cardano_base_keys(
-        seed_phrase,
-        passphrase.unwrap_or(""),
-        derivation_path.unwrap_or(DEFAULT_PATH),
-    )?;
-    let address = if want_address {
-        Some(cardano_base_address(&public_key, &stake_public, mainnet)?)
-    } else {
-        None
-    };
-    Ok((
-        address,
-        want_public_key.then(|| hex::encode(public_key)),
-        want_private_key.then(|| hex::encode(private_key)),
-    ))
-}
-
-// ── Derivation entry points ────────────────────────────────────────────────────────
-
-use crate::derivation::primitives::hmac_sha512;
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
-use crate::error::SpectraBridgeError;
-
-// Shared derivation logic for Cardano networks; mainnet flag selects addr/addr_test HRP.
-fn cardano_internal(
-    mainnet: bool,
-    seed_phrase: String,
-    derivation_path: Option<String>,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = derivation_path
-        .as_deref()
-        .map(parse_path_metadata)
-        .unwrap_or((0, 0, 0));
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        mainnet,
-        &seed_phrase,
-        derivation_path.as_deref(),
-        passphrase.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
+    let (private_key, public_key, stake_public) =
+        derive_cardano_base_keys(seed_phrase, passphrase.unwrap_or(""), derivation_path)?;
     Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account,
-        branch,
-        index,
+        address: wants
+            .address
+            .then(|| cardano_base_address(&public_key, &stake_public, !chain.is_testnet()))
+            .transpose()?,
+        public_key_hex: wants.public_key_hex(&public_key),
+        private_key_hex: wants.private_key_hex(&private_key),
     })
 }
 
-/// Derive a Cardano mainnet wallet (addr1… base address) from a seed phrase.
-pub fn derive_cardano(
-    seed_phrase: String,
-    derivation_path: Option<String>,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    cardano_internal(
-        true,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive a Cardano Preprod wallet (addr_test1… base address) from a seed phrase.
-pub fn derive_cardano_preprod(
-    seed_phrase: String,
-    derivation_path: Option<String>,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    cardano_internal(
-        false,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
+use crate::derivation::primitives::hmac_sha512;
+use crate::derivation::types::{DerivationResult, Wants};
+use crate::registry::Chain;

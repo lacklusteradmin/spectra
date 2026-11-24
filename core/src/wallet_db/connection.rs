@@ -114,6 +114,7 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(DbError::from)?;
     conn.execute_batch(
+        concat!(
         "PRAGMA journal_mode = WAL;
          PRAGMA synchronous = NORMAL;
          PRAGMA temp_store = MEMORY;
@@ -170,7 +171,6 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              payload    TEXT NOT NULL CHECK (
                  json_valid(payload)
                  AND json_type(payload, '$.id') IS 'text'
-                 AND coalesce(json_extract(payload, '$.kind'), '') IN ('send', 'receive', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'refundTokenStorage', 'trustAsset', 'removeTrustLine', 'shield')
                  AND coalesce(json_extract(payload, '$.status'), '') IN ('pending', 'confirmed', 'failed')),
              asset_key TEXT GENERATED ALWAYS AS
                  (coalesce(json_extract(payload, '$.deploymentId'), 'record:' || id)) STORED,
@@ -199,7 +199,9 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              (json_extract(payload, '$.status'), created_at DESC, id);
          CREATE INDEX IF NOT EXISTS idx_hr_pending_sender ON history_records
              (chain_id, lower(json_extract(payload, '$.sourceAddress')))
-             WHERE json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'refundTokenStorage', 'trustAsset', 'removeTrustLine', 'shield') AND json_extract(payload, '$.status') = 'pending';
+             WHERE ",
+        super::submitted_kind!(),
+        " AND json_extract(payload, '$.status') = 'pending';
          CREATE INDEX IF NOT EXISTS idx_hr_source_path ON history_records
              (wallet_id, chain_id, json_extract(payload, '$.sourceDerivationPath'));
          CREATE INDEX IF NOT EXISTS idx_hr_change_path ON history_records
@@ -225,7 +227,8 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              payload    TEXT    NOT NULL,  -- full AddressBookEntry JSON
              updated_at INTEGER NOT NULL
          );
-         CREATE INDEX IF NOT EXISTS idx_ab_order ON address_book(sort_index);",
+         CREATE INDEX IF NOT EXISTS idx_ab_order ON address_book(sort_index);"
+    ),
     )
     .map_err(DbError::from)?;
     Ok(conn)

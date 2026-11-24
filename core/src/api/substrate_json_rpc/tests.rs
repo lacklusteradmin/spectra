@@ -360,3 +360,59 @@ async fn finney_signing_uses_runtime_call_extensions_and_balance_width() {
         .is_err()
     );
 }
+
+mod account_tests {
+    use super::*;
+
+    /// Records read from `rpc.polkadot.io` (the treasury, `u128` balances)
+    /// and `entrypoint-finney.opentensor.ai` (`u64` balances), 2026-09-29.
+    #[test]
+    fn account_records_decode_at_each_chains_balance_width() {
+        let treasury: [u8; 32] =
+            hex::decode("6d6f646c70792f74727372790000000000000000000000000000000000000000")
+                .unwrap()
+                .try_into()
+                .unwrap();
+        assert_eq!(
+            system_account_key(&treasury),
+            "0x26aa394eea5630e07c48ae0c9558cef7b99d880ec681799c0cf30e8886371da95ecffd7b6c0f78751baa9d281e0bfa3a6d6f646c70792f74727372790000000000000000000000000000000000000000"
+        );
+        let polkadot = hex::decode("000000000000000001000000000000001a8ea401a31900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080").unwrap();
+        assert_eq!(
+            decode_account_info(&polkadot, 16).unwrap(),
+            SubstrateBalance {
+                free: 28_187_897_925_146,
+                reserved: 0,
+                frozen: 0
+            }
+        );
+        let bittensor = hex::decode("88ff1000000000000100000000000000a006fe05000000000000000000000000000000000000000000000000000000000000000000000080").unwrap();
+        assert_eq!(
+            decode_account_info(&bittensor, 8).unwrap(),
+            SubstrateBalance {
+                free: 100_533_920,
+                reserved: 0,
+                frozen: 0
+            }
+        );
+        // Read at the wrong width, either record is refused, not misread.
+        assert!(decode_account_info(&polkadot, 8).is_err());
+        assert!(decode_account_info(&bittensor, 16).is_err());
+    }
+
+    #[test]
+    fn frozen_funds_beyond_the_reserve_are_not_transferable() {
+        let staked = SubstrateBalance {
+            free: 100,
+            reserved: 10,
+            frozen: 40,
+        };
+        assert_eq!(staked.transferable(), 70);
+        let covered = SubstrateBalance {
+            free: 100,
+            reserved: 50,
+            frozen: 40,
+        };
+        assert_eq!(covered.transferable(), 100);
+    }
+}

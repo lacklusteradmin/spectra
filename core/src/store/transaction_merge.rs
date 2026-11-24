@@ -1,20 +1,14 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
+use crate::registry::HistoryFamily;
 use crate::store::persistence_models::TransactionRecord;
 use crate::store::wallet_domain::TransactionKind;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TransactionMergeStrategy {
-    Utxo,
-    AccountBased,
-    Evm,
-}
 
 pub struct TransactionMergeRequest {
     pub existing_transactions: Vec<TransactionRecord>,
     pub incoming_transactions: Vec<TransactionRecord>,
-    pub strategy: TransactionMergeStrategy,
+    pub strategy: HistoryFamily,
     pub chain_id: crate::registry::Chain,
     pub preserve_created_at_sentinel_unix: Option<f64>,
 }
@@ -121,7 +115,7 @@ fn bucket_key(record: &TransactionRecord) -> IdentityBucketKey {
 
 fn incoming_is_relevant(
     incoming: &TransactionRecord,
-    strategy: TransactionMergeStrategy,
+    strategy: HistoryFamily,
     chain_id: crate::registry::Chain,
 ) -> bool {
     if incoming.chain_id != chain_id || incoming.transaction_hash.is_none() {
@@ -129,16 +123,16 @@ fn incoming_is_relevant(
     }
 
     match strategy {
-        TransactionMergeStrategy::Utxo
-        | TransactionMergeStrategy::AccountBased
-        | TransactionMergeStrategy::Evm => incoming.wallet_id.is_some(),
+        HistoryFamily::Utxo | HistoryFamily::Account | HistoryFamily::Evm => {
+            incoming.wallet_id.is_some()
+        }
     }
 }
 
 fn matches_identity(
     existing: &TransactionRecord,
     incoming: &TransactionRecord,
-    strategy: TransactionMergeStrategy,
+    strategy: HistoryFamily,
     chain_id: crate::registry::Chain,
 ) -> bool {
     // The asset is its deployment — chain, standard and contract — never its
@@ -155,10 +149,10 @@ fn matches_identity(
     }
 
     match strategy {
-        TransactionMergeStrategy::Utxo | TransactionMergeStrategy::AccountBased => {
+        HistoryFamily::Utxo | HistoryFamily::Account => {
             existing.wallet_id == incoming.wallet_id && incoming.wallet_id.is_some()
         }
-        TransactionMergeStrategy::Evm => {
+        HistoryFamily::Evm => {
             existing.wallet_id == incoming.wallet_id
                 && incoming.wallet_id.is_some()
                 && (operation_provider_match(existing, incoming)
@@ -182,7 +176,7 @@ fn operation_provider_match(existing: &TransactionRecord, incoming: &Transaction
 fn merge_record(
     existing: TransactionRecord,
     incoming: TransactionRecord,
-    strategy: TransactionMergeStrategy,
+    strategy: HistoryFamily,
     preserve_created_at_sentinel_unix: Option<f64>,
 ) -> TransactionRecord {
     let mut incoming = incoming;
@@ -192,13 +186,11 @@ fn merge_record(
         incoming.address = existing.address.clone();
     }
     match strategy {
-        TransactionMergeStrategy::Utxo => merge_utxo(existing, incoming),
-        TransactionMergeStrategy::AccountBased => {
+        HistoryFamily::Utxo => merge_utxo(existing, incoming),
+        HistoryFamily::Account => {
             merge_account_based(existing, incoming, preserve_created_at_sentinel_unix)
         }
-        TransactionMergeStrategy::Evm => {
-            merge_evm(existing, incoming, preserve_created_at_sentinel_unix)
-        }
+        HistoryFamily::Evm => merge_evm(existing, incoming, preserve_created_at_sentinel_unix),
     }
 }
 
@@ -380,7 +372,8 @@ fn normalize_evm_address(address: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{TransactionMergeRequest, TransactionMergeStrategy, merge_transactions};
+    use super::{TransactionMergeRequest, merge_transactions};
+    use crate::registry::HistoryFamily;
     use crate::store::persistence_models::TransactionRecord;
     use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
@@ -434,10 +427,7 @@ mod tests {
             TransactionKind::ClaimRewards,
         ] {
             for provider_kind in [TransactionKind::Send, TransactionKind::Receive] {
-                for strategy in [
-                    TransactionMergeStrategy::AccountBased,
-                    TransactionMergeStrategy::Evm,
-                ] {
+                for strategy in [HistoryFamily::Account, HistoryFamily::Evm] {
                     let mut existing = sample_transaction(Chain::Polkadot);
                     existing.kind = kind;
                     existing.amount = "90".into();
@@ -489,7 +479,7 @@ mod tests {
         let merged = merge_transactions(TransactionMergeRequest {
             existing_transactions: vec![existing],
             incoming_transactions: vec![incoming],
-            strategy: TransactionMergeStrategy::Utxo,
+            strategy: HistoryFamily::Utxo,
             chain_id: crate::registry::Chain::Bitcoin,
             preserve_created_at_sentinel_unix: None,
         });
@@ -528,7 +518,7 @@ mod tests {
         let merged = merge_transactions(TransactionMergeRequest {
             existing_transactions: vec![sample_transaction(crate::registry::Chain::Bitcoin)],
             incoming_transactions: vec![unnamed],
-            strategy: TransactionMergeStrategy::Utxo,
+            strategy: HistoryFamily::Utxo,
             chain_id: crate::registry::Chain::Bitcoin,
             preserve_created_at_sentinel_unix: None,
         });
@@ -545,14 +535,8 @@ mod tests {
     #[test]
     fn a_shared_ticker_on_another_contract_is_another_asset() {
         for (chain, strategy) in [
-            (
-                crate::registry::Chain::Tron,
-                TransactionMergeStrategy::AccountBased,
-            ),
-            (
-                crate::registry::Chain::Ethereum,
-                TransactionMergeStrategy::Evm,
-            ),
+            (crate::registry::Chain::Tron, HistoryFamily::Account),
+            (crate::registry::Chain::Ethereum, HistoryFamily::Evm),
         ] {
             let record = |id: &str, contract: &str| {
                 let mut record = sample_transaction(chain);
@@ -625,7 +609,7 @@ mod tests {
         let merged = merge_transactions(TransactionMergeRequest {
             existing_transactions: vec![usdc, usdt],
             incoming_transactions: vec![incoming],
-            strategy: TransactionMergeStrategy::Evm,
+            strategy: HistoryFamily::Evm,
             chain_id: crate::registry::Chain::Ethereum,
             preserve_created_at_sentinel_unix: None,
         });
@@ -682,7 +666,7 @@ mod tests {
         let merged = merge_transactions(TransactionMergeRequest {
             existing_transactions: vec![existing],
             incoming_transactions: vec![incoming],
-            strategy: TransactionMergeStrategy::Evm,
+            strategy: HistoryFamily::Evm,
             chain_id: crate::registry::Chain::Ethereum,
             preserve_created_at_sentinel_unix: Some(-999_999.0),
         });

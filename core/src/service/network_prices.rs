@@ -351,10 +351,7 @@ mod tests {
         let path =
             std::env::temp_dir().join(format!("spectra-quotes-{}.db", crate::store::new_id()));
         let service = WalletService::new(vec![]).unwrap();
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         service
             .mutate_persisted_state(|s| {
                 s.quotes.prices.insert("ethereum:native".into(), 12.0);
@@ -368,7 +365,7 @@ mod tests {
             .unwrap();
         let reopened = WalletService::new(vec![]).unwrap();
         let state = reopened
-            .open_state(path.to_string_lossy().into())
+            .opened(path.to_string_lossy().into())
             .await
             .unwrap();
         assert_eq!(state.quotes.prices["ethereum:native"], 12.0);

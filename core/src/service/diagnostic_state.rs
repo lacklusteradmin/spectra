@@ -242,7 +242,6 @@ impl WalletService {
                 transaction_count: i64::try_from(transaction_count).unwrap_or(i64::MAX),
             };
             let payload = crate::diagnostics::DiagnosticsBundlePayload {
-                schema_version: 2,
                 generated_at: crate::store::now_unix(),
                 environment,
                 chain_degraded: state.diagnostics.degraded.clone(),
@@ -331,10 +330,7 @@ mod tests {
             "chain-diagnostics-{}.sqlite",
             crate::store::new_id()
         ));
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         let row = |wallet: &str, source: &str| HistoryDiagnostics {
             wallet_id: wallet.into(),
             identifier: "addr".into(),
@@ -453,10 +449,7 @@ mod tests {
             "diagnostic-owned-{}.sqlite",
             crate::store::new_id()
         ));
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         service
             .apply_diagnostic_command(DiagnosticCommand::Degraded {
                 chain_id: crate::registry::Chain::Solana,
@@ -481,7 +474,7 @@ mod tests {
         let reopened = WalletService::new(vec![]).unwrap();
         assert_eq!(
             reopened
-                .open_state(path.to_string_lossy().into())
+                .opened(path.to_string_lossy().into())
                 .await
                 .unwrap()
                 .diagnostics,
@@ -587,7 +580,7 @@ mod configured_tests {
                             EndpointCapability::Verification,
                         ],
                         chain_id: crate::registry::Chain::parse(chain).unwrap(),
-                        api: "evm-json-rpc".into(),
+                        api: crate::api::endpoint::EndpointApi::EvmJsonRpc,
                         endpoint: server.uri(),
                     },
                 })

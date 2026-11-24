@@ -58,9 +58,61 @@ impl SolanaTransfer {
 #[derive(Debug, Clone)]
 pub struct SplBalance {
     pub mint: String,
-    pub balance_raw: String,
-    pub balance_display: String,
+    pub balance_raw: u128,
     pub decimals: u8,
+}
+
+/// Each token account in a `getTokenAccountsByOwner` answer, summed into
+/// `into` per mint. An account that does not parse refuses the answer:
+/// leaving it out would report less than the owner holds.
+fn sum_token_accounts(answer: &Value, into: &mut Vec<SplBalance>) -> Result<(), ApiError> {
+    let accounts = answer
+        .get("value")
+        .and_then(|v| v.as_array())
+        .or_decode("getTokenAccountsByOwner: missing account list")?;
+    for account in accounts {
+        let info = account
+            .pointer("/account/data/parsed/info")
+            .or_decode("SPL account: missing parsed info")?;
+        let mint = info
+            .get("mint")
+            .and_then(|v| v.as_str())
+            .or_decode("SPL account: missing mint")?;
+        let amount = info
+            .get("tokenAmount")
+            .or_decode("SPL account: missing tokenAmount")?;
+        let raw: u128 = amount
+            .get("amount")
+            .and_then(|v| v.as_str())
+            .or_decode("SPL account: missing amount")?
+            .parse()
+            .map_err(|_| ApiError::Decode("SPL account: invalid amount".into()))?;
+        let decimals = crate::api::checked_token_decimals(u128::from(
+            amount
+                .get("decimals")
+                .and_then(|v| v.as_u64())
+                .or_decode("SPL account: missing decimals")?,
+        ))?;
+        match into.iter_mut().find(|balance| balance.mint == mint) {
+            Some(existing) => {
+                if existing.decimals != decimals {
+                    return Err(ApiError::Decode(
+                        "SPL accounts disagree on mint decimals".into(),
+                    ));
+                }
+                existing.balance_raw = existing
+                    .balance_raw
+                    .checked_add(raw)
+                    .or_decode("SPL balance overflow")?;
+            }
+            None => into.push(SplBalance {
+                mint: mint.to_string(),
+                balance_raw: raw,
+                decimals,
+            }),
+        }
+    }
+    Ok(())
 }
 
 // ── Solana client
@@ -419,15 +471,13 @@ impl SolanaClient {
     /// `decimals` — so discovery answers "what does this address hold" and
     /// "how is it denominated" together, without a catalog and without an
     /// indexer.
+    /// Every token the owner holds under the SPL Token and Token-2022
+    /// programs, one row per mint. A program that will not answer refuses
+    /// the listing: skipping it would report what it holds as nothing.
     pub async fn fetch_all_spl_balances(&self, owner: &str) -> Result<Vec<SplBalance>, ApiError> {
-        const TOKEN_PROGRAM: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-        const TOKEN_2022_PROGRAM: &str = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb";
-        let mut out: Vec<SplBalance> = Vec::new();
-        for program in [TOKEN_PROGRAM, TOKEN_2022_PROGRAM] {
-            // A program that will not answer is not a program the owner holds
-            // nothing under, and skipping it would report the difference as an
-            // empty wallet.
-            let val = self
+        let mut out = Vec::new();
+        for program in TOKEN_PROGRAMS {
+            let answer = self
                 .call(
                     "getTokenAccountsByOwner",
                     json!([
@@ -437,142 +487,38 @@ impl SolanaClient {
                     ]),
                 )
                 .await?;
-            let Some(accounts) = val.get("value").and_then(|v| v.as_array()) else {
-                continue;
-            };
-            for account in accounts {
-                let Some(info) = account.pointer("/account/data/parsed/info") else {
-                    continue;
-                };
-                let Some(mint) = info.get("mint").and_then(|v| v.as_str()) else {
-                    continue;
-                };
-                let Some(token_amount) = info.get("tokenAmount") else {
-                    continue;
-                };
-                let raw: u128 = token_amount
-                    .get("amount")
-                    .and_then(|v| v.as_str())
-                    .or_decode("SPL token account has no amount")?
-                    .parse()
-                    .map_err(|_| {
-                        ApiError::Decode("SPL token account amount is not an integer".into())
-                    })?;
-                // A closed or emptied account is not a holding.
-                if raw == 0 {
-                    continue;
-                }
-                let decimals = token_amount
-                    .get("decimals")
-                    .and_then(|v| v.as_u64())
-                    .and_then(|d| u8::try_from(d).ok())
-                    .or_decode("SPL token account has no decimals")?;
-                // One mint can have several accounts; sum them.
-                let balance = |raw: u128| SplBalance {
-                    mint: mint.to_string(),
-                    balance_raw: raw.to_string(),
-                    balance_display: crate::amount::decimal::from_units(raw, u32::from(decimals)),
-                    decimals,
-                };
-                match out.iter_mut().find(|b| b.mint == mint) {
-                    Some(existing) => {
-                        let sum = existing
-                            .balance_raw
-                            .parse::<u128>()
-                            .ok()
-                            .and_then(|a| a.checked_add(raw))
-                            .or_decode("SPL balance overflow")?;
-                        *existing = balance(sum);
-                    }
-                    None => out.push(balance(raw)),
-                }
-            }
+            sum_token_accounts(&answer, &mut out)?;
         }
+        // A closed or emptied account is not a holding.
+        out.retain(|balance| balance.balance_raw > 0);
         Ok(out)
     }
 
-    pub async fn fetch_spl_balances(
+    /// The owner's balance of one mint, or `None` when it has no account for
+    /// it, which is a real zero.
+    pub async fn fetch_spl_balance(
         &self,
         owner: &str,
-        mints: &[String],
-    ) -> Result<Vec<SplBalance>, ApiError> {
-        use futures::future::join_all;
-        let futs: Vec<_> = mints
-            .iter()
-            .map(|mint| {
-                let owner = owner.to_string();
-                let mint = mint.clone();
-                let client = Self {
-                    endpoints: self.endpoints.clone(),
-                    client: self.client.clone(),
-                };
-                async move {
-                    let result = client
-                        .call(
-                            "getTokenAccountsByOwner",
-                            json!([
-                                owner,
-                                {"mint": mint},
-                                {"encoding": "jsonParsed", "commitment": "confirmed"}
-                            ]),
-                        )
-                        .await?;
-                    let accounts = result
-                        .get("value")
-                        .and_then(|v| v.as_array())
-                        .or_decode("getTokenAccountsByOwner: missing account list")?;
-                    if accounts.is_empty() {
-                        return Ok::<_, ApiError>(None);
-                    }
-                    let mut raw = 0u128;
-                    let mut own_decimals = None;
-                    for account in accounts {
-                        let amount = account
-                            .pointer("/account/data/parsed/info/tokenAmount")
-                            .or_decode("SPL account: missing tokenAmount")?;
-                        let value: u64 = amount
-                            .get("amount")
-                            .and_then(|v| v.as_str())
-                            .or_decode("SPL account: missing amount")?
-                            .parse()
-                            .map_err(|_| ApiError::Decode("SPL account: invalid amount".into()))?;
-                        let decimals = crate::api::checked_token_decimals(u128::from(
-                            amount
-                                .get("decimals")
-                                .and_then(|v| v.as_u64())
-                                .or_decode("SPL account: missing decimals")?,
-                        ))?;
-                        if own_decimals.is_some_and(|previous| previous != decimals) {
-                            return Err(ApiError::Decode(
-                                "SPL accounts disagree on mint decimals".into(),
-                            ));
-                        }
-                        own_decimals = Some(decimals);
-                        raw = raw
-                            .checked_add(u128::from(value))
-                            .or_decode("SPL balance overflow")?;
-                    }
-                    let decimals = own_decimals.or_decode("SPL mint decimals unavailable")?;
-                    Ok(Some(SplBalance {
-                        mint,
-                        balance_raw: raw.to_string(),
-                        balance_display: crate::amount::decimal::from_units(
-                            raw,
-                            u32::from(decimals),
-                        ),
-                        decimals,
-                    }))
-                }
-            })
-            .collect();
-
-        let results = join_all(futs).await;
-        Ok(results
-            .into_iter()
-            .collect::<Result<Vec<_>, ApiError>>()?
-            .into_iter()
-            .flatten()
-            .collect())
+        mint: &str,
+    ) -> Result<Option<SplBalance>, ApiError> {
+        let answer = self
+            .call(
+                "getTokenAccountsByOwner",
+                json!([
+                    owner,
+                    {"mint": mint},
+                    {"encoding": "jsonParsed", "commitment": "confirmed"}
+                ]),
+            )
+            .await?;
+        let mut found = Vec::new();
+        sum_token_accounts(&answer, &mut found)?;
+        if found.iter().any(|balance| balance.mint != mint) {
+            return Err(ApiError::Decode(
+                "getTokenAccountsByOwner answered for another mint".into(),
+            ));
+        }
+        Ok(found.pop())
     }
 
     pub async fn fetch_recent_blockhash(&self) -> Result<String, ApiError> {
@@ -843,20 +789,10 @@ mod balance_read_tests {
 
     #[tokio::test]
     async fn spl_empty_accounts_are_zero_but_malformed_accounts_are_errors() {
-        fn account(raw: &str, decimals: u64) -> Value {
-            json!({"account":{"data":{"parsed":{"info":{"tokenAmount":{"amount":raw,"decimals":decimals}}}}}})
+        fn account(mint: &str, raw: &str, decimals: u64) -> Value {
+            json!({"account":{"data":{"parsed":{"info":{"mint":mint,"tokenAmount":{"amount":raw,"decimals":decimals}}}}}})
         }
-        for (accounts, expected) in [
-            (json!([]), Some(None)),
-            (
-                json!([account("10", 6), account("20", 6)]),
-                Some(Some("30")),
-            ),
-            (json!([{}]), None),
-            (json!([account("bad", 6)]), None),
-            (json!([account("1", 6), account("1", 9)]), None),
-            (json!([account("1", 39)]), None),
-        ] {
+        async fn answering(accounts: Value) -> (MockServer, SolanaClient) {
             let server = MockServer::start().await;
             Mock::given(any())
                 .respond_with(move |req: &Request| {
@@ -868,13 +804,36 @@ mod balance_read_tests {
                 .mount(&server)
                 .await;
             let client = SolanaClient::new(std::sync::Arc::new(vec![server.uri()]));
-            let result = client.fetch_spl_balances("owner", &["mint".into()]).await;
+            (server, client)
+        }
+        for (accounts, expected) in [
+            (json!([]), Some(None)),
+            (
+                json!([account("mint", "10", 6), account("mint", "20", 6)]),
+                Some(Some(30)),
+            ),
+            (json!([{}]), None),
+            (json!([account("mint", "bad", 6)]), None),
+            (
+                json!([account("mint", "1", 6), account("mint", "1", 9)]),
+                None,
+            ),
+            (json!([account("mint", "1", 39)]), None),
+            (json!([account("other", "1", 6)]), None),
+        ] {
+            let (_server, client) = answering(accounts).await;
+            let result = client.fetch_spl_balance("owner", "mint").await;
             match expected {
                 None => assert!(result.is_err()),
-                Some(None) => assert!(result.unwrap().is_empty()),
-                Some(Some(raw)) => assert_eq!(result.unwrap()[0].balance_raw, raw),
+                Some(None) => assert!(result.unwrap().is_none()),
+                Some(Some(raw)) => assert_eq!(result.unwrap().unwrap().balance_raw, raw),
             }
         }
+        // The listing reads every account the same way: one without its mint
+        // refuses the listing rather than leaving the token out.
+        let unnamed = json!([{"account":{"data":{"parsed":{"info":{"tokenAmount":{"amount":"5","decimals":6}}}}}}]);
+        let (_server, client) = answering(unnamed).await;
+        assert!(client.fetch_all_spl_balances("owner").await.is_err());
     }
 }
 

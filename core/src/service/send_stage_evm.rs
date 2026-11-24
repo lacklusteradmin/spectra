@@ -41,3 +41,7 @@ impl WalletService {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/send_stage_evm.rs"]
+mod tests;

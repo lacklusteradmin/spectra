@@ -677,7 +677,3 @@ pub(super) fn fee_or_static(
 #[cfg(test)]
 #[path = "tests/send_stage_utxo.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "tests/send_account_utxo.rs"]
-mod account_transfer_tests;

@@ -166,6 +166,33 @@ impl WalletService {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// What a receive screen says about a wallet's account reserve: the least
+    /// its account must receive for the ledger to create it, or `None` where
+    /// the network has no reserve or the wallet already holds its coin.
+    pub async fn wallet_account_reserve(
+        &self,
+        wallet_id: String,
+    ) -> Result<Option<AccountReserve>, SpectraBridgeError> {
+        let state = self.app_state().await;
+        let wallet = state
+            .wallets
+            .iter()
+            .find(|wallet| wallet.id == wallet_id)
+            .ok_or_else(|| SpectraBridgeError::invalid("no such wallet"))?;
+        let chain = wallet.chain_id;
+        let funded = wallet.holdings.iter().any(|holding| {
+            holding.is_native()
+                && holding.chain_id == chain
+                && !crate::amount::decimal::is_zero(&holding.amount)
+        });
+        if !chain.requires_account_reserve() || funded {
+            return Ok(None);
+        }
+        self.account_reserve(chain).await.map(Some)
+    }
+}
+
+impl WalletService {
     /// The least a new account on `chain` must receive for the ledger to
     /// create it — XRP's base reserve, Stellar's two base reserves — read
     /// from a verified endpoint, so a receive screen can say it before the
@@ -275,7 +302,7 @@ mod tests {
         std::fs::create_dir_all(&directory).unwrap();
         let service = WalletService::new_catalog().unwrap();
         service
-            .open_state(directory.join("state.db").to_string_lossy().into_owned())
+            .opened(directory.join("state.db").to_string_lossy().into_owned())
             .await
             .unwrap();
         let chain = Chain::BaseSepolia;
@@ -296,7 +323,11 @@ mod tests {
                 .apply_state_command(set(AppSettingUpdate::AddCustomEndpoint {
                     capabilities,
                     chain_id: chain,
-                    api: api.into(),
+                    api: chain
+                        .compatible_endpoint_apis()
+                        .into_iter()
+                        .find(|candidate| candidate.as_str() == api)
+                        .unwrap(),
                     endpoint: url.into(),
                 }))
                 .await
@@ -409,6 +440,30 @@ mod tests {
         assert!(service.account_reserve(Chain::Ethereum).await.is_err());
         // The testnet's endpoint answers as mainnet: refused.
         assert!(service.account_reserve(Chain::XrpTestnet).await.is_err());
+
+        // A wallet's answer: its chain's reserve until it holds its coin,
+        // and nothing on a network without one.
+        let path = std::env::temp_dir().join(format!("reserve-{}.sqlite", crate::store::new_id()));
+        service
+            .open_state(path.to_string_lossy().into())
+            .await
+            .unwrap();
+        let mut funded = crate::store::state::WalletState::fixture("funded", Chain::Xrp);
+        let mut coin = Chain::Xrp.native_holding_template();
+        coin.amount = "20".into();
+        funded.holdings.push(coin);
+        for wallet in [
+            crate::store::state::WalletState::fixture("empty", Chain::Xrp),
+            funded,
+            crate::store::state::WalletState::fixture("evm", Chain::Ethereum),
+        ] {
+            service.upsert_wallet(wallet).await.unwrap();
+        }
+        let reserve = |id: &str| service.wallet_account_reserve(id.into());
+        assert_eq!(reserve("empty").await.unwrap().unwrap().amount, "1");
+        assert!(reserve("funded").await.unwrap().is_none());
+        assert!(reserve("evm").await.unwrap().is_none());
+        assert!(reserve("absent").await.is_err());
     }
 
     /// A read Spectra serves only from an endpoint the user adds needs one:

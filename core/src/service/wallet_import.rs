@@ -485,11 +485,9 @@ pub(super) fn plan_import(
                 commit.derivation_overrides.passphrase.as_deref(),
                 commit.derivation_overrides.hmac_key.as_deref(),
                 None,
-                false,
-                false,
-                true,
+                crate::derivation::types::Wants::PRIVATE_KEY,
             )?;
-            let private = Zeroizing::new(derived.private_key_hex.unwrap_or_default());
+            let private = derived.private_key_hex.unwrap_or_default();
             Some(crate::derivation::monero::ViewKeys::from_private(chain, &private)?.view)
         }
         _ => None,

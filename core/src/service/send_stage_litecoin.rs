@@ -328,5 +328,5 @@ pub(super) fn fee_for_vsize(rate: &str, vsize: u64) -> Result<u64, SpectraBridge
 }
 
 #[cfg(test)]
-#[path = "tests/send_litecoin.rs"]
+#[path = "tests/send_stage_litecoin.rs"]
 mod tests;

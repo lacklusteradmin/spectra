@@ -39,22 +39,23 @@ pub(crate) fn keccak256(data: &[u8]) -> [u8; 32] {
 
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
-// Derive an EVM address (EIP-55 checksummed), public key, and private key from a mnemonic.
+/// Derive an EVM wallet from a seed phrase.
+///
+/// One function for the family: an EVM address does not depend on which EVM
+/// chain it is for.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
     let secp = Secp256k1::new();
     let private_key =
         crate::derivation::bip32::phrase_key(seed_phrase, passphrase, derivation_path)?;
     let public_key = PublicKey::from_secret_key(&secp, &private_key);
     let private_bytes = private_key.secret_bytes();
 
-    let address = if want_address {
+    let address = if wants.address {
         let uncompressed = public_key.serialize_uncompressed();
         let hash = keccak256(&uncompressed[1..]);
         Some(eip55_checksum(&hash[12..]))
@@ -62,11 +63,11 @@ pub(crate) fn derive_from_seed_phrase(
         None
     };
 
-    Ok((
+    Ok(DerivationResult {
         address,
-        want_public_key.then(|| hex::encode(public_key.serialize())),
-        want_private_key.then(|| hex::encode(private_bytes)),
-    ))
+        public_key_hex: wants.public_key_hex(&public_key.serialize()),
+        private_key_hex: wants.private_key_hex(&private_bytes),
+    })
 }
 
 // Derive an EVM address and public key directly from a 32-byte raw private key.
@@ -96,36 +97,8 @@ pub(crate) fn derive_from_private_key_bytes(
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
+use crate::derivation::types::{DerivationResult, Wants};
 use crate::error::SpectraBridgeError;
-
-// Shared derivation logic for all EVM-compatible chains (same address for all since there's no chain-specific encoding).
-fn evm_internal(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        &seed_phrase,
-        &derivation_path,
-        passphrase.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
-    Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account,
-        branch,
-        index,
-    })
-}
 
 // Validate and decode a 64-character hex private key string into 32 raw bytes.
 fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {
@@ -141,28 +114,6 @@ fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {
     Ok(out)
 }
 
-/// Derive an EVM wallet from a seed phrase.
-///
-/// One function for the family: an EVM address does not depend on which EVM
-/// chain it is for.
-pub fn derive_evm(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    evm_internal(
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
 /// Derive an EVM address and public key from a raw private key hex string.
 pub fn derive_evm_from_private_key(
     private_key_hex: String,
@@ -176,8 +127,5 @@ pub fn derive_evm_from_private_key(
         address,
         public_key_hex,
         private_key_hex: None,
-        account: 0,
-        branch: 0,
-        index: 0,
     })
 }

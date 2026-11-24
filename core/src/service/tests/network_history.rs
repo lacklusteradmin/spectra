@@ -391,3 +391,21 @@ fn a_local_monero_transfer_normalizes_like_an_adapters() {
     assert_eq!(row.kind, TransactionKind::Send);
     assert_eq!(row.timestamp, 1_700_000_020.0);
 }
+
+/// No keyless source answers Substrate history: asking is an error, never an
+/// empty list.
+#[tokio::test]
+async fn substrate_history_is_an_error_not_an_empty_list() {
+    let service = WalletService::new(vec![]).unwrap();
+    for chain in [
+        crate::registry::Chain::Polkadot,
+        crate::registry::Chain::Bittensor,
+    ] {
+        let history = service
+            .fetch_history_entries(chain, "address", None)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(history.contains("no keyless history source"), "{history}");
+    }
+}

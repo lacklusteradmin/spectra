@@ -658,10 +658,7 @@ mod a_preview_quotes_the_asset_it_moves {
             "evm-owned-preview-{}.sqlite",
             crate::store::new_id()
         ));
-        service
-            .open_state(db.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(db.to_string_lossy().into()).await.unwrap();
         let key = super::seed_probe_holding(&service, Chain::EthereumSepolia, "tETH", None).await;
         {
             let mut state = service.wallet_state.write().await;
@@ -1237,5 +1234,59 @@ mod evm_network_fee_budgets {
                     .any(|call| call["method"] == "eth_call")
             );
         }
+    }
+}
+
+mod shared_preview {
+    //! Exercise app-facing adapters through protocol fixtures, not their decoders.
+    use super::*;
+    use wiremock::matchers::{body_partial_json, method};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn service(chain: crate::registry::Chain, server: &MockServer) -> Arc<WalletService> {
+        WalletService::new(vec![ChainEndpoints {
+            capabilities: EndpointCapability::ALL.to_vec(),
+            chain_id: chain,
+            endpoints: vec![server.uri()],
+        }])
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn simple_preview_subtracts_native_fee_and_propagates_unread_balance() {
+        let server = MockServer::start().await;
+        let svc = service(crate::registry::Chain::Solana, &server);
+        Mock::given(method("POST"))
+            .and(body_partial_json(json!({"method":"getBalance"})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(
+                    json!({"jsonrpc":"2.0","id":1,"result":{"value":2_000_000_000u64}}),
+                ),
+            )
+            .mount(&server)
+            .await;
+        let preview = svc
+            .fetch_shared_send_preview(crate::registry::Chain::Solana, "sender".into())
+            .await
+            .unwrap();
+        assert_eq!(preview.estimated_network_fee, "0.000005");
+        assert_eq!(preview.max_sendable, "1.999995");
+        server.reset().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"jsonrpc":"2.0","id":1,"error":{"code":-1,"message":"unavailable"}}),
+            ))
+            .mount(&server)
+            .await;
+        assert!(
+            svc.fetch_shared_send_preview(crate::registry::Chain::Solana, "sender".into())
+                .await
+                .is_err()
+        );
+        assert!(
+            svc.fetch_shared_send_preview(crate::registry::Chain::Ethereum, "sender".into())
+                .await
+                .is_err()
+        );
     }
 }

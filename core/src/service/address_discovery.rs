@@ -159,9 +159,9 @@ impl WalletService {
             let receive_floor = state
                 .next_external_index
                 .max(state.reserved_receive_index.map_or(0, |index| index + 1));
-            for (branch, name, floor) in [
-                (0, "external", receive_floor),
-                (1, "change", state.next_change_index),
+            for (branch, floor) in [
+                (crate::wallet_db::AddressBranch::Receive, receive_floor),
+                (crate::wallet_db::AddressBranch::Change, state.next_change_index),
             ] {
                 let minimum_end = u32::try_from(floor.max(0))
                     .ok()
@@ -169,13 +169,13 @@ impl WalletService {
                     .ok_or_else(|| SpectraBridgeError::failure("UTXO discovery floor is out of range"))?;
                 if minimum_end > MAX_INDEX {
                     return Err(SpectraBridgeError::failure(format!(
-                        "UTXO discovery ceiling {MAX_INDEX} is below the {name} keypool floor"
+                        "UTXO discovery ceiling {MAX_INDEX} is below the {branch:?} keypool floor"
                     )));
                 }
                 let context = &context;
                 let mut probes = stream::iter(0..=MAX_INDEX)
                     .map(|index| async move {
-                        let (address, path) = context.derive_on_branch(branch, index)?;
+                        let (address, path) = context.derive_on_branch(branch.index(), index)?;
                         let active = this.utxo_address_has_activity(chain, &address).await?;
                         Ok::<_, SpectraBridgeError>((index, address, path, active))
                     })
@@ -191,7 +191,7 @@ impl WalletService {
                             chain,
                             address.clone(),
                             path,
-                            Some(name.to_string()),
+                            Some(branch),
                             Some(i64::from(index)),
                         )
                         .await?;
@@ -206,7 +206,7 @@ impl WalletService {
                 }
                 if !complete {
                     return Err(SpectraBridgeError::failure(format!(
-                        "UTXO {name} discovery reached index {MAX_INDEX} before finding {GAP_LIMIT} unused addresses"
+                        "UTXO {branch:?} discovery reached index {MAX_INDEX} before finding {GAP_LIMIT} unused addresses"
                     )));
                 }
             }
@@ -785,7 +785,7 @@ impl WalletService {
                 chain,
                 address.clone(),
                 path,
-                Some("external".to_string()),
+                Some(crate::wallet_db::AddressBranch::Receive),
                 Some(i64::from(index)),
             )
             .await?;
@@ -793,3 +793,7 @@ impl WalletService {
         Ok(Some(address))
     }
 }
+
+#[cfg(test)]
+#[path = "tests/address_discovery.rs"]
+mod tests;

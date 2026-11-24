@@ -752,3 +752,32 @@ mod derivation_override_tests {
         assert!(overrides("", "").validate_for_chain(Chain::Monero).is_ok());
     }
 }
+
+#[cfg(test)]
+impl WalletState {
+    /// A seed wallet `id` on `chain`, counted in the portfolio, with no
+    /// address, holdings or balance read yet: what a test starts from.
+    pub(crate) fn fixture(id: &str, chain: crate::registry::Chain) -> Self {
+        Self {
+            id: id.to_string(),
+            name: id.to_string(),
+            signing: WalletSigning::SeedPhrase {
+                password_protected: false,
+            },
+            include_in_portfolio_total: true,
+            chain_id: chain,
+            xpub: None,
+            derivation_path: None,
+            derivation_profile: None,
+            derivation_flags: Default::default(),
+            holdings: Vec::new(),
+            address: None,
+            restore_height: None,
+            hidden_holdings: Vec::new(),
+            icp_principal: None,
+            near_account_key: None,
+            multisig_policy: None,
+            balances_read_at: None,
+        }
+    }
+}

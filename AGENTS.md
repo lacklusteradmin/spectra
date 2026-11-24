@@ -53,6 +53,15 @@ only through a rebuilt, copied package. Check an FFI change against the app
 before it lands: copy the package into spectra-apple and run its checks, with
 this checkout as its `SPECTRA`.
 
+A change here is finished only when the apps match it. In the same task, check
+spectra-apple and spectra-android for anything that depends on what changed (an
+FFI export, a registry or catalog fact the apps render, an icon, a shared doc,
+Makefile or script convention) and update them too; bindings are rebuilt, never
+hand-edited. Report which app repositories changed and which checks ran there.
+spectra-android does not build against core yet. On my machine the three
+checkouts sit side by side: `~/Code/Spectra`, `~/Code/SpectraApple`,
+`~/Code/SpectraAndroid`.
+
 ## Docs
 
 Read the one that covers what you are changing:
@@ -168,7 +177,7 @@ actually ran.
 | Crypto icons | `make check-icons` |
 | A localized code change | The target that covers it |
 | Core behaviour or persistence, with no funds, keys or FFI change | `make lint test`, plus `make test-cli` when a CLI flow is affected |
-| Broad refactors, funds or keys, and FFI changes | All four targets, and spectra-apple's checks against a package and `SPECTRA` from this checkout, unless I say otherwise |
+| Broad refactors, funds or keys, and FFI changes | All four targets, and spectra-apple's checks against a package and `SPECTRA` from this checkout (on the one simulator spectra-apple's `AGENTS.md` names), unless I say otherwise |
 
 The four targets are `make lint`, `test`, `test-cli` and `check-icons`:
 formatting, clippy at `-D warnings` and the source scans, then `cargo test`,

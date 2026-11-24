@@ -104,13 +104,7 @@ pub fn run(ctx: &Ctx, out: Out, command: DiagnosticsCommand) -> CliResult<()> {
             let report = ctx
                 .rt
                 .block_on(ctx.service()?.run_configured_self_tests(chain))?;
-            let report = ConfiguredReport { report };
-            out.report(&report)?;
-            if report.ok() {
-                Ok(())
-            } else {
-                Err(CliError::failure("Configured network self-tests failed"))
-            }
+            out.report(&ConfiguredReport { report })
         }
     }
 }
@@ -267,8 +261,8 @@ impl Report for SelfTestReport {
         );
     }
 
-    fn ok(&self) -> bool {
-        self.failed == 0
+    fn failure(&self) -> Option<String> {
+        (self.failed > 0).then(|| format!("{} of {} self-tests failed", self.failed, self.total))
     }
 }
 
@@ -349,8 +343,9 @@ impl Report for ConfiguredReport {
         }
     }
 
-    fn ok(&self) -> bool {
-        self.report.results.iter().all(|result| result.passed)
+    fn failure(&self) -> Option<String> {
+        let failed = self.report.results.iter().filter(|r| !r.passed).count();
+        (failed > 0).then(|| format!("{failed} configured network self-tests failed"))
     }
 }
 

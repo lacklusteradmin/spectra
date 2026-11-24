@@ -5,8 +5,8 @@
 //! its size; the fee is the protocol's linear fee for the signed size. A
 //! minimal CBOR encoder and the extended-key witness.
 
-use crate::api::cardano_asset::CardanoAssetId;
 use crate::api::koios::CardanoProtocolParams;
+use crate::registry::cardano_asset::CardanoAssetId;
 use crate::send::error::SendError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

@@ -20,93 +20,47 @@ pub(crate) fn decode_ss58(address: &str) -> Result<[u8; 32], DerivationError> {
 
 // ── Derivation entry points ────────────────────────────────────────────────────────
 
-use crate::derivation::types::DerivationResult;
-use crate::error::SpectraBridgeError;
+use crate::derivation::types::{DerivationResult, Wants};
+use crate::registry::Chain;
 
-// Shared derivation logic for all Substrate-based networks; ss58_prefix selects the network.
-fn substrate_internal(
-    ss58_prefix: u16,
-    seed_phrase: String,
-    path: String,
-    passphrase: Option<String>,
-    hmac_key: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
+/// Derive a Polkadot wallet from a seed phrase along a Substrate junction
+/// path; the address carries `chain`'s SS58 prefix.
+pub(crate) fn derive_from_seed_phrase(
+    chain: Chain,
+    seed_phrase: &str,
+    path: &str,
+    passphrase: Option<&str>,
+    hmac_key: Option<&str>,
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
+    let ss58_prefix = chain
+        .ss58_prefix()
+        .ok_or_else(|| DerivationError::invalid(format!("{chain} is not a Substrate network")))?;
     // The override's one meaning here: `uniform` expands the root seed in
     // schnorrkel's Uniform mode. Any other value would be ignored, so it is
     // refused rather than deriving the key it does not change.
-    let uniform_expansion = match hmac_key.as_deref().map(str::trim) {
+    let uniform_expansion = match hmac_key.map(str::trim) {
         None | Some("") => false,
         Some("uniform") => true,
         Some(_) => {
-            return Err(crate::derivation::error::DerivationError::refused(
+            return Err(DerivationError::refused(
                 "%@ takes only `uniform` as its HMAC override.",
                 ["Polkadot"],
-            )
-            .into());
+            ));
         }
     };
     let (key, public_key) = derive_substrate_sr25519_material(
-        &seed_phrase,
-        passphrase.as_deref().unwrap_or(""),
+        seed_phrase,
+        passphrase.unwrap_or(""),
         None,
         None,
         0,
-        Some(&path),
+        Some(path),
         uniform_expansion,
     )?;
     Ok(DerivationResult {
-        address: want_address.then(|| encode_ss58(&public_key, ss58_prefix)),
-        public_key_hex: want_public_key.then(|| hex::encode(public_key)),
-        private_key_hex: want_private_key.then(|| hex::encode(&*key)),
-        account: 0,
-        branch: 0,
-        index: 0,
+        address: wants.address.then(|| encode_ss58(&public_key, ss58_prefix)),
+        public_key_hex: wants.public_key_hex(&public_key),
+        private_key_hex: wants.private_key_hex(&key),
     })
-}
-
-/// Derive Polkadot mainnet wallet (SS58 prefix 0, "1…" addresses).
-pub fn derive_polkadot(
-    seed_phrase: String,
-    path: String,
-    passphrase: Option<String>,
-    hmac_key: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    substrate_internal(
-        0,
-        seed_phrase,
-        path,
-        passphrase,
-        hmac_key,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive Polkadot Westend testnet wallet (SS58 prefix 42, "5…" addresses).
-pub fn derive_polkadot_westend(
-    seed_phrase: String,
-    path: String,
-    passphrase: Option<String>,
-    hmac_key: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    substrate_internal(
-        42,
-        seed_phrase,
-        path,
-        passphrase,
-        hmac_key,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
 }

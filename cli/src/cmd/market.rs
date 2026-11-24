@@ -288,11 +288,12 @@ impl Report for PortfolioReport {
         for wallet in &self.wallets {
             for holding in &wallet.holdings {
                 println!(
-                    "  {}  {:<14}  {:>18}  {}",
+                    "  {}  {:<14}  {:>18}  {}  {}",
                     out::wallet_dot(wallet.chain, wallet.is_watch_only),
                     wallet.name,
                     format!("{} {}", holding.shown, holding.symbol),
                     out::fiat(holding.value, self.fiat).bold(),
+                    out::hint(&holding.deployment_id),
                 );
             }
         }
@@ -359,19 +360,20 @@ fn live_portfolio(ctx: &Ctx, out: Out) -> CliResult<()> {
     // the display currency's rate — and then values it.
     let service = ctx.service()?;
     let wallets = ctx.rt.block_on(service.app_state()).wallets;
-    let mut unavailable = Vec::new();
-    for wallet in &wallets {
-        if let Err(error) = ctx
-            .rt
-            .block_on(service.refresh_wallet_balances(wallet.id.clone()))
-        {
-            unavailable.push(Unavailable {
-                wallet: wallet.id.clone(),
-                error: error.to_string(),
-                name: wallet.name.clone(),
-            });
-        }
-    }
+    let unavailable = super::refresh::sweep(ctx, service.clone(), None)
+        .wallets
+        .into_iter()
+        .filter_map(|(wallet_id, failure)| {
+            Some(Unavailable {
+                error: failure?,
+                name: wallets
+                    .iter()
+                    .find(|wallet| wallet.id == wallet_id)
+                    .map_or_else(|| wallet_id.clone(), |wallet| wallet.name.clone()),
+                wallet: wallet_id,
+            })
+        })
+        .collect();
     let mut failures = Vec::new();
     if !wallets.is_empty() {
         let quotes = ctx.rt.block_on(service.refresh_owned_prices(false))?.quotes;

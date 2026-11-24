@@ -294,7 +294,7 @@ pub(crate) mod tests {
             crate::secrets::backends::InMemorySecretStore::new(),
         ));
         service
-            .open_state(directory.join("state.db").to_string_lossy().into_owned())
+            .opened(directory.join("state.db").to_string_lossy().into_owned())
             .await
             .unwrap();
         (service, directory)
@@ -329,9 +329,11 @@ pub(crate) mod tests {
             None,
             None,
             None,
-            true,
-            false,
-            true,
+            crate::derivation::types::Wants {
+                address: true,
+                public_key: false,
+                private_key: true,
+            },
         )
         .unwrap();
         match method {
@@ -346,8 +348,11 @@ pub(crate) mod tests {
             }
             WalletSetupMethod::ImportPrivateKey => {
                 let mut commit = commit(chain, WalletImportKind::PrivateKey);
-                commit.private_key =
-                    Some(derived.private_key_hex.unwrap_or_else(|| "4c".repeat(32)));
+                commit.private_key = Some(
+                    derived
+                        .private_key_hex
+                        .map_or_else(|| "4c".repeat(32), |key| key.to_string()),
+                );
                 commit
             }
             WalletSetupMethod::WatchAddresses => commit(
@@ -418,9 +423,7 @@ pub(crate) mod tests {
                     None,
                     None,
                     None,
-                    false,
-                    false,
-                    true,
+                    crate::derivation::types::Wants::PRIVATE_KEY,
                 )
                 .unwrap()
                 .private_key_hex

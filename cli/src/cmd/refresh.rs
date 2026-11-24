@@ -9,6 +9,7 @@ use clap::Args;
 use colored::Colorize as _;
 use serde::Serialize;
 use spectra_core::registry::Chain;
+use spectra_core::service::WalletService;
 use spectra_core::service::app_refresh::AppRefreshResult;
 use spectra_core::service::refresh_engine::{RefreshEngine, RefreshObserver};
 use spectra_core::store::state::WalletState;
@@ -27,25 +28,28 @@ pub struct RefreshArgs {
     wallet: Option<String>,
 }
 
-/// What the engine reported, collected for one sweep.
+/// What one sweep through core's engine reported.
 #[derive(Default)]
-struct Collected {
-    updated: Vec<(String, Option<WalletState>)>,
-    refreshed: u32,
-    errors: u32,
-    complete: bool,
+pub(crate) struct Sweep {
+    /// The refresh entries core built: one per wallet with an address.
+    pub entries: u32,
+    /// Each wallet the sweep read, with why its balance could not be read.
+    pub wallets: Vec<(String, Option<String>)>,
+    pub refreshed: u32,
+    pub errors: u32,
+    pub complete: bool,
 }
 
-struct Collector(Mutex<Collected>);
+struct Collector(Mutex<Sweep>);
 
 impl RefreshObserver for Collector {
-    fn on_balance_updated(
+    fn on_balance_refreshed(
         &self,
         _chain_id: spectra_core::registry::Chain,
         wallet_id: String,
-        summary: Option<WalletState>,
+        failure: Option<String>,
     ) {
-        self.0.lock().unwrap().updated.push((wallet_id, summary));
+        self.0.lock().unwrap().wallets.push((wallet_id, failure));
     }
 
     fn on_refresh_cycle_complete(&self, refreshed: u32, errors: u32) {
@@ -62,6 +66,28 @@ impl RefreshObserver for Collector {
     fn on_tor_status_changed(&self, _status: spectra_core::api::tor::TorStatus) {}
 }
 
+/// One balance sweep through core's `RefreshEngine`, of every wallet or of
+/// `wallet_id`, awaited: this process is about to exit, so a spawned cycle
+/// would be abandoned mid-flight.
+pub(crate) fn sweep(ctx: &Ctx, service: Arc<WalletService>, wallet_id: Option<String>) -> Sweep {
+    let engine = RefreshEngine::new(service);
+    let collector = Arc::new(Collector(Mutex::new(Sweep::default())));
+    engine.set_observer(collector.clone());
+    // Core builds refresh entries from its wallets and their networks.
+    let entries = ctx.rt.block_on(engine.sync_entries(wallet_id));
+    if entries > 0 {
+        out::progress(&format!(
+            "refreshing {}",
+            out::count(entries as usize, "wallet")
+        ));
+        ctx.rt.block_on(engine.refresh_now());
+    }
+    engine.clear_observer();
+    let mut sweep = std::mem::take(&mut *collector.0.lock().unwrap());
+    sweep.entries = entries;
+    sweep
+}
+
 pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
     let state = ctx.state()?;
     let wallets: Vec<_> = match &args.wallet {
@@ -75,44 +101,32 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
     let service =
         ctx.service_with_endpoints(wallets[0].chain_id, args.endpoint.into_iter().collect())?;
 
-    let engine = RefreshEngine::new(service);
-    let collector = Arc::new(Collector(Mutex::new(Collected::default())));
-    engine.set_observer(collector.clone());
-    // Core builds refresh entries from its wallets and their networks.
-    let entry_count = ctx
-        .rt
-        .block_on(engine.sync_entries(args.wallet.as_ref().map(|_| wallets[0].id.clone())));
-    if entry_count == 0 {
+    let swept = sweep(
+        ctx,
+        service,
+        args.wallet.as_ref().map(|_| wallets[0].id.clone()),
+    );
+    if swept.entries == 0 {
         return Err(CliError::rejected("no wallet has an address to refresh"));
     }
-
-    out::progress(&format!(
-        "refreshing {}",
-        out::count(entry_count as usize, "wallet")
-    ));
-    // One sweep, awaited: this process is about to exit, so a spawned
-    // cycle would be abandoned mid-flight.
-    ctx.rt.block_on(engine.refresh_now());
-    engine.clear_observer();
-
-    let collected = collector.0.lock().unwrap();
     out.report(&RefreshReport {
-        refreshed: collected.refreshed,
-        errors: collected.errors,
-        cycle_completed: collected.complete,
-        skipped: wallets.len().saturating_sub(entry_count as usize),
-        wallets: collected
-            .updated
-            .iter()
-            .map(|(wallet_id, summary)| UpdatedWallet {
-                wallet: wallet_id.clone(),
-                updated: summary.is_some(),
-                name: wallets
-                    .iter()
-                    .find(|wallet| &wallet.id == wallet_id)
-                    .map_or_else(|| wallet_id.clone(), |wallet| wallet.name.clone()),
-                chain: summary.as_ref().map(|summary| summary.chain_id),
-                is_watch_only: summary.as_ref().is_some_and(WalletState::is_watch_only),
+        refreshed: swept.refreshed,
+        errors: swept.errors,
+        cycle_completed: swept.complete,
+        skipped: wallets.len().saturating_sub(swept.entries as usize),
+        wallets: swept
+            .wallets
+            .into_iter()
+            .map(|(wallet_id, failure)| {
+                let wallet = wallets.iter().find(|wallet| wallet.id == wallet_id);
+                UpdatedWallet {
+                    updated: failure.is_none(),
+                    failure,
+                    name: wallet.map_or_else(|| wallet_id.clone(), |wallet| wallet.name.clone()),
+                    chain: wallet.map(|wallet| wallet.chain_id),
+                    is_watch_only: wallet.is_some_and(WalletState::is_watch_only),
+                    wallet: wallet_id,
+                }
             })
             .collect(),
     })
@@ -122,6 +136,9 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
 struct UpdatedWallet {
     wallet: String,
     updated: bool,
+    /// Why the balance could not be read.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    failure: Option<String>,
     #[serde(skip)]
     name: String,
     #[serde(skip)]
@@ -145,18 +162,18 @@ impl Report for RefreshReport {
     fn render(&self) {
         println!();
         for wallet in &self.wallets {
-            match wallet.chain {
-                Some(chain) => println!(
+            match (&wallet.failure, wallet.chain) {
+                (None, Some(chain)) => println!(
                     "  {}  {:<18} {}",
                     out::wallet_dot(chain, wallet.is_watch_only),
                     wallet.name,
                     out::hint(chain.chain_display_name()),
                 ),
-                None => println!(
+                (failure, _) => println!(
                     "  {}  {:<18} {}",
                     out::fail_mark(),
                     wallet.name,
-                    out::hint("no balance")
+                    out::hint(failure.as_deref().unwrap_or("no balance"))
                 ),
             }
         }
@@ -172,7 +189,7 @@ impl Report for RefreshReport {
         );
     }
 
-    fn ok(&self) -> bool {
-        self.errors == 0
+    fn failure(&self) -> Option<String> {
+        (self.errors > 0).then(|| format!("{} wallets failed to refresh", self.errors))
     }
 }

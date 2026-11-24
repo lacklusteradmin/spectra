@@ -485,4 +485,4 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/multisig_substrate.rs"]
-mod multisig_substrate_tests;
+mod tests;

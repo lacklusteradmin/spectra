@@ -1,22 +1,55 @@
+use zeroize::Zeroizing;
+
 // ── Output types ─────────────────────────────────────────────────────────────
 
-/// Returned by every `derive_<chain>` function.
-///
-/// Request which fields are populated via the `want_*` booleans on the call
-/// site. Fields not requested come back as `None`. `account`, `branch`, and
-/// `index` are always populated — they are parsed from the derivation path at
-/// zero extra cost and are useful as display metadata or for signing bookkeeping.
-#[derive(Debug)]
+/// Which of a derivation's outputs a caller wants. The others come back
+/// `None`, and a private key no caller asked for is never encoded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Wants {
+    pub address: bool,
+    pub public_key: bool,
+    pub private_key: bool,
+}
+
+impl Wants {
+    pub const ADDRESS: Self = Self {
+        address: true,
+        public_key: false,
+        private_key: false,
+    };
+    pub const PUBLIC_KEY: Self = Self {
+        address: false,
+        public_key: true,
+        private_key: false,
+    };
+    pub const PRIVATE_KEY: Self = Self {
+        address: false,
+        public_key: false,
+        private_key: true,
+    };
+    pub const ALL: Self = Self {
+        address: true,
+        public_key: true,
+        private_key: true,
+    };
+
+    /// `key` in hex, when the public key is wanted.
+    pub(crate) fn public_key_hex(self, key: &[u8]) -> Option<String> {
+        self.public_key.then(|| hex::encode(key))
+    }
+
+    /// `key` in hex, when the private key is wanted.
+    pub(crate) fn private_key_hex(self, key: &[u8]) -> Option<Zeroizing<String>> {
+        self.private_key.then(|| Zeroizing::new(hex::encode(key)))
+    }
+}
+
+/// What a derivation returns: the outputs its [`Wants`] named.
 pub struct DerivationResult {
     pub address: Option<String>,
     pub public_key_hex: Option<String>,
-    pub private_key_hex: Option<String>,
-    /// Segment 2 of the BIP-32 path (the account level), hardening stripped.
-    pub account: u32,
-    /// Second-to-last segment (the change/branch level).
-    pub branch: u32,
-    /// Last segment (the address index).
-    pub index: u32,
+    /// Wiped when dropped.
+    pub private_key_hex: Option<Zeroizing<String>>,
 }
 
 // ── Script type (UTXO chains) ─────────────────────────────────────────────────
@@ -33,25 +66,4 @@ pub enum BitcoinScriptType {
     P2wpkh,
     /// Taproot P2TR. Bech32m, prefix `bc1p`.
     P2tr,
-}
-
-// ── Path metadata helper ──────────────────────────────────────────────────────
-
-/// Extract `(account, branch, index)` from a BIP-32 path string.
-/// Returns `(0, 0, 0)` for a path that does not read.
-pub(crate) fn parse_path_metadata(path: &str) -> (u32, u32, u32) {
-    let Ok(path) = crate::derivation::bip32::parse_path(path) else {
-        return (0, 0, 0);
-    };
-    let steps: Vec<u32> = path
-        .into_iter()
-        .map(|step| crate::derivation::bip32::step_number(*step))
-        .collect();
-    let account = steps.get(2).copied().unwrap_or(0);
-    let branch = steps
-        .get(steps.len().saturating_sub(2))
-        .copied()
-        .unwrap_or(0);
-    let index = steps.last().copied().unwrap_or(0);
-    (account, branch, index)
 }

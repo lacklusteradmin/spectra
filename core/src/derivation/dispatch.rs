@@ -1,4 +1,4 @@
-use crate::derivation::types::{BitcoinScriptType, DerivationResult};
+use crate::derivation::types::{BitcoinScriptType, DerivationResult, Wants};
 use crate::error::SpectraBridgeError;
 
 pub fn script_type_for_path(path: &str) -> BitcoinScriptType {
@@ -14,6 +14,13 @@ pub fn script_type_for_path(path: &str) -> BitcoinScriptType {
     }
 }
 
+/// Derive `chain`'s wallet from a seed phrase along `derivation_path`.
+///
+/// Each family has one derive function and reads its network (address
+/// versions, HRP, SS58 prefix, network byte) off `chain`, so the arms are
+/// keyed on the mainnet a chain belongs to and its testnets fall out of
+/// `mainnet_counterpart`. `script_type` applies to the UTXO family and
+/// defaults to the one the path's purpose names.
 pub fn derive_for_chain(
     chain: crate::registry::Chain,
     seed_phrase: &str,
@@ -21,16 +28,13 @@ pub fn derive_for_chain(
     passphrase: Option<&str>,
     hmac_key: Option<&str>,
     script_type: Option<BitcoinScriptType>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
+    wants: Wants,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     use crate::registry::Chain;
 
     use crate::derivation::{
-        aptos, bitcoin as btc, bitcoin_cash as bch, bitcoin_gold as btg, bitcoin_sv as bsv,
-        bittensor, cardano, dash, decred, dogecoin as doge, evm, icp, kaspa, litecoin as ltc,
-        monero as xmr, near, peercoin, polkadot, solana, stellar, sui, ton, tron, xrp, zcash,
+        aptos, bitcoin, bittensor, cardano, evm, icp, monero, near, polkadot, solana, stellar, sui,
+        ton, tron, xrp,
     };
 
     // A chain that derives without a path refuses one rather than deriving
@@ -45,94 +49,51 @@ pub fn derive_for_chain(
         )
         .into());
     }
-    let s = seed_phrase.to_string();
-    let p = derivation_path.to_string();
-    let pass = passphrase.map(str::to_string);
-    let hmac = hmac_key.map(str::to_string);
-    let script = script_type.unwrap_or_else(|| script_type_for_path(derivation_path));
-    let wa = want_address;
-    let wp = want_public_key;
-    let wk = want_private_key;
+    let (phrase, path) = (seed_phrase, derivation_path);
 
-    // Keyed on `Chain`, not on the display name. The string match this replaces
-    // had seventy-eight arms and no way to say it had them all; a name with a
-    // typo fell through to the error arm and read as an unsupported chain.
-    let result = match chain {
-        Chain::Bitcoin => btc::derive_bitcoin(s, p, pass, script, wa, wp, wk)?,
-        Chain::BitcoinTestnet => btc::derive_bitcoin_testnet(s, p, pass, script, wa, wp, wk)?,
-        Chain::BitcoinTestnet4 => btc::derive_bitcoin_testnet4(s, p, pass, script, wa, wp, wk)?,
-        Chain::BitcoinSignet => btc::derive_bitcoin_signet(s, p, pass, script, wa, wp, wk)?,
-        Chain::BitcoinCash => {
-            bch::derive_bitcoin_cash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+    Ok(match chain.mainnet_counterpart() {
+        Chain::Bitcoin
+        | Chain::Litecoin
+        | Chain::Peercoin
+        | Chain::BitcoinCash
+        | Chain::BitcoinSV
+        | Chain::Dogecoin
+        | Chain::Dash
+        | Chain::BitcoinGold
+        | Chain::Zcash
+        | Chain::Decred
+        | Chain::Kaspa => {
+            let script = script_type.unwrap_or_else(|| script_type_for_path(path));
+            bitcoin::derive_from_seed_phrase(chain, phrase, path, passphrase, script, wants)?
         }
-        Chain::BitcoinCashTestnet => {
-            bch::derive_bitcoin_cash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        Chain::Tron => tron::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        Chain::Solana => {
+            solana::derive_from_seed_phrase(phrase, path, passphrase, hmac_key, wants)?
         }
-        Chain::BitcoinSV => {
-            bsv::derive_bitcoin_sv(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        Chain::Stellar => {
+            stellar::derive_from_seed_phrase(phrase, path, passphrase, hmac_key, wants)?
         }
-        Chain::BitcoinSVTestnet => {
-            bsv::derive_bitcoin_sv_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
+        Chain::Xrp => xrp::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        Chain::Cardano => cardano::derive_from_seed_phrase(chain, phrase, path, passphrase, wants)?,
+        Chain::Sui => sui::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        Chain::Aptos => aptos::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        Chain::Ton => ton::derive_from_seed_phrase(chain, phrase, passphrase, wants)?,
+        Chain::Icp => icp::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        Chain::Near => near::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        Chain::Polkadot => {
+            polkadot::derive_from_seed_phrase(chain, phrase, path, passphrase, hmac_key, wants)?
         }
-        Chain::Litecoin => ltc::derive_litecoin(s, p, pass, script, wa, wp, wk)?,
-        Chain::LitecoinTestnet => ltc::derive_litecoin_testnet(s, p, pass, script, wa, wp, wk)?,
-        Chain::Peercoin => peercoin::derive_peercoin(s, p, pass, script, wa, wp, wk)?,
-        Chain::PeercoinTestnet => {
-            peercoin::derive_peercoin_testnet(s, p, pass, script, wa, wp, wk)?
-        }
-        Chain::Dogecoin => doge::derive_dogecoin(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-        Chain::DogecoinTestnet => {
-            doge::derive_dogecoin_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
-        }
-        Chain::Dash => dash::derive_dash(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?,
-        Chain::DashTestnet => {
-            dash::derive_dash_testnet(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
-        }
-        Chain::BitcoinGold => {
-            btg::derive_bitcoin_gold(s, p, pass, BitcoinScriptType::P2pkh, wa, wp, wk)?
-        }
-        Chain::Zcash => zcash::derive_zcash(s, p, pass, wa, wp, wk)?,
-        Chain::ZcashTestnet => zcash::derive_zcash_testnet(s, p, pass, wa, wp, wk)?,
-        Chain::Decred => decred::derive_decred(s, p, pass, wa, wp, wk)?,
-        Chain::DecredTestnet => decred::derive_decred_testnet(s, p, pass, wa, wp, wk)?,
-        Chain::Kaspa => kaspa::derive_kaspa(s, p, pass, wa, wp, wk)?,
-        Chain::KaspaTestnet => kaspa::derive_kaspa_testnet(s, p, pass, wa, wp, wk)?,
-        Chain::Tron => tron::derive_tron(s, p, pass, wa, wp, wk)?,
-        Chain::TronNile => tron::derive_tron_nile(s, p, pass, wa, wp, wk)?,
-        Chain::Solana => solana::derive_solana(s, p, pass, hmac, wa, wp, wk)?,
-        Chain::SolanaDevnet => solana::derive_solana_devnet(s, p, pass, hmac, wa, wp, wk)?,
-        Chain::Stellar => stellar::derive_stellar(s, p, pass, hmac, wa, wp, wk)?,
-        Chain::StellarTestnet => stellar::derive_stellar_testnet(s, p, pass, hmac, wa, wp, wk)?,
-        Chain::Xrp => xrp::derive_xrp(s, p, pass, wa, wp, wk)?,
-        Chain::XrpTestnet => xrp::derive_xrp_testnet(s, p, pass, wa, wp, wk)?,
-        Chain::Cardano => cardano::derive_cardano(s, Some(p), pass, wa, wp, wk)?,
-        Chain::CardanoPreprod => cardano::derive_cardano_preprod(s, Some(p), pass, wa, wp, wk)?,
-        Chain::Sui => sui::derive_sui(s, p, pass, wa, wp, wk)?,
-        Chain::SuiTestnet => sui::derive_sui_testnet(s, p, pass, wa, wp, wk)?,
-        Chain::Aptos => aptos::derive_aptos(s, p, pass, wa, wp, wk)?,
-        Chain::AptosTestnet => aptos::derive_aptos_testnet(s, p, pass, wa, wp, wk)?,
-        Chain::Ton => ton::derive_ton(s, pass, wa, wp, wk)?,
-        Chain::TonTestnet => ton::derive_ton_testnet(s, pass, wa, wp, wk)?,
-        Chain::Icp => icp::derive_icp(s, p, pass, wa, wp, wk)?,
-        Chain::Near => near::derive_near(s, p, pass, wa, wp, wk)?,
-        Chain::NearTestnet => near::derive_near_testnet(s, p, pass, wa, wp, wk)?,
-        Chain::Polkadot => polkadot::derive_polkadot(s, p, pass, hmac, wa, wp, wk)?,
-        Chain::PolkadotWestend => polkadot::derive_polkadot_westend(s, p, pass, hmac, wa, wp, wk)?,
-        Chain::Bittensor => bittensor::derive_bittensor(s, p, pass, wa, wp, wk)?,
-        Chain::Monero => xmr::derive_monero(s, wa, wp, wk)?,
-        Chain::MoneroStagenet => xmr::derive_monero_stagenet(s, wa, wp, wk)?,
+        Chain::Bittensor => bittensor::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        Chain::Monero => monero::derive_from_seed_phrase(chain, phrase, wants)?,
         // Every EVM chain derives the same address from the same path — there
-        // is no chain-specific encoding — so the thirty-three arms that stood
-        // here picked between thirty-three copies of one function.
-        c if c.is_evm() => evm::derive_evm(s, p, pass, wa, wp, wk)?,
-        other => {
+        // is no chain-specific encoding.
+        _ if chain.is_evm() => evm::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        _ => {
             return Err(SpectraBridgeError::InvalidInput {
-                message: format!("unsupported chain: {}", other.chain_display_name()).into(),
+                message: format!("unsupported chain: {}", chain.chain_display_name()).into(),
             });
         }
-    };
-
-    Ok(result)
+    })
 }
 
 /// Derive an address from a raw private key, whatever the chain.
@@ -185,15 +146,17 @@ mod dispatch_export_tests {
                 None,
                 None,
                 None,
-                true,
+                Wants::ALL,
+            )
+            .unwrap();
+            let actual = derive_from_private_key(
+                chain,
+                expected.private_key_hex.as_deref().unwrap().to_string(),
                 true,
                 true,
             )
+            .unwrap()
             .unwrap();
-            let actual =
-                derive_from_private_key(chain, expected.private_key_hex.unwrap(), true, true)
-                    .unwrap()
-                    .unwrap();
             assert_eq!(actual.public_key_hex, expected.public_key_hex, "{chain}");
             if chain.mainnet_counterpart() == Chain::Cardano {
                 // A raw extended key holds no stake key: it derives the
@@ -279,9 +242,7 @@ mod dispatch_export_tests {
                 None,
                 None,
                 None,
-                true,
-                false,
-                false,
+                Wants::ADDRESS,
             );
             match result {
                 Ok(r) if r.address.is_some() => {}

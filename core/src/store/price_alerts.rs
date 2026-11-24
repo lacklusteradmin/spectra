@@ -126,7 +126,7 @@ pub struct PriceAlertRule {
 }
 
 /// Live price lookup for one holding.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertEvaluationPrice {
     pub holding_key: String,
@@ -134,7 +134,7 @@ pub struct PriceAlertEvaluationPrice {
 }
 
 /// Alert `has_triggered` state changes produced by the evaluator.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertTriggerUpdate {
     pub id: String,
@@ -144,7 +144,7 @@ pub struct PriceAlertTriggerUpdate {
 /// A single firing — a front end words the notification from this. The two
 /// prices are in `currency`: the display currency when its rate is known,
 /// USD when it is not.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertNotification {
     pub id: String,
@@ -154,11 +154,10 @@ pub struct PriceAlertNotification {
     pub target_price: f64,
     pub live_price: f64,
     pub condition: wallet_domain::PriceAlertCondition,
-    #[serde(default)]
     pub currency: state::FiatCurrency,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertEvaluation {
     pub updates: Vec<PriceAlertTriggerUpdate>,

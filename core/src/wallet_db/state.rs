@@ -42,12 +42,6 @@ impl AppStateChanges {
         before: Option<&ResidentState>,
         after: &ResidentState,
     ) -> Result<Self, DbError> {
-        if after.schema_version != crate::store::state::APP_STATE_SCHEMA_VERSION {
-            return Err(DbError::Invalid(format!(
-                "unsupported app state schema version: {}",
-                after.schema_version
-            )));
-        }
         let old_wallets: std::collections::HashMap<_, _> = before
             .into_iter()
             .flat_map(|state| state.wallets.iter().enumerate())
@@ -101,7 +95,12 @@ impl AppStateChanges {
         }
         json_field!(movement_baseline, "movement_baseline");
         json_field!(diagnostics, "diagnostics");
-        json_field!(schema_version, META_SCHEMA_VERSION);
+        if before.is_none() {
+            changes.meta.push((
+                META_SCHEMA_VERSION,
+                Some(crate::store::state::APP_STATE_SCHEMA_VERSION.to_string()),
+            ));
+        }
         json_field!(settings, META_SETTINGS);
         // Only the user's tokens are stored: the catalog's are its own.
         if before.map(|state| &state.token_preferences) != Some(&after.token_preferences) {
@@ -328,13 +327,12 @@ pub fn app_state_load(database: &WalletDatabase) -> Result<ResidentState, DbErro
                         .map_err(|e| DbError::Corrupt(format!("invalid diagnostics: {e}")))?
                 }
                 META_SCHEMA_VERSION => {
-                    state.schema_version = value.parse().map_err(|e| {
+                    let version: u32 = value.parse().map_err(|e| {
                         DbError::Corrupt(format!("app_state_load schema_version {value:?}: {e}"))
                     })?;
-                    if state.schema_version != crate::store::state::APP_STATE_SCHEMA_VERSION {
+                    if version != crate::store::state::APP_STATE_SCHEMA_VERSION {
                         return Err(DbError::Corrupt(format!(
-                            "unsupported app state schema version: {}",
-                            state.schema_version
+                            "unsupported app state schema version: {version}"
                         )));
                     }
                 }

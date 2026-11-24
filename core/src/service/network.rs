@@ -27,8 +27,8 @@ pub(super) fn evm_network(chain: Chain) -> Result<Chain, SpectraBridgeError> {
 }
 
 #[cfg(test)]
-#[path = "tests/network_receipt.rs"]
-mod network_receipt;
+#[path = "tests/network.rs"]
+mod tests;
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
@@ -248,128 +248,5 @@ impl WalletService {
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
         let code = client.fetch_code(&address).await?;
         Ok(crate::send::flow::evm_has_contract_code(code))
-    }
-}
-
-#[cfg(test)]
-mod history_page_failures {
-    use super::*;
-    #[tokio::test]
-    async fn history_page_without_a_configured_source_is_an_error() {
-        let service = WalletService::new(vec![]).unwrap();
-        // BSC has no configured keyless history source. This fails offline,
-        // before HTTP, and must not masquerade as an empty successful page.
-        let result = service
-            .fetch_evm_history_page(Chain::BnbChain, "from".into(), vec![], 2, 7)
-            .await;
-        assert!(result.unwrap_err().to_string().contains("no explorer"));
-    }
-}
-
-#[cfg(test)]
-mod receipt_cost_completeness {
-    use super::*;
-    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};
-
-    #[tokio::test]
-    async fn world_chain_receipt_omits_partial_cost_without_losing_outcome() {
-        for chain in [Chain::WorldChain, Chain::Ethereum] {
-            for (status, is_failed) in [("0x1", false), ("0x0", true)] {
-                let server = MockServer::start().await;
-                Mock::given(body_partial_json(
-                    json!({"method": "eth_getTransactionReceipt"}),
-                ))
-                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                    "jsonrpc": "2.0", "id": 1,
-                    "result": {
-                        "status": status, "blockNumber": "0x7",
-                        "gasUsed": "0x5208", "effectiveGasPrice": "0x1"
-                    }
-                })))
-                .expect(if chain == Chain::WorldChain { 2 } else { 1 })
-                .mount(&server)
-                .await;
-                let service = WalletService::new(vec![ChainEndpoints {
-                    chain_id: chain,
-                    capabilities: vec![EndpointCapability::Verification],
-                    endpoints: vec![server.uri()],
-                }])
-                .unwrap();
-                let receipt = service
-                    .evm_transaction_status(chain, format!("0x{}", "11".repeat(32)))
-                    .await
-                    .unwrap()
-                    .unwrap();
-                assert!(receipt.is_confirmed);
-                assert_eq!(receipt.is_failed, is_failed);
-                assert_eq!(receipt.block_number, Some(7));
-                if chain == Chain::WorldChain {
-                    assert!(receipt.cost.is_none());
-                    let database = std::env::temp_dir()
-                        .join(format!("op-receipt-{}.sqlite", crate::store::new_id()))
-                        .to_string_lossy()
-                        .into_owned();
-                    service.open_state(database).await.unwrap();
-                    let old: crate::store::persistence_models::TransactionRecord =
-                        serde_json::from_value(json!({
-                            "id": "pending", "walletId": "w", "walletName": "Wallet",
-                            "kind": "send", "status": "pending", "chainId": chain,
-                            "symbol": "ETH", "assetDisplayName": "Ethereum", "amount": "1",
-                            "address": "recipient", "createdAtUnix": 0.0,
-                            "transactionHash": format!("0x{}", "11".repeat(32)),
-                            "receiptGasUsed": "21000", "receiptEffectiveGasPriceGwei": "0.000000001",
-                            "receiptNetworkFee": "0.000000000000021",
-                            "confirmedNetworkFee": "0.000000000000021"
-                        }))
-                        .unwrap();
-                    service.upsert_history_records(vec![old]).await.unwrap();
-                    let changes = service.poll_pending_transactions(chain).await.unwrap();
-                    assert_eq!(changes.len(), 1);
-                    let polled = service.transactions().await.unwrap().remove(0);
-                    service
-                        .apply_resolved_pending_statuses(
-                            chain,
-                            vec![crate::store::ResolvedPendingStatus {
-                                id: "pending".into(),
-                                status: crate::store::wallet_domain::TransactionStatus::executed(
-                                    !is_failed,
-                                ),
-                                confirmations: None,
-                                receipt_block_number: Some(7),
-                                evm_receipt_cost: crate::store::EvmReceiptCost::from_receipt(
-                                    Some("21000"),
-                                    Some("1"),
-                                    18,
-                                ),
-                            }],
-                        )
-                        .await
-                        .unwrap();
-                    let supplied = service.transactions().await.unwrap().remove(0);
-                    use crate::store::wallet_domain::TransactionStatus;
-                    for stored in [polled, supplied] {
-                        assert_eq!(
-                            stored.status,
-                            if is_failed {
-                                TransactionStatus::Failed
-                            } else {
-                                TransactionStatus::Confirmed
-                            }
-                        );
-                        assert_eq!(stored.receipt_block_number, Some(7));
-                        assert!(stored.receipt_gas_used.is_none());
-                        assert!(stored.receipt_effective_gas_price_gwei.is_none());
-                        assert!(stored.receipt_network_fee.is_none());
-                        assert!(stored.confirmed_network_fee.is_none());
-                    }
-                } else {
-                    let cost = receipt.cost.unwrap();
-                    assert_eq!(cost.gas_used, "21000");
-                    assert_eq!(cost.effective_gas_price_gwei, "0.000000001");
-                    assert_eq!(cost.network_fee, "0.000000000000021");
-                }
-                server.verify().await;
-            }
-        }
     }
 }

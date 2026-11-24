@@ -147,100 +147,42 @@ pub(crate) fn spend_key_from_phrase(
     }
 }
 
+/// Derive a Monero wallet on `chain`'s network from a Monero seed or
+/// Polyseed. Both keys are spend ‖ view.
 pub(crate) fn derive_from_seed_phrase(
-    is_mainnet: bool,
+    chain: Chain,
     seed_phrase: &str,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
     let spend_seed = spend_key_from_phrase(seed_phrase)?;
     let (private_spend, public_spend, private_view, public_view) =
         derive_monero_keys_from_spend_seed(&spend_seed)?;
 
-    let address = if want_address {
+    let address = if wants.address {
         Some(encode_monero_main_address(
             &public_spend,
             &public_view,
-            is_mainnet,
+            address_network(chain)? == Network::Mainnet,
         )?)
     } else {
         None
     };
 
-    let public_key_hex = if want_public_key {
-        let mut both = [0u8; 64];
-        both[..32].copy_from_slice(&public_spend);
-        both[32..].copy_from_slice(&public_view);
-        Some(hex::encode(both))
-    } else {
-        None
-    };
+    let mut public = [0u8; 64];
+    public[..32].copy_from_slice(&public_spend);
+    public[32..].copy_from_slice(&public_view);
+    let mut private = Zeroizing::new([0u8; 64]);
+    private[..32].copy_from_slice(&private_spend);
+    private[32..].copy_from_slice(&private_view);
 
-    let private_key_hex = if want_private_key {
-        let mut both = [0u8; 64];
-        both[..32].copy_from_slice(&private_spend);
-        both[32..].copy_from_slice(&private_view);
-        Some(hex::encode(both))
-    } else {
-        None
-    };
-
-    Ok((address, public_key_hex, private_key_hex))
-}
-
-// ── Derivation entry points ────────────────────────────────────────────────────────
-
-use crate::derivation::types::DerivationResult;
-use crate::error::SpectraBridgeError;
-
-/// Derive Monero mainnet keys from a Monero seed or Polyseed.
-pub fn derive_monero(
-    seed_phrase: String,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        true,
-        &seed_phrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
     Ok(DerivationResult {
         address,
-        public_key_hex,
-        private_key_hex,
-        account: 0,
-        branch: 0,
-        index: 0,
+        public_key_hex: wants.public_key_hex(&public),
+        private_key_hex: wants.private_key_hex(&*private),
     })
 }
 
-/// Derive Monero stagenet keys from a Monero seed or Polyseed.
-pub fn derive_monero_stagenet(
-    seed_phrase: String,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        false,
-        &seed_phrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
-    Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account: 0,
-        branch: 0,
-        index: 0,
-    })
-}
+use crate::derivation::types::{DerivationResult, Wants};
 
 // ── Subaddresses and the view key ───────────────────────────────────────
 
@@ -371,5 +313,5 @@ pub(crate) fn subaddress(
 }
 
 #[cfg(test)]
-#[path = "tests/monero_subaddress.rs"]
-mod subaddress_tests;
+#[path = "tests/monero.rs"]
+mod tests;

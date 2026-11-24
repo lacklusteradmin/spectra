@@ -575,6 +575,87 @@ mod the_post_send_refresh_set_is_the_registrys {
     }
 }
 
+mod utxo_discovery_is_the_registrys_chain_set {
+    use crate::registry::Chain;
+
+    /// Every UTXO testnet is in the discovery set its mainnet is in.
+    #[test]
+    fn the_testnets_are_in_the_set_their_mainnets_are_in() {
+        assert!(Chain::Bitcoin.uses_account_utxo());
+        for chain in Chain::all() {
+            assert_eq!(
+                chain.uses_account_utxo(),
+                chain.mainnet_counterpart().uses_account_utxo(),
+                "{chain:?} walks the same addresses its mainnet does"
+            );
+        }
+    }
+}
+
+mod history_family {
+    use crate::registry::Chain;
+    use crate::registry::HistoryFamily as S;
+
+    fn strategy(chain_id: crate::registry::Chain) -> S {
+        chain_id.history_family()
+    }
+
+    #[test]
+    fn history_protocols_select_their_merge_semantics() {
+        for name in [
+            crate::registry::Chain::Bitcoin,
+            crate::registry::Chain::BitcoinCash,
+            crate::registry::Chain::BitcoinSV,
+            crate::registry::Chain::Litecoin,
+            crate::registry::Chain::Dogecoin,
+            crate::registry::Chain::Dash,
+        ] {
+            assert_eq!(strategy(name), S::Utxo, "{name}");
+        }
+        for name in [
+            crate::registry::Chain::Tron,
+            crate::registry::Chain::Solana,
+            crate::registry::Chain::Cardano,
+            crate::registry::Chain::Xrp,
+            crate::registry::Chain::Stellar,
+            crate::registry::Chain::Monero,
+            crate::registry::Chain::Sui,
+            crate::registry::Chain::Aptos,
+            crate::registry::Chain::Ton,
+            crate::registry::Chain::Icp,
+            crate::registry::Chain::Near,
+            crate::registry::Chain::Polkadot,
+        ] {
+            assert_eq!(strategy(name), S::Account, "{name}");
+        }
+        for name in [
+            crate::registry::Chain::Ethereum,
+            crate::registry::Chain::Arbitrum,
+            crate::registry::Chain::Base,
+            crate::registry::Chain::Polygon,
+        ] {
+            assert_eq!(strategy(name), S::Evm, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_testnet_merges_the_same_way_as_its_mainnet() {
+        for chain in Chain::all() {
+            let mainnet = chain.mainnet_counterpart();
+            if mainnet == chain {
+                continue;
+            }
+            assert_eq!(
+                chain.history_family(),
+                mainnet.history_family(),
+                "{} diverges from {}",
+                chain.str_id(),
+                mainnet.str_id()
+            );
+        }
+    }
+}
+
 mod zcash_schedule {
     use super::*;
 

@@ -431,14 +431,13 @@ impl RefreshEngine {
             let mut refreshed: u32 = 0;
             let mut errors: u32 = 0;
             while let Some((chain_id, wallet_id, summary)) = results.next().await {
-                match summary {
-                    Ok(summary) => {
-                        if let Some(ref o) = obs {
-                            o.on_balance_updated(chain_id, wallet_id, Some(summary));
-                        }
-                        refreshed += 1;
-                    }
-                    Err(_) => errors += 1,
+                let failure = summary.err().map(|error| error.to_string());
+                match failure {
+                    None => refreshed += 1,
+                    Some(_) => errors += 1,
+                }
+                if let Some(ref o) = obs {
+                    o.on_balance_refreshed(chain_id, wallet_id, failure);
                 }
             }
 
@@ -566,26 +565,22 @@ mod tests {
     }
 }
 
-use crate::store::state::WalletState;
-
 /// Callback interface implemented by Swift. Rust calls these from the tokio
 /// task that owns the refresh timer loop. Implementations must be
 /// `Send + Sync` (UniFFI enforces this for foreign trait objects).
 ///
-/// The refresh engine applies the balance update to the Rust-owned wallet
-/// state before invoking the callback, so Swift receives a typed
-/// `WalletState` record directly — no JSON shuttle.
+/// The refresh engine stores each balance before invoking the callback; a
+/// front end reads what it shows from core's projections.
 #[uniffi::export(with_foreign)]
 pub trait RefreshObserver: Send + Sync {
-    /// Called as each successful balance fetch within a cycle lands, not at
-    /// the end of the sweep. `summary` is the updated `WalletState` (already
-    /// applied to the Rust store), or `None` if the native amount could not be
-    /// parsed or the wallet is not in the in-memory state.
-    fn on_balance_updated(
+    /// Called as each wallet's balance read within a cycle lands, not at the
+    /// end of the sweep: `failure` is `None` once the balance is stored, or
+    /// why it could not be read.
+    fn on_balance_refreshed(
         &self,
         chain_id: crate::registry::Chain,
         wallet_id: String,
-        summary: Option<WalletState>,
+        failure: Option<String>,
     );
 
     /// Called once the full sweep of all registered entries completes.
@@ -655,25 +650,8 @@ mod refresh_entry_tests {
 
     fn wallet(id: &str, chain: Chain, address: Option<&str>) -> WalletState {
         WalletState {
-            id: id.to_string(),
-            name: id.to_string(),
-            signing: crate::store::state::WalletSigning::SeedPhrase {
-                password_protected: false,
-            },
-            include_in_portfolio_total: true,
-            chain_id: chain,
-            xpub: None,
-            derivation_path: None,
-            derivation_profile: None,
-            derivation_flags: Default::default(),
-            holdings: Vec::new(),
             address: address.map(str::to_string),
-            restore_height: None,
-            hidden_holdings: Vec::new(),
-            icp_principal: None,
-            near_account_key: None,
-            multisig_policy: None,
-            balances_read_at: None,
+            ..WalletState::fixture(id, chain)
         }
     }
 
@@ -766,11 +744,11 @@ mod refresh_entry_tests {
 
         struct Ticks(AtomicU32, AtomicU32);
         impl RefreshObserver for Ticks {
-            fn on_balance_updated(
+            fn on_balance_refreshed(
                 &self,
                 _: crate::registry::Chain,
                 _: String,
-                _: Option<WalletState>,
+                _: Option<String>,
             ) {
             }
             fn on_refresh_cycle_complete(&self, _: u32, _: u32) {}
@@ -796,10 +774,7 @@ mod refresh_entry_tests {
             "maintenance-loop-{}.sqlite",
             crate::store::new_id()
         ));
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         let engine = RefreshEngine::new(service.clone());
         let ticks = Arc::new(Ticks(AtomicU32::new(0), AtomicU32::new(0)));
         engine.set_observer(ticks.clone());
@@ -858,10 +833,7 @@ mod refresh_entry_tests {
             "reconcile-wallets-{}.sqlite",
             crate::store::new_id()
         ));
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         let engine = RefreshEngine::new(service.clone());
         let upsert = |name: &str| {
             WalletState::single_address(
@@ -910,10 +882,7 @@ mod refresh_entry_tests {
             "reconcile-currency-{}.sqlite",
             crate::store::new_id()
         ));
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         let engine = RefreshEngine::new(service.clone());
         // Offline: the revaluation answers without touching a network.
         *engine.inner.conditions.write().unwrap() = Some(DeviceConditions {

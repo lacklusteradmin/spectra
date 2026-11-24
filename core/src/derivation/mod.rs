@@ -17,7 +17,6 @@ pub(crate) mod cardano_script;
 pub mod dash;
 pub mod decred;
 pub mod dispatch;
-pub mod dogecoin;
 pub mod error;
 pub mod evm;
 pub mod funds_finder;

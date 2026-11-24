@@ -31,7 +31,6 @@ pub enum AppRefreshIntent {
 }
 #[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
 pub struct AppRefreshResult {
-    pub state: ResidentState,
     pub pending: Option<PendingMaintenanceResult>,
     pub failures: Vec<String>,
     pub poll_seconds: u64,
@@ -184,7 +183,6 @@ impl WalletService {
             ));
         }
         let mut result = AppRefreshResult {
-            state: self.app_state().await,
             pending: None,
             failures: vec![],
             poll_seconds: plan.poll_seconds,
@@ -361,7 +359,6 @@ impl WalletService {
             Ok(movement) => result.movement = movement,
             Err(e) => result.failures.push(e.to_string()),
         }
-        result.state = self.app_state().await;
         Ok(result)
     }
 }
@@ -397,8 +394,9 @@ mod tests {
                 .unwrap();
             assert!(result.pending.is_none());
             assert!(result.failures.is_empty());
-            assert!(result.state.quotes.prices_attempt_at.is_none());
-            assert!(result.state.quotes.fiat_attempt_at.is_none());
+            let quotes = service.app_state().await.quotes;
+            assert!(quotes.prices_attempt_at.is_none());
+            assert!(quotes.fiat_attempt_at.is_none());
         }
         let result = service
             .refresh_app(

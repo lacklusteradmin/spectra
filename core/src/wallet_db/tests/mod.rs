@@ -291,14 +291,17 @@ fn address_round_trip() {
         chain_id: crate::registry::Chain::Bitcoin,
         address: "bc1qtest".to_string(),
         derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
-        branch: Some("external".to_string()),
+        branch: Some(crate::wallet_db::AddressBranch::Receive),
         branch_index: Some(0),
     };
     address_save(&db, &rec).unwrap();
     let records = addresses_of(&db, "w1", crate::registry::Chain::Bitcoin);
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].address, "bc1qtest");
-    assert_eq!(records[0].branch.as_deref(), Some("external"));
+    assert_eq!(
+        records[0].branch,
+        Some(crate::wallet_db::AddressBranch::Receive)
+    );
 }
 
 use crate::store::persistence_models::TransactionRecord;
@@ -395,7 +398,6 @@ fn app_state_round_trips() {
         movement_baseline: None,
         diagnostics: Default::default(),
         quotes: Default::default(),
-        schema_version: crate::store::state::APP_STATE_SCHEMA_VERSION,
         wallets: vec![
             wallet("w1", crate::registry::Chain::Bitcoin),
             wallet("w2", crate::registry::Chain::Ethereum),
@@ -855,7 +857,7 @@ fn pending_sender_query_uses_index_and_excludes_unrelated_history() {
             .is_empty()
     );
     with_conn(&db, |conn| {
-        let plan: Vec<String> = conn.prepare("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'refundTokenStorage', 'trustAsset', 'removeTrustLine', 'shield') AND json_extract(payload, '$.status') = 'pending'")
+        let plan: Vec<String> = conn.prepare(concat!("EXPLAIN QUERY PLAN SELECT payload FROM history_records WHERE chain_id = 'Ethereum' AND lower(json_extract(payload, '$.sourceAddress')) = '0xabc' AND ", crate::wallet_db::submitted_kind!(), " AND json_extract(payload, '$.status') = 'pending'"))
             .unwrap().query_map([], |r| r.get(3)).unwrap().map(Result::unwrap).collect();
         assert!(plan.iter().any(|line| line.contains("idx_hr_pending_sender")), "{plan:?}");
         Ok::<_, DbError>(())

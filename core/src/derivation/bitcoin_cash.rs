@@ -1,5 +1,5 @@
-//! Bitcoin Cash: address validation, BIP-39 + BIP-32 derivation, legacy P2PKH
-//! base58check encoding.
+//! Bitcoin Cash: CashAddr payloads as Blockbook reads them. Its keys and
+//! addresses derive with the Bitcoin family (`bitcoin::derive_from_seed_phrase`).
 
 /// Blockbook accepts CashAddr payloads without their network prefix.
 pub(crate) fn normalize_bch_address(address: &str) -> String {
@@ -8,53 +8,4 @@ pub(crate) fn normalize_bch_address(address: &str) -> String {
         .or_else(|| address.strip_prefix("bchtest:"))
         .unwrap_or(address)
         .to_string()
-}
-
-use crate::derivation::bitcoin::derive_legacy_p2pkh;
-use crate::derivation::types::DerivationResult;
-use crate::error::SpectraBridgeError;
-use crate::registry::Chain;
-
-/// Derive Bitcoin Cash mainnet keys (P2PKH only).
-pub fn derive_bitcoin_cash(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: crate::derivation::types::BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    derive_legacy_p2pkh(
-        Chain::BitcoinCash.fixed_utxo_address_versions()?.0,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        script_type,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive Bitcoin Cash testnet keys (P2PKH only).
-pub fn derive_bitcoin_cash_testnet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: crate::derivation::types::BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    derive_legacy_p2pkh(
-        Chain::BitcoinCashTestnet.fixed_utxo_address_versions()?.0,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        script_type,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
 }

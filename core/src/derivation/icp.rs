@@ -4,6 +4,7 @@
 //! Account identifier: CRC32(SHA224(domain || principal || subaccount)) || hash.
 
 use crate::derivation::error::DerivationError;
+use crate::derivation::types::{DerivationResult, Wants};
 use secp256k1::PublicKey;
 use sha2::{Digest, Sha224};
 
@@ -65,58 +66,24 @@ pub(crate) fn validate_account(address: &str) -> Result<[u8; 32], DerivationErro
     Ok(bytes)
 }
 
+/// Derive an Internet Computer wallet from a seed phrase: its address is
+/// the default ledger account of the key's principal.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
     let private_key =
         crate::derivation::bip32::phrase_key(seed_phrase, passphrase, derivation_path)?;
     let public_key = PublicKey::from_secret_key(secp256k1::SECP256K1, &private_key);
 
-    let address =
-        want_address.then(|| hex::encode(account_from_principal(&principal(&public_key))));
-
-    Ok((
-        address,
-        want_public_key.then(|| hex::encode(public_key.serialize())),
-        want_private_key.then(|| hex::encode(private_key.secret_bytes())),
-    ))
-}
-
-// ── Derivation entry points ────────────────────────────────────────────────────────
-
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
-use crate::error::SpectraBridgeError;
-
-/// Derive Internet Computer keys from a BIP-39 seed phrase.
-pub fn derive_icp(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        &seed_phrase,
-        &derivation_path,
-        passphrase.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
     Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account,
-        branch,
-        index,
+        address: wants
+            .address
+            .then(|| hex::encode(account_from_principal(&principal(&public_key)))),
+        public_key_hex: wants.public_key_hex(&public_key.serialize()),
+        private_key_hex: wants.private_key_hex(&private_key.secret_bytes()),
     })
 }
 

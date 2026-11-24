@@ -27,9 +27,6 @@ pub struct AppSettings {
     pub pinned_dashboard_token_ids: Vec<String>,
 
     // ── Providers ─────────────────────────────────────────────────────────
-    /// Which price source to quote from.
-    /// Which source to take fiat cross-rates from.
-
     /// How far past the last used address HD discovery keeps looking.
     pub bitcoin_stop_gap: u32,
 
@@ -270,6 +267,12 @@ impl FiatCurrency {
     }
 }
 
+/// Every reset scope, in the order a settings page lists them.
+#[uniffi::export]
+pub fn reset_scopes() -> Vec<ResetScope> {
+    ResetScope::ALL.to_vec()
+}
+
 pub fn fiat_currency_codes() -> Vec<String> {
     FiatCurrency::ALL
         .iter()
@@ -330,7 +333,7 @@ pub enum AppSettingUpdate {
     AddCustomEndpoint {
         capabilities: Vec<EndpointCapability>,
         chain_id: crate::registry::Chain,
-        api: String,
+        api: crate::api::endpoint::EndpointApi,
         endpoint: String,
     },
     /// Remove one of the user's endpoints. Removing a network's last one
@@ -348,7 +351,7 @@ pub enum AppSettingUpdate {
         chain_id: crate::registry::Chain,
         /// The saved endpoint being changed.
         endpoint: String,
-        api: String,
+        api: crate::api::endpoint::EndpointApi,
         new_endpoint: String,
         capabilities: Vec<EndpointCapability>,
     },

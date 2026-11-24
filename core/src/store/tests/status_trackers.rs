@@ -54,7 +54,7 @@ async fn applying_a_resolution_stores_it_and_reports_the_change() {
     use crate::store::ResolvedPendingStatus;
     let service = WalletService::new(Vec::new()).expect("service");
     service
-        .open_state(tmp_db("apply-resolved"))
+        .opened(tmp_db("apply-resolved"))
         .await
         .expect("open");
     service

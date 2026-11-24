@@ -197,7 +197,7 @@ async fn standing_approvals_are_found_revoked_and_named() {
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
-        .open_state(
+        .opened(
             std::env::temp_dir()
                 .join(format!("approvals-{}.sqlite", crate::store::new_id()))
                 .to_string_lossy()
@@ -233,7 +233,7 @@ async fn standing_approvals_are_found_revoked_and_named() {
         .apply_state_command(set(AppSettingUpdate::AddCustomEndpoint {
             capabilities: vec![EndpointCapability::History],
             chain_id: Chain::Ethereum,
-            api: "blockscout".into(),
+            api: crate::api::endpoint::EndpointApi::Blockscout,
             endpoint: format!("{}/scout", server.uri()),
         }))
         .await

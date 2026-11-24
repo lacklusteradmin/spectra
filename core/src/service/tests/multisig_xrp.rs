@@ -113,10 +113,7 @@ async fn service(endpoint: String) -> (Arc<WalletService>, Arc<InMemorySecretSto
     }])
     .unwrap();
     let db = std::env::temp_dir().join(format!("xrp-multisig-{}.sqlite", crate::store::new_id()));
-    service
-        .open_state(db.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(db.to_string_lossy().into()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     (service, secrets)
@@ -133,9 +130,7 @@ async fn key_wallet(service: &WalletService, secrets: &InMemorySecretStore, name
         None,
         None,
         None,
-        true,
-        false,
-        false,
+        crate::derivation::types::Wants::ADDRESS,
     )
     .unwrap();
     assert_eq!(derived.address.as_deref(), Some(address.as_str()));

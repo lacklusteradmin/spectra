@@ -142,12 +142,3 @@ pub struct StakingValidator {
     /// Validator's self-reported description / identity blurb.
     pub description: Option<String>,
 }
-
-/// Internal staking query refusal; WalletService maps it to the bridge error.
-#[derive(Debug, thiserror::Error)]
-pub enum StakingError {
-    #[error(transparent)]
-    Api(#[from] crate::api::error::ApiError),
-    #[error("staking is not yet implemented for this chain")]
-    NotYetImplemented,
-}

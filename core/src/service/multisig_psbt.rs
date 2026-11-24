@@ -243,11 +243,7 @@ impl WalletService {
                 .iter()
                 .filter(|row| row.wallet_id == wallet.id)
                 .filter_map(|row| {
-                    let branch = match row.branch.as_deref()? {
-                        "external" => 0,
-                        "change" => 1,
-                        _ => return None,
-                    };
+                    let branch = row.branch?.index();
                     Some((branch, u32::try_from(row.branch_index?).ok()?))
                 }),
         );
@@ -641,4 +637,4 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/multisig_psbt.rs"]
-mod multisig_psbt_tests;
+mod tests;

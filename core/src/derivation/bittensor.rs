@@ -16,9 +16,8 @@
 
 use crate::derivation::error::DerivationError;
 
-use crate::derivation::primitives::{
-    OptionalKeyMaterial, decode_ss58, derive_substrate_sr25519_material, encode_ss58,
-};
+use crate::derivation::primitives::{decode_ss58, derive_substrate_sr25519_material, encode_ss58};
+use crate::derivation::types::{DerivationResult, Wants};
 
 // Decode a Bittensor SS58 address and return the inner 32-byte sr25519 public key.
 pub(crate) fn decode_bittensor_ss58(address: &str) -> Result<[u8; 32], DerivationError> {
@@ -30,62 +29,28 @@ pub fn validate_bittensor_address(address: &str) -> bool {
     decode_bittensor_ss58(address).is_ok()
 }
 
-// Derive Bittensor address, public key, and signing key hex (a seed, or a
-// soft junction's expanded key) from a mnemonic seed phrase along `path`.
+/// Derive a Bittensor wallet (address, public key, and signing key: a seed,
+/// or a soft junction's expanded key) from a seed phrase along a Substrate
+/// junction path.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
+    path: &str,
     passphrase: Option<&str>,
-    path: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<OptionalKeyMaterial, DerivationError> {
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
     let (key, public_key) = derive_substrate_sr25519_material(
         seed_phrase,
         passphrase.unwrap_or(""),
         None,
         None,
         0,
-        path,
+        Some(path),
         false,
     )?;
-    Ok((
-        want_address.then(|| encode_ss58(&public_key, 42)),
-        want_public_key.then(|| hex::encode(public_key)),
-        want_private_key.then(|| hex::encode(&*key)),
-    ))
-}
-
-// ── Derivation entry points ─────────────────────────────────────────────────────────
-
-use crate::derivation::types::DerivationResult;
-use crate::error::SpectraBridgeError;
-
-/// Derive Bittensor wallet (address, public key, signing key) from a seed
-/// phrase along a Substrate junction path.
-pub fn derive_bittensor(
-    seed_phrase: String,
-    path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        &seed_phrase,
-        passphrase.as_deref(),
-        Some(&path),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
     Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account: 0,
-        branch: 0,
-        index: 0,
+        address: wants.address.then(|| encode_ss58(&public_key, 42)),
+        public_key_hex: wants.public_key_hex(&public_key),
+        private_key_hex: wants.private_key_hex(&key),
     })
 }
 

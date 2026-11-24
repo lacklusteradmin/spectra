@@ -41,12 +41,15 @@ pub(crate) enum PreparedPayload {
         public_key: [u8; 32],
         nonce: u64,
         block_hash: [u8; 32],
+        #[serde(with = "units_u128")]
         amount: u128,
         token_contract: Option<String>,
-        fee_budget: String,
+        #[serde(with = "units_u128")]
+        fee_budget: u128,
         /// The yoctoNEAR a token send deposits to register its recipient
         /// with the token first; `None` when the token has registered it.
-        registration_deposit: Option<String>,
+        #[serde(with = "units_u128::option")]
+        registration_deposit: Option<u128>,
     },
     NearFunctionCall(super::near::PreparedNearFunctionCall),
     NearDeleteKey(super::near::PreparedNearDeleteKey),
@@ -103,9 +106,9 @@ pub(crate) enum PreparedPayload {
     LitecoinPegIn(super::litecoin_mweb::prepared::PreparedPegIn),
 }
 
-/// Protocol amounts larger than JSON's integer range stay exact in artifacts
-/// and every intermediate JSON reader. There are no legacy numeric variants.
-mod units_u128 {
+/// Every `u128` in a prepared payload, as a decimal string: exact in
+/// artifacts and in every JSON reader, which a number above 2^53 is not.
+pub(crate) mod units_u128 {
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S: Serializer>(value: &u128, serializer: S) -> Result<S::Ok, S::Error> {
@@ -116,6 +119,29 @@ mod units_u128 {
         String::deserialize(deserializer)?
             .parse()
             .map_err(serde::de::Error::custom)
+    }
+
+    /// The same for an amount that may be absent.
+    pub mod option {
+        use serde::{Deserialize, Deserializer, Serializer};
+
+        pub fn serialize<S: Serializer>(
+            value: &Option<u128>,
+            serializer: S,
+        ) -> Result<S::Ok, S::Error> {
+            match value {
+                Some(value) => serializer.serialize_some(&value.to_string()),
+                None => serializer.serialize_none(),
+            }
+        }
+
+        pub fn deserialize<'de, D: Deserializer<'de>>(
+            deserializer: D,
+        ) -> Result<Option<u128>, D::Error> {
+            Option::<String>::deserialize(deserializer)?
+                .map(|value| value.parse().map_err(serde::de::Error::custom))
+                .transpose()
+        }
     }
 }
 
@@ -327,7 +353,7 @@ impl PreparedPayload {
                     hook_program: None,
                     carried_native: None,
                     recipient_registration: Some(crate::amount::decimal::from_units(
-                        deposit.parse().ok()?,
+                        *deposit,
                         u32::from(crate::registry::Chain::Near.native_decimals()),
                     )),
                 })
@@ -395,7 +421,7 @@ pub enum WalletOperation {
     TransferNft {
         /// The collection's contract, which the transaction calls.
         contract: String,
-        standard: crate::api::evm_nft::NftStandard,
+        standard: crate::registry::NftStandard,
         /// The token's id, a whole number in decimal.
         token_id: String,
         /// How many: one for an ERC-721 token.
@@ -898,7 +924,7 @@ impl StoredSend {
                         && prepared.removes() == removes
                         && (removes
                             || prepared.limit
-                                == crate::api::xrpl_amount::IouValue::parse(
+                                == crate::registry::xrpl_amount::IouValue::parse(
                                     super::xrp_issued::MAX_TRUST_LIMIT,
                                 )
                                 .expect("the largest limit")
@@ -934,7 +960,7 @@ impl StoredSend {
                             "ed25519:{}",
                             bs58::encode(prepared.deleted_key).into_string()
                         ),
-                prepared.fee_budget.parse().map_err(SendError::invalid)?,
+                prepared.fee_budget,
                 AtMost,
             ),
             // The account unregistering itself from the token it names,
@@ -947,7 +973,7 @@ impl StoredSend {
                 self.view.recipient == self.view.sender
                     && prepared.is_storage_unregister(&self.view.sender, contract)
                     && self.view.amount == *refund,
-                prepared.fee_budget.parse().map_err(SendError::invalid)?,
+                prepared.fee_budget,
                 AtMost,
             ),
             _ => None,
@@ -956,13 +982,5 @@ impl StoredSend {
 }
 
 #[cfg(test)]
-#[path = "tests/nft.rs"]
-mod nft_tests;
-
-#[cfg(test)]
-#[path = "tests/zcash_shielded_stages.rs"]
-mod zcash_shielded_tests;
-
-#[cfg(test)]
-#[path = "tests/near_storage_refund.rs"]
-mod near_storage_refund_tests;
+#[path = "tests/stages.rs"]
+mod tests;

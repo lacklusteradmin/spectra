@@ -39,15 +39,17 @@ fn litecoin_does_not_derive_an_input_script_it_cannot_sign() {
     const PHRASE: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
     for chain in [Chain::Litecoin, Chain::LitecoinTestnet] {
         assert!(
-            derive_litecoin_on_network(
+            crate::derivation::bitcoin::derive_from_seed_phrase(
                 chain,
-                PHRASE.into(),
-                "m/86'/2'/0'/0/0".into(),
+                PHRASE,
+                "m/86'/2'/0'/0/0",
                 None,
                 BitcoinScriptType::P2tr,
-                false,
-                true,
-                true
+                crate::derivation::types::Wants {
+                    address: false,
+                    public_key: true,
+                    private_key: true,
+                },
             )
             .is_err()
         );

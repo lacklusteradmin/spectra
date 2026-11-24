@@ -247,3 +247,7 @@ impl WalletService {
         Ok(state.fee_budget_sun)
     }
 }
+
+#[cfg(test)]
+#[path = "tests/send_stage_tron.rs"]
+mod tests;

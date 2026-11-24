@@ -5,6 +5,7 @@
 //! with the Ripple alphabet (`rpshnaf3…`).
 
 use crate::derivation::error::DerivationError;
+use crate::derivation::types::{DerivationResult, Wants};
 
 use ripemd::Ripemd160;
 use secp256k1::{PublicKey, Secp256k1};
@@ -77,101 +78,26 @@ pub(crate) fn account_id_of_key(key: &PublicKey) -> [u8; 20] {
     hash160_bytes(&key.serialize())
 }
 
-// Derive XRP address, public key, and private key from a mnemonic via BIP-39 + BIP-32 secp256k1.
+/// Derive an XRP Ledger wallet from a seed phrase via BIP-39 + BIP-32
+/// secp256k1. Every XRP Ledger network has the same addresses.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
     let secp = Secp256k1::new();
     let private_key =
         crate::derivation::bip32::phrase_key(seed_phrase, passphrase, derivation_path)?;
     let public_key = PublicKey::from_secret_key(&secp, &private_key);
     let private_bytes = private_key.secret_bytes();
 
-    let address = if want_address {
-        Some(address_from_public_key(&public_key)?)
-    } else {
-        None
-    };
-
-    Ok((
-        address,
-        want_public_key.then(|| hex::encode(public_key.serialize())),
-        want_private_key.then(|| hex::encode(private_bytes)),
-    ))
-}
-
-// ── Derivation entry points ────────────────────────────────────────────────────────
-
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
-use crate::error::SpectraBridgeError;
-
-// Shared derivation logic for all XRP Ledger networks.
-fn xrp_internal(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        &seed_phrase,
-        &derivation_path,
-        passphrase.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
     Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account,
-        branch,
-        index,
+        address: wants
+            .address
+            .then(|| address_from_public_key(&public_key))
+            .transpose()?,
+        public_key_hex: wants.public_key_hex(&public_key.serialize()),
+        private_key_hex: wants.private_key_hex(&private_bytes),
     })
-}
-
-/// Derive XRP Ledger mainnet wallet from a seed phrase.
-pub fn derive_xrp(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    xrp_internal(
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive XRP Ledger testnet wallet from a seed phrase.
-pub fn derive_xrp_testnet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    xrp_internal(
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
 }

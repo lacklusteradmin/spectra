@@ -41,7 +41,7 @@ async fn only_the_users_tokens_are_stored() {
     ));
     let db = db.to_string_lossy().into_owned();
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(db.clone()).await.expect("open");
+    service.opened(db.clone()).await.expect("open");
     service
         .apply_state_command(StateCommand::AddCustomToken {
             standard: None,
@@ -73,7 +73,7 @@ async fn only_the_users_tokens_are_stored() {
 
     let reopened = WalletService::new(Vec::new())
         .unwrap()
-        .open_state(db.clone())
+        .opened(db.clone())
         .await
         .unwrap();
     let built_ins = crate::store::state::built_in_token_preferences();
@@ -207,10 +207,7 @@ async fn reopening_prefers_catalog_identity_and_deduplicates_protocol_aliases() 
     )
     .unwrap();
     let service = WalletService::new(Vec::new()).unwrap();
-    let reopened = service
-        .open_state(db.to_string_lossy().into())
-        .await
-        .unwrap();
+    let reopened = service.opened(db.to_string_lossy().into()).await.unwrap();
     assert_eq!(
         reopened.token_preferences.iter().find(|entry| {
             entry.token.chain_id == built_in.token.chain_id

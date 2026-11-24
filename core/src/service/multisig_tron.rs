@@ -507,4 +507,4 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/multisig_tron.rs"]
-mod multisig_tron_tests;
+mod tests;

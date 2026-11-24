@@ -1,27 +1,11 @@
-use crate::derivation::aptos::derive_aptos;
 use crate::derivation::bip32;
-use crate::derivation::bitcoin::derive_bitcoin;
-use crate::derivation::bitcoin_cash::derive_bitcoin_cash;
-use crate::derivation::bitcoin_sv::derive_bitcoin_sv;
-use crate::derivation::cardano::derive_cardano;
 use crate::derivation::cardano::derive_cardano_icarus_xprv_root;
-use crate::derivation::dogecoin::derive_dogecoin;
-use crate::derivation::evm::derive_evm;
-use crate::derivation::icp::derive_icp;
-use crate::derivation::litecoin::derive_litecoin;
-use crate::derivation::monero::derive_monero;
+use crate::derivation::dispatch::derive_for_chain;
 use crate::derivation::monero::monero_base58_encode;
-use crate::derivation::near::derive_near;
-use crate::derivation::polkadot::derive_polkadot;
 use crate::derivation::primitives::derive_bip39_seed;
-use crate::derivation::solana::derive_solana;
-use crate::derivation::stellar::derive_stellar;
-use crate::derivation::sui::derive_sui;
 use crate::derivation::ton::crc16_xmodem;
-use crate::derivation::ton::derive_ton;
-use crate::derivation::tron::derive_tron;
-use crate::derivation::types::BitcoinScriptType;
-use crate::derivation::xrp::derive_xrp;
+use crate::derivation::types::{BitcoinScriptType, Wants};
+use crate::registry::Chain;
 use ed25519_dalek::SigningKey;
 
 const MNEMONIC: &str =
@@ -70,62 +54,62 @@ fn derives_all_supported_chains() {
     let m = MNEMONIC.to_string();
     ok!(
         "bitcoin",
-        derive_bitcoin(
-            m.clone(),
-            "m/84'/0'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Bitcoin,
+            &m,
+            "m/84'/0'/0'/0/0",
             None,
-            BitcoinScriptType::P2wpkh,
-            true,
-            true,
-            true
+            None,
+            Some(BitcoinScriptType::P2wpkh),
+            Wants::ALL,
         )
     );
     ok!(
         "bitcoin_cash",
-        derive_bitcoin_cash(
-            m.clone(),
-            "m/44'/145'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::BitcoinCash,
+            &m,
+            "m/44'/145'/0'/0/0",
             None,
-            BitcoinScriptType::P2pkh,
-            true,
-            true,
-            true
+            None,
+            Some(BitcoinScriptType::P2pkh),
+            Wants::ALL,
         )
     );
     ok!(
         "bitcoin_sv",
-        derive_bitcoin_sv(
-            m.clone(),
-            "m/44'/236'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::BitcoinSV,
+            &m,
+            "m/44'/236'/0'/0/0",
             None,
-            BitcoinScriptType::P2pkh,
-            true,
-            true,
-            true
+            None,
+            Some(BitcoinScriptType::P2pkh),
+            Wants::ALL,
         )
     );
     ok!(
         "litecoin",
-        derive_litecoin(
-            m.clone(),
-            "m/44'/2'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Litecoin,
+            &m,
+            "m/44'/2'/0'/0/0",
             None,
-            BitcoinScriptType::P2pkh,
-            true,
-            true,
-            true
+            None,
+            Some(BitcoinScriptType::P2pkh),
+            Wants::ALL,
         )
     );
     ok!(
         "dogecoin",
-        derive_dogecoin(
-            m.clone(),
-            "m/44'/3'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Dogecoin,
+            &m,
+            "m/44'/3'/0'/0/0",
             None,
-            BitcoinScriptType::P2pkh,
-            true,
-            true,
-            true
+            None,
+            Some(BitcoinScriptType::P2pkh),
+            Wants::ALL,
         )
     );
     // One call per coin type, not per chain: an EVM address does not depend on
@@ -133,117 +117,147 @@ fn derives_all_supported_chains() {
     // `every_registry_chain_derives_through_one_call`.
     ok!(
         "evm",
-        derive_evm(m.clone(), "m/44'/60'/0'/0/0".into(), None, true, true, true)
+        derive_for_chain(
+            Chain::Ethereum,
+            &m,
+            "m/44'/60'/0'/0/0",
+            None,
+            None,
+            None,
+            Wants::ALL
+        )
     );
     ok!(
         "evm_ethereum_classic",
-        derive_evm(m.clone(), "m/44'/61'/0'/0/0".into(), None, true, true, true)
+        derive_for_chain(
+            Chain::Ethereum,
+            &m,
+            "m/44'/61'/0'/0/0",
+            None,
+            None,
+            None,
+            Wants::ALL
+        )
     );
     ok!(
         "tron",
-        derive_tron(
-            m.clone(),
-            "m/44'/195'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Tron,
+            &m,
+            "m/44'/195'/0'/0/0",
             None,
-            true,
-            true,
-            true
+            None,
+            None,
+            Wants::ALL,
         )
     );
     ok!(
         "xrp",
-        derive_xrp(
-            m.clone(),
-            "m/44'/144'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Xrp,
+            &m,
+            "m/44'/144'/0'/0/0",
             None,
-            true,
-            true,
-            true
+            None,
+            None,
+            Wants::ALL,
         )
     );
     ok!(
         "solana",
-        derive_solana(
-            m.clone(),
-            "m/44'/501'/0'/0'".into(),
+        derive_for_chain(
+            Chain::Solana,
+            &m,
+            "m/44'/501'/0'/0'",
             None,
             None,
-            true,
-            true,
-            true
+            None,
+            Wants::ALL,
         )
     );
     ok!(
         "stellar",
-        derive_stellar(
-            m.clone(),
-            "m/44'/148'/0'".into(),
+        derive_for_chain(
+            Chain::Stellar,
+            &m,
+            "m/44'/148'/0'",
             None,
             None,
-            true,
-            true,
-            true
+            None,
+            Wants::ALL,
         )
     );
     ok!(
         "cardano",
-        derive_cardano(
-            m.clone(),
-            Some("m/1852'/1815'/0'/0/0".into()),
+        derive_for_chain(
+            Chain::Cardano,
+            &m,
+            "m/1852'/1815'/0'/0/0",
             None,
-            true,
-            true,
-            true
+            None,
+            None,
+            Wants::ALL,
         )
     );
     ok!(
         "sui",
-        derive_sui(
-            m.clone(),
-            "m/44'/784'/0'/0'/0'".into(),
+        derive_for_chain(
+            Chain::Sui,
+            &m,
+            "m/44'/784'/0'/0'/0'",
             None,
-            true,
-            true,
-            true
+            None,
+            None,
+            Wants::ALL,
         )
     );
     ok!(
         "aptos",
-        derive_aptos(
-            m.clone(),
-            "m/44'/637'/0'/0'/0'".into(),
+        derive_for_chain(
+            Chain::Aptos,
+            &m,
+            "m/44'/637'/0'/0'/0'",
             None,
-            true,
-            true,
-            true
+            None,
+            None,
+            Wants::ALL,
         )
     );
     ok!(
         "ton",
-        derive_ton(TON_MNEMONIC.into(), None, true, true, true)
+        derive_for_chain(Chain::Ton, TON_MNEMONIC, "", None, None, None, Wants::ALL)
     );
     ok!(
         "internet_computer",
-        derive_icp(
-            m.clone(),
-            "m/44'/223'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Icp,
+            &m,
+            "m/44'/223'/0'/0/0",
             None,
-            true,
-            true,
-            true
+            None,
+            None,
+            Wants::ALL,
         )
     );
     ok!(
         "near",
-        derive_near(m.clone(), "m/44'/397'/0'".into(), None, true, true, true)
+        derive_for_chain(
+            Chain::Near,
+            &m,
+            "m/44'/397'/0'",
+            None,
+            None,
+            None,
+            Wants::ALL
+        )
     );
     ok!(
         "polkadot",
-        derive_polkadot(m.clone(), String::new(), None, None, true, true, true)
+        derive_for_chain(Chain::Polkadot, &m, "", None, None, None, Wants::ALL)
     );
     ok!(
         "monero",
-        derive_monero(MONERO_SEED.into(), true, true, true)
+        derive_for_chain(Chain::Monero, MONERO_SEED, "", None, None, None, Wants::ALL)
     );
 }
 
@@ -265,25 +279,25 @@ fn custom_hmac_key_changes_secp_derivation() {
 #[test]
 fn custom_hmac_key_changes_slip10_derivation() {
     let path = "m/44'/501'/0'/0'".to_string();
-    let baseline = derive_solana(
-        MNEMONIC.into(),
-        path.clone(),
+    let baseline = derive_for_chain(
+        Chain::Solana,
+        MNEMONIC,
+        &path,
         None,
         None,
-        false,
-        false,
-        true,
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("baseline slip10")
     .private_key_hex;
-    let tweaked = derive_solana(
-        MNEMONIC.into(),
-        path,
+    let tweaked = derive_for_chain(
+        Chain::Solana,
+        MNEMONIC,
+        &path,
         None,
-        Some("custom ed25519 seed".into()),
-        false,
-        false,
-        true,
+        Some("custom ed25519 seed"),
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("tweaked slip10")
     .private_key_hex;
@@ -320,25 +334,25 @@ fn default_hmac_key_matches_standard_seed() {
 
     // For SLIP-10: hmac_key=None and hmac_key=Some("ed25519 seed") are equivalent.
     let path = "m/44'/501'/0'/0'".to_string();
-    let sol_none = derive_solana(
-        MNEMONIC.into(),
-        path.clone(),
+    let sol_none = derive_for_chain(
+        Chain::Solana,
+        MNEMONIC,
+        &path,
         None,
         None,
-        false,
-        false,
-        true,
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("solana none")
     .private_key_hex;
-    let sol_explicit = derive_solana(
-        MNEMONIC.into(),
-        path,
+    let sol_explicit = derive_for_chain(
+        Chain::Solana,
+        MNEMONIC,
+        &path,
         None,
-        Some("ed25519 seed".into()),
-        false,
-        false,
-        true,
+        Some("ed25519 seed"),
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("solana explicit")
     .private_key_hex;
@@ -372,8 +386,13 @@ fn near_follows_near_seed_phrase() {
             "a20b5f6c6f2148bc42fe70cbfa5c367e95672c8bcffddfe4feb1f326dac40e4a",
         ),
     ] {
-        let result = derive_near(MNEMONIC.into(), path.into(), None, true, true, true).unwrap();
-        assert_eq!(result.private_key_hex.as_deref(), Some(secret), "{path}");
+        let result =
+            derive_for_chain(Chain::Near, MNEMONIC, path, None, None, None, Wants::ALL).unwrap();
+        assert_eq!(
+            result.private_key_hex.as_deref().map(String::as_str),
+            Some(secret),
+            "{path}"
+        );
         assert_eq!(result.public_key_hex.as_deref(), Some(public), "{path}");
         assert_eq!(result.address.as_deref(), Some(public), "{path}");
     }
@@ -383,8 +402,9 @@ fn near_follows_near_seed_phrase() {
 fn ton_mnemonic_structure() {
     // TON mnemonic scheme: entropy = HMAC-SHA512(mnemonic, passphrase);
     // seed = PBKDF2(entropy, "TON default seed", 100_000, 64); priv = seed[0..32].
-    // derive_ton returns the default version's bounceable mainnet address.
-    let result = derive_ton(TON_MNEMONIC.into(), None, true, true, true).expect("ton derive");
+    // The address is the default version's bounceable mainnet account.
+    let result = derive_for_chain(Chain::Ton, TON_MNEMONIC, "", None, None, None, Wants::ALL)
+        .expect("ton derive");
     let priv_hex = result.private_key_hex.expect("ton priv");
     let pub_hex = result.public_key_hex.expect("ton pub");
     let address = result.address.expect("ton address");
@@ -408,13 +428,14 @@ fn cardano_phrase_derives_a_base_address() {
     // CIP-1852 / CIP-3 Icarus + CIP-19 Shelley base address: header byte
     // 0x01 (type 0 = payment key hash + stake key hash, network 1), then the
     // payment key's Blake2b-224 and the stake key's at m/1852'/1815'/0'/2/0.
-    let result = derive_cardano(
-        MNEMONIC.into(),
-        Some("m/1852'/1815'/0'/0/0".into()),
+    let result = derive_for_chain(
+        Chain::Cardano,
+        MNEMONIC,
+        "m/1852'/1815'/0'/0/0",
         None,
-        true,
-        true,
-        true,
+        None,
+        None,
+        Wants::ALL,
     )
     .expect("cardano derive");
     let priv_hex = result.private_key_hex.expect("cardano priv");
@@ -435,10 +456,18 @@ fn cardano_phrase_derives_a_base_address() {
     // Every address of the account shares its stake key; another account's
     // differs.
     let stake = |path: &str| {
-        let address = derive_cardano(MNEMONIC.into(), Some(path.into()), None, true, false, false)
-            .unwrap()
-            .address
-            .unwrap();
+        let address = derive_for_chain(
+            Chain::Cardano,
+            MNEMONIC,
+            path,
+            None,
+            None,
+            None,
+            Wants::ADDRESS,
+        )
+        .unwrap()
+        .address
+        .unwrap();
         bech32::decode(&address).unwrap().1[29..].to_vec()
     };
     assert_eq!(stake("m/1852'/1815'/0'/1/7"), data[29..]);
@@ -503,12 +532,8 @@ fn cardano_stake_addresses_match_serialization_lib() {
     for vector in fixture["phrase_vectors"].as_array().unwrap() {
         let account = vector["account"].as_u64().unwrap();
         let path = format!("m/1852'/1815'/{account}'/0/0");
-        let derive = if vector["chain"] == "cardano" {
-            derive_cardano
-        } else {
-            crate::derivation::cardano::derive_cardano_preprod
-        };
-        let address = derive(MNEMONIC.into(), Some(path), None, true, false, false)
+        let chain = Chain::from_str_id(vector["chain"].as_str().unwrap()).unwrap();
+        let address = derive_for_chain(chain, MNEMONIC, &path, None, None, None, Wants::ADDRESS)
             .unwrap()
             .address
             .unwrap();
@@ -555,7 +580,7 @@ fn cardano_refuses_a_path_with_no_stake_key() {
         "m/1852'/1815'/0'/0/0/0",
     ] {
         assert!(
-            derive_cardano(MNEMONIC.into(), Some(path.into()), None, true, true, true).is_err(),
+            derive_for_chain(Chain::Cardano, MNEMONIC, path, None, None, None, Wants::ALL).is_err(),
             "{path}"
         );
     }
@@ -565,50 +590,53 @@ fn cardano_refuses_a_path_with_no_stake_key() {
 fn cardano_icarus_diverges_from_slip10() {
     // Icarus BIP-32-Ed25519 with Khovratovich-Law clamping produces a
     // different scalar than SLIP-10 ed25519 for the same phrase.
-    let icarus_priv = derive_cardano(
-        MNEMONIC.into(),
-        Some("m/1852'/1815'/0'/0/0".into()),
+    let icarus_priv = derive_for_chain(
+        Chain::Cardano,
+        MNEMONIC,
+        "m/1852'/1815'/0'/0/0",
         None,
-        false,
-        false,
-        true,
+        None,
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("icarus")
     .private_key_hex;
     // SLIP-10 ed25519 via Solana at a comparable path (all-hardened as required).
-    let slip10_priv = derive_solana(
-        MNEMONIC.into(),
-        "m/1852'/1815'/0'/0'/0'".into(),
+    let slip10_priv = derive_for_chain(
+        Chain::Solana,
+        MNEMONIC,
+        "m/1852'/1815'/0'/0'/0'",
         None,
         None,
-        false,
-        false,
-        true,
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("slip10")
     .private_key_hex;
-    assert_ne!(&icarus_priv.unwrap()[..64], slip10_priv.unwrap());
+    assert_ne!(&icarus_priv.unwrap()[..64], slip10_priv.unwrap().as_str());
 }
 
 #[test]
 fn cardano_icarus_passphrase_changes_root() {
-    let baseline = derive_cardano(
-        MNEMONIC.into(),
-        Some("m/1852'/1815'/0'/0/0".into()),
+    let baseline = derive_for_chain(
+        Chain::Cardano,
+        MNEMONIC,
+        "m/1852'/1815'/0'/0/0",
         None,
-        false,
-        false,
-        true,
+        None,
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("baseline cardano")
     .private_key_hex;
-    let tweaked = derive_cardano(
-        MNEMONIC.into(),
-        Some("m/1852'/1815'/0'/0/0".into()),
-        Some("TREZOR".into()),
-        false,
-        false,
-        true,
+    let tweaked = derive_for_chain(
+        Chain::Cardano,
+        MNEMONIC,
+        "m/1852'/1815'/0'/0/0",
+        Some("TREZOR"),
+        None,
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("tweaked cardano")
     .private_key_hex;
@@ -683,9 +711,17 @@ fn mnemonic_entropy_matches_bip39_and_survives_ambiguous_phrases() {
     let chinese = parse_mnemonic("的 的 的 的 的 的 的 的 的 的 的 在", None).unwrap();
     assert_eq!(*mnemonic_entropy(&chinese), [0u8; 16]);
     let polkadot = |phrase: &str| {
-        derive_polkadot(phrase.into(), String::new(), None, None, true, false, false)
-            .expect("polkadot")
-            .address
+        derive_for_chain(
+            Chain::Polkadot,
+            phrase,
+            "",
+            None,
+            None,
+            None,
+            Wants::ADDRESS,
+        )
+        .expect("polkadot")
+        .address
     };
     assert_eq!(
         polkadot("的 的 的 的 的 的 的 的 的 的 的 在"),
@@ -699,7 +735,7 @@ fn mnemonic_entropy_matches_bip39_and_survives_ambiguous_phrases() {
 fn polkadot_substrate_address_structure() {
     // SS58 Polkadot mainnet (network prefix 0): 1-byte prefix + 32-byte
     // pubkey + 2-byte Blake2b-512("SS58PRE"||…) checksum, base58-encoded.
-    let result = derive_polkadot(MNEMONIC.into(), String::new(), None, None, true, true, true)
+    let result = derive_for_chain(Chain::Polkadot, MNEMONIC, "", None, None, None, Wants::ALL)
         .expect("polkadot derive");
     let priv_hex = result.private_key_hex.expect("polkadot mini-secret");
     let pub_hex = result.public_key_hex.expect("polkadot pub");
@@ -707,7 +743,7 @@ fn polkadot_substrate_address_structure() {
 
     assert_eq!(priv_hex.len(), 64, "mini-secret = 32 bytes");
     assert_eq!(pub_hex.len(), 64, "sr25519 pub = 32 bytes");
-    assert_ne!(priv_hex, pub_hex, "mini-secret must differ from pub");
+    assert_ne!(*priv_hex, pub_hex, "mini-secret must differ from pub");
     assert!(
         address.starts_with('1'),
         "Polkadot mainnet starts with '1', got {address}"
@@ -721,25 +757,25 @@ fn polkadot_substrate_address_structure() {
 
 #[test]
 fn polkadot_substrate_passphrase_changes_mini_secret() {
-    let baseline = derive_polkadot(
-        MNEMONIC.into(),
-        String::new(),
+    let baseline = derive_for_chain(
+        Chain::Polkadot,
+        MNEMONIC,
+        "",
         None,
         None,
-        false,
-        false,
-        true,
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("baseline polkadot")
     .private_key_hex;
-    let tweaked = derive_polkadot(
-        MNEMONIC.into(),
-        String::new(),
-        Some("TREZOR".into()),
+    let tweaked = derive_for_chain(
+        Chain::Polkadot,
+        MNEMONIC,
+        "",
+        Some("TREZOR"),
         None,
-        false,
-        false,
-        true,
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("tweaked polkadot")
     .private_key_hex;
@@ -751,32 +787,36 @@ fn polkadot_substrate_diverges_from_bip39_seed_prefix() {
     // substrate-bip39 uses the BIP-39 *entropy* (16 bytes for 12 words)
     // as the PBKDF2 password — NOT the mnemonic string. So the resulting
     // mini-secret must differ from the first 32 bytes of the standard BIP-39 seed.
-    let result = derive_polkadot(
-        MNEMONIC.into(),
-        String::new(),
+    let result = derive_for_chain(
+        Chain::Polkadot,
+        MNEMONIC,
+        "",
         None,
         None,
-        false,
-        false,
-        true,
+        None,
+        Wants::PRIVATE_KEY,
     )
     .expect("polkadot");
     let mini_secret = result.private_key_hex.expect("mini-secret");
     let bip39_seed_prefix = "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1";
-    assert_ne!(mini_secret, bip39_seed_prefix);
+    assert_ne!(mini_secret.as_str(), bip39_seed_prefix);
 }
 
 #[test]
 fn polkadot_ss58_round_trip() {
     // Re-decode the SS58 address and verify the embedded pubkey + checksum.
-    let result = derive_polkadot(
-        MNEMONIC.into(),
-        String::new(),
+    let result = derive_for_chain(
+        Chain::Polkadot,
+        MNEMONIC,
+        "",
         None,
         None,
-        true,
-        true,
-        false,
+        None,
+        Wants {
+            address: true,
+            public_key: true,
+            private_key: false,
+        },
     )
     .expect("polkadot");
     let address = result.address.expect("polkadot address");
@@ -802,7 +842,8 @@ fn monero_address_structure() {
     // Monero mainnet standard address: 0x12 || spend(32) || view(32) ||
     // keccak256(prev)[..4] = 69 bytes → 95 chars chunked Base58.
     // Network byte 0x12 forces the first character to be '4'.
-    let result = derive_monero(MONERO_SEED.into(), true, true, true).expect("monero derive");
+    let result = derive_for_chain(Chain::Monero, MONERO_SEED, "", None, None, None, Wants::ALL)
+        .expect("monero derive");
     let priv_hex = result.private_key_hex.expect("monero priv");
     let pub_hex = result.public_key_hex.expect("monero pub");
     let address = result.address.expect("monero address");
@@ -822,7 +863,16 @@ fn monero_spend_key_is_the_reduced_seed_key() {
     use curve25519_dalek::scalar::Scalar as DalekScalar;
     let key = crate::derivation::monero_words::decode(MONERO_SEED).unwrap();
     let expected = hex::encode(DalekScalar::from_bytes_mod_order(*key).to_bytes());
-    let result = derive_monero(MONERO_SEED.into(), false, false, true).expect("monero");
+    let result = derive_for_chain(
+        Chain::Monero,
+        MONERO_SEED,
+        "",
+        None,
+        None,
+        None,
+        Wants::PRIVATE_KEY,
+    )
+    .expect("monero");
     let priv_hex = result.private_key_hex.expect("priv");
     assert_eq!(
         &priv_hex[..64],
@@ -838,7 +888,20 @@ fn monero_view_key_is_keccak_of_spend() {
     use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
     use curve25519_dalek::scalar::Scalar as DalekScalar;
 
-    let result = derive_monero(MONERO_SEED.into(), false, true, true).expect("monero");
+    let result = derive_for_chain(
+        Chain::Monero,
+        MONERO_SEED,
+        "",
+        None,
+        None,
+        None,
+        Wants {
+            address: false,
+            public_key: true,
+            private_key: true,
+        },
+    )
+    .expect("monero");
     let pub_hex = result.public_key_hex.expect("pub");
     let priv_bytes = hex::decode(result.private_key_hex.expect("priv")).expect("decode priv");
     assert_eq!(
@@ -985,14 +1048,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "github.com/bitcoin/bips/blob/master/bip-0084.mediawiki",
         "m/84'/0'/0'/0/0",
         false,
-        derive_bitcoin(
-            MNEMONIC.into(),
-            "m/84'/0'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Bitcoin,
+            MNEMONIC,
+            "m/84'/0'/0'/0/0",
             None,
-            BitcoinScriptType::P2wpkh,
-            true,
-            false,
-            false
+            None,
+            Some(BitcoinScriptType::P2wpkh),
+            Wants::ADDRESS,
         ),
         "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
     );
@@ -1001,14 +1064,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "github.com/bitcoin/bips/blob/master/bip-0084.mediawiki",
         "m/84'/0'/0'/0/1",
         false,
-        derive_bitcoin(
-            MNEMONIC.into(),
-            "m/84'/0'/0'/0/1".into(),
+        derive_for_chain(
+            Chain::Bitcoin,
+            MNEMONIC,
+            "m/84'/0'/0'/0/1",
             None,
-            BitcoinScriptType::P2wpkh,
-            true,
-            false,
-            false
+            None,
+            Some(BitcoinScriptType::P2wpkh),
+            Wants::ADDRESS,
         ),
         "bc1qnjg0jd8228aq7egyzacy8cys3knf9xvrerkf9g"
     );
@@ -1017,14 +1080,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "github.com/bitcoin/bips/blob/master/bip-0086.mediawiki",
         "m/86'/0'/0'/0/0",
         false,
-        derive_bitcoin(
-            MNEMONIC.into(),
-            "m/86'/0'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Bitcoin,
+            MNEMONIC,
+            "m/86'/0'/0'/0/0",
             None,
-            BitcoinScriptType::P2tr,
-            true,
-            false,
-            false
+            None,
+            Some(BitcoinScriptType::P2tr),
+            Wants::ADDRESS,
         ),
         "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
     );
@@ -1033,14 +1096,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/tests/device_tests/bitcoin/test_getaddress.py",
         "m/44'/0'/0'/0/0",
         false,
-        derive_bitcoin(
-            ALL_ALL.into(),
-            "m/44'/0'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Bitcoin,
+            ALL_ALL,
+            "m/44'/0'/0'/0/0",
             None,
-            BitcoinScriptType::P2pkh,
-            true,
-            false,
-            false
+            None,
+            Some(BitcoinScriptType::P2pkh),
+            Wants::ADDRESS,
         ),
         "1JAd7XCBzGudGpJQSDSfpmJhiygtLQWaGL"
     );
@@ -1049,14 +1112,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/tests/device_tests/bitcoin/test_getaddress_segwit_native.py",
         "m/84'/0'/0'/0/0",
         false,
-        derive_bitcoin(
-            ALL_ALL.into(),
-            "m/84'/0'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Bitcoin,
+            ALL_ALL,
+            "m/84'/0'/0'/0/0",
             None,
-            BitcoinScriptType::P2wpkh,
-            true,
-            false,
-            false
+            None,
+            Some(BitcoinScriptType::P2wpkh),
+            Wants::ADDRESS,
         ),
         "bc1qannfxke2tfd4l7vhepehpvt05y83v3qsf6nfkk"
     );
@@ -1065,14 +1128,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/tests/device_tests/bitcoin/test_getaddress.py",
         "m/44'/2'/0'/0/0",
         false,
-        derive_litecoin(
-            ALL_ALL.into(),
-            "m/44'/2'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Litecoin,
+            ALL_ALL,
+            "m/44'/2'/0'/0/0",
             None,
-            BitcoinScriptType::P2pkh,
-            true,
-            false,
-            false
+            None,
+            Some(BitcoinScriptType::P2pkh),
+            Wants::ADDRESS,
         ),
         "LcubERmHD31PWup1fbozpKuiqjHZ4anxcL"
     );
@@ -1081,13 +1144,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/common/tests/fixtures/ethereum/getaddress.json",
         "m/44'/60'/0'/0/0",
         true,
-        derive_evm(
-            ALL_ALL.into(),
-            "m/44'/60'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Ethereum,
+            ALL_ALL,
+            "m/44'/60'/0'/0/0",
             None,
-            true,
-            false,
-            false
+            None,
+            None,
+            Wants::ADDRESS,
         ),
         "0x73d0385F4d8E00C5e6504C6030F47BF6212736A8"
     );
@@ -1096,13 +1160,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/common/tests/fixtures/ethereum/getaddress.json",
         "m/44'/61'/0'/0/0",
         true,
-        derive_evm(
-            ALL_ALL.into(),
-            "m/44'/61'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Ethereum,
+            ALL_ALL,
+            "m/44'/61'/0'/0/0",
             None,
-            true,
-            false,
-            false
+            None,
+            None,
+            Wants::ADDRESS,
         ),
         "0xF410e37E9C8BCf8CF319c84Ae9dCEbe057804a04"
     );
@@ -1111,13 +1176,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/common/tests/fixtures/tron/get_address.json",
         "m/44'/195'/0'/0/0",
         false,
-        derive_tron(
-            ALL_ALL.into(),
-            "m/44'/195'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Tron,
+            ALL_ALL,
+            "m/44'/195'/0'/0/0",
             None,
-            true,
-            false,
-            false
+            None,
+            None,
+            Wants::ADDRESS,
         ),
         "TY72iA3SBtrds3QLYsS7LwYfkzXwAXCRWT"
     );
@@ -1126,13 +1192,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/tests/device_tests/ripple/test_get_address.py",
         "m/44'/144'/0'/0/0",
         false,
-        derive_xrp(
-            ALL_ALL.into(),
-            "m/44'/144'/0'/0/0".into(),
+        derive_for_chain(
+            Chain::Xrp,
+            ALL_ALL,
+            "m/44'/144'/0'/0/0",
             None,
-            true,
-            false,
-            false
+            None,
+            None,
+            Wants::ADDRESS,
         ),
         "rNaqKtKrMSwpwZSzRckPf7S96DkimjkF4H"
     );
@@ -1141,14 +1208,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/common/tests/fixtures/solana/get_address.json",
         "m/44'/501'/0'/0'",
         false,
-        derive_solana(
-            ALL_ALL.into(),
-            "m/44'/501'/0'/0'".into(),
+        derive_for_chain(
+            Chain::Solana,
+            ALL_ALL,
+            "m/44'/501'/0'/0'",
             None,
             None,
-            true,
-            false,
-            false
+            None,
+            Wants::ADDRESS,
         ),
         "14CCvQzQzHCVgZM3j9soPnXuJXh1RmCfwLVUcdfbZVBS"
     );
@@ -1157,14 +1224,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/common/tests/fixtures/stellar/get_address.json",
         "m/44'/148'/0'",
         false,
-        derive_stellar(
-            SEP_0005.into(),
-            "m/44'/148'/0'".into(),
+        derive_for_chain(
+            Chain::Stellar,
+            SEP_0005,
+            "m/44'/148'/0'",
             None,
             None,
-            true,
-            false,
-            false
+            None,
+            Wants::ADDRESS,
         ),
         "GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6"
     );
@@ -1173,13 +1240,14 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/common/tests/fixtures/cardano/get_base_address.json",
         "m/1852'/1815'/4'/0/0",
         false,
-        derive_cardano(
-            ALL_ALL.into(),
-            Some("m/1852'/1815'/4'/0/0".into()),
+        derive_for_chain(
+            Chain::Cardano,
+            ALL_ALL,
+            "m/1852'/1815'/4'/0/0",
             None,
-            true,
-            false,
-            false
+            None,
+            None,
+            Wants::ADDRESS,
         ),
         "addr1q8v42wjda8r6mpfj40d36znlgfdcqp7jtj03ah8skh6u8wnrqua2vw243tmjfjt0h5wsru6appuz8c0pfd75ur7myyeqsx9990"
     );
@@ -1188,24 +1256,26 @@ fn canonical_external_golden_vectors_all_pass() {
         "trezor-firmware/common/tests/fixtures/cardano/get_base_address.json",
         "m/1852'/1815'/4'/0/0",
         false,
-        crate::derivation::cardano::derive_cardano_preprod(
-            ALL_ALL.into(),
-            Some("m/1852'/1815'/4'/0/0".into()),
+        crate::derivation::dispatch::derive_for_chain(
+            Chain::CardanoPreprod,
+            ALL_ALL,
+            "m/1852'/1815'/4'/0/0",
             None,
-            true,
-            false,
-            false
+            None,
+            None,
+            Wants::ADDRESS,
         ),
         "addr_test1qrv42wjda8r6mpfj40d36znlgfdcqp7jtj03ah8skh6u8wnrqua2vw243tmjfjt0h5wsru6appuz8c0pfd75ur7myyeqnsc9fs"
     );
     // A raw key's enterprise address, from the phrase's payment key.
-    match derive_cardano(
-        ALL_ALL.into(),
-        Some("m/1852'/1815'/0'/0/0".into()),
+    match derive_for_chain(
+        Chain::Cardano,
+        ALL_ALL,
+        "m/1852'/1815'/0'/0/0",
         None,
-        false,
-        true,
-        false,
+        None,
+        None,
+        Wants::PUBLIC_KEY,
     ) {
         Ok(r) => {
             let public: [u8; 32] = hex::decode(r.public_key_hex.unwrap())
@@ -1242,19 +1312,51 @@ fn evm_replica_chains_share_ethereum_golden() {
     let results = [
         (
             "arbitrum",
-            derive_evm(ALL_ALL.into(), path.clone(), None, true, false, false),
+            derive_for_chain(
+                Chain::Ethereum,
+                ALL_ALL,
+                &path,
+                None,
+                None,
+                None,
+                Wants::ADDRESS,
+            ),
         ),
         (
             "optimism",
-            derive_evm(ALL_ALL.into(), path.clone(), None, true, false, false),
+            derive_for_chain(
+                Chain::Ethereum,
+                ALL_ALL,
+                &path,
+                None,
+                None,
+                None,
+                Wants::ADDRESS,
+            ),
         ),
         (
             "avalanche",
-            derive_evm(ALL_ALL.into(), path.clone(), None, true, false, false),
+            derive_for_chain(
+                Chain::Ethereum,
+                ALL_ALL,
+                &path,
+                None,
+                None,
+                None,
+                Wants::ADDRESS,
+            ),
         ),
         (
             "hyperliquid",
-            derive_evm(ALL_ALL.into(), path.clone(), None, true, false, false),
+            derive_for_chain(
+                Chain::Ethereum,
+                ALL_ALL,
+                &path,
+                None,
+                None,
+                None,
+                Wants::ADDRESS,
+            ),
         ),
     ];
     for (label, result) in results {
@@ -1275,9 +1377,14 @@ fn decred_and_kaspa_independent_mnemonic_vectors() {
     // Trust Wallet: the mnemonic/passphrase produces dpubZFUmm..., whose
     // m/44'/42'/0'/0/0 address is explicitly asserted in DerivePubkeyFromDpub.
     // https://github.com/trustwallet/wallet-core/blob/cd5a27481d2181e63362cb57e2b2160506cce163/tests/chains/Decred/TWDecredTests.cpp
-    let decred = crate::derivation::decred::derive_decred(
-        "ripple scissors kick mammal hire column oak again sun offer wealth tomorrow wagon turn fatal".into(),
-        "m/44'/42'/0'/0/0".into(), Some("TREZOR".into()), true, false, false,
+    let decred = crate::derivation::dispatch::derive_for_chain(
+        Chain::Decred,
+        "ripple scissors kick mammal hire column oak again sun offer wealth tomorrow wagon turn fatal",
+        "m/44'/42'/0'/0/0",
+        Some("TREZOR"),
+        None,
+        None,
+        Wants::ADDRESS,
     ).unwrap();
     assert_eq!(
         decred.address.as_deref(),
@@ -1286,9 +1393,14 @@ fn decred_and_kaspa_independent_mnemonic_vectors() {
 
     // Kaspa's gen1 wallet, account 0, receive index 1; testnet only changes HRP.
     // https://github.com/kaspanet/rusty-kaspa/blob/15cee1a4cbcdd7abbaf005cbf77d29c5ad0354eb/wallet/keys/src/derivation/gen1/hd.rs
-    let kaspa = crate::derivation::kaspa::derive_kaspa_testnet(
-        "hunt bitter praise lift buyer topic crane leopard uniform network inquiry over grain pass match crush marine strike doll relax fortune trumpet sunny silk".into(),
-        "m/44'/111111'/0'/0/1".into(), None, true, false, false,
+    let kaspa = crate::derivation::dispatch::derive_for_chain(
+        Chain::KaspaTestnet,
+        "hunt bitter praise lift buyer topic crane leopard uniform network inquiry over grain pass match crush marine strike doll relax fortune trumpet sunny silk",
+        "m/44'/111111'/0'/0/1",
+        None,
+        None,
+        None,
+        Wants::ADDRESS,
     ).unwrap();
     assert_eq!(
         kaspa.address.as_deref(),

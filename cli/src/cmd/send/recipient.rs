@@ -25,12 +25,10 @@ pub struct SelfCheckArgs {
 pub struct ProbeArgs {
     /// The wallet the send would come from: id, name or address.
     wallet: String,
-    /// Asset symbol being sent. Defaults to the wallet chain's own asset.
+    /// The holding being sent, by deployment id (`ethereum:erc-20:0x…`), as
+    /// `wallet show` lists it. Defaults to the wallet chain's own coin.
     #[arg(long)]
-    asset: Option<String>,
-    /// Narrows the asset to one chain, for a symbol the wallet holds on several.
-    #[arg(long)]
-    chain: Option<String>,
+    holding: Option<String>,
     /// Recipient, as the user would type it.
     #[arg(long)]
     to: String,
@@ -119,40 +117,20 @@ impl Report for ProbeReport {
 /// the CLI supplies the wording.
 pub fn probe(ctx: &Ctx, out: Out, args: ProbeArgs) -> CliResult<()> {
     let wallet = ctx.find_wallet(&args.wallet)?;
-    let symbol = args.asset.clone().unwrap_or_else(|| {
-        wallet
-            .chain_id
-            .mainnet_counterpart()
-            .coin_symbol()
-            .to_string()
-    });
-    let on_chain = args.chain.as_deref().map(resolve_chain).transpose()?;
-
-    let candidates: Vec<&spectra_core::store::wallet_domain::AssetHolding> = wallet
-        .holdings
-        .iter()
-        .filter(|h| h.symbol.eq_ignore_ascii_case(&symbol))
-        .filter(|h| on_chain.is_none_or(|c| c == h.chain_id))
-        .collect();
-    let holding = match candidates.as_slice() {
-        [] => {
-            return Err(CliError::rejected(format!(
-                "wallet {} holds no {symbol}",
-                wallet.id
-            )));
-        }
-        [one] => *one,
-        many => {
-            let chains: Vec<&str> = many
-                .iter()
-                .map(|h| h.chain_id.chain_display_name())
-                .collect();
-            return Err(CliError::usage(format!(
-                "{symbol} is held on {} — narrow it with --chain",
-                chains.join(", ")
-            )));
-        }
-    };
+    let holding = match args.holding.as_deref().map(str::trim) {
+        Some(key) => wallet.holdings.iter().find(|h| h.deployment_id() == key),
+        None => wallet
+            .holdings
+            .iter()
+            .find(|h| h.is_native() && h.chain_id == wallet.chain_id),
+    }
+    .ok_or_else(|| {
+        CliError::rejected(format!(
+            "\"{}\" holds no {}",
+            wallet.name,
+            args.holding.as_deref().unwrap_or("coin of its own chain")
+        ))
+    })?;
 
     let risk = ctx.rt.block_on(ctx.service()?.send_destination_risk(
         wallet.id.clone(),

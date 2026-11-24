@@ -304,6 +304,12 @@ pub enum TonWalletVersion {
     V4R2,
 }
 
+/// Every TON wallet contract an import can be under, the default first.
+#[uniffi::export]
+pub fn ton_wallet_versions() -> Vec<TonWalletVersion> {
+    TonWalletVersion::ALL.to_vec()
+}
+
 impl TonWalletVersion {
     pub const ALL: [Self; 2] = [Self::W5, Self::V4R2];
 
@@ -546,98 +552,25 @@ pub(crate) fn ton_key_pair(
 
 /// Derive a TON wallet from a TON mnemonic: the address is the default
 /// version's account on `chain`.
-pub(crate) fn derive_ton_standard(
+pub(crate) fn derive_from_seed_phrase(
     chain: Chain,
     seed_phrase: &str,
     passphrase: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
     let (private_key, public_key) = ton_key_pair(seed_phrase, passphrase)?;
-    let address = if want_address {
-        Some(TonWalletVersion::default().address(&public_key, chain)?)
-    } else {
-        None
-    };
-
-    Ok((
-        address,
-        want_public_key.then(|| hex::encode(public_key)),
-        want_private_key.then(|| hex::encode(*private_key)),
-    ))
-}
-
-// ── Derivation entry points ────────────────────────────────────────────────────────
-
-use crate::derivation::primitives::hmac_sha512;
-use crate::derivation::types::DerivationResult;
-use crate::error::SpectraBridgeError;
-
-// Shared derivation logic for all TON networks.
-fn ton_internal(
-    chain: Chain,
-    seed_phrase: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (address, public_key_hex, private_key_hex) = derive_ton_standard(
-        chain,
-        &seed_phrase,
-        passphrase.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
     Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account: 0,
-        branch: 0,
-        index: 0,
+        address: wants
+            .address
+            .then(|| TonWalletVersion::default().address(&public_key, chain))
+            .transpose()?,
+        public_key_hex: wants.public_key_hex(&public_key),
+        private_key_hex: wants.private_key_hex(&*private_key),
     })
 }
 
-/// Derive a TON mainnet wallet (the default version's address) from a seed
-/// phrase.
-pub fn derive_ton(
-    seed_phrase: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    ton_internal(
-        Chain::Ton,
-        seed_phrase,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive a TON testnet wallet from a seed phrase: the same key as on
-/// mainnet, and the default version's testnet account.
-pub fn derive_ton_testnet(
-    seed_phrase: String,
-    passphrase: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    ton_internal(
-        Chain::TonTestnet,
-        seed_phrase,
-        passphrase,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
+use crate::derivation::primitives::hmac_sha512;
+use crate::derivation::types::{DerivationResult, Wants};
 
 /// A BOC's single root cell, as read from a node: level-0 cells, each
 /// reference pointing forward.

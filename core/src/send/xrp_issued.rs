@@ -5,8 +5,8 @@
 //! either side, an issuer that does not let its currency ripple between
 //! holders, and a balance short of the amount and the issuer's transfer fee.
 
-use crate::api::xrpl_amount::{IouValue, XrplIssue};
 use crate::api::xrpl_json_rpc::{XrplClient, XrplIssuer};
+use crate::registry::xrpl_amount::{IouValue, XrplIssue};
 use crate::send::error::SendError;
 use crate::send::xrp::IssuedAmount;
 use serde::{Deserialize, Serialize};

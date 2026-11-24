@@ -24,18 +24,16 @@ pub struct EndpointDirectoryEntry {
 impl CustomEndpoint {
     pub(crate) fn validated(
         chain: Chain,
-        api: String,
+        api: EndpointApi,
         endpoint: String,
         mut capabilities: Vec<EndpointCapability>,
     ) -> Result<Self, SpectraBridgeError> {
         let catalog = crate::catalog::endpoints::catalog();
-        let api = chain
-            .compatible_endpoint_apis()
-            .into_iter()
-            .find(|value| value.as_str() == api)
-            .ok_or_else(|| {
-                SpectraBridgeError::failure("API type is not supported by this network")
-            })?;
+        if !chain.compatible_endpoint_apis().contains(&api) {
+            return Err(SpectraBridgeError::failure(
+                "API type is not supported by this network",
+            ));
+        }
         let supported = crate::api::endpoint::endpoint_capability_options(chain, api);
         if capabilities.is_empty() || capabilities.iter().any(|c| !supported.contains(c)) {
             return Err(SpectraBridgeError::failure(
@@ -476,22 +474,22 @@ mod tests {
     async fn add(
         service: &WalletService,
         chain: Chain,
-        api: &str,
+        api: EndpointApi,
         url: &str,
     ) -> crate::store::state::StateTransition {
         service
             .apply_state_command(StateCommand::SetAppSetting {
                 update: AppSettingUpdate::AddCustomEndpoint {
                     capabilities: match api {
-                        "blockscout" => vec![
+                        EndpointApi::Blockscout => vec![
                             EndpointCapability::History,
                             EndpointCapability::TokenHistory,
                         ],
-                        "trongrid-v1" => vec![EndpointCapability::TokenDiscovery],
+                        EndpointApi::TrongridV1 => vec![EndpointCapability::TokenDiscovery],
                         _ => vec![EndpointCapability::Balance, EndpointCapability::Broadcast],
                     },
                     chain_id: chain,
-                    api: api.into(),
+                    api,
                     endpoint: url.into(),
                 },
             })
@@ -521,13 +519,8 @@ mod tests {
             } else {
                 format!("https://custom-{index}.example/api")
             };
-            let endpoint = CustomEndpoint::validated(
-                chain,
-                api.as_str().into(),
-                url.clone(),
-                capabilities.clone(),
-            )
-            .unwrap_or_else(|error| panic!("{chain} {}: {error}", api.as_str()));
+            let endpoint = CustomEndpoint::validated(chain, api, url.clone(), capabilities.clone())
+                .unwrap_or_else(|error| panic!("{chain} {}: {error}", api.as_str()));
             let mut declared = capabilities;
             declared.sort();
             declared.dedup();
@@ -558,7 +551,7 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         let service = WalletService::new_catalog().unwrap();
-        service.open_state(db.clone()).await.unwrap();
+        service.opened(db.clone()).await.unwrap();
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/solana"))
@@ -581,14 +574,22 @@ mod tests {
             .mount(&server)
             .await;
         for (chain, api, suffix) in [
-            (crate::registry::Chain::Solana, "solana-json-rpc", "solana"),
-            (crate::registry::Chain::BitcoinSV, "whatsonchain", "bsv"),
+            (
+                crate::registry::Chain::Solana,
+                EndpointApi::SolanaJsonRpc,
+                "solana",
+            ),
+            (
+                crate::registry::Chain::BitcoinSV,
+                EndpointApi::Whatsonchain,
+                "bsv",
+            ),
         ] {
             let result = add(&service, chain, api, &format!("{}/{suffix}", server.uri())).await;
             assert_eq!(result.events, vec![StateEvent::AppSettingChanged]);
         }
         let reopened = WalletService::new_catalog().unwrap();
-        reopened.open_state(db.clone()).await.unwrap();
+        reopened.opened(db.clone()).await.unwrap();
         assert_eq!(
             reopened
                 .fetch_native_balance_summary(crate::registry::Chain::Solana, "test".into())
@@ -652,7 +653,7 @@ mod tests {
             add(
                 &service,
                 crate::registry::Chain::Ethereum,
-                "blockscout",
+                EndpointApi::Blockscout,
                 &format!("{}/blockscout", server.uri())
             )
             .await
@@ -663,7 +664,7 @@ mod tests {
             add(
                 &service,
                 crate::registry::Chain::Tron,
-                "trongrid-v1",
+                EndpointApi::TrongridV1,
                 &format!("{}/v1/accounts", server.uri())
             )
             .await
@@ -717,27 +718,27 @@ mod tests {
         for (chain, api, url) in [
             (
                 crate::registry::Chain::Solana,
-                "esplora",
+                EndpointApi::Esplora,
                 "https://node.example",
             ),
             (
                 crate::registry::Chain::Bitcoin,
-                "esplora",
+                EndpointApi::Esplora,
                 "file:///tmp/node",
             ),
             (
                 crate::registry::Chain::Bitcoin,
-                "esplora",
+                EndpointApi::Esplora,
                 "https://a.example,nope",
             ),
             (
                 crate::registry::Chain::Bitcoin,
-                "esplora",
+                EndpointApi::Esplora,
                 "https://user:secret@node.example",
             ),
             (
                 crate::registry::Chain::Bitcoin,
-                "esplora",
+                EndpointApi::Esplora,
                 "https://blockstream.info/api/",
             ),
         ] {
@@ -758,7 +759,7 @@ mod tests {
             add(
                 &service,
                 crate::registry::Chain::Bitcoin,
-                "esplora",
+                EndpointApi::Esplora,
                 " https://node.example/api/ "
             )
             .await
@@ -769,7 +770,7 @@ mod tests {
             add(
                 &service,
                 crate::registry::Chain::Bitcoin,
-                "esplora",
+                EndpointApi::Esplora,
                 "https://node.example/api"
             )
             .await
@@ -780,7 +781,7 @@ mod tests {
             add(
                 &service,
                 crate::registry::Chain::Bitcoin,
-                "esplora",
+                EndpointApi::Esplora,
                 "https://other.example/api"
             )
             .await
@@ -798,10 +799,7 @@ mod tests {
     async fn same_api_endpoints_keep_independent_capabilities_and_requests() {
         let service = WalletService::new_catalog().unwrap();
         let db = std::env::temp_dir().join(format!("endpoint-caps-{}.db", crate::store::new_id()));
-        service
-            .open_state(db.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(db.to_string_lossy().into()).await.unwrap();
         let balance = MockServer::start().await;
         let broadcast = MockServer::start().await;
         for (url, capabilities) in [
@@ -812,7 +810,7 @@ mod tests {
                 .apply_state_command(StateCommand::SetAppSetting {
                     update: AppSettingUpdate::AddCustomEndpoint {
                         chain_id: crate::registry::Chain::Ethereum,
-                        api: "evm-json-rpc".into(),
+                        api: crate::api::endpoint::EndpointApi::EvmJsonRpc,
                         endpoint: url,
                         capabilities,
                     },
@@ -844,10 +842,7 @@ mod tests {
             .mount(&broadcast)
             .await;
         let reopened = WalletService::new_catalog().unwrap();
-        reopened
-            .open_state(db.to_string_lossy().into())
-            .await
-            .unwrap();
+        reopened.opened(db.to_string_lossy().into()).await.unwrap();
         assert_eq!(
             reopened
                 .fetch_native_balance_summary(
@@ -926,7 +921,7 @@ mod tests {
             assert!(
                 CustomEndpoint::validated(
                     crate::registry::Chain::Ethereum,
-                    "evm-json-rpc".into(),
+                    crate::api::endpoint::EndpointApi::EvmJsonRpc,
                     "https://node.example".into(),
                     caps
                 )
@@ -935,7 +930,7 @@ mod tests {
         }
         let endpoint = CustomEndpoint::validated(
             crate::registry::Chain::Ethereum,
-            "evm-json-rpc".into(),
+            crate::api::endpoint::EndpointApi::EvmJsonRpc,
             "https://node.example".into(),
             vec![
                 EndpointCapability::Fee,
@@ -968,7 +963,7 @@ mod tests {
                 .apply_state_command(StateCommand::SetAppSetting {
                     update: AppSettingUpdate::AddCustomEndpoint {
                         chain_id: crate::registry::Chain::Ethereum,
-                        api: "evm-json-rpc".into(),
+                        api: crate::api::endpoint::EndpointApi::EvmJsonRpc,
                         endpoint: server.uri(),
                         capabilities: vec![cap],
                     },
@@ -1032,7 +1027,7 @@ mod tests {
                 .apply_state_command(StateCommand::SetAppSetting {
                     update: AppSettingUpdate::AddCustomEndpoint {
                         chain_id: crate::registry::Chain::Ethereum,
-                        api: "evm-json-rpc".into(),
+                        api: crate::api::endpoint::EndpointApi::EvmJsonRpc,
                         endpoint: server.uri(),
                         capabilities: caps,
                     },

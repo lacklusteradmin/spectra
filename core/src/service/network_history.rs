@@ -243,8 +243,8 @@ impl WalletService {
         let mut nfts_full = false;
         if !token_sources.is_empty() {
             for standard in [
-                crate::api::evm_nft::NftStandard::Erc721,
-                crate::api::evm_nft::NftStandard::Erc1155,
+                crate::registry::NftStandard::Erc721,
+                crate::registry::NftStandard::Erc1155,
             ] {
                 let (entries, full) = crate::api::http::race(&token_sources, |base| {
                     let client = &client;

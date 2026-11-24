@@ -289,12 +289,12 @@ impl WalletService {
 }
 
 #[cfg(test)]
-#[path = "tests/app_boundary.rs"]
-mod app_boundary_tests;
-
-#[cfg(test)]
 #[path = "tests/loopback_service.rs"]
 pub(crate) mod loopback_service;
+
+#[cfg(test)]
+#[path = "tests/send_stage_support.rs"]
+pub(crate) mod send_stage_support;
 
 pub mod app_refresh;
 mod owned_send;

@@ -22,12 +22,7 @@ fn subaddresses_are_wallet2s() {
     let phrase = fixture["phrase"].as_str().unwrap().to_string();
     for network in fixture["networks"].as_array().unwrap() {
         let chain = chain(network);
-        let derived = if chain == Chain::Monero {
-            derive_monero(phrase.clone(), false, false, true)
-        } else {
-            derive_monero_stagenet(phrase.clone(), false, false, true)
-        }
-        .unwrap();
+        let derived = derive_from_seed_phrase(chain, &phrase, Wants::PRIVATE_KEY).unwrap();
         let keys = ViewKeys::from_private(chain, &derived.private_key_hex.unwrap()).unwrap();
         assert_eq!(
             keys.address.to_string(),

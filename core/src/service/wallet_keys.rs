@@ -148,14 +148,13 @@ impl WalletService {
                 let overrides = &overrides.0;
                 match kind {
                     WalletKeyKind::MoneroSpendKey | WalletKeyKind::MoneroViewKey => {
-                        let (_, _, keys) = crate::derivation::monero::derive_from_seed_phrase(
-                            !chain.is_testnet(),
+                        let keys = crate::derivation::monero::derive_from_seed_phrase(
+                            chain,
                             &phrase,
-                            false,
-                            false,
-                            true,
-                        )?;
-                        let keys = zeroize::Zeroizing::new(keys.unwrap_or_default());
+                            crate::derivation::types::Wants::PRIVATE_KEY,
+                        )?
+                        .private_key_hex
+                        .unwrap_or_default();
                         let half = if kind == WalletKeyKind::MoneroSpendKey {
                             &keys[..64]
                         } else {
@@ -200,11 +199,9 @@ impl WalletService {
                                 overrides.passphrase.as_deref(),
                                 overrides.hmac_key.as_deref(),
                                 None,
-                                false,
-                                false,
-                                true,
+                                crate::derivation::types::Wants::PRIVATE_KEY,
                             )?;
-                            zeroize::Zeroizing::new(derived.private_key_hex.unwrap_or_default())
+                            derived.private_key_hex.unwrap_or_default()
                         };
                         export_private_key(chain, &key)?
                     }

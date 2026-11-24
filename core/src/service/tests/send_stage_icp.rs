@@ -46,7 +46,7 @@ async fn an_icp_transfer_is_built_only_at_the_ledger_fee_to_a_checksummed_accoun
         .join(format!("icp-stages-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(database).await.unwrap();
+    service.opened(database).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     store_seed_phrase(&*secrets, "w", SEED, &Default::default(), None).unwrap();
     service.set_secret_store(secrets);
@@ -58,9 +58,7 @@ async fn an_icp_transfer_is_built_only_at_the_ledger_fee_to_a_checksummed_accoun
         None,
         None,
         None,
-        true,
-        false,
-        false,
+        crate::derivation::types::Wants::ADDRESS,
     )
     .unwrap()
     .address

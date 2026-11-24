@@ -15,45 +15,6 @@ const SEL_BALANCE_OF_ID: [u8; 4] = [0x00, 0xfd, 0xd5, 0x8e]; // balanceOf(addres
 /// ERC-165's own "no interface": a contract that claims it claims anything.
 pub(crate) const INVALID_INTERFACE: [u8; 4] = [0xff; 4];
 
-/// A non-fungible token standard, as a contract reports it through ERC-165.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, uniffi::Enum,
-)]
-pub enum NftStandard {
-    /// One owner per token id.
-    #[serde(rename = "ERC-721")]
-    Erc721,
-    /// A quantity of each token id per owner.
-    #[serde(rename = "ERC-1155")]
-    Erc1155,
-}
-
-impl NftStandard {
-    /// The spelling indexers and people use.
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Erc721 => "ERC-721",
-            Self::Erc1155 => "ERC-1155",
-        }
-    }
-
-    pub fn parse(label: &str) -> Option<Self> {
-        match label {
-            "ERC-721" => Some(Self::Erc721),
-            "ERC-1155" => Some(Self::Erc1155),
-            _ => None,
-        }
-    }
-
-    /// The ERC-165 interface id a collection of this standard reports.
-    pub(crate) fn interface_id(self) -> [u8; 4] {
-        match self {
-            Self::Erc721 => [0x80, 0xac, 0x58, 0xcd],
-            Self::Erc1155 => [0xd9, 0xb6, 0x7a, 0x26],
-        }
-    }
-}
-
 /// A token id or quantity written in decimal: digits only, below 2^256.
 pub(crate) fn parse_uint256(decimal: &str) -> Result<BigUint, ApiError> {
     let invalid = || ApiError::invalid("A token id or quantity is a whole number below 2^256");

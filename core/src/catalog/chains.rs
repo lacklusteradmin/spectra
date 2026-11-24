@@ -128,7 +128,6 @@ pub(crate) struct TomlChain {
     tags: Vec<ChainTag>,
     color: CatalogColor,
     artwork_name: String,
-    #[serde(default)]
     address_prefix_hint: String,
     /// A test network's faucet page, where its coins are free. Testnets only.
     #[serde(default)]
@@ -252,21 +251,14 @@ pub struct ChainEntry {
     /// The prefixes a watched account public key starts with here
     /// (`Chain::account_key_prefixes`); empty where none is taken.
     pub account_key_prefixes: Vec<String>,
-    /// The staking tab can query this chain's live validator directory.
-    pub supports_staking: bool,
     /// The send screen has a network card to show for this chain — a fee, a
     /// preview, or both. False only where core routes no send at all.
     pub has_send_preview: bool,
     /// The chain can hold tracked tokens.
     pub hosts_tokens: bool,
-    /// The ledger creates an account only once it holds the network's reserve.
-    pub requires_account_reserve: bool,
     pub native_deployment_id: String,
-    /// A terse example of what an address on this chain looks like, or empty.
-    ///
-    /// Two Swift tables held this: a fourteen-arm switch of format examples
-    /// and an eleven-entry dictionary of sentences built around them. It is a
-    /// fact about the chain, so it is a catalog column.
+    /// A terse example of what an address on this network looks like, which
+    /// a front end shows wherever an address is typed.
     pub address_prefix_hint: String,
     pub gas_token_symbol: String,
     pub search_keywords: Vec<String>,
@@ -499,10 +491,8 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                     .into_iter()
                     .map(str::to_string)
                     .collect(),
-                supports_staking: chain.supports_staking(),
                 has_send_preview: chain.has_send_preview(),
                 hosts_tokens: chain.hosts_tokens(),
-                requires_account_reserve: chain.requires_account_reserve(),
                 native_deployment_id: native.deployment_id.clone(),
                 address_prefix_hint: c.address_prefix_hint.clone(),
                 gas_token_symbol: native.symbol.clone(),
@@ -733,7 +723,7 @@ mod explicit_network_catalog {
     /// registry also models agree with it.
     #[test]
     fn tags_agree_with_the_registry() {
-        use crate::store::transaction_merge::TransactionMergeStrategy as Merge;
+        use crate::registry::HistoryFamily as Merge;
         for chain in Chain::all() {
             let e = entry(chain.str_id());
             let has = |tag| e.tags.contains(&tag);
@@ -742,7 +732,7 @@ mod explicit_network_catalog {
             assert_ne!(has(ChainTag::Layer1), has(ChainTag::Layer2), "{}", e.id);
             assert_eq!(
                 has(ChainTag::Utxo),
-                matches!(chain.transaction_merge_strategy(), Merge::Utxo),
+                matches!(chain.history_family(), Merge::Utxo),
                 "{} disagrees about being UTXO",
                 e.id
             );
@@ -925,6 +915,19 @@ mod explicit_network_catalog {
     }
 
     /// An address hint describes a network's format, so it is never inherited:
+    /// Every network says what its addresses look like: a front end shows
+    /// core's hint and keeps none of its own.
+    #[test]
+    fn every_network_has_an_address_hint() {
+        for chain in Chain::all() {
+            assert!(
+                !entry(chain.str_id()).address_prefix_hint.is_empty(),
+                "{}",
+                chain.str_id()
+            );
+        }
+    }
+
     /// Bitcoin's is `bc1q…` and its testnet's is not.
     #[test]
     fn an_address_hint_is_never_inherited() {

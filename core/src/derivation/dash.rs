@@ -1,56 +1,5 @@
-//! Dash: address validation, BIP-32 derivation, P2PKH (X…) base58check
-//! encoding
-
-use crate::derivation::bitcoin::derive_legacy_p2pkh;
-use crate::derivation::types::{BitcoinScriptType, DerivationResult};
-use crate::error::SpectraBridgeError;
-
-const DASH_MAINNET_P2PKH: u8 = 0x4C;
-const DASH_TESTNET_P2PKH: u8 = 0x8C;
-
-/// Derive Dash mainnet keys (P2PKH only).
-pub fn derive_dash(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    derive_legacy_p2pkh(
-        DASH_MAINNET_P2PKH,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        script_type,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive Dash testnet keys.
-pub fn derive_dash_testnet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    derive_legacy_p2pkh(
-        DASH_TESTNET_P2PKH,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        script_type,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
+//! Dash: address validation. Its keys and P2PKH (X…) addresses derive with
+//! the Bitcoin family (`bitcoin::derive_from_seed_phrase`).
 
 #[cfg(test)]
 mod tests {

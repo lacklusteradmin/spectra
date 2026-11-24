@@ -354,7 +354,13 @@ mod tests {
                         .unwrap_or_else(|| panic!("no vector for {chain} {profile:?} {account}"));
                     assert_eq!(vector["path"], path.as_str(), "{chain} {profile:?}");
                     let derived = crate::derivation::dispatch::derive_for_chain(
-                        chain, phrase, &path, None, None, None, true, false, false,
+                        chain,
+                        phrase,
+                        &path,
+                        None,
+                        None,
+                        None,
+                        crate::derivation::types::Wants::ADDRESS,
                     )
                     .unwrap()
                     .address

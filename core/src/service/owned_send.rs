@@ -434,7 +434,7 @@ impl WalletService {
             // what arrives, so the most that can arrive is the balance over
             // the rate.
             let max_sendable = if chain.mainnet_counterpart() == Chain::Xrp {
-                let issue = crate::api::xrpl_amount::XrplIssue::parse(&token.contract)?;
+                let issue = crate::registry::xrpl_amount::XrplIssue::parse(&token.contract)?;
                 let rate = XrplClient::new(
                     self.endpoints_for(chain, &[EndpointCapability::Verification])
                         .await,
@@ -844,52 +844,5 @@ impl WalletService {
 }
 
 #[cfg(test)]
-mod shortcut_amount_tests {
-    use super::{send_total, shortcut_amount};
-
-    #[test]
-    fn shares_are_cut_to_display_precision_and_the_maximum_is_exact() {
-        let exact = "0.012490233065563998".to_string();
-        assert_eq!(shortcut_amount(exact.clone(), 25, 18), "0.0124902");
-        assert_eq!(shortcut_amount(exact.clone(), 100, 18), exact);
-        // Dust has no display form; it stays exact rather than become zero.
-        let dust = "0.000000000000000001".to_string();
-        assert_eq!(shortcut_amount(dust.clone(), 25, 18), dust);
-    }
-
-    /// A coin's total is what leaves the wallet, exactly; a token's fee is
-    /// another asset's, so it has none, and nor does an unknown fee.
-    #[test]
-    fn a_total_adds_the_fee_only_where_the_coin_pays_it() {
-        assert_eq!(
-            send_total(true, "0.001", Some("0.000021")),
-            Some("0.001021".to_string())
-        );
-        assert_eq!(
-            send_total(true, "1", Some("0.000000000000000001")),
-            Some("1.000000000000000001".to_string())
-        );
-        assert_eq!(send_total(false, "20", Some("0.000021")), None);
-        assert_eq!(send_total(true, "0.001", None), None);
-    }
-}
-
-#[cfg(test)]
-#[path = "tests/send_owned.rs"]
-mod owned_send_tests;
-
-#[cfg(test)]
-mod provisional_amount_tests {
-    use super::provisional_amount;
-
-    /// A tenth of the holding, cut to its precision; a holding too small for
-    /// a tenth to count is quoted at its smallest unit.
-    #[test]
-    fn an_empty_amount_is_quoted_for_a_tenth_of_the_holding() {
-        assert_eq!(provisional_amount("2.5", 8), "0.25");
-        assert_eq!(provisional_amount("0.123456789", 8), "0.01234567");
-        assert_eq!(provisional_amount("0.00000009", 8), "0.00000001");
-        assert_eq!(provisional_amount("0", 6), "0.000001");
-        assert_eq!(provisional_amount("7", 0), "1");
-    }
-}
+#[path = "tests/owned_send.rs"]
+mod tests;

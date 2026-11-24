@@ -68,7 +68,7 @@ fn signed_account_delete_matches_official_xrpl_codec_and_signature() {
 /// them and ripple-keypairs signs them.
 #[test]
 fn issued_currency_transactions_match_the_official_codec() {
-    use crate::api::xrpl_amount::{IouValue, XrplIssue};
+    use crate::registry::xrpl_amount::{IouValue, XrplIssue};
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../../../tests/fixtures/issued-assets.json")).unwrap();
     let vectors = &fixture["xrpl"];
@@ -152,7 +152,7 @@ fn issued_currency_transactions_match_the_official_codec() {
 /// ripple-keypairs signs them.
 #[test]
 fn destination_tags_match_the_official_codec() {
-    use crate::api::xrpl_amount::{IouValue, XrplIssue};
+    use crate::registry::xrpl_amount::{IouValue, XrplIssue};
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("../../../tests/fixtures/payment-memos.json")).unwrap();
     let vectors = &fixture["xrpl"];

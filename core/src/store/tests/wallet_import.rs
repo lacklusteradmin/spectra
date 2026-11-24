@@ -14,7 +14,7 @@ async fn evm_imports_keep_each_networks_address_and_derivation_path() {
     let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets.clone());
-    service.open_state(path.clone()).await.unwrap();
+    service.opened(path.clone()).await.unwrap();
     let paths = [
         (Chain::Ethereum, "m/44'/60'/0'/0/0"),
         (Chain::Arbitrum, "m/44'/60'/1'/0/0"),
@@ -27,11 +27,17 @@ async fn evm_imports_keep_each_networks_address_and_derivation_path() {
     }
     let reopened = WalletService::new(vec![]).unwrap();
     reopened.set_secret_store(secrets);
-    let state = reopened.open_state(path).await.unwrap();
+    let state = reopened.opened(path).await.unwrap();
     for (chain, path) in paths {
         let wallet = state.wallets.iter().find(|w| w.chain_id == chain).unwrap();
         let expected = crate::derivation::dispatch::derive_for_chain(
-            chain, MNEMONIC, path, None, None, None, true, false, false,
+            chain,
+            MNEMONIC,
+            path,
+            None,
+            None,
+            None,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address
@@ -63,7 +69,7 @@ async fn evm_identity_reuses_the_wallets_path_without_duplicate_address_records(
     let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets.clone());
-    service.open_state(path.clone()).await.unwrap();
+    service.opened(path.clone()).await.unwrap();
     for (chain, path) in [
         (Chain::Ethereum, "m/44'/60'/3'/0/0"),
         (Chain::EthereumClassic, "m/44'/61'/2'/0/0"),
@@ -76,7 +82,7 @@ async fn evm_identity_reuses_the_wallets_path_without_duplicate_address_records(
     }
     let reopened = WalletService::new(vec![]).unwrap();
     reopened.set_secret_store(secrets);
-    let state = reopened.open_state(path).await.unwrap();
+    let state = reopened.opened(path).await.unwrap();
     for wallet in state.wallets {
         let expected = wallet.address.as_deref().unwrap();
         for chain in Chain::all().filter(|c| c.is_evm()) {
@@ -126,7 +132,7 @@ async fn account_utxo_import_refuses_wrong_network_paths_before_storing() {
             crate::secrets::backends::InMemorySecretStore::new(),
         ));
         service
-            .open_state(directory.join("state.db").to_string_lossy().into_owned())
+            .opened(directory.join("state.db").to_string_lossy().into_owned())
             .await
             .unwrap();
         // The other network's coin type (Kaspa's test network shares its
@@ -171,7 +177,7 @@ async fn imported_protected_peercoin_accounts_receive_after_restart_without_secr
     service.set_secret_store(std::sync::Arc::new(
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
-    service.open_state(database.clone()).await.unwrap();
+    service.opened(database.clone()).await.unwrap();
     let mut imported = Vec::new();
     for chain in [Chain::Peercoin, Chain::PeercoinTestnet] {
         let mut input = commit(chain);
@@ -181,7 +187,7 @@ async fn imported_protected_peercoin_accounts_receive_after_restart_without_secr
     }
     drop(service);
     let reopened = WalletService::new(vec![]).unwrap();
-    reopened.open_state(database).await.unwrap();
+    reopened.opened(database).await.unwrap();
     for wallet in imported {
         let state = reopened.app_state().await;
         let stored = state
@@ -205,9 +211,7 @@ async fn imported_protected_peercoin_accounts_receive_after_restart_without_secr
             Some("Peercoin passphrase"),
             None,
             None,
-            true,
-            false,
-            false,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address
@@ -227,7 +231,7 @@ async fn imported_wallets_land_in_core_state() {
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
-        .open_state(temp.join("state.db").to_string_lossy().into())
+        .opened(temp.join("state.db").to_string_lossy().into())
         .await
         .unwrap();
     let outcome = service
@@ -272,7 +276,7 @@ async fn a_seed_import_stores_only_its_own_networks_address() {
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
-        .open_state(temp.join("state.db").to_string_lossy().into())
+        .opened(temp.join("state.db").to_string_lossy().into())
         .await
         .unwrap();
     let mut commit = commit(crate::registry::Chain::Bitcoin);
@@ -306,7 +310,7 @@ async fn each_wallet_is_on_the_network_its_import_named() {
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
-        .open_state(temp.join("state.db").to_string_lossy().into())
+        .opened(temp.join("state.db").to_string_lossy().into())
         .await
         .unwrap();
     let mut wallets = Vec::new();
@@ -408,10 +412,7 @@ async fn a_failed_seal_leaves_neither_a_wallet_nor_its_secret_and_retries() {
     let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(FailingSecrets::default());
     service.set_secret_store(store.clone());
-    service
-        .open_state(path.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(path.to_string_lossy().into()).await.unwrap();
     let input = commit(crate::registry::Chain::Ethereum);
     assert!(service.import_wallets(input.clone()).await.is_err());
     assert!(service.app_state().await.wallets.is_empty());
@@ -459,10 +460,7 @@ async fn a_short_password_is_refused_rather_than_stored() {
     let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     service.set_secret_store(store.clone());
-    service
-        .open_state(path.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(path.to_string_lossy().into()).await.unwrap();
     for short in ["", "   ", "abc", " abc "] {
         let mut seed = commit(crate::registry::Chain::Solana);
         seed.password = Some(short.into());
@@ -488,10 +486,7 @@ async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refu
     let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     service.set_secret_store(store.clone());
-    service
-        .open_state(path.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(path.to_string_lossy().into()).await.unwrap();
     let mut missing = commit(crate::registry::Chain::Solana);
     missing.seed_phrase = None;
     assert!(service.import_wallets(missing).await.is_err());
@@ -517,7 +512,7 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
     service.set_secret_store(std::sync::Arc::new(
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
-    service.open_state(path.clone()).await.unwrap();
+    service.opened(path.clone()).await.unwrap();
     // Each on its own account: one wallet per address.
     let on_account = |account: u32| {
         let mut input = commit(crate::registry::Chain::Solana);
@@ -551,7 +546,7 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
     reopened.set_secret_store(std::sync::Arc::new(
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
-    reopened.open_state(path).await.unwrap();
+    reopened.opened(path).await.unwrap();
     assert_eq!(
         reopened
             .import_wallets(on_account(3))
@@ -573,7 +568,7 @@ async fn raw_mnemonic_is_canonical_before_derivation_and_storage() {
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
-        .open_state(temp.join("state.db").to_string_lossy().into())
+        .opened(temp.join("state.db").to_string_lossy().into())
         .await
         .unwrap();
     let mut raw = commit(crate::registry::Chain::Ethereum);
@@ -615,7 +610,7 @@ async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
     service
-        .open_state(temp.join("state.db").to_string_lossy().into())
+        .opened(temp.join("state.db").to_string_lossy().into())
         .await
         .unwrap();
     let conditions = DeviceConditions {
@@ -642,7 +637,7 @@ async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
     // No configured providers: all network work must fail locally and remain visible.
     let result = service.refresh_app(intent, conditions).await.unwrap();
     assert!(!result.failures.is_empty());
-    assert!(result.state.quotes.prices_attempt_at.is_none());
+    assert!(service.app_state().await.quotes.prices_attempt_at.is_none());
 }
 
 #[tokio::test]
@@ -656,7 +651,7 @@ async fn testnet_paths_survive_reopen_and_signing() {
     let secrets = Arc::new(InMemorySecretStore::new());
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets.clone());
-    service.open_state(db.clone()).await.unwrap();
+    service.opened(db.clone()).await.unwrap();
     // Each network's account paths, chosen or its default, survive reopening
     // and sign. A mainnet coin type on a test network names no account of
     // it, and is refused rather than stored as one.
@@ -679,7 +674,7 @@ async fn testnet_paths_survive_reopen_and_signing() {
     drop(service);
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets);
-    service.open_state(db).await.unwrap();
+    service.opened(db).await.unwrap();
     for (chain, path) in [
         (Chain::BitcoinTestnet4, "m/84'/1'/3'/0/0"),
         (Chain::BitcoinSignet, "m/84'/1'/9'/0/0"),
@@ -694,7 +689,13 @@ async fn testnet_paths_survive_reopen_and_signing() {
             .expect("one wallet per imported network");
         assert_eq!(wallet.derivation_path.as_deref(), Some(path));
         let expected = crate::derivation::dispatch::derive_for_chain(
-            chain, MNEMONIC, path, None, None, None, true, false, false,
+            chain,
+            MNEMONIC,
+            path,
+            None,
+            None,
+            None,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address
@@ -719,7 +720,7 @@ async fn fresh_service(
         .into_owned();
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(secrets);
-    service.open_state(path.clone()).await.unwrap();
+    service.opened(path.clone()).await.unwrap();
     (service, path)
 }
 
@@ -736,7 +737,13 @@ fn watch(chain: crate::registry::Chain, name: &str, addresses: &[&str]) -> Walle
 fn derived(chain: crate::registry::Chain) -> String {
     let path = crate::derivation::path::default_path_from_catalog(chain).unwrap();
     let address = crate::derivation::dispatch::derive_for_chain(
-        chain, MNEMONIC, &path, None, None, None, true, false, false,
+        chain,
+        MNEMONIC,
+        &path,
+        None,
+        None,
+        None,
+        crate::derivation::types::Wants::ADDRESS,
     )
     .unwrap()
     .address
@@ -784,7 +791,7 @@ async fn a_signing_import_upgrades_the_watched_wallet_in_place() {
     drop(service);
     let reopened = WalletService::new(vec![]).unwrap();
     reopened.set_secret_store(secrets);
-    let state = reopened.open_state(path).await.unwrap();
+    let state = reopened.opened(path).await.unwrap();
     assert_eq!(state.wallets.len(), 1);
     let stored = &state.wallets[0];
     assert_eq!(stored.id, watched.id);
@@ -1024,7 +1031,7 @@ async fn a_near_named_account_is_held_once_the_network_lists_the_key() {
         .join(format!("spectra-named-{}.db", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(path).await.unwrap();
+    service.opened(path).await.unwrap();
     let named = |name: &str| {
         let mut input = commit(Chain::Near);
         input.named_account = Some(name.into());
@@ -1284,10 +1291,7 @@ async fn a_passphrase_is_sealed_not_stored_with_the_wallet() {
     let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     service.set_secret_store(store.clone());
-    service
-        .open_state(path.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(path.to_string_lossy().into()).await.unwrap();
     let mut seed = commit(crate::registry::Chain::Bitcoin);
     seed.password = Some("correct horse".into());
     seed.derivation_overrides.passphrase = Some(PASSPHRASE.into());

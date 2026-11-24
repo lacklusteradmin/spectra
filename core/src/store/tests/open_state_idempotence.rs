@@ -18,7 +18,7 @@ fn tmp_db() -> String {
 async fn reopening_does_not_revert_newer_writes() {
     let service = WalletService::new(Vec::new()).expect("service");
     let db = tmp_db();
-    service.open_state(db.clone()).await.expect("open");
+    service.opened(db.clone()).await.expect("open");
 
     service
         .apply_state_command(StateCommand::SetAppSetting {
@@ -29,7 +29,7 @@ async fn reopening_does_not_revert_newer_writes() {
         .await
         .expect("apply");
 
-    let reopened = service.open_state(db.clone()).await.expect("reopen");
+    let reopened = service.opened(db.clone()).await.expect("reopen");
     assert_eq!(
         reopened.settings.fiat_currency,
         crate::store::state::FiatCurrency::Eur
@@ -42,7 +42,7 @@ async fn reopening_does_not_revert_newer_writes() {
 async fn opening_a_different_database_replaces_the_state() {
     let service = WalletService::new(Vec::new()).expect("service");
     let first = tmp_db();
-    service.open_state(first.clone()).await.expect("open");
+    service.opened(first.clone()).await.expect("open");
     service
         .apply_state_command(StateCommand::SetAppSetting {
             update: crate::store::state::AppSettingUpdate::FiatCurrency {
@@ -54,10 +54,7 @@ async fn opening_a_different_database_replaces_the_state() {
 
     let second = format!("{first}.other");
     let _ = std::fs::remove_file(&second);
-    let switched = service
-        .open_state(second.clone())
-        .await
-        .expect("open other");
+    let switched = service.opened(second.clone()).await.expect("open other");
     assert_eq!(
         switched.settings.fiat_currency,
         crate::store::state::FiatCurrency::Usd

@@ -9,8 +9,8 @@
 
 use ciborium::value::Value;
 
-use crate::api::cardano_asset::CardanoAssetId;
 use crate::derivation::cardano_script::NativeScript;
+use crate::registry::cardano_asset::CardanoAssetId;
 use crate::send::cardano::{
     CardanoAssetAmount, CardanoInput, CardanoOutput, CardanoScriptSpend, PreparedCardanoTransaction,
 };

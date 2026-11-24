@@ -1,10 +1,9 @@
-//! Litecoin: legacy and SegWit derivation.
+//! Litecoin: legacy and SegWit addresses.
 
 use crate::derivation::error::DerivationError;
 
-use crate::derivation::bitcoin::{BitcoinNetworkParams, derive_secp_keypair, encode_address_inner};
-use crate::derivation::types::{BitcoinScriptType, DerivationResult, parse_path_metadata};
-use crate::error::SpectraBridgeError;
+use crate::derivation::bitcoin::{BitcoinNetworkParams, encode_address_inner};
+use crate::derivation::types::BitcoinScriptType;
 use crate::registry::Chain;
 use secp256k1::PublicKey;
 
@@ -32,75 +31,6 @@ pub(crate) fn encode_litecoin_address(
         })?,
     };
     encode_address_inner(params, script_type, public_key)
-}
-
-fn derive_litecoin_on_network(
-    chain: Chain,
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (public_key, private_bytes) =
-        derive_secp_keypair(&seed_phrase, &derivation_path, passphrase.as_deref())?;
-    // Validate the script even when only keys were requested, so an unsupported
-    // wallet path cannot be imported just by skipping address output.
-    let address = encode_litecoin_address(chain, script_type, &public_key)?;
-    Ok(DerivationResult {
-        address: want_address.then_some(address),
-        public_key_hex: want_public_key.then(|| hex::encode(public_key.serialize())),
-        private_key_hex: want_private_key.then(|| hex::encode(private_bytes)),
-        account,
-        branch,
-        index,
-    })
-}
-
-/// Derive Litecoin mainnet keys (P2PKH/P2SH-P2WPKH/P2WPKH).
-pub fn derive_litecoin(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    derive_litecoin_on_network(
-        Chain::Litecoin,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        script_type,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-pub fn derive_litecoin_testnet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    script_type: BitcoinScriptType,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    derive_litecoin_on_network(
-        Chain::LitecoinTestnet,
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        script_type,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
 }
 
 #[cfg(test)]

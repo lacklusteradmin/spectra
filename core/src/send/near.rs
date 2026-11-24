@@ -280,10 +280,12 @@ pub(crate) struct PreparedNearFunctionCall {
     pub method: String,
     pub args: Vec<u8>,
     pub gas: u64,
-    pub deposit: String,
+    #[serde(with = "crate::send::stages::units_u128")]
+    pub deposit: u128,
     pub block_hash: [u8; 32],
     pub message: Vec<u8>,
-    pub fee_budget: String,
+    #[serde(with = "crate::send::stages::units_u128")]
+    pub fee_budget: u128,
 }
 impl PreparedNearFunctionCall {
     #[allow(clippy::too_many_arguments)]
@@ -317,10 +319,10 @@ impl PreparedNearFunctionCall {
             method: method.into(),
             args,
             gas,
-            deposit: deposit.to_string(),
+            deposit,
             block_hash,
             message,
-            fee_budget: "0".into(),
+            fee_budget: 0,
         }
     }
     /// `storage_unregister` on `contract`, unregistering the signer with the
@@ -346,7 +348,7 @@ impl PreparedNearFunctionCall {
             1,
             block_hash,
         );
-        prepared.fee_budget = fee_budget.to_string();
+        prepared.fee_budget = fee_budget;
         prepared
     }
 
@@ -357,7 +359,7 @@ impl PreparedNearFunctionCall {
             && self.receiver == contract
             && self.method == STORAGE_UNREGISTER
             && self.args == STORAGE_UNREGISTER_ARGS
-            && self.deposit == "1"
+            && self.deposit == 1
     }
 
     pub(crate) fn sign(
@@ -374,7 +376,7 @@ impl PreparedNearFunctionCall {
             &self.method,
             &self.args,
             self.gas,
-            self.deposit.parse::<u128>().map_err(SendError::invalid)?,
+            self.deposit,
             &self.block_hash,
         );
         if expected != self.message {
@@ -401,7 +403,8 @@ pub(crate) struct PreparedNearDeleteKey {
     pub block_hash: [u8; 32],
     pub message: Vec<u8>,
     /// The most the transaction costs, in yoctoNEAR.
-    pub fee_budget: String,
+    #[serde(with = "crate::send::stages::units_u128")]
+    pub fee_budget: u128,
 }
 
 impl PreparedNearDeleteKey {
@@ -425,7 +428,7 @@ impl PreparedNearDeleteKey {
             deleted_key,
             block_hash,
             message: borsh_encode_delete_key(signer, &public_key, nonce, &deleted_key, &block_hash),
-            fee_budget: fee_budget.to_string(),
+            fee_budget,
         })
     }
 
@@ -627,7 +630,7 @@ mod protocol_tests {
                 ..prepared.clone()
             },
             PreparedNearFunctionCall {
-                deposit: "0".into(),
+                deposit: 0,
                 ..prepared.clone()
             },
         ] {

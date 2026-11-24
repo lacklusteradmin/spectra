@@ -341,7 +341,7 @@ async fn a_chain_no_explorer_serves_counts_a_failure_and_reports_it() {
         ))
         .to_string_lossy()
         .into_owned();
-    service.open_state(db).await.expect("open");
+    service.opened(db).await.expect("open");
     service
         .upsert_wallet(wallet("w1", Chain::Cronos, Some("0xabc")))
         .await
@@ -375,7 +375,7 @@ async fn a_utxo_wallet_with_no_known_addresses_is_not_exhausted() {
         ))
         .to_string_lossy()
         .into_owned();
-    service.open_state(db).await.expect("open");
+    service.opened(db).await.expect("open");
     service
         .upsert_wallet(wallet("w1", Chain::Litecoin, Some("ltc1")))
         .await
@@ -439,7 +439,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
         ))
         .to_string_lossy()
         .into_owned();
-    service.open_state(db).await.expect("open");
+    service.opened(db).await.expect("open");
     service
         .upsert_wallet(wallet("w1", Chain::Litecoin, Some(ANSWERS)))
         .await
@@ -521,10 +521,7 @@ async fn owned_history_scope_and_failed_clock_are_core_decisions() {
     );
     let path =
         std::env::temp_dir().join(format!("history-owned-{}.sqlite", crate::store::new_id()));
-    service
-        .open_state(path.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(path.to_string_lossy().into()).await.unwrap();
     service
         .upsert_wallet(wallet("w1", Chain::Cronos, Some("0xabc")))
         .await
@@ -610,10 +607,7 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
     let service = WalletService::new(vec![]).unwrap();
     let path =
         std::env::temp_dir().join(format!("history-clock-{}.sqlite", crate::store::new_id()));
-    service
-        .open_state(path.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(path.to_string_lossy().into()).await.unwrap();
     // Cronos has no keyless history provider: refusal is offline and remains retryable.
     for id in ["a", "b"] {
         service
@@ -653,7 +647,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         crate::store::new_id()
     ));
     let db = path.to_string_lossy().to_string();
-    service.open_state(db.clone()).await.unwrap();
+    service.opened(db.clone()).await.unwrap();
     let mut w = wallet(
         "w",
         Chain::Ethereum,
@@ -739,7 +733,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
             .is_empty()
     );
     let reopened = WalletService::new(vec![]).unwrap();
-    reopened.open_state(db).await.unwrap();
+    reopened.opened(db).await.unwrap();
     assert!(reopened.transactions().await.unwrap().is_empty());
 }
 
@@ -790,7 +784,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
         crate::store::transaction_merge::TransactionMergeRequest {
             existing_transactions: vec![],
             incoming_transactions: rows,
-            strategy: crate::store::transaction_merge::TransactionMergeStrategy::Evm,
+            strategy: crate::registry::HistoryFamily::Evm,
             chain_id: crate::registry::Chain::Ethereum,
             preserve_created_at_sentinel_unix: None,
         },
@@ -807,7 +801,7 @@ async fn opened(endpoints: Vec<crate::service::ChainEndpoints>) -> std::sync::Ar
         .join(format!("history-paging-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(path).await.expect("open");
+    service.opened(path).await.expect("open");
     service
 }
 
@@ -862,7 +856,7 @@ async fn a_full_token_page_of_unknown_contracts_is_not_the_end_of_the_history() 
                 EndpointCapability::TokenHistory,
             ],
             chain_id: Chain::EthereumSepolia,
-            api: "blockscout".into(),
+            api: crate::api::endpoint::EndpointApi::Blockscout,
             endpoint: server.uri(),
         },
         AppSettingUpdate::CustomEndpointsOnly {

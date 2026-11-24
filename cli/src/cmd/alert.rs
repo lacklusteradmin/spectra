@@ -27,7 +27,7 @@ pub enum AlertCommand {
     },
     /// Add a price alert for a native asset or stored token holding.
     Add(AddArgs),
-    /// Remove an alert by id or symbol.
+    /// Remove an alert by its id.
     Remove(RemoveArgs),
     /// Toggle one alert by its identifier.
     Toggle { id: String },
@@ -60,7 +60,7 @@ pub struct AddArgs {
 
 #[derive(Args)]
 pub struct RemoveArgs {
-    /// Alert id or asset symbol.
+    /// The alert's id, as `alert list` shows it.
     alert: String,
 }
 
@@ -180,10 +180,11 @@ impl Report for AlertsReport {
                 (true, false) => "armed",
             };
             println!(
-                "  {}  {:<26} {}",
+                "  {}  {:<26} {}  {}",
                 out::tint("●", alert.chain).bold(),
                 rule.bold(),
                 out::hint(state),
+                out::hint(&alert.id),
             );
         }
     }
@@ -259,28 +260,19 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
 }
 
 fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
-    let matches: Vec<_> = ctx
-        .state()?
-        .price_alerts
-        .into_iter()
-        .filter(|a| {
-            a.id.eq_ignore_ascii_case(&args.alert) || a.symbol.eq_ignore_ascii_case(&args.alert)
-        })
-        .collect();
-    if matches.is_empty() {
+    if !ctx.state()?.price_alerts.iter().any(|a| a.id == args.alert) {
         return Err(CliError::rejected(format!(
-            "no alert matching {:?}",
+            "no alert with id {:?}",
             args.alert
         )));
     }
-    let count = matches.len();
-    for alert in matches {
-        apply_alert(ctx, StateCommand::RemovePriceAlert { id: alert.id })?;
-    }
-    out.report(&Done::new(format!(
-        "removed {}",
-        out::count(count, "alert")
-    )))
+    apply_alert(
+        ctx,
+        StateCommand::RemovePriceAlert {
+            id: args.alert.clone(),
+        },
+    )?;
+    out.report(&Done::new(format!("removed alert {}", args.alert)))
 }
 
 #[derive(Serialize)]

@@ -31,7 +31,7 @@ fn row(wallet_id: &str) -> crate::diagnostics::HistoryDiagnostics {
 async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
     let path = db("remove");
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(path.clone()).await.expect("open");
+    service.opened(path.clone()).await.expect("open");
     // A unique id: the diagnostics registry is shared by every test.
     let wallet_id = format!("feed-{}", crate::store::new_id());
     service
@@ -82,7 +82,7 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
 async fn an_esplora_change_restarts_the_bitcoin_feed() {
     let path = db("esplora");
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(path.clone()).await.expect("open");
+    service.opened(path.clone()).await.expect("open");
 
     service
         .advance_history_cursor(crate::registry::Chain::Bitcoin, "w".into(), None)
@@ -95,7 +95,7 @@ async fn an_esplora_change_restarts_the_bitcoin_feed() {
                     EndpointApi::Esplora,
                 ),
                 chain_id: crate::registry::Chain::Bitcoin,
-                api: "esplora".into(),
+                api: crate::api::endpoint::EndpointApi::Esplora,
                 endpoint: "https://custom.example/api".into(),
             },
         })
@@ -133,7 +133,7 @@ async fn a_history_run_records_its_rows_and_the_chains_health() {
     use crate::service::{HistoryRefreshOutcome, HistoryWalletDiagnostics};
     let path = db("history-run");
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(path.clone()).await.expect("open");
+    service.opened(path.clone()).await.expect("open");
     let wallet_id = format!("run-{}", crate::store::new_id());
     let outcome = |refreshed: u32, failed: u32| HistoryRefreshOutcome {
         wallets_refreshed: refreshed,
@@ -196,7 +196,7 @@ async fn removing_the_last_custom_endpoint_stops_using_only_custom_ones() {
                 update: AppSettingUpdate::AddCustomEndpoint {
                     capabilities: endpoint_capability_options(chain, EndpointApi::Esplora),
                     chain_id: chain,
-                    api: "esplora".into(),
+                    api: crate::api::endpoint::EndpointApi::Esplora,
                     endpoint: endpoint.into(),
                 },
             })
@@ -262,7 +262,7 @@ async fn editing_a_custom_endpoint_keeps_it_and_using_only_custom_ones() {
             .apply_state_command(set(AppSettingUpdate::AddCustomEndpoint {
                 capabilities: capabilities.clone(),
                 chain_id: chain,
-                api: "esplora".into(),
+                api: crate::api::endpoint::EndpointApi::Esplora,
                 endpoint: endpoint.into(),
             }))
             .await
@@ -279,7 +279,7 @@ async fn editing_a_custom_endpoint_keeps_it_and_using_only_custom_ones() {
         set(AppSettingUpdate::ReplaceCustomEndpoint {
             chain_id: chain,
             endpoint: from.into(),
-            api: "esplora".into(),
+            api: crate::api::endpoint::EndpointApi::Esplora,
             new_endpoint: to.into(),
             capabilities: capabilities.clone(),
         })

@@ -96,7 +96,7 @@ fn resetting_settings_restores_every_default() {
                 EndpointApi::EvmJsonRpc,
             ),
             chain_id: crate::registry::Chain::Base,
-            api: "evm-json-rpc".into(),
+            api: crate::api::endpoint::EndpointApi::EvmJsonRpc,
             endpoint: "https://x.example".into(),
         },
         U::AddCustomEndpoint {
@@ -105,7 +105,7 @@ fn resetting_settings_restores_every_default() {
                 EndpointApi::MoneroDaemonRpc,
             ),
             chain_id: crate::registry::Chain::Monero,
-            api: "monero-daemon-rpc".into(),
+            api: crate::api::endpoint::EndpointApi::MoneroDaemonRpc,
             endpoint: "https://xmr.example".into(),
         },
         U::AddCustomEndpoint {
@@ -114,7 +114,7 @@ fn resetting_settings_restores_every_default() {
                 EndpointApi::Esplora,
             ),
             chain_id: crate::registry::Chain::Bitcoin,
-            api: "esplora".into(),
+            api: crate::api::endpoint::EndpointApi::Esplora,
             endpoint: "https://a.example".into(),
         },
         U::BitcoinStopGap { value: 42 },
@@ -166,7 +166,7 @@ fn every_settings_field_round_trips() {
                 EndpointApi::EvmJsonRpc,
             ),
             chain_id: crate::registry::Chain::Ethereum,
-            api: "evm-json-rpc".into(),
+            api: crate::api::endpoint::EndpointApi::EvmJsonRpc,
             endpoint: "https://rpc.example".into(),
         },
         // The second one is the point: each chain keeps its own override.
@@ -176,7 +176,7 @@ fn every_settings_field_round_trips() {
                 EndpointApi::EvmJsonRpc,
             ),
             chain_id: crate::registry::Chain::Base,
-            api: "evm-json-rpc".into(),
+            api: crate::api::endpoint::EndpointApi::EvmJsonRpc,
             endpoint: "https://base.example".into(),
         },
         U::AddCustomEndpoint {
@@ -185,7 +185,7 @@ fn every_settings_field_round_trips() {
                 EndpointApi::MoneroDaemonRpc,
             ),
             chain_id: crate::registry::Chain::Monero,
-            api: "monero-daemon-rpc".into(),
+            api: crate::api::endpoint::EndpointApi::MoneroDaemonRpc,
             endpoint: "https://xmr.example".into(),
         },
         U::AddCustomEndpoint {
@@ -194,7 +194,7 @@ fn every_settings_field_round_trips() {
                 EndpointApi::Esplora,
             ),
             chain_id: crate::registry::Chain::Bitcoin,
-            api: "esplora".into(),
+            api: crate::api::endpoint::EndpointApi::Esplora,
             endpoint: "https://a.example".into(),
         },
         U::BitcoinStopGap { value: 42 },
@@ -266,7 +266,7 @@ fn a_setting_outside_its_range_is_bounded() {
                 EndpointApi::MoneroDaemonRpc,
             ),
             chain_id: crate::registry::Chain::Monero,
-            api: "monero-daemon-rpc".into(),
+            api: crate::api::endpoint::EndpointApi::MoneroDaemonRpc,
             endpoint: "  https://wallet.example\n".into(),
         },
     );

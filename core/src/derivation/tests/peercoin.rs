@@ -54,10 +54,15 @@ fn catalog_paths_derive_every_supported_script_on_the_selected_network() {
         for template in &chain.entry().derivation_path {
             let path = template.path.replace("{account}", "2");
             let result = crate::derivation::dispatch::derive_for_chain(
-                chain, PHRASE, &path, None, None, None, true, true, true,
+                chain,
+                PHRASE,
+                &path,
+                None,
+                None,
+                None,
+                crate::derivation::types::Wants::ALL,
             )
             .unwrap();
-            assert_eq!((result.account, result.branch, result.index), (2, 0, 0));
             let address = result.address.unwrap();
             assert!(crate::send::flow::is_valid_send_address(
                 chain,

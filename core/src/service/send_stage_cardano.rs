@@ -22,7 +22,7 @@ impl WalletService {
                 let client = KoiosClient::new(eps);
                 let transfer = match request.contract_address.as_deref() {
                     Some(asset) => crate::send::cardano::CardanoTransfer::Asset {
-                        asset: crate::api::cardano_asset::CardanoAssetId::parse(asset)?,
+                        asset: crate::registry::cardano_asset::CardanoAssetId::parse(asset)?,
                         quantity: amount_u64,
                     },
                     None => crate::send::cardano::CardanoTransfer::Ada(amount_u64),
@@ -169,3 +169,7 @@ pub(super) fn decode_hex_array<const N: usize>(
         ))
     })
 }
+
+#[cfg(test)]
+#[path = "tests/send_stage_cardano.rs"]
+mod tests;

@@ -24,7 +24,13 @@ impl Drop for TestDirectory {
 
 fn address(chain: Chain, path: &str) -> String {
     crate::derivation::dispatch::derive_for_chain(
-        chain, SEED, path, None, None, None, true, false, false,
+        chain,
+        SEED,
+        path,
+        None,
+        None,
+        None,
+        crate::derivation::types::Wants::ADDRESS,
     )
     .unwrap()
     .address
@@ -94,7 +100,7 @@ async fn service(
     }])
     .unwrap();
     service
-        .open_state(
+        .opened(
             directory
                 .path()
                 .join("wallet.sqlite")
@@ -154,7 +160,17 @@ async fn protected_peercoin_account_quotes_and_signs_all_sources_after_restart()
                 .script_pubkey();
             if purpose == 44 {
                 let derived = crate::derivation::dispatch::derive_for_chain(
-                    chain, SEED, &root_path, None, None, None, true, false, true,
+                    chain,
+                    SEED,
+                    &root_path,
+                    None,
+                    None,
+                    None,
+                    crate::derivation::types::Wants {
+                        address: true,
+                        public_key: false,
+                        private_key: true,
+                    },
                 )
                 .unwrap();
                 let key = bitcoin::secp256k1::SecretKey::from_slice(
@@ -191,16 +207,17 @@ async fn protected_peercoin_account_quotes_and_signs_all_sources_after_restart()
                 ResponseTemplate::new(200).set_body_json(body)
             }).mount(&server).await;
             let (wallet, directory, secrets) = service(chain, server.uri(), &root_path).await;
-            for (path, branch, index) in
-                [(&receive_path, "external", 4), (&change_path, "change", 3)]
-            {
+            for (path, branch, index) in [
+                (&receive_path, crate::wallet_db::AddressBranch::Receive, 4),
+                (&change_path, crate::wallet_db::AddressBranch::Change, 3),
+            ] {
                 wallet
                     .register_owned_address(
                         "w".into(),
                         chain,
                         address(chain, path),
                         Some(path.clone()),
-                        Some(branch.into()),
+                        Some(branch),
                         Some(index),
                     )
                     .await
@@ -258,7 +275,7 @@ async fn protected_peercoin_account_quotes_and_signs_all_sources_after_restart()
             }])
             .unwrap();
             resumed
-                .open_state(
+                .opened(
                     directory
                         .path()
                         .join("wallet.sqlite")
@@ -432,7 +449,7 @@ async fn an_owned_peercoin_build_pays_the_fee_its_preview_quoted() {
             chain,
             address(chain, change_path),
             Some(change_path.into()),
-            Some("change".into()),
+            Some(crate::wallet_db::AddressBranch::Change),
             Some(3),
         )
         .await

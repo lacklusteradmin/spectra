@@ -10,9 +10,15 @@ fn no_tokens() -> ResidentState {
     }
 }
 
-fn reduce_state(mut state: ResidentState, command: StateCommand) -> StateTransition {
+/// A command applied to `state`: the whole state after it, and its events.
+struct Reduced {
+    state: ResidentState,
+    events: Vec<StateEvent>,
+}
+
+fn reduce_state(mut state: ResidentState, command: StateCommand) -> Reduced {
     let events = reduce_state_in_place(&mut state, command);
-    StateTransition { state, events }
+    Reduced { state, events }
 }
 
 fn test_wallet(id: &str, chain: crate::registry::Chain) -> WalletState {
@@ -94,7 +100,7 @@ fn decimals_are_the_protocols_or_given() {
     assert_eq!(edited.state.token_preferences[0].token.decimals, 6);
 }
 
-fn rejection(transition: &StateTransition) -> Option<TokenPreferenceRejection> {
+fn rejection(transition: &Reduced) -> Option<TokenPreferenceRejection> {
     transition.events.iter().find_map(|event| match event {
         StateEvent::TokenPreferenceRejected { reason } => Some(*reason),
         _ => None,

@@ -2,6 +2,14 @@
 //! Keypool, discovery, transactions, imports and events live in sibling modules.
 
 use super::*;
+use crate::store::state::CommittedState;
+
+/// What a write committed: the whole state, for core's own callers. A front
+/// end gets its `StateTransition`.
+pub(crate) struct Commit {
+    pub state: ResidentState,
+    pub events: Vec<crate::store::state::StateEvent>,
+}
 
 /// The service owns its database handle; storage operations clone this handle.
 #[derive(Default)]
@@ -45,12 +53,12 @@ impl WalletService {
 
     /// Bind the service to its state database and load what is stored there.
     ///
-    /// An untouched database yields `ResidentState::default()`. Call once at
-    /// startup; the returned state is the caller's initial snapshot.
+    /// An untouched database yields the default state. Call once at
+    /// startup; what it returns is the caller's initial mirror.
     pub async fn open_state(
         &self,
         database_path: String,
-    ) -> Result<ResidentState, SpectraBridgeError> {
+    ) -> Result<CommittedState, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
             let this = &this;
@@ -144,6 +152,7 @@ impl WalletService {
             .await
         })
         .await
+        .map(|state| state.committed())
     }
 
     /// Delete a store `open_state` reported unreadable, with the secrets and
@@ -153,10 +162,7 @@ impl WalletService {
     ///
     /// Refused for the store this service has open: that one reads, and
     /// `reset_data` is how it is cleared.
-    pub async fn discard_state(
-        &self,
-        database_path: String,
-    ) -> Result<ResidentState, SpectraBridgeError> {
+    pub async fn discard_state(&self, database_path: String) -> Result<(), SpectraBridgeError> {
         let this = self.clone();
         let path = database_path.clone();
         crate::service::worker::run(async move {
@@ -186,7 +192,7 @@ impl WalletService {
             Ok::<_, SpectraBridgeError>(())
         })
         .await?;
-        self.open_state(database_path).await
+        self.open_state(database_path).await.map(|_| ())
     }
 
     /// Apply a command to the owned state, persist it, and return the result.
@@ -233,11 +239,37 @@ impl WalletService {
             }
             this.mutate_persisted_state(move |state| reduce_state_in_place(state, command))
                 .await
+                .map(|commit| StateTransition {
+                    state: commit.state.committed(),
+                    events: commit.events,
+                })
         })
         .await
     }
 
-    /// Current snapshot of the owned state.
+    /// What a front end mirrors of the owned state.
+    pub async fn committed_state(&self) -> CommittedState {
+        self.app_state().await.committed()
+    }
+
+    // ── History pagination cursor methods live in `service/history_cursor.rs` ──
+    // (split out to keep this file navigable; UniFFI merges the impl blocks).
+}
+
+#[cfg(test)]
+impl WalletService {
+    /// `open_state`, then the whole state it opened: what a test checks.
+    pub(crate) async fn opened(
+        &self,
+        database_path: String,
+    ) -> Result<ResidentState, SpectraBridgeError> {
+        self.open_state(database_path).await?;
+        Ok(self.app_state().await)
+    }
+}
+
+impl WalletService {
+    /// Current snapshot of the owned state, for core and the CLI.
     pub async fn app_state(&self) -> ResidentState {
         let this = self.clone();
         crate::service::worker::run(async move {
@@ -246,9 +278,6 @@ impl WalletService {
         })
         .await
     }
-
-    // ── History pagination cursor methods live in `service/history_cursor.rs` ──
-    // (split out to keep this file navigable; UniFFI merges the impl blocks).
 }
 
 impl WalletService {
@@ -381,7 +410,7 @@ impl WalletService {
     pub(crate) async fn upsert_wallet(
         &self,
         mut wallet: crate::store::state::WalletState,
-    ) -> Result<StateTransition, SpectraBridgeError> {
+    ) -> Result<Commit, SpectraBridgeError> {
         for holding in &mut wallet.holdings {
             holding.canonicalize()?;
         }
@@ -426,7 +455,7 @@ impl WalletService {
     pub(super) async fn mutate_persisted_state<F>(
         &self,
         mutate: F,
-    ) -> Result<StateTransition, SpectraBridgeError>
+    ) -> Result<Commit, SpectraBridgeError>
     where
         F: FnOnce(&mut ResidentState) -> Vec<crate::store::state::StateEvent> + Send + 'static,
     {
@@ -514,7 +543,7 @@ impl WalletService {
                 }
             }
             if events.is_empty() {
-                return Ok(StateTransition {
+                return Ok(Commit {
                     state: snapshot,
                     events,
                 });
@@ -540,7 +569,7 @@ impl WalletService {
             // The HTTP layer reads the Tor policy per request rather than the
             // store, so a change to either flag is pushed as it lands.
             service.reconcile_transport(&snapshot.settings, false);
-            Ok(StateTransition {
+            Ok(Commit {
                 state: snapshot,
                 events,
             })
@@ -714,77 +743,8 @@ pub struct WalletDerivedState {
 }
 
 #[cfg(test)]
-mod pruning_reads_cores_own_tables {
-    /// Pruning takes the stricter side when it cannot see the transactions.
-    #[tokio::test]
-    async fn pruning_refuses_rather_than_guessing() {
-        let service = crate::service::WalletService::new(Vec::new()).expect("service");
-        assert!(service.prune_status_trackers().await.is_err());
-    }
-}
-
-#[cfg(test)]
-mod utxo_discovery_is_the_registrys_chain_set {
-    use crate::registry::Chain;
-
-    /// Every UTXO testnet is in the discovery set its mainnet is in.
-    #[test]
-    fn the_testnets_are_in_the_set_their_mainnets_are_in() {
-        assert!(Chain::Bitcoin.uses_account_utxo());
-        for chain in Chain::all() {
-            assert_eq!(
-                chain.uses_account_utxo(),
-                chain.mainnet_counterpart().uses_account_utxo(),
-                "{chain:?} walks the same addresses its mainnet does"
-            );
-        }
-    }
-
-    /// Every entry point answers empty for a chain without the walk rather
-    /// than failing: the refresh loop asks for every chain a wallet is on.
-    #[tokio::test]
-    async fn a_chain_without_the_walk_does_nothing() {
-        let service = crate::service::WalletService::new(Vec::new()).expect("service");
-        let evm = Chain::Ethereum;
-        assert!(
-            service
-                .discover_utxo_addresses("w".into(), evm)
-                .await
-                .expect("ok")
-                .is_empty()
-        );
-        assert!(
-            service
-                .known_utxo_addresses("w".into(), evm)
-                .await
-                .expect("ok")
-                .is_empty()
-        );
-        assert!(
-            service
-                .utxo_receive_address("w".into(), evm, false)
-                .await
-                .expect("ok")
-                .is_none()
-        );
-        service
-            .advance_used_utxo_reservations(evm)
-            .await
-            .expect("a chain without the walk is a no-op, not an error");
-    }
-}
-
-#[cfg(test)]
 #[path = "tests/state.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "tests/state_secret_deletion.rs"]
-mod secret_deletion_tests;
-
-#[cfg(test)]
-#[path = "tests/address_discovery.rs"]
-mod address_discovery_tests;
 
 fn wallets_for_display(state: &ResidentState) -> Vec<crate::store::state::WalletState> {
     state
@@ -1185,7 +1145,10 @@ pub struct PortfolioSnapshot {
     /// Changes when a wallet is added, removed, or changes in anything but
     /// its balances: what history rows and transaction details read.
     pub wallet_identity_revision: u64,
-    pub state: ResidentState,
+    /// The committed state this snapshot was read with.
+    pub state: CommittedState,
+    /// Why the last price or rate refresh kept the stored figures, if it did.
+    pub quotes: QuoteRefreshState,
     pub wallets: Vec<crate::store::state::WalletState>,
     pub derived: WalletDerivedState,
     pub groups: Vec<crate::store::wallet_domain::DashboardAssetGroup>,
@@ -1218,7 +1181,8 @@ impl WalletService {
                 valuation: valuation::portfolio_valuation(&state),
                 asset_precision: crate::amount::presentation::asset_precision_catalog(&state),
                 derived,
-                state,
+                state: state.committed(),
+                quotes: state.quotes.clone(),
             })
         })
         .await

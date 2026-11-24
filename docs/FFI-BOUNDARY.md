@@ -46,10 +46,16 @@ record: scrub its owned strings on the receiving call path.
 - **Timestamps:** a transaction's `created_at_unix` and the `created_at` index
   column derived from it both use Unix seconds, including fractional seconds.
   Swift renders with `Date(timeIntervalSince1970:)`; there is no epoch conversion.
-- **Versions:** `ResidentState.revision` orders successful state publications within
-  one service session. Failed and no-op commands do not advance it; it is not
-  persisted. Snapshot sequence numbers order projections; their contained state
-  revision must also pass the front end's committed-state check.
+- **Committed state:** a front end mirrors `CommittedState` (revision,
+  settings, address book, token preferences, price alerts), which every
+  command, the store opening, a reset and each portfolio snapshot return.
+  `ResidentState` stays in Rust; wallets, quotes and diagnostics reach a front
+  end through their own projections.
+- **Versions:** the committed state's `revision` orders successful state
+  publications within one service session. Failed and no-op commands do not
+  advance it; it is not persisted. Snapshot sequence numbers order
+  projections; their contained state revision must also pass the front end's
+  committed-state check.
 - **Secrets:** core owns layout and encryption; `SecretStore` supplies Keychain,
   file or in-memory storage. A new secret operation must work through that
   abstraction so the CLI can exercise it.

@@ -173,9 +173,7 @@ impl WalletService {
                 token_contract.as_deref(),
             )
             .await?;
-        let reviewed = fee_budget
-            .parse::<u128>()
-            .map_err(SpectraBridgeError::invalid)?;
+        let reviewed = *fee_budget;
         if stored
             .request
             .fee_amount
@@ -218,7 +216,7 @@ impl WalletService {
         }
         // The recipient's registration, read again: registered or not, and
         // at what deposit, as reviewed.
-        if quote.registration.map(|deposit| deposit.to_string()) != *registration_deposit {
+        if quote.registration != *registration_deposit {
             return Err(SpectraBridgeError::invalid(
                 "The recipient's registration with the token changed; build and review again",
             ));
@@ -235,7 +233,7 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/send_near.rs"]
-mod send_near_tests;
+mod tests;
 
 impl WalletService {
     /// Recheck a prepared NEAR transaction against the chain.
@@ -327,8 +325,8 @@ impl WalletService {
                     block_hash,
                     amount,
                     token_contract: request.contract_address.clone(),
-                    fee_budget: quote.budget.to_string(),
-                    registration_deposit: quote.registration.map(|deposit| deposit.to_string()),
+                    fee_budget: quote.budget,
+                    registration_deposit: quote.registration,
                 }
             }
             _ => {
@@ -411,11 +409,7 @@ impl WalletService {
                         &crate::send::near::nep141_transfer_calls(
                             &stored.view.recipient,
                             *amount,
-                            registration_deposit
-                                .as_deref()
-                                .map(str::parse)
-                                .transpose()
-                                .map_err(SpectraBridgeError::invalid)?,
+                            *registration_deposit,
                             chain.near_token_gas_limit()?,
                         )?,
                         block_hash,

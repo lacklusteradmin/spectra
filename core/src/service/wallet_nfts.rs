@@ -11,7 +11,7 @@
 
 use super::*;
 use crate::api::endpoint::EndpointApi;
-use crate::api::evm_nft::NftStandard;
+use crate::registry::NftStandard;
 use crate::send::stages::{
     PreparedPayload, SendArtifact, SendArtifactReview, StoredSend, WalletOperation,
 };

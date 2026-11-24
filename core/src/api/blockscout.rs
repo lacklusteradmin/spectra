@@ -66,7 +66,7 @@ pub struct EvmTokenTransferEntry {
 /// token id and a whole quantity, never a decimal amount.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvmNftTransferEntry {
-    pub standard: crate::api::evm_nft::NftStandard,
+    pub standard: crate::registry::NftStandard,
     pub contract: String,
     pub token_id: String,
     pub quantity: String,
@@ -82,7 +82,7 @@ pub struct EvmNftTransferEntry {
 /// One NFT an address holds, as an explorer's inventory lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvmNftHolding {
-    pub standard: crate::api::evm_nft::NftStandard,
+    pub standard: crate::registry::NftStandard,
     pub contract: String,
     pub token_id: String,
     pub quantity: String,
@@ -486,11 +486,12 @@ impl BlockscoutClient {
         &self,
         address: &str,
         source: EvmHistorySource<'_>,
-        standard: crate::api::evm_nft::NftStandard,
+        standard: crate::registry::NftStandard,
         page: u32,
         page_size: u32,
     ) -> Result<(Vec<EvmNftTransferEntry>, bool), ApiError> {
-        use crate::api::evm_nft::{NftStandard, canonical_uint256};
+        use crate::api::evm_nft::canonical_uint256;
+        use crate::registry::NftStandard;
         #[derive(Deserialize)]
         struct ApiResp {
             status: String,
@@ -627,7 +628,8 @@ impl BlockscoutClient {
 /// zero; a row whose contract, id or quantity does not read is left out and
 /// the page reported short, rather than one indexer row hiding the others.
 fn parse_nft_inventory(page: &Value) -> Result<(Vec<EvmNftHolding>, bool), ApiError> {
-    use crate::api::evm_nft::{NftStandard, canonical_uint256};
+    use crate::api::evm_nft::canonical_uint256;
+    use crate::registry::NftStandard;
     let items = page
         .get("items")
         .and_then(Value::as_array)
@@ -961,7 +963,7 @@ mod execution_history_regressions {
 #[cfg(test)]
 mod nft_answers {
     use super::*;
-    use crate::api::evm_nft::NftStandard;
+    use crate::registry::NftStandard;
     use serde_json::json;
     use wiremock::{Mock, MockServer, ResponseTemplate, matchers::query_param};
 

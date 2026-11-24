@@ -92,7 +92,7 @@ impl Wallet {
         let database =
             std::env::temp_dir().join(format!("staged-send-{}.sqlite", crate::store::new_id()));
         service
-            .open_state(database.to_string_lossy().into())
+            .opened(database.to_string_lossy().into())
             .await
             .unwrap();
         let (kind, seed_phrase, private_key) = match secret {
@@ -145,7 +145,7 @@ impl Wallet {
         for update in [
             AppSettingUpdate::AddCustomEndpoint {
                 chain_id: self.chain,
-                api: api.into(),
+                api: api_kind,
                 endpoint: url.into(),
                 capabilities: crate::api::endpoint::endpoint_capability_options(
                     self.chain, api_kind,

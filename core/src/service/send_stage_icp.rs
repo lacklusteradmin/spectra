@@ -93,3 +93,7 @@ impl WalletService {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "tests/send_stage_icp.rs"]
+mod tests;

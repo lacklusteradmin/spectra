@@ -15,7 +15,9 @@ pub struct PreparedPolkadotTransaction {
     /// Exact metadata-encoded call, shared by transfers and staking.
     pub call_data: Vec<u8>,
     pub nonce: u32,
+    #[serde(with = "crate::send::stages::units_u128")]
     pub amount: u128,
+    #[serde(with = "crate::send::stages::units_u128")]
     pub fee: u128,
     /// Polling starts after this finalized head, then persists progress.
     pub finalized_number: u64,

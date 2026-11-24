@@ -1,7 +1,7 @@
 //! Stellar send: XDR Payment (native XLM or a credit asset), ChangeTrust
 //! and AccountMerge builders and Ed25519 signer.
 
-use crate::api::stellar_asset::StellarAsset;
+use crate::registry::stellar_asset::StellarAsset;
 use crate::send::error::SendError;
 use crate::send::payment_memo::StellarMemo;
 

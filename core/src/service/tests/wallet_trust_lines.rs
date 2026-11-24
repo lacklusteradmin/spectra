@@ -4,7 +4,7 @@
 //! between review and signing is a different payment.
 use super::*;
 use crate::send::stages::SendStage;
-use crate::service::send_stage_protocols::send_stage_support::{Secret, Wallet, node, refusal};
+use crate::service::send_stage_support::{Secret, Wallet, node, refusal};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Mutex;

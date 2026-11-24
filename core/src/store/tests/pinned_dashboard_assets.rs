@@ -48,7 +48,7 @@ async fn unpinning_every_asset_stays_empty_after_reopening_and_reset_restores_de
         .to_string_lossy()
         .into_owned();
     let service = WalletService::new(Vec::new()).expect("service");
-    let state = service.open_state(path.clone()).await.expect("open");
+    let state = service.opened(path.clone()).await.expect("open");
     let defaults = vec!["bitcoin", "ethereum", "tether", "usd-coin"];
     assert_eq!(state.settings.pinned_dashboard_assets(), defaults);
     for token_id in &defaults {
@@ -62,7 +62,7 @@ async fn unpinning_every_asset_stays_empty_after_reopening_and_reset_restores_de
         assert_eq!(transition.events.len(), 1);
     }
     let reopened = WalletService::new(Vec::new()).expect("service");
-    let state = reopened.open_state(path).await.expect("reopen");
+    let state = reopened.opened(path).await.expect("reopen");
     assert!(state.settings.pinned_dashboard_assets().is_empty());
     assert!(
         reopened

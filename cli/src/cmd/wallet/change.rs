@@ -30,8 +30,8 @@ pub struct InclusionArgs {
 pub struct HoldingArgs {
     #[command(flatten)]
     wallet: WalletArg,
-    /// The holding: its deployment id (`ethereum:erc-20:0x…`) or a symbol
-    /// only one of the wallet's holdings has.
+    /// The holding's deployment id (`ethereum:erc-20:0x…`), as `wallet show`
+    /// lists it.
     asset: String,
 }
 
@@ -116,38 +116,19 @@ impl Report for HiddenReport {
 pub fn set_hidden(ctx: &Ctx, out: Out, args: HoldingArgs, hidden: bool) -> CliResult<()> {
     let wallet = args.wallet.find(ctx)?;
     let asset = args.asset.trim();
-    let mut matches: Vec<String> = wallet
+    // Showing a holding again names it by the id it was hidden under.
+    let known = wallet
         .holdings
         .iter()
-        .map(|holding| holding.deployment_id())
-        .filter(|id| id == asset)
-        .collect();
-    if matches.is_empty() {
-        matches = wallet
-            .holdings
-            .iter()
-            .filter(|holding| holding.symbol.eq_ignore_ascii_case(asset))
-            .map(|holding| holding.deployment_id())
-            .collect();
+        .any(|holding| holding.deployment_id() == asset)
+        || (!hidden && wallet.hidden_holdings.iter().any(|id| id == asset));
+    if !known {
+        return Err(CliError::rejected(format!(
+            "\"{}\" holds no {asset}",
+            wallet.name
+        )));
     }
-    // Showing a holding again names it by the id it was hidden under.
-    if matches.is_empty() && !hidden && wallet.hidden_holdings.iter().any(|id| id == asset) {
-        matches.push(asset.to_string());
-    }
-    let deployment_id = match matches.as_slice() {
-        [one] => one.clone(),
-        [] => {
-            return Err(CliError::rejected(format!(
-                "\"{}\" holds no {asset}",
-                wallet.name
-            )));
-        }
-        _ => {
-            return Err(CliError::usage(format!(
-                "more than one holding is {asset}; name it by its deployment id"
-            )));
-        }
-    };
+    let deployment_id = asset.to_string();
     ctx.apply(StateCommand::SetHoldingHidden {
         wallet_id: wallet.id,
         deployment_id: deployment_id.clone(),

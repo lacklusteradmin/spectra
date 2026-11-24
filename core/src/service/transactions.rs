@@ -361,10 +361,7 @@ mod audit_fix5_tests {
         let service = WalletService::new(vec![]).unwrap();
         let path =
             std::env::temp_dir().join(format!("atomic-history-{}.sqlite", crate::store::new_id()));
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         for id in ["wallet-0", "wallet-1"] {
             service
                 .upsert_wallet(crate::store::state::WalletState::single_address(
@@ -431,7 +428,7 @@ mod status_commit_regressions {
             .join(format!("status-atomic-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .to_string();
-        service.open_state(db.clone()).await.unwrap();
+        service.opened(db.clone()).await.unwrap();
         (service, db)
     }
 
@@ -731,6 +728,16 @@ mod status_commit_regressions {
     }
 }
 
+#[cfg(test)]
+mod pruning_reads_cores_own_tables {
+    /// Pruning takes the stricter side when it cannot see the transactions.
+    #[tokio::test]
+    async fn pruning_refuses_rather_than_guessing() {
+        let service = crate::service::WalletService::new(Vec::new()).expect("service");
+        assert!(service.prune_status_trackers().await.is_err());
+    }
+}
+
 /// What a history merge added and updated, by id: the counts a refresh
 /// reports, never the resulting list.
 #[derive(Debug, Default)]
@@ -768,7 +775,7 @@ fn merge_history_rows(
         crate::store::transaction_merge::TransactionMergeRequest {
             existing_transactions: existing,
             incoming_transactions: incoming,
-            strategy: chain.transaction_merge_strategy(),
+            strategy: chain.history_family(),
             chain_id: chain,
             preserve_created_at_sentinel_unix,
         },

@@ -98,7 +98,7 @@ async fn service(chain: Chain, server: &MockServer) -> Arc<WalletService> {
     let database =
         std::env::temp_dir().join(format!("multisig-psbt-{}.sqlite", crate::store::new_id()));
     service
-        .open_state(database.to_string_lossy().into_owned())
+        .opened(database.to_string_lossy().into_owned())
         .await
         .unwrap();
     if chain.mainnet_counterpart() == Chain::Dogecoin {
@@ -110,7 +110,7 @@ async fn service(chain: Chain, server: &MockServer) -> Arc<WalletService> {
                         EndpointApi::Blockbook,
                     ),
                     chain_id: chain,
-                    api: "blockbook".into(),
+                    api: crate::api::endpoint::EndpointApi::Blockbook,
                     endpoint: server.uri(),
                 },
             })

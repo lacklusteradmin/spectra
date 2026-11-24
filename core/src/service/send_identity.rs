@@ -146,16 +146,12 @@ impl WalletService {
                     mnemonic.overrides.passphrase(),
                     mnemonic.overrides.hmac_key(),
                     Some(script),
-                    true,
-                    true,
-                    true,
+                    crate::derivation::types::Wants::ALL,
                 )?;
-                let key = Zeroizing::new(
-                    derived
-                        .private_key_hex
-                        .take()
-                        .ok_or_else(|| invalid("derivation returned no private key"))?,
-                );
+                let key = derived
+                    .private_key_hex
+                    .take()
+                    .ok_or_else(|| invalid("derivation returned no private key"))?;
                 (derived, key)
             }
             SigningMaterial::PrivateKey(key) => {

@@ -44,7 +44,6 @@ pub enum ChainSelfTestOutcome {
 pub struct ChainSelfTestResult {
     pub name: String,
     pub passed: bool,
-    pub chain_label: String,
     pub outcome: ChainSelfTestOutcome,
 }
 
@@ -62,9 +61,7 @@ fn derive_one(chain: crate::registry::Chain, path: &str) -> Option<String> {
         None,
         None,
         None,
-        true,
-        false,
-        false,
+        crate::derivation::types::Wants::ADDRESS,
     )
     .ok()?
     .address
@@ -84,7 +81,6 @@ fn result(
     ChainSelfTestResult {
         name: format!("{} {suffix}", chain.chain_display_name()),
         passed,
-        chain_label: chain.chain_display_name().to_string(),
         outcome: if passed { yes } else { no },
     }
 }
@@ -165,7 +161,6 @@ pub(crate) async fn self_tests_run_evm_rpc(
         return vec![ChainSelfTestResult {
             name: "RPC Chain ID".to_string(),
             passed: false,
-            chain_label: chain_id.clone(),
             outcome: ChainSelfTestOutcome::Custom {
                 text: format!("{chain_id} is not an EVM chain, so it has no JSON-RPC chain id."),
             },
@@ -182,7 +177,6 @@ pub(crate) async fn self_tests_run_evm_rpc(
             ChainSelfTestResult {
                 name: "RPC Chain ID".to_string(),
                 passed: reported == expected,
-                chain_label: label.to_string(),
                 outcome: ChainSelfTestOutcome::Custom {
                     text: if reported == expected {
                         format!("RPC reports {label} (chain id {expected}).")
@@ -196,7 +190,6 @@ pub(crate) async fn self_tests_run_evm_rpc(
             ChainSelfTestResult {
                 name: "RPC Latest Block".to_string(),
                 passed: latest_block > 0,
-                chain_label: label.to_string(),
                 outcome: ChainSelfTestOutcome::Custom {
                     text: if latest_block > 0 {
                         format!("RPC latest block height: {latest_block} via {rpc_label}.")
@@ -215,7 +208,6 @@ pub(crate) async fn self_tests_run_evm_rpc(
             vec![ChainSelfTestResult {
                 name: "RPC Health".to_string(),
                 passed: false,
-                chain_label: label.to_string(),
                 outcome: ChainSelfTestOutcome::Custom {
                     text: format!("RPC health check failed for {rpc_label}: {detail}"),
                 },

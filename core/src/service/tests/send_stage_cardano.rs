@@ -1,9 +1,9 @@
 //! A Cardano transaction lives a fixed span past the tip, is signed only
 //! over the inputs it was reviewed with, and is broadcast only to a node on
 //! its own network.
-use super::send_stage_support::{Secret, Wallet, node, refusal};
 use super::*;
 use crate::send::stages::SendStage;
+use crate::service::send_stage_support::{Secret, Wallet, node, refusal};
 use serde_json::{Value, json};
 use std::sync::Mutex;
 use wiremock::{

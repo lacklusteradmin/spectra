@@ -42,7 +42,7 @@ impl WalletService {
                         .iter()
                         .find(|row| {
                             row.wallet_id == wallet_id
-                                && row.branch.as_deref() == Some("external")
+                                && row.branch == Some(crate::wallet_db::AddressBranch::Receive)
                                 && row.branch_index == Some(index)
                         })
                         .cloned(),
@@ -167,7 +167,7 @@ impl WalletService {
         chain_id: crate::registry::Chain,
         address: String,
         derivation_path: Option<String>,
-        branch: Option<String>,
+        branch: Option<crate::wallet_db::AddressBranch>,
         branch_index: Option<i64>,
     ) -> Result<(), SpectraBridgeError> {
         let this = self.clone();
@@ -452,12 +452,14 @@ impl WalletService {
                 let Some(index) = row.branch_index else {
                     continue;
                 };
-                match row.branch.as_deref() {
-                    Some("external") => {
+                match row.branch {
+                    Some(crate::wallet_db::AddressBranch::Receive) => {
                         external = Some(external.map_or(index, |old| old.max(index)))
                     }
-                    Some("change") => change = Some(change.map_or(index, |old| old.max(index))),
-                    _ => {}
+                    Some(crate::wallet_db::AddressBranch::Change) => {
+                        change = Some(change.map_or(index, |old| old.max(index)))
+                    }
+                    None => {}
                 }
             }
             input.max_owned_external_index = external
@@ -864,7 +866,7 @@ mod the_keypool_forgets_indices_and_addresses_together {
             chain_id,
             address: format!("{wallet_id}-{chain_id}-{index}"),
             derivation_path: None,
-            branch: Some("external".to_string()),
+            branch: Some(crate::wallet_db::AddressBranch::Receive),
             branch_index: Some(index),
         }
     }

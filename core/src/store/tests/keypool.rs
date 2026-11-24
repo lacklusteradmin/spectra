@@ -50,14 +50,14 @@ async fn keypool_survives_reopening_the_database() {
         path.to_string_lossy().into_owned()
     };
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(db.clone()).await.expect("open");
+    service.opened(db.clone()).await.expect("open");
     let reserved = service
         .reserve_receive_index("w1".into(), crate::registry::Chain::Bitcoin, 0)
         .await
         .expect("reserve");
 
     let reopened = WalletService::new(Vec::new()).expect("service");
-    reopened.open_state(db.clone()).await.expect("open");
+    reopened.opened(db.clone()).await.expect("open");
     let after = reopened
         .reserve_receive_index("w1".into(), crate::registry::Chain::Bitcoin, 0)
         .await
@@ -80,7 +80,7 @@ async fn a_recorded_owned_address_raises_the_baseline() {
             crate::registry::Chain::Bitcoin,
             "bc1qexample".into(),
             None,
-            Some("external".into()),
+            Some(crate::wallet_db::AddressBranch::Receive),
             Some(7),
         )
         .await
@@ -106,7 +106,7 @@ async fn an_out_of_range_baseline_refuses_to_reserve() {
             crate::registry::Chain::Bitcoin,
             "bc1qexample".into(),
             None,
-            Some("external".into()),
+            Some(crate::wallet_db::AddressBranch::Receive),
             Some(i64::MAX),
         )
         .await
@@ -132,21 +132,21 @@ async fn owned_addresses_survive_reopening_the_database() {
         path.to_string_lossy().into_owned()
     };
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(db.clone()).await.expect("open");
+    service.opened(db.clone()).await.expect("open");
     service
         .register_owned_address(
             "w1".into(),
             crate::registry::Chain::Bitcoin,
             "bc1qexample".into(),
             Some("m/84'/0'/0'/0/3".into()),
-            Some("external".into()),
+            Some(crate::wallet_db::AddressBranch::Receive),
             Some(3),
         )
         .await
         .expect("register");
 
     let reopened = WalletService::new(Vec::new()).expect("service");
-    reopened.open_state(db.clone()).await.expect("open");
+    reopened.opened(db.clone()).await.expect("open");
     assert_eq!(
         reopened
             .owned_addresses_for_wallet("w1".into(), Some(crate::registry::Chain::Bitcoin))
@@ -179,7 +179,7 @@ async fn keypool_diagnostics_report_the_recorded_reservation() {
         .to_string_lossy()
         .into_owned();
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(db.clone()).await.expect("open");
+    service.opened(db.clone()).await.expect("open");
     service
         .upsert_wallet(WalletState::single_address(
             "w1",
@@ -209,7 +209,7 @@ async fn keypool_diagnostics_report_the_recorded_reservation() {
             crate::registry::Chain::Bitcoin,
             "bc1qreserved".into(),
             Some(format!("m/84'/0'/0'/0/{index}")),
-            Some("external".into()),
+            Some(crate::wallet_db::AddressBranch::Receive),
             Some(index),
         )
         .await
@@ -245,7 +245,7 @@ async fn known_wallet_addresses_merge_the_wallet_and_its_owned_rows() {
         .to_string_lossy()
         .into_owned();
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(db.clone()).await.expect("open");
+    service.opened(db.clone()).await.expect("open");
     service
         .upsert_wallet(WalletState::single_address(
             "w1",

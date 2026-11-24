@@ -4,12 +4,12 @@
 mod types;
 pub use types::*;
 
-pub mod aptos;
-pub mod icp;
-pub mod near;
-pub mod polkadot;
-pub mod solana;
-pub mod sui;
+mod aptos;
+mod icp;
+mod near;
+mod polkadot;
+mod solana;
+mod sui;
 
 use crate::registry::Chain;
 
@@ -21,45 +21,21 @@ fn short_id(id: &str) -> &str {
 }
 
 /// The validators, pools or known neurons `chain` stakes with, read from
-/// `endpoints`. A chain the registry does not stake on is refused here
-/// rather than falling through an arm nobody wrote down.
+/// `endpoints`, or `None` for a chain the registry does not stake on, which
+/// is refused here rather than falling through an arm nobody wrote down.
 pub(crate) async fn fetch_validators(
     chain: Chain,
     endpoints: Vec<String>,
-) -> Result<Vec<StakingValidator>, StakingError> {
-    match chain {
-        Chain::Solana => {
-            solana::SolanaStakingClient::new(endpoints)
-                .fetch_validators()
-                .await
-        }
-        Chain::Sui => {
-            sui::SuiStakingClient::new(endpoints)
-                .fetch_validators()
-                .await
-        }
-        Chain::Aptos => {
-            aptos::AptosStakingClient::new(endpoints)
-                .fetch_validators()
-                .await
-        }
-        Chain::Near => {
-            near::NearStakingClient::new(endpoints)
-                .fetch_validators()
-                .await
-        }
-        Chain::Polkadot => {
-            polkadot::PolkadotStakingClient::new(endpoints)
-                .fetch_validators()
-                .await
-        }
-        Chain::Icp => {
-            icp::IcpStakingClient::new(endpoints)
-                .fetch_validators()
-                .await
-        }
-        _ => Err(StakingError::NotYetImplemented),
-    }
+) -> Option<Result<Vec<StakingValidator>, crate::api::error::ApiError>> {
+    Some(match chain {
+        Chain::Solana => solana::fetch_validators(endpoints).await,
+        Chain::Sui => sui::fetch_validators(endpoints).await,
+        Chain::Aptos => aptos::fetch_validators(endpoints).await,
+        Chain::Near => near::fetch_validators(endpoints).await,
+        Chain::Polkadot => polkadot::fetch_validators(endpoints).await,
+        Chain::Icp => icp::fetch_validators(endpoints).await,
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -84,10 +60,7 @@ mod tests {
     #[tokio::test]
     async fn the_registry_flag_and_the_dispatch_agree_on_every_chain() {
         for chain in Chain::all() {
-            let routed = !matches!(
-                fetch_validators(chain, Vec::new()).await,
-                Err(StakingError::NotYetImplemented)
-            );
+            let routed = fetch_validators(chain, Vec::new()).await.is_some();
             assert_eq!(routed, chain.supports_staking(), "{}", chain.str_id());
         }
     }

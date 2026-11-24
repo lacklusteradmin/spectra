@@ -396,7 +396,7 @@ mod tests {
             let database =
                 std::env::temp_dir().join(format!("send-review-{}.sqlite", crate::store::new_id()));
             service
-                .open_state(database.to_string_lossy().into())
+                .opened(database.to_string_lossy().into())
                 .await
                 .unwrap();
             let secrets = Arc::new(InMemorySecretStore::new());

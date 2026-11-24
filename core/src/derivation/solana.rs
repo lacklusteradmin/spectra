@@ -3,7 +3,8 @@
 
 use crate::derivation::error::DerivationError;
 
-use crate::derivation::primitives::derive_bip39_seed;
+use crate::derivation::primitives::{derive_bip39_seed, derive_slip10_ed25519_key};
+use crate::derivation::types::{DerivationResult, Wants};
 use ed25519_dalek::SigningKey;
 
 // Decode a base58 string and assert it is exactly 32 bytes (used for Solana pubkeys).
@@ -18,102 +19,25 @@ pub(crate) fn decode_b58_32(b58: &str) -> Result<[u8; 32], DerivationError> {
 
 // ── HMAC-SHA512 + SLIP-10 ed25519 ────────────────────────────────────────
 
-/// BIP-39 → SLIP-10 ed25519 → Solana address (base58 pubkey).
+/// Derive a Solana wallet from a seed phrase: BIP-39 → SLIP-10 ed25519 →
+/// address (base58 pubkey), the same on every Solana network.
 pub(crate) fn derive_from_seed_phrase(
     seed_phrase: &str,
     derivation_path: &str,
     passphrase: Option<&str>,
     hmac_key: Option<&str>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<crate::derivation::primitives::OptionalKeyMaterial, DerivationError> {
+    wants: Wants,
+) -> Result<DerivationResult, DerivationError> {
     let seed = derive_bip39_seed(seed_phrase, passphrase.unwrap_or(""), 0, None, None)?;
     let private_key = derive_slip10_ed25519_key(seed.as_ref(), derivation_path, hmac_key)?;
     let signing_key = SigningKey::from_bytes(&private_key);
     let public_key = signing_key.verifying_key().to_bytes();
 
-    Ok((
-        want_address.then(|| bs58::encode(public_key).into_string()),
-        want_public_key.then(|| hex::encode(public_key)),
-        want_private_key.then(|| hex::encode(*private_key)),
-    ))
-}
-
-// ── Derivation entry points ────────────────────────────────────────────────────────
-
-use crate::derivation::primitives::derive_slip10_ed25519_key;
-use crate::derivation::types::{DerivationResult, parse_path_metadata};
-use crate::error::SpectraBridgeError;
-
-// Shared body for derive_solana / derive_solana_devnet.
-fn solana_internal(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    hmac_key: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    let (account, branch, index) = parse_path_metadata(&derivation_path);
-    let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        &seed_phrase,
-        &derivation_path,
-        passphrase.as_deref(),
-        hmac_key.as_deref(),
-        want_address,
-        want_public_key,
-        want_private_key,
-    )?;
     Ok(DerivationResult {
-        address,
-        public_key_hex,
-        private_key_hex,
-        account,
-        branch,
-        index,
+        address: wants
+            .address
+            .then(|| bs58::encode(public_key).into_string()),
+        public_key_hex: wants.public_key_hex(&public_key),
+        private_key_hex: wants.private_key_hex(&*private_key),
     })
-}
-
-/// Derive Solana mainnet keys from a BIP-39 seed phrase.
-pub fn derive_solana(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    hmac_key: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    solana_internal(
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        hmac_key,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
-}
-
-/// Derive Solana devnet keys (identical derivation to mainnet).
-pub fn derive_solana_devnet(
-    seed_phrase: String,
-    derivation_path: String,
-    passphrase: Option<String>,
-    hmac_key: Option<String>,
-    want_address: bool,
-    want_public_key: bool,
-    want_private_key: bool,
-) -> Result<DerivationResult, SpectraBridgeError> {
-    solana_internal(
-        seed_phrase,
-        derivation_path,
-        passphrase,
-        hmac_key,
-        want_address,
-        want_public_key,
-        want_private_key,
-    )
 }

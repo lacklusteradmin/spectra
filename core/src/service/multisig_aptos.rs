@@ -397,4 +397,4 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/multisig_aptos.rs"]
-mod multisig_aptos_tests;
+mod tests;

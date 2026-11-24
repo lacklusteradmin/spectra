@@ -355,12 +355,10 @@ impl WalletService {
         let endpoints = self.staking_endpoints(chain).await?.endpoints;
         crate::staking::fetch_validators(chain, endpoints)
             .await
-            .map_err(|error| match error {
-                crate::staking::StakingError::Api(error) => error.into(),
-                crate::staking::StakingError::NotYetImplemented => {
-                    SpectraBridgeError::invalid(error)
-                }
-            })
+            .ok_or_else(|| {
+                SpectraBridgeError::invalid(format!("{} does not stake", chain.str_id()))
+            })?
+            .map_err(Into::into)
     }
 
     /// The positions `owner` holds on `chain`, as the network reports them.
@@ -502,13 +500,7 @@ fn staking_review(
             AtMost,
             None,
         ),
-        PreparedPayload::NearFunctionCall(p) => (
-            p.fee_budget
-                .parse::<u128>()
-                .map_err(SpectraBridgeError::invalid)?,
-            AtMost,
-            None,
-        ),
+        PreparedPayload::NearFunctionCall(p) => (p.fee_budget, AtMost, None),
         PreparedPayload::Substrate(p) => (p.fee, AtMost, None),
         PreparedPayload::IcpStaking(p) => (u128::from(p.fee), Exact, None),
         _ => return Err(invalid()),
@@ -539,10 +531,7 @@ mod tests {
     async fn staking_reads_latest_owned_settings_and_preserves_explicit_overrides() {
         let path = std::env::temp_dir().join(format!("staking-{}.db", crate::store::new_id()));
         let service = WalletService::new_catalog().unwrap();
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         for url in ["http://127.0.0.1:13001", "http://127.0.0.1:13002"] {
             service
                 .apply_state_command(StateCommand::SetAppSetting {
@@ -552,7 +541,7 @@ mod tests {
                             EndpointApi::SolanaJsonRpc,
                         ),
                         chain_id: crate::registry::Chain::Solana,
-                        api: "solana-json-rpc".into(),
+                        api: crate::api::endpoint::EndpointApi::SolanaJsonRpc,
                         endpoint: url.into(),
                     },
                 })
@@ -577,7 +566,7 @@ mod tests {
         }])
         .unwrap();
         explicit
-            .open_state(path.to_string_lossy().into())
+            .opened(path.to_string_lossy().into())
             .await
             .unwrap();
         assert_eq!(
@@ -621,10 +610,7 @@ mod tests {
         }
         let path = std::env::temp_dir().join(format!("staking-{}.db", crate::store::new_id()));
         let service = WalletService::new_catalog().unwrap();
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         service
             .apply_state_command(StateCommand::SetAppSetting {
                 update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
@@ -633,7 +619,7 @@ mod tests {
                         EndpointApi::SolanaJsonRpc,
                     ),
                     chain_id: Chain::Solana,
-                    api: "solana-json-rpc".into(),
+                    api: crate::api::endpoint::EndpointApi::SolanaJsonRpc,
                     endpoint: server.uri(),
                 },
             })

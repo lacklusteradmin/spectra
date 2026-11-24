@@ -237,5 +237,5 @@ impl WalletService {
 }
 
 #[cfg(test)]
-#[path = "tests/send_peercoin.rs"]
+#[path = "tests/send_stage_peercoin.rs"]
 mod tests;

@@ -248,12 +248,5 @@ pub(crate) fn send_chain_for(
 }
 
 #[cfg(test)]
-#[path = "tests/send_execution_audit.rs"]
-mod audit_execution_tests;
-#[cfg(test)]
 #[path = "tests/send_execution.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "tests/token_protocol_execution.rs"]
-mod token_protocol_execution_tests;

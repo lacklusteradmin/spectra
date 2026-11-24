@@ -2,7 +2,7 @@
 use super::*;
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ResetOutcome {
-    pub state: ResidentState,
+    pub state: crate::store::state::CommittedState,
     pub plan: ResetPlan,
 }
 #[uniffi::export(async_runtime = "tokio")]
@@ -56,7 +56,7 @@ impl WalletService {
                 this.diagnostic_runs.clear();
             }
             Ok(ResetOutcome {
-                state: this.app_state().await,
+                state: this.committed_state().await,
                 plan,
             })
         })
@@ -102,7 +102,7 @@ mod tests {
             .join(format!("reset-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .into_owned();
-        service.open_state(path.clone()).await.unwrap();
+        service.opened(path.clone()).await.unwrap();
         let wallet = crate::store::state::WalletState {
             id: "w".into(),
             name: "W".into(),
@@ -157,7 +157,7 @@ mod tests {
             .await
             .unwrap();
         assert!(result.plan.reset_history_and_cache);
-        assert!(result.state.wallets.is_empty());
+        assert!(service.app_state().await.wallets.is_empty());
         assert_eq!(
             service
                 .history_refresh_plans(vec![key.clone()], 3600.0)
@@ -166,6 +166,6 @@ mod tests {
         );
         assert!(service.status_trackers.read().await.is_empty());
         let reopened = WalletService::new(vec![]).unwrap();
-        assert!(reopened.open_state(path).await.unwrap().wallets.is_empty());
+        assert!(reopened.opened(path).await.unwrap().wallets.is_empty());
     }
 }

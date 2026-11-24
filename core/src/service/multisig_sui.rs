@@ -345,4 +345,4 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/multisig_sui.rs"]
-mod multisig_sui_tests;
+mod tests;

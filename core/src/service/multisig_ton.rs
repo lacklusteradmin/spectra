@@ -566,4 +566,4 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/multisig_ton.rs"]
-mod multisig_ton_tests;
+mod tests;

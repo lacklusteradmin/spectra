@@ -13,14 +13,18 @@ use crate::api::evm_json_rpc::{EvmClient, SEL_TRANSFER, decode_hex};
 pub struct PreparedEvmTransaction {
     pub chain_id: u64,
     pub nonce: u64,
+    #[serde(with = "crate::send::stages::units_u128")]
     pub max_fee_per_gas: u128,
+    #[serde(with = "crate::send::stages::units_u128")]
     pub max_priority_fee_per_gas: u128,
     pub gas_limit: u64,
     pub to: String,
+    #[serde(with = "crate::send::stages::units_u128")]
     pub value_wei: u128,
     pub data: Vec<u8>,
     pub access_list: Vec<AccessListEntry>,
     /// Budget for network charges outside EIP-1559 execution gas (OP Stack L1/operator fees).
+    #[serde(with = "crate::send::stages::units_u128")]
     pub additional_fee_wei: u128,
 }
 
@@ -485,13 +489,14 @@ const SEL_SAFE_TRANSFER_1155: [u8; 4] = [0xf2, 0x42, 0x43, 0x2a]; // safeTransfe
 /// cannot be stranded in a contract that cannot move it. An ERC-721 token is
 /// one of a kind, so its quantity is one.
 pub(crate) fn encode_nft_transfer(
-    standard: crate::api::evm_nft::NftStandard,
+    standard: crate::registry::NftStandard,
     from: &str,
     to: &str,
     token_id: &str,
     quantity: &str,
 ) -> Result<Vec<u8>, SendError> {
-    use crate::api::evm_nft::{NftStandard, address_word, parse_uint256, uint256_word};
+    use crate::api::evm_nft::{address_word, parse_uint256, uint256_word};
+    use crate::registry::NftStandard;
     let id = uint256_word(&parse_uint256(token_id)?);
     let quantity = parse_uint256(quantity)?;
     let mut out = Vec::with_capacity(4 + 6 * 32);
@@ -694,9 +699,8 @@ mod gas_tests {
 #[cfg(test)]
 mod nft_vectors {
     use super::*;
-    use crate::api::evm_nft::{
-        NftStandard, balance_of_call, owner_of_call, supports_interface_call,
-    };
+    use crate::api::evm_nft::{balance_of_call, owner_of_call, supports_interface_call};
+    use crate::registry::NftStandard;
 
     /// Every call ethers.js 6.17.0 encodes for the same transfers and reads,
     /// token ids from zero to 2^256 − 1 and quantities to 2^128 − 1.

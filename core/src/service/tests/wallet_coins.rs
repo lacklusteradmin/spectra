@@ -21,7 +21,7 @@ async fn account(chain: Chain, server: &MockServer, path: &str) -> Arc<WalletSer
         .join(format!("wallet-coins-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    service.open_state(database).await.unwrap();
+    service.opened(database).await.unwrap();
     let context = UtxoDerivation::new(chain, SEED, path.into()).unwrap();
     let mut wallet = WalletState::single_address(
         "w",
@@ -93,20 +93,13 @@ async fn an_account_lists_its_addresses_in_place_its_coins_and_its_next_receive_
         Some(receive(1))
     );
     for (address, branch, index) in [
-        (receive(2), "external", 2),
-        (receive(3), "external", 3),
-        (receive(7), "external", 7),
-        (change.clone(), "change", 3),
+        (receive(2), crate::wallet_db::AddressBranch::Receive, 2),
+        (receive(3), crate::wallet_db::AddressBranch::Receive, 3),
+        (receive(7), crate::wallet_db::AddressBranch::Receive, 7),
+        (change.clone(), crate::wallet_db::AddressBranch::Change, 3),
     ] {
         service
-            .register_owned_address(
-                "w".into(),
-                chain,
-                address,
-                None,
-                Some(branch.into()),
-                Some(index),
-            )
+            .register_owned_address("w".into(), chain, address, None, Some(branch), Some(index))
             .await
             .unwrap();
     }

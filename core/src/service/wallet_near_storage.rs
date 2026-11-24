@@ -350,10 +350,7 @@ impl WalletService {
         };
         let chain = stored.view.chain_id;
         let account = &stored.view.sender;
-        let reviewed_fee = prepared
-            .fee_budget
-            .parse::<u128>()
-            .map_err(SpectraBridgeError::invalid)?;
+        let reviewed_fee = prepared.fee_budget;
         let endpoints = self.near_nodes(chain).await?;
         crate::api::http::race(&endpoints, |endpoint| async move {
             let node = NearClient::new(Arc::new(vec![endpoint]));

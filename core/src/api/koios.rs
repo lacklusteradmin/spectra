@@ -1,8 +1,8 @@
 //! The Koios REST adapter for Cardano: balances, UTXOs, history, the tip
 //! slot and raw CBOR submission.
 
-use crate::api::cardano_asset::CardanoAssetId;
 use crate::api::error::{ApiError, OrDecode};
+use crate::registry::cardano_asset::CardanoAssetId;
 use serde::{Deserialize, Serialize};
 
 use crate::api::http::{HttpClient, RetryProfile, race};

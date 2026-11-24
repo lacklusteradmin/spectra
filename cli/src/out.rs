@@ -30,10 +30,11 @@ pub trait Report: Serialize {
     /// The report as a person reads it in a terminal.
     fn render(&self);
 
-    /// The report's verdict: `false` when it carries a failure it found —
-    /// an unreachable endpoint, a failed self-test, a refresh error.
-    fn ok(&self) -> bool {
-        true
+    /// The failure the report found, if any — an unreachable endpoint, a
+    /// failed self-test, a refresh error. The command prints the report and
+    /// then exits with it.
+    fn failure(&self) -> Option<String> {
+        None
     }
 }
 
@@ -71,26 +72,28 @@ impl Out {
         Self { json }
     }
 
-    /// Write the command's report.
+    /// Write the command's report, then fail with what it found failing:
+    /// every verdict sets the exit code.
     pub fn report(self, report: &impl Report) -> CliResult<()> {
-        if !self.json {
+        let failure = report.failure();
+        if self.json {
+            #[derive(Serialize)]
+            struct Document<'a, R> {
+                ok: bool,
+                #[serde(flatten)]
+                report: &'a R,
+            }
+            let document = serde_json::to_string(&Document {
+                ok: failure.is_none(),
+                report,
+            })
+            .map_err(|error| CliError::failure(format!("cannot write the report: {error}")))?;
+            println!("{document}");
+            EMITTED.store(true, Ordering::Relaxed);
+        } else {
             report.render();
-            return Ok(());
         }
-        #[derive(Serialize)]
-        struct Document<'a, R> {
-            ok: bool,
-            #[serde(flatten)]
-            report: &'a R,
-        }
-        let document = serde_json::to_string(&Document {
-            ok: report.ok(),
-            report,
-        })
-        .map_err(|error| CliError::failure(format!("cannot write the report: {error}")))?;
-        println!("{document}");
-        EMITTED.store(true, Ordering::Relaxed);
-        Ok(())
+        failure.map_or(Ok(()), |failure| Err(CliError::failure(failure)))
     }
 
     /// Say why the command failed: on stderr, and as the JSON document when

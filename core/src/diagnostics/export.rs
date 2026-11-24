@@ -109,7 +109,6 @@ fn history_row_value(row: &HistoryDiagnostics) -> Value {
 #[derive(uniffi::Record, serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticsBundlePayload {
-    pub schema_version: i32,
     pub generated_at: f64,
     pub environment: DiagnosticsEnvironmentMetadata,
     pub chain_degraded: HashMap<crate::registry::Chain, crate::service::ChainDegradation>,

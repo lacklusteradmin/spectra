@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::api::endpoint::EndpointApi;
-use crate::api::evm_nft::NftStandard;
 use crate::api::http::{HttpClient, RetryProfile, race};
+use crate::registry::NftStandard;
 
 /// The ERC-165 calls that ask whether `contract` is an NFT collection: does
 /// it implement ERC-721, ERC-1155, and ERC-165's own invalid interface.

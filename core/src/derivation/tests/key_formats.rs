@@ -206,13 +206,12 @@ fn every_exported_key_reads_back_as_itself() {
                 None,
                 None,
                 None,
-                false,
-                false,
-                true,
+                crate::derivation::types::Wants::PRIVATE_KEY,
             )
             .unwrap()
             .private_key_hex
             .unwrap()
+            .to_string()
         } else {
             "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318".to_string()
         };

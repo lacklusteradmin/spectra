@@ -195,9 +195,7 @@ pub fn derive_import_address(
         overrides.passphrase.as_deref(),
         overrides.hmac_key.as_deref(),
         None,
-        true,
-        false,
-        false,
+        crate::derivation::types::Wants::ADDRESS,
     )
     .ok()
     .and_then(|result| result.address)
@@ -355,9 +353,7 @@ fn icp_principal_for(commit: &WalletImportCommit) -> Option<String> {
                 commit.derivation_overrides.passphrase.as_deref(),
                 commit.derivation_overrides.hmac_key.as_deref(),
                 None,
-                false,
-                true,
-                false,
+                crate::derivation::types::Wants::PUBLIC_KEY,
             )
             .ok()?
             .public_key_hex

@@ -16,7 +16,7 @@ fn tmp_db(label: &str) -> String {
 async fn events_survive_reopening_the_database() {
     let db = tmp_db("reopen");
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(db.clone()).await.expect("open");
+    service.opened(db.clone()).await.expect("open");
     service
         .append_chain_operational_event(
             crate::registry::Chain::Bitcoin,
@@ -28,7 +28,7 @@ async fn events_survive_reopening_the_database() {
         .expect("append");
 
     let reopened = WalletService::new(Vec::new()).expect("service");
-    reopened.open_state(db.clone()).await.expect("open");
+    reopened.opened(db.clone()).await.expect("open");
     let events = reopened
         .operational_events(crate::registry::Chain::Bitcoin)
         .await;
@@ -130,7 +130,7 @@ async fn core_records_its_own_refresh_and_recheck_outcomes() {
     use crate::service::refresh_policy::DeviceConditions;
     let db = tmp_db("core-owned");
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(db).await.expect("open");
+    service.opened(db).await.expect("open");
     let offline = DeviceConditions {
         app_is_active: true,
         is_network_reachable: false,
@@ -183,7 +183,7 @@ async fn core_records_its_own_refresh_and_recheck_outcomes() {
 async fn appended_lines_are_trimmed_and_capped_at_eight_hundred() {
     use crate::service::{DiagnosticCommand, DiagnosticLogInput};
     let service = WalletService::new(Vec::new()).expect("service");
-    service.open_state(tmp_db("cap")).await.expect("open");
+    service.opened(tmp_db("cap")).await.expect("open");
     let input = |message: String| DiagnosticLogInput {
         level: DiagnosticLogLevel::Info,
         category: "  Network  ".into(),

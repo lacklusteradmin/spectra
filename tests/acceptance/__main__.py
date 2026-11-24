@@ -151,7 +151,7 @@ def checks(run):
     run.check('a new process reads back its derived address', OK,
               '--json', 'wallet', 'show', 'Acceptance SOL', contains='BLeUXTx9thHGT7VJUtF9vHEmfMDgW1nnKZ9UVer2CoLX')
     run.check('an asset the wallet does not hold cannot be hidden', REJECTED,
-              'wallet', 'hide', 'Acceptance SOL', 'DAI')
+              'wallet', 'hide', 'Acceptance SOL', 'ethereum:erc-20:0x6b175474e89094c44da98b954eedeac495271d0f')
     run.check('creates a wallet', OK, 'wallet', 'new', '--chain', 'Bitcoin', '--name', 'Acceptance BTC')
 
     # A store a build cannot read is refused, never rewritten, until the user
@@ -254,7 +254,7 @@ def main():
         # The guard must catch a real attempt, or an empty journal proves
         # nothing. Health probes call every built-in provider directly, so
         # this one is refused.
-        run.check('a probe of remote providers still exits', OK,
+        run.check('a probe of remote providers reports them unreachable', FAILED,
                   '--json', 'endpoints', 'probe', '--chain', 'bitcoin', SPECTRA_LOOPBACK_ONLY=str(canary))
         refused = canary.read_text() if canary.exists() else ''
         run.holds('and the refusal is journaled by host', 'https://blockstream.info/' in refused, refused)

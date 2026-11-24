@@ -88,16 +88,15 @@ fn load(text: &str) -> Result<Vec<Explorer>, String> {
     Ok(explorers)
 }
 
-impl Chain {
-    pub fn explorer(self) -> Option<&'static Explorer> {
-        EXPLORERS.iter().find(|e| e.chain_id == self)
-    }
+/// The network's explorer, if it has one.
+pub fn explorer(chain: Chain) -> Option<&'static Explorer> {
+    EXPLORERS.iter().find(|e| e.chain_id == chain)
 }
 
 /// Every network's explorer, in registry order.
 #[uniffi::export]
 pub fn explorers() -> Vec<Explorer> {
-    Chain::all().filter_map(Chain::explorer).cloned().collect()
+    Chain::all().filter_map(explorer).cloned().collect()
 }
 
 /// The explorer page for one transaction, or `None` when the network has no
@@ -107,7 +106,7 @@ pub fn transaction_explorer_link(
     chain_id: crate::registry::Chain,
     transaction_hash: String,
 ) -> Option<ExplorerLink> {
-    let explorer = chain_id.explorer()?;
+    let explorer = explorer(chain_id)?;
     explorer.link(&explorer.tx_url, HASH_PLACEHOLDER, &transaction_hash)
 }
 
@@ -118,7 +117,7 @@ pub fn address_explorer_link(
     chain_id: crate::registry::Chain,
     address: String,
 ) -> Option<ExplorerLink> {
-    let explorer = chain_id.explorer()?;
+    let explorer = explorer(chain_id)?;
     explorer.link(
         explorer.address_url.as_deref()?,
         ADDRESS_PLACEHOLDER,

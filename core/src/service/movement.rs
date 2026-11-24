@@ -205,10 +205,7 @@ mod tests {
     async fn movement_baseline_survives_reopen_and_consumes_each_change_once() {
         let path = std::env::temp_dir().join(format!("movement-{}.db", crate::store::new_id()));
         let service = WalletService::new(vec![]).unwrap();
-        service
-            .open_state(path.to_string_lossy().into())
-            .await
-            .unwrap();
+        service.opened(path.to_string_lossy().into()).await.unwrap();
         service
             .mutate_persisted_state(|s| {
                 *s = state();
@@ -225,7 +222,7 @@ mod tests {
         );
         let reopened = WalletService::new(vec![]).unwrap();
         reopened
-            .open_state(path.to_string_lossy().into())
+            .opened(path.to_string_lossy().into())
             .await
             .unwrap();
         reopened
@@ -248,5 +245,19 @@ mod tests {
             .unwrap();
         assert!(reopened.app_state().await.movement_baseline.is_none());
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn movement_alert_requires_both_thresholds_and_valid_observations() {
+        let evaluate = crate::service::movement::evaluate_large_movement;
+        assert!(!evaluate(100.0, 109.0, 10.0, 5.0).should_alert);
+        assert!(!evaluate(1000.0, 1020.0, 10.0, 5.0).should_alert);
+        let down = evaluate(100.0, 80.0, 10.0, 5.0);
+        assert!(down.should_alert && !down.direction_up);
+        assert_eq!(down.absolute_delta, 20.0);
+        for invalid in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0] {
+            assert!(!evaluate(100.0, invalid, 10.0, 5.0).should_alert);
+            assert!(!evaluate(100.0, 200.0, invalid, 5.0).should_alert);
+        }
     }
 }

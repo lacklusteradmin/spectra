@@ -76,16 +76,16 @@ impl WalletService {
                     continue;
                 }
                 let chain = chain_id;
-                let result = match chain.history_refresh_kind() {
-                    crate::registry::HistoryRefreshKind::Evm => {
+                let result = match chain.history_family() {
+                    crate::registry::HistoryFamily::Evm => {
                         this.refresh_evm_chain_history(chain_id, ids, load_more, limit)
                             .await
                     }
-                    crate::registry::HistoryRefreshKind::Utxo => {
+                    crate::registry::HistoryFamily::Utxo => {
                         this.refresh_utxo_chain_history(chain_id, ids, load_more, limit)
                             .await
                     }
-                    crate::registry::HistoryRefreshKind::Normalized => {
+                    crate::registry::HistoryFamily::Account => {
                         this.refresh_chain_history_page(chain_id, ids, load_more)
                             .await
                     }

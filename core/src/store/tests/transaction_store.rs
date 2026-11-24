@@ -15,7 +15,7 @@ fn tmp_db(tag: &str) -> String {
 async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
     let service = WalletService::new(Vec::new()).expect("service");
     let db = tmp_db(tag);
-    service.open_state(db.clone()).await.expect("open");
+    service.opened(db.clone()).await.expect("open");
     (service, db)
 }
 

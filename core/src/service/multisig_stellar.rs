@@ -453,4 +453,4 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/multisig_stellar.rs"]
-mod multisig_stellar_tests;
+mod tests;

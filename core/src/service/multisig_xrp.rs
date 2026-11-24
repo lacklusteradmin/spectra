@@ -452,4 +452,4 @@ impl WalletService {
 
 #[cfg(test)]
 #[path = "tests/multisig_xrp.rs"]
-mod multisig_xrp_tests;
+mod tests;

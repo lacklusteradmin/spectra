@@ -20,7 +20,7 @@ fn service() -> std::sync::Arc<WalletService> {
 async fn defaults_to_usd_before_anything_is_stored() {
     let service = service();
     let db = tmp_db("defaults");
-    let state = service.open_state(db.clone()).await.expect("open");
+    let state = service.opened(db.clone()).await.expect("open");
     assert_eq!(
         state.settings.fiat_currency,
         crate::store::state::FiatCurrency::Usd
@@ -44,7 +44,7 @@ async fn a_command_persists_without_the_caller_saving() {
     let db = tmp_db("persist");
 
     let first = service();
-    first.open_state(db.clone()).await.expect("open");
+    first.opened(db.clone()).await.expect("open");
     let transition = first
         .apply_state_command(StateCommand::SetAppSetting {
             update: crate::store::state::AppSettingUpdate::FiatCurrency {
@@ -65,7 +65,7 @@ async fn a_command_persists_without_the_caller_saving() {
 
     // A second service, as a second process would see it.
     let second = service();
-    let reopened = second.open_state(db.clone()).await.expect("reopen");
+    let reopened = second.opened(db.clone()).await.expect("reopen");
     assert_eq!(
         reopened.settings.fiat_currency,
         crate::store::state::FiatCurrency::Eur
@@ -91,7 +91,7 @@ fn currency_codes_are_normalized() {
 #[tokio::test]
 async fn a_no_op_command_emits_no_event() {
     let service = service();
-    service.open_state(tmp_db("noop")).await.expect("open");
+    service.opened(tmp_db("noop")).await.expect("open");
     let transition = service
         .apply_state_command(StateCommand::SetAppSetting {
             update: crate::store::state::AppSettingUpdate::FiatCurrency {

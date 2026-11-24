@@ -102,10 +102,7 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
         "cardano-multisig-{}.sqlite",
         crate::store::new_id()
     ));
-    service
-        .open_state(db.to_string_lossy().into())
-        .await
-        .unwrap();
+    service.opened(db.to_string_lossy().into()).await.unwrap();
     let secrets = Arc::new(InMemorySecretStore::new());
     service.set_secret_store(secrets.clone());
     let fixture = fixture();
@@ -138,9 +135,7 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
             None,
             None,
             None,
-            true,
-            false,
-            false,
+            crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap()
         .address

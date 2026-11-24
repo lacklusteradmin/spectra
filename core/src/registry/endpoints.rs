@@ -110,16 +110,7 @@ impl Chain {
             Chain::Litecoin => PendingStatusPoll::Utxo {
                 require_send_kind: false,
             },
-            Chain::Bitcoin
-            | Chain::BitcoinCash
-            | Chain::BitcoinSV
-            | Chain::Dogecoin
-            | Chain::Zcash
-            | Chain::BitcoinGold
-            | Chain::Decred
-            | Chain::Kaspa
-            | Chain::Dash
-            | Chain::Peercoin => PendingStatusPoll::Utxo {
+            utxo if utxo.uses_account_utxo() => PendingStatusPoll::Utxo {
                 require_send_kind: true,
             },
             Chain::Ton => PendingStatusPoll::TransactionStatus(EndpointApi::ToncenterV3),
@@ -141,44 +132,21 @@ impl Chain {
         }
     }
 
-    /// How incoming history merges with stored history.
-    /// Exhaustive so each new chain must specify its merge rule.
-    pub fn transaction_merge_strategy(
-        self,
-    ) -> crate::store::transaction_merge::TransactionMergeStrategy {
-        use crate::store::transaction_merge::TransactionMergeStrategy as S;
-        // Resolved through the mainnet counterpart so a testnet can never merge
-        // differently from the chain it mirrors — listing them separately is
-        // how `zcash-testnet` silently ended up account-based.
-        match self.mainnet_counterpart() {
-            Chain::Bitcoin
-            | Chain::Dogecoin
-            | Chain::BitcoinCash
-            | Chain::BitcoinSV
-            | Chain::Litecoin
-            | Chain::BitcoinGold
-            | Chain::Dash
-            | Chain::Decred
-            | Chain::Zcash
-            | Chain::Kaspa
-            | Chain::Peercoin => S::Utxo,
-            other if other.is_evm() => S::Evm,
-            _ => S::AccountBased,
-        }
-    }
-
     /// Whether a wallet's balance and history come from scanning blocks on
     /// the device through a daemon, rather than from a provider's index.
     pub fn scans_for_balance(self) -> bool {
         self.mainnet_counterpart() == Self::Monero
     }
-    pub(crate) fn history_refresh_kind(self) -> HistoryRefreshKind {
+
+    /// The family this chain's history is read and merged in, the same for
+    /// a testnet as for its mainnet.
+    pub fn history_family(self) -> HistoryFamily {
         if self.is_evm() {
-            HistoryRefreshKind::Evm
+            HistoryFamily::Evm
         } else if self.uses_account_utxo() {
-            HistoryRefreshKind::Utxo
+            HistoryFamily::Utxo
         } else {
-            HistoryRefreshKind::Normalized
+            HistoryFamily::Account
         }
     }
 }

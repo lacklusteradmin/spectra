@@ -86,7 +86,7 @@ async fn wallets(server: &MockServer) -> Wallets {
     let database =
         std::env::temp_dir().join(format!("multisig-tron-{}.sqlite", crate::store::new_id()));
     service
-        .open_state(database.to_string_lossy().into_owned())
+        .opened(database.to_string_lossy().into_owned())
         .await
         .unwrap();
     let fixture = fixture();

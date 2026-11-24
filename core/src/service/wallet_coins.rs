@@ -10,13 +10,7 @@
 
 use super::*;
 
-/// Which branch of the account an address is on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, uniffi::Enum)]
-#[serde(rename_all = "camelCase")]
-pub enum AddressBranch {
-    Receive,
-    Change,
-}
+pub use crate::wallet_db::AddressBranch;
 
 /// One address the wallet owns.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
@@ -88,11 +82,7 @@ impl WalletService {
                 .iter()
                 .filter(|row| row.wallet_id == wallet_id)
                 .filter_map(|row| {
-                    let branch = match row.branch.as_deref()? {
-                        "external" => AddressBranch::Receive,
-                        "change" => AddressBranch::Change,
-                        _ => return None,
-                    };
+                    let branch = row.branch?;
                     Some((
                         row.address.clone(),
                         (branch, u32::try_from(row.branch_index?).ok()?),
@@ -256,4 +246,4 @@ fn path_place(path: &str) -> Option<(AddressBranch, u32)> {
 
 #[cfg(test)]
 #[path = "tests/wallet_coins.rs"]
-mod wallet_coins_tests;
+mod tests;

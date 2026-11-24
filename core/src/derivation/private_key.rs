@@ -27,9 +27,6 @@ pub(super) fn derive(
             },
             public_key_hex: want_public_key.then(|| hex::encode(public)),
             private_key_hex: None,
-            account: 0,
-            branch: 0,
-            index: 0,
         });
     }
     let seed: &[u8; 32] = bytes
@@ -76,9 +73,6 @@ pub(super) fn derive(
             address,
             public_key_hex: want_public_key.then(|| hex::encode(public)),
             private_key_hex: None,
-            account: 0,
-            branch: 0,
-            index: 0,
         });
     }
     let secret = secp256k1::SecretKey::from_slice(&bytes).map_err(SpectraBridgeError::failure)?;
@@ -103,8 +97,5 @@ pub(super) fn derive(
         address,
         public_key_hex: want_public_key.then(|| hex::encode(key.serialize())),
         private_key_hex: None,
-        account: 0,
-        branch: 0,
-        index: 0,
     })
 }
