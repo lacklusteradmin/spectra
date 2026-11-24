@@ -646,15 +646,53 @@ fn every_evm_chain_lowercases_its_addresses() {
     use crate::registry::Chain;
     use crate::send::flow::normalize_address;
 
-    let mixed = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
+    let checksummed = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
     for chain in Chain::all().filter(|c| c.is_evm()) {
         assert_eq!(
-            normalize_address(chain, mixed),
-            mixed.to_lowercase(),
+            normalize_address(chain, checksummed),
+            checksummed.to_lowercase(),
             "{} left a mixed-case address as typed",
             chain.str_id()
         );
     }
+    // XDC's own spelling is stored and sent as the `0x` address.
+    let xdc = "xdc742d35Cc6634C0532925a3b844Bc454e4438f44e";
+    assert_eq!(
+        normalize_address(Chain::Xdc, xdc),
+        checksummed.to_lowercase()
+    );
+    assert_eq!(normalize_address(Chain::Ethereum, xdc), xdc);
+}
+
+/// A send's destination is judged with its EIP-55 checksum. Normalizing
+/// lowercased first, so a mixed-case address with a mistyped character — one
+/// letter's case changed is what that looks like — passed as a destination
+/// and as an address book entry; it stays as typed now, and is refused. The
+/// one-case spellings carry no checksum and still pass.
+#[test]
+fn a_destination_with_a_broken_checksum_is_refused_on_every_evm_chain() {
+    use crate::registry::Chain;
+    use crate::send::flow::{is_valid_send_address, normalize_address};
+
+    let broken = "0x742d35cC6634C0532925a3b844Bc454e4438f44e";
+    for chain in Chain::all().filter(|c| c.is_evm()) {
+        assert!(!is_valid_send_address(chain, broken.into()), "{chain}");
+        assert_eq!(normalize_address(chain, broken), broken, "{chain}");
+        for unchecked in [
+            "0x742d35cc6634c0532925a3b844bc454e4438f44e",
+            "0x742D35CC6634C0532925A3B844BC454E4438F44E",
+            " 0x742d35Cc6634C0532925a3b844Bc454e4438f44e ",
+        ] {
+            assert!(
+                is_valid_send_address(chain, unchecked.into()),
+                "{chain} {unchecked}"
+            );
+        }
+    }
+    assert!(!is_valid_send_address(
+        Chain::Xdc,
+        "xdc742d35cC6634C0532925a3b844Bc454e4438f44e".into()
+    ));
 }
 
 /// And a chain whose addresses are case-significant is left alone. Folding

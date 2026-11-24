@@ -10,10 +10,11 @@ use crate::api::endpoint::EndpointApi;
 use crate::api::http::HttpClient;
 use crate::registry::Chain;
 
+pub mod assets;
 mod metadata;
 pub mod multisig;
 pub mod pools;
-pub use metadata::{PolkadotExtension, PolkadotRuntime};
+pub use metadata::{AssetTransferCall, PolkadotExtension, PolkadotRuntime};
 
 const SYSTEM_EVENTS_KEY: &str =
     "0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7";
@@ -159,6 +160,14 @@ impl SubstrateClient {
     /// Call on a single endpoint so the metadata, storage and quote share one
     /// network and one explicitly pinned state, even while a runtime upgrades.
     pub async fn polkadot_context(&self, chain: Chain) -> Result<PolkadotContext, ApiError> {
+        Ok(self.pinned_runtime(chain).await?.0)
+    }
+
+    /// The pinned context and the runtime metadata it was read from.
+    async fn pinned_runtime(
+        &self,
+        chain: Chain,
+    ) -> Result<(PolkadotContext, metadata::Metadata), ApiError> {
         let genesis_hash = self.verify_substrate_genesis(chain).await?;
         let block_hash = decode_hash(&self.rpc_call("chain_getBlockHash", json!([])).await?)?;
         let version = self
@@ -173,20 +182,59 @@ impl SubstrateClient {
         let (transfer_pallet, transfer_call, existential_deposit, extensions) =
             metadata.contract(chain)?;
         let (_, finalized_number) = self.finalized_head().await?;
-        Ok(PolkadotContext {
-            runtime: PolkadotRuntime {
-                spec_version,
-                transaction_version,
-                genesis_hash,
-                metadata_hash: blake2_hash(&bytes),
-                transfer_pallet,
-                transfer_call,
-                existential_deposit,
-                extensions,
+        Ok((
+            PolkadotContext {
+                runtime: PolkadotRuntime {
+                    spec_version,
+                    transaction_version,
+                    genesis_hash,
+                    metadata_hash: blake2_hash(&bytes),
+                    transfer_pallet,
+                    transfer_call,
+                    existential_deposit,
+                    extensions,
+                },
+                block_hash,
+                finalized_number,
             },
-            block_hash,
-            finalized_number,
-        })
+            metadata,
+        ))
+    }
+
+    /// The runtime metadata at `context`'s block: the types every storage
+    /// value and call is read and built by.
+    async fn runtime_metadata(
+        &self,
+        context: &PolkadotContext,
+    ) -> Result<metadata::Metadata, ApiError> {
+        let value = self
+            .rpc_call("state_getMetadata", json!([context.block_hash]))
+            .await?;
+        metadata::Metadata::decode(&decode_hex(
+            value.as_str().or_decode("Missing runtime metadata")?,
+        )?)
+    }
+
+    /// A storage value at block `at`, decoded by the runtime's own type for
+    /// it; `None` where the item holds nothing for `key`.
+    async fn storage_value(
+        &self,
+        metadata: &metadata::Metadata,
+        pallet: &str,
+        item: &str,
+        key: &[u8],
+        at: &str,
+    ) -> Result<Option<Value>, ApiError> {
+        let key = metadata.storage_key(pallet, item, key)?;
+        let raw = self.rpc_call("state_getStorage", json!([key, at])).await?;
+        if raw.is_null() {
+            return Ok(None);
+        }
+        Ok(Some(metadata.decode_storage(
+            pallet,
+            item,
+            &decode_hex(raw.as_str().or_decode("Invalid runtime storage")?)?,
+        )?))
     }
 
     pub async fn fetch_balance_at(

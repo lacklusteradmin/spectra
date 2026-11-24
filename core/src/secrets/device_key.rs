@@ -198,7 +198,7 @@ mod tests {
             }
             fn unwrap_device_key(&self, _: Vec<u8>) -> Result<Vec<u8>, SecretStoreError> {
                 Err(SecretStoreError::Backend {
-                    message: "the enclave refused".into(),
+                    reason: "the enclave refused".into(),
                 })
             }
         }

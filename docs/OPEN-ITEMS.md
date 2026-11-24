@@ -83,12 +83,17 @@ cosigners as data, as PSBTs do. What remains:
 ### History and provider coverage
 
 - [ ] **Add built-in EVM history and token-discovery providers.** BNB,
-  HyperEVM, Linea, Sei, Cronos, opBNB, Sonic, Berachain, X Layer and Monad
+  HyperEVM, Linea, Sei, Cronos, opBNB, Sonic, Berachain, X Layer, Monad, Kaia,
+  XDC Network, Robinhood Chain, Kava EVM, Stable, Arc, Katana, peaq and 0G
   currently require a custom Blockscout-compatible address indexer. Add only
   independently verified keyless sources for the concrete network, including
   the corresponding test networks where coverage is absent. Verify network
   identity, paginated native/token history, discovery and failure reporting;
-  an ordinary RPC does not supply complete address history.
+  an ordinary RPC does not supply complete address history. Robinhood Chain's
+  and Arc's Blockscout instances answer non-browser clients with a Cloudflare
+  challenge, and 0G's `chainscan.0g.ai/open/api` speaks a variant of the
+  Etherscan API (`timestamp`, hex `gas` and `gasUsed`, `addresstokenbalance`)
+  that the Blockscout adapter does not read (docs/audits/evm-mainnets-2026-11-24).
 - [ ] **Implement Polkadot/Westend and Bittensor address-history adapters.**
   Their current Substrate RPC path supports balances, transfers and submitted
   finality, but no complete address history. A custom RPC cannot fill the gap:

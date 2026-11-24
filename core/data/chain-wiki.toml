@@ -371,3 +371,115 @@ comment = "Launched in 2012, Peercoin pioneered proof-of-stake security alongsid
 family = "UTXO payments network"
 consensus = "Hybrid Proof of Stake and Proof of Work (SHA-256)"
 state_model = "UTXO set"
+
+[[chains]]
+chain = "kaia"
+comment = "An EVM layer 1 formed from the merger of the Klaytn and Finschia networks. KAIA pays transaction fees."
+family = "EVM layer 1"
+consensus = "Istanbul BFT variant with one-second blocks and immediate finality"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "xdc"
+comment = "An EVM layer 1 aimed at trade finance and tokenization. XDC pays transaction fees, and its addresses are also written with an `xdc` prefix in place of `0x`."
+family = "EVM layer 1"
+consensus = "XinFin Delegated Proof of Stake (XDPoS)"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "robinhood-chain"
+comment = "An Ethereum rollup built by Robinhood on Arbitrum Orbit for tokenized stocks and other real-world assets. ETH pays transaction fees."
+family = "Ethereum L2 (Arbitrum Orbit)"
+consensus = "Optimistic rollup on Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "kava-evm"
+comment = "The Ethereum-compatible co-chain of the Kava Cosmos SDK blockchain, sharing its validators. KAVA pays fees, and its nodes take only legacy transactions."
+family = "EVM co-chain of a Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "chiliz"
+comment = "A BNB Smart Chain–derived EVM layer 1 for sports and entertainment fan tokens. CHZ pays fees, with a fixed base fee and a tip of at least 1 gwei."
+family = "EVM layer 1"
+consensus = "Proof of Staked Authority (Parlia)"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "stable"
+comment = "An EVM layer 1 for USDT payments. USDT0 is both its gas coin, at 18 places, and an ERC-20 at 6 places over the same balance; STABLE is its governance token."
+family = "EVM layer 1"
+consensus = "StableBFT, delegated Proof of Stake on CometBFT"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "arc"
+comment = "Circle's EVM layer 1 for stablecoin finance. USDC is both its gas coin, at 18 places, and an ERC-20 at 6 places over the same balance."
+family = "EVM layer 1"
+consensus = "Malachite BFT, permissioned Proof of Authority"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "manta-pacific"
+comment = "An OP Stack rollup on Ethereum that posts its data to Celestia. ETH pays fees; MANTA is an ERC-20 token."
+family = "Ethereum L2 (OP Stack)"
+consensus = "Optimistic rollup on Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "metis"
+comment = "An Ethereum rollup derived from Optimism's original OVM, ordered by a rotating pool of staked sequencers. METIS pays fees, and its nodes take only legacy transactions."
+family = "Ethereum L2 (Optimistic rollup)"
+consensus = "Optimistic rollup on Ethereum with staked sequencers"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "flare"
+comment = "An Avalanche-derived EVM layer 1 with built-in oracle and data protocols. FLR pays fees, all of which are burned."
+family = "EVM layer 1"
+consensus = "Snowman++ Proof of Stake"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "katana"
+comment = "A DeFi-focused Ethereum layer 2 built on Agglayer's CDK OP Stack with ZK-proven settlement. ETH pays fees, an operator fee included; KAT is an ERC-20 token."
+family = "Ethereum L2 (OP Stack)"
+consensus = "ZK-proven rollup on Ethereum"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "megaeth"
+comment = "A real-time Ethereum layer 2 based on the OP Stack, producing 10 ms mini-blocks and posting data to EigenDA. ETH pays fees under a compute-and-storage gas model; MEGA is an ERC-20 token."
+family = "Ethereum L2 (OP Stack)"
+consensus = "Single sequencer with data on EigenDA"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "merlin"
+comment = "A Bitcoin layer 2 ZK rollup built on Polygon CDK. Bridged BTC pays gas at 18 places, and its nodes take only legacy transactions; MERL is an ERC-20 token."
+family = "Bitcoin L2 (Polygon CDK zkEVM)"
+consensus = "ZK rollup with proofs posted to Bitcoin"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "peaq"
+comment = "A Polkadot parachain for machine and DePIN applications with a built-in EVM, which is the side Spectra uses. PEAQ pays fees and is staked by collators."
+family = "Substrate parachain with an EVM"
+consensus = "Aura collators with Polkadot relay-chain finality"
+state_model = "Substrate accounts mapped to EVM accounts"
+
+[[chains]]
+chain = "somnia"
+comment = "A high-throughput EVM layer 1 that compiles EVM bytecode to native code. SOMI pays gas, and a transfer that creates an account costs more gas than one to an existing account."
+family = "EVM layer 1"
+consensus = "MultiStream Proof of Stake BFT"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "0g"
+comment = "An EVM layer 1 built for AI workloads, with CometBFT consensus and a separate execution layer. 0G pays gas."
+family = "EVM layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "EVM account state"

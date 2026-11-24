@@ -380,7 +380,7 @@ impl crate::secrets::store::SecretStore for FailingSecrets {
                 == 0
         {
             return Err(crate::secrets::store::SecretStoreError::Backend {
-                message: "injected write failure".into(),
+                reason: "injected write failure".into(),
             });
         }
         self.inner.save_secret(kind, key, value)

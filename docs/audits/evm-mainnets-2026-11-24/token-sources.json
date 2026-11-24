@@ -1,0 +1,158 @@
+{
+ "checked_at_utc": "2026-11-24T09:34:50+00:00",
+ "checks": [
+  {
+   "token_id": "tether",
+   "chain_id": "kaia",
+   "contract": "0xd077a400968890eacc75cdc901f0356c943e4fdb",
+   "url": "https://tether.to/en/supported-protocols/",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "tether",
+   "chain_id": "kava-evm",
+   "contract": "0x919c1c267bc06a7039e03fcc2ef738525769109c",
+   "url": "https://tether.to/en/supported-protocols/",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "usd-coin",
+   "chain_id": "xdc",
+   "contract": "0xfa2958cb79b0491cc627c1557f441ef849ca8eb1",
+   "url": "https://developers.circle.com/stablecoins/usdc-contract-addresses",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "global-dollar",
+   "chain_id": "robinhood-chain",
+   "contract": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+   "url": "https://docs.paxos.com/guides/stablecoin/usdg/mainnet",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "global-dollar",
+   "chain_id": "robinhood-chain",
+   "contract": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+   "url": "https://docs.robinhood.com/chain/contracts",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "usdt0",
+   "chain_id": "flare",
+   "contract": "0xe7cd86e13ac4309349f30b3435a9d337750fc82d",
+   "url": "https://docs.usdt0.to/technical-documentation/deployments",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "usdt0",
+   "chain_id": "megaeth",
+   "contract": "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
+   "url": "https://docs.usdt0.to/technical-documentation/deployments",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "tether-gold-tokens",
+   "chain_id": "stable",
+   "contract": "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
+   "url": "https://docs.usdt0.to/technical-documentation/deployments",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "usdt0 (native face)",
+   "chain_id": "stable",
+   "contract": "0x779ded0c9e1022225f8e0630b35a9b54be713736",
+   "url": "https://docs.usdt0.to/technical-documentation/deployments",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "stable-2",
+   "chain_id": "stable",
+   "contract": "0x0000000000000000000000000000000000001003",
+   "url": "https://docs.stable.xyz/llms-full.txt",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "euro-coin",
+   "chain_id": "arc",
+   "contract": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+   "url": "https://docs.arc.io/arc/references/contract-addresses",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "usd-coin (native face)",
+   "chain_id": "arc",
+   "contract": "0x3600000000000000000000000000000000000000",
+   "url": "https://developers.circle.com/stablecoins/usdc-contract-addresses",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "manta-network",
+   "chain_id": "manta-pacific",
+   "contract": "0x95cef13441be50d20ca4558cc0a27b601ac544e5",
+   "url": "https://docs.manta.network/docs/mantaToken/",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "katana-network-token",
+   "chain_id": "katana",
+   "contract": "0x7f1f4b4b29f5058fa32cc7a97141b8d7e5abdc2d",
+   "url": "https://docs.katana.network/katana/technical-reference/contract-addresses/",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "megaeth",
+   "chain_id": "megaeth",
+   "contract": "0x28b7e77f82b25b95953825f1e3ea0e36c1c29861",
+   "url": "https://docs.megaeth.com/developer-docs/overview-1/contracts.md",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "ethena-usde",
+   "chain_id": "megaeth",
+   "contract": "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34",
+   "url": "https://docs.megaeth.com/developer-docs/overview-1/contracts.md",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  },
+  {
+   "token_id": "merlin-chain",
+   "chain_id": "merlin",
+   "contract": "0x5c46bff4b38dc1eae09c5bac65872a1d8bc87378",
+   "url": "https://docs.merlinchain.io/merlin-docs/developers/builder-guides/general-contracts/bridged-tokens.md",
+   "fetched": true,
+   "contract_in_served_page": true,
+   "error": null
+  }
+ ]
+}

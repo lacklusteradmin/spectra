@@ -43,6 +43,9 @@ impl Metadata {
         Ok(result)
     }
 
+    /// The storage key of `item` for `key`, the SCALE encoding of the map's
+    /// key: one value, or a tuple's values in order for a map of several
+    /// keys, each hashed by its own hasher.
     pub(crate) fn storage_key(
         &self,
         pallet: &str,
@@ -58,17 +61,26 @@ impl Metadata {
             } if hashers.len() == 1 => {
                 // Validate the supplied key against its actual runtime type.
                 self.decode_value(ty.id, key)?;
-                match hashers[0] {
-                    StorageHasher::Blake2_128Concat => {
-                        prefix.extend(crate::derivation::primitives::blake2b::<16>(&[key]));
-                        prefix.extend(key);
-                    }
-                    StorageHasher::Twox64Concat => {
-                        prefix.extend(xxhash_rust::xxh64::xxh64(key, 0).to_le_bytes());
-                        prefix.extend(key);
-                    }
-                    StorageHasher::Identity => prefix.extend(key),
-                    _ => return Err(unsupported()),
+                hash_key(&mut prefix, &hashers[0], key)?;
+            }
+            StorageEntryType::Map {
+                hashers, key: ty, ..
+            } => {
+                let TypeDef::Tuple(tuple) = &self.ty(ty.id)?.type_def else {
+                    return Err(unsupported());
+                };
+                if tuple.fields.len() != hashers.len() {
+                    return Err(unsupported());
+                }
+                // Each part is as long as its runtime type reads.
+                let mut input = key;
+                for (part, hasher) in tuple.fields.iter().zip(hashers) {
+                    let start = input;
+                    self.value(part.id, &mut input, 0)?;
+                    hash_key(&mut prefix, hasher, &start[..start.len() - input.len()])?;
+                }
+                if !input.is_empty() {
+                    return Err(unsupported());
                 }
             }
             _ => return Err(unsupported()),
@@ -226,6 +238,23 @@ impl Metadata {
             batch_all_call: batch.index,
         })
     }
+}
+
+/// Append `key` to a storage prefix as `hasher` keys it.
+fn hash_key(prefix: &mut Vec<u8>, hasher: &StorageHasher, key: &[u8]) -> Result<(), ApiError> {
+    match hasher {
+        StorageHasher::Blake2_128Concat => {
+            prefix.extend(crate::derivation::primitives::blake2b::<16>(&[key]));
+            prefix.extend(key);
+        }
+        StorageHasher::Twox64Concat => {
+            prefix.extend(xxhash_rust::xxh64::xxh64(key, 0).to_le_bytes());
+            prefix.extend(key);
+        }
+        StorageHasher::Identity => prefix.extend(key),
+        _ => return Err(unsupported()),
+    }
+    Ok(())
 }
 
 fn twox128(bytes: &[u8]) -> Vec<u8> {

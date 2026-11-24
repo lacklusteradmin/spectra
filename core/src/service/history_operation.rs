@@ -33,7 +33,7 @@ impl WalletService {
             this.bound_database().await?;
             if !interval_secs.is_finite() || interval_secs < 0.0 {
                 return Err(SpectraBridgeError::InvalidInput {
-                    message: "history interval must be finite and nonnegative".into(),
+                    reason: "history interval must be finite and nonnegative".into(),
                 });
             }
             let state = this.app_state().await;

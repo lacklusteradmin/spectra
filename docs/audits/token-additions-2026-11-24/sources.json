@@ -1,0 +1,170 @@
+{
+  "checked_at_utc": "2026-11-24",
+  "scope": "Identity of eight stablecoin deployments added to core/data/tokens.toml: USDT and USDC on BNB Smart Chain, USDT0 on Plasma, USDC on Sei, USDT on Celo, USDT on opBNB, and USDT and USDC on Polkadot Asset Hub.",
+  "decision_policy": "An issuer's own list, or the official list of the bridge operator that mints the deployment, names the exact contract on the exact network. Chain reads (rpc-metadata.json) are supplemental. Live pages that render their contract table in the browser were read on the date above and cannot be pinned; GitHub sources are pinned to a commit.",
+  "deployments": [
+    {
+      "token_id": "tether",
+      "chain_id": "bnb",
+      "standard": "BEP-20",
+      "contract": "0x55d398326f99059ff775485246999027b3197955",
+      "decimals": 18,
+      "operator": "Binance (Binance-Peg wrapped token, backed by USDT Binance holds on Ethereum)",
+      "issuer_native": false,
+      "sources": [
+        {
+          "url": "https://www.binance.com/en/proof-of-collateral",
+          "pinned": false,
+          "read": "browser, 2026-11-24 (contract table rendered by script)",
+          "excerpt": "Wrapped Token | USDT | BEP20 | 0x55d398326f990...6999027b3197955 (link to the full address)"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/bnb-chain/bcfusion/26b36d15803eb30edfa1db08290c0fd8d247c42c/README.md",
+          "pinned": true,
+          "line": 110,
+          "excerpt": "| USDT | USDT-6D8 | [✅Yes](https://bscscan.com/address/0x55d398326f99059fF775485246999027B3197955)"
+        }
+      ],
+      "note": "Tether's supported-protocols page lists only XAU₮ under BNB Smart Chain: this USDT is Binance's, not Tether's. Its contract names itself Tether USD (USDT), exchanges credit it as USDT, and it is listed under the tether token as the Avalanche Bridge DAI.e is under dai."
+    },
+    {
+      "token_id": "usd-coin",
+      "chain_id": "bnb",
+      "standard": "BEP-20",
+      "contract": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+      "decimals": 18,
+      "operator": "Binance (Binance-Peg wrapped token, backed by USDC Binance holds on Ethereum)",
+      "issuer_native": false,
+      "sources": [
+        {
+          "url": "https://www.binance.com/en/proof-of-collateral",
+          "pinned": false,
+          "read": "browser, 2026-11-24 (contract table rendered by script)",
+          "excerpt": "Wrapped Token | USDC | BEP20 | 0x8ac76a51cc950...e1ad97b32cd580d (link to the full address)"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/bnb-chain/bcfusion/26b36d15803eb30edfa1db08290c0fd8d247c42c/README.md",
+          "pinned": true,
+          "line": 109,
+          "excerpt": "| USDC | USDC-CD2 | [✅Yes](https://bscscan.com/address/0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d)"
+        }
+      ],
+      "note": "Circle's USDC contract-address list has no BNB Smart Chain entry: there is no Circle-issued USDC there."
+    },
+    {
+      "token_id": "usdt0",
+      "chain_id": "plasma",
+      "standard": "ERC-20",
+      "contract": "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
+      "decimals": 6,
+      "operator": "USDT0 (LayerZero OFT native deployment)",
+      "issuer_native": true,
+      "sources": [
+        {
+          "url": "https://docs.usdt0.to/api/deployments",
+          "pinned": false,
+          "read": "HTTP GET, 2026-11-24",
+          "excerpt": "usdt0.native: {\"name\":\"Plasma\",\"chainId\":9745, ... {\"name\":\"Token\",\"address\":\"0xB8CE59FC3717ada4C02eaDF9682A9e934F625ebb\"}"
+        }
+      ],
+      "note": "The same address is USDT0's token on other networks too; the entry quoted is the one under usdt0.native with chainId 9745. The other Plasma entry in that file is xaut0's."
+    },
+    {
+      "token_id": "usd-coin",
+      "chain_id": "sei",
+      "standard": "ERC-20",
+      "contract": "0xe15fc38f6d8c56af07bbcbe3baf5708a2bf42392",
+      "decimals": 6,
+      "operator": "Circle (native USDC)",
+      "issuer_native": true,
+      "sources": [
+        {
+          "url": "https://developers.circle.com/stablecoins/usdc-contract-addresses.md",
+          "pinned": false,
+          "read": "HTTP GET, 2026-11-24",
+          "line": 66,
+          "excerpt": "| Sei | [`0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392`](https://seiscan.io/address/..."
+        }
+      ]
+    },
+    {
+      "token_id": "tether",
+      "chain_id": "celo",
+      "standard": "ERC-20",
+      "contract": "0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e",
+      "decimals": 6,
+      "operator": "Tether (native USD₮)",
+      "issuer_native": true,
+      "sources": [
+        {
+          "url": "https://tether.to/en/supported-protocols/",
+          "pinned": false,
+          "read": "browser, 2026-11-24",
+          "excerpt": "Celo Blockchain ... USD₮ contract address: https://celoscan.io/token/0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/celo-org/docs/dc39161794c0d764571a85d4d0daa8b36c9ee4a1/build/tools/contracts/stablecoin-contracts.mdx",
+          "pinned": true,
+          "line": 33,
+          "excerpt": "| **USD₮** | [Tether](https://tether.to/en/) | [`0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e`]"
+        }
+      ],
+      "note": "The contract's symbol is USD₮ (U+20AE). Paying gas in USDT goes through the fee-currency adapter 0x0e2a3e05bc9a16f5292a6170456a710cb89c6f72, which is not the token. USDT0 lists Celo under its Legacy Mesh, which keeps this contract."
+    },
+    {
+      "token_id": "tether",
+      "chain_id": "opbnb",
+      "standard": "ERC-20",
+      "contract": "0x9e5aac1ba1a2e6aed6b32689dfcf62a509ca96f3",
+      "decimals": 18,
+      "operator": "opBNB standard bridge (OP Stack OptimismMintableERC20 of BNB Smart Chain's USDT above)",
+      "issuer_native": false,
+      "sources": [
+        {
+          "url": "https://raw.githubusercontent.com/bnb-chain/opbnb-bridge-tokens/21699c666d8a337b54d8e181b4fb6088f4172f9d/data/USDT/data.json",
+          "pinned": true,
+          "lines": "6-7",
+          "excerpt": "\"l1Address\": \"0x55d398326f99059fF775485246999027B3197955\", \"l2Address\": \"0x9e5aac1ba1a2e6aed6b32689dfcf62a509ca96f3\""
+        }
+      ],
+      "note": "The repository's README calls its list the opBNB bridge's source of truth. On chain, REMOTE_TOKEN() is BNB Smart Chain's USDT and BRIDGE() the L2StandardBridge predeploy (rpc-metadata.json)."
+    },
+    {
+      "token_id": "tether",
+      "chain_id": "polkadot",
+      "standard": "Asset Hub Asset",
+      "contract": "1984",
+      "decimals": 6,
+      "operator": "Tether (native USD₮, an Assets pallet asset)",
+      "issuer_native": true,
+      "sources": [
+        {
+          "url": "https://tether.to/en/supported-protocols/",
+          "pinned": false,
+          "read": "HTTP GET, 2026-11-24 (present in the served HTML)",
+          "excerpt": "To integrate Tether’s USD₮ Token on the Polkadot AssetHub use Asset ID 1984"
+        }
+      ],
+      "note": "Its pallet metadata names it USDt, six decimals; it is sufficient, with a minimum balance of 10,000 units (asset-hub-reads.json)."
+    },
+    {
+      "token_id": "usd-coin",
+      "chain_id": "polkadot",
+      "standard": "Asset Hub Asset",
+      "contract": "1337",
+      "decimals": 6,
+      "operator": "Circle (native USDC, an Assets pallet asset)",
+      "issuer_native": true,
+      "sources": [
+        {
+          "url": "https://developers.circle.com/stablecoins/usdc-contract-addresses.md",
+          "pinned": false,
+          "read": "HTTP GET, 2026-11-24",
+          "line": 64,
+          "excerpt": "| Polkadot Asset Hub | [`1337`](https://assethub-polkadot.subscan.io/assets/1337) |"
+        }
+      ],
+      "note": "Its pallet metadata names it USDC, six decimals; it is sufficient, with a minimum balance of 10,000 units (asset-hub-reads.json). Circle's Westend asset is another id (31337) and is not added."
+    }
+  ]
+}

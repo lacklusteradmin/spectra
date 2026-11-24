@@ -33,7 +33,7 @@ impl ResolvedSendIdentity {
 
 fn invalid(message: &str) -> SpectraBridgeError {
     SpectraBridgeError::InvalidInput {
-        message: message.into(),
+        reason: message.into(),
     }
 }
 

@@ -413,6 +413,7 @@ impl WalletService {
                         call_data: call_ref.clone(),
                         nonce: 0,
                         amount: 0,
+                        asset: None,
                         fee: 0,
                         finalized_number: context.finalized_number,
                     };

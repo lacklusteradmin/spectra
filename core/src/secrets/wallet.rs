@@ -61,11 +61,11 @@ impl From<WalletSecretError> for crate::error::SpectraBridgeError {
             | WalletSecretError::PasswordTooShort { .. }
             | WalletSecretError::PasswordRequired
             | WalletSecretError::PasswordNotRequired => Self::InvalidInput {
-                message: message.into(),
+                reason: message.into(),
             },
-            WalletSecretError::Corrupt { .. } => Self::Decode { message },
+            WalletSecretError::Corrupt { .. } => Self::Decode { reason: message },
             WalletSecretError::Backend { .. } => Self::Failure {
-                message: message.into(),
+                reason: message.into(),
             },
         }
     }
@@ -891,7 +891,7 @@ mod tests {
         fn load_secret(&self, kind: SecretClass, key: String) -> Result<String, SecretStoreError> {
             if kind == SecretClass::Generic {
                 return Err(SecretStoreError::Backend {
-                    message: "device locked".into(),
+                    reason: "device locked".into(),
                 });
             }
             self.0.load_secret(kind, key)

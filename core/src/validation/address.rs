@@ -20,6 +20,15 @@ pub fn validate_address(chain: Chain, value: &str) -> AddressValidationResult {
         return invalid_result();
     }
     if chain.is_evm() {
+        // XDC's wallets, explorers and some exchanges write the same twenty
+        // bytes behind `xdc`; the node and the wire take `0x`.
+        if chain.mainnet_counterpart() == Chain::Xdc
+            && let Some(body) = value
+                .strip_prefix("xdc")
+                .or_else(|| value.strip_prefix("XDC"))
+        {
+            return validate_evm_address(&format!("0x{body}"));
+        }
         // EVM addresses are network-agnostic on the wire.
         return validate_evm_address(value);
     }
@@ -582,6 +591,34 @@ mod tests {
                 "{unchecked}"
             );
         }
+    }
+
+    /// An XDC address written behind `xdc`, as XDC's wallets and some
+    /// exchanges' deposit pages write it, is the same `0x` address, checksum
+    /// included; no other network reads the prefix.
+    #[test]
+    fn an_xdc_prefix_is_read_as_0x_on_xdc_only() {
+        use crate::registry::Chain;
+        let normalized = "0x742d35cc6634c0532925a3b844bc454e4438f44e";
+        for spelled in [
+            "xdc742d35Cc6634C0532925a3b844Bc454e4438f44e",
+            "XDC742d35cc6634c0532925a3b844bc454e4438f44e",
+            "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        ] {
+            let result = validate_address(Chain::Xdc, spelled);
+            assert!(result.is_valid, "{spelled}");
+            assert_eq!(result.normalized_value.as_deref(), Some(normalized));
+        }
+        assert!(
+            !validate_address(Chain::Xdc, "xdc742d35cC6634C0532925a3b844Bc454e4438f44e").is_valid
+        );
+        assert!(
+            !validate_address(
+                Chain::Ethereum,
+                "xdc742d35cc6634c0532925a3b844bc454e4438f44e"
+            )
+            .is_valid
+        );
     }
 
     #[test]

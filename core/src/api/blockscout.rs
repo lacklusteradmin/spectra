@@ -847,6 +847,15 @@ mod every_evm_chain_says_where_its_history_comes_from {
             Chain::Cronos,
             Chain::XLayer,
             Chain::Berachain,
+            Chain::Kaia,
+            Chain::Xdc,
+            Chain::RobinhoodChain,
+            Chain::KavaEvm,
+            Chain::Stable,
+            Chain::Arc,
+            Chain::Katana,
+            Chain::Peaq,
+            Chain::ZeroG,
         ] {
             assert_eq!(chain.evm_history_source(), EvmHistorySource::Unavailable);
             assert!(explorer_query_url(chain.evm_history_source(), "module=account").is_err());

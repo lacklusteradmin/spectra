@@ -31,6 +31,20 @@ pub fn is_valid_send_address(chain: Chain, address: String) -> bool {
 pub(crate) fn normalize_address(chain: Chain, address: &str) -> String {
     use crate::registry::AddressNormalization;
     let t = address.trim();
+    // An EVM address folds to lowercase only once its EIP-55 checksum has
+    // been read: lowercasing first discarded the checksum, so every caller
+    // that normalizes before validating — a typed destination, an ENS answer,
+    // an address book entry — accepted a mistyped mixed-case address, and a
+    // send to it reaches an address nobody holds a key for. One that fails
+    // stays as typed, which validation then refuses. XDC's `xdc` spelling
+    // folds to `0x` here too.
+    if chain.is_evm() {
+        let validated = validate_address(chain, t);
+        return match validated.normalized_value {
+            Some(normalized) if validated.is_valid => normalized,
+            _ => t.to_string(),
+        };
+    }
     match chain.address_normalization() {
         // Bech32 and CashAddr are case-insensitive but written in one case;
         // an all-uppercase form (a QR code's) is the same address, and its
@@ -517,7 +531,7 @@ mod validating_and_normalising_cannot_disagree {
     fn an_evm_address_still_matches_the_book_in_any_case() {
         use super::{HighRiskChainAddress, HighRiskSendRequest};
 
-        let stored = "0xAbCdEf0123456789AbCdEf0123456789AbCdEf01";
+        let stored = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e";
         let typed = stored.to_uppercase().replace("0X", "0x");
         assert_ne!(stored, typed);
 

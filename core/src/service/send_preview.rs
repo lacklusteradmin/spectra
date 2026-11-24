@@ -18,14 +18,14 @@ impl WalletService {
             .iter()
             .find(|w| w.id == wallet_id)
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                message: "wallet does not exist".into(),
+                reason: "wallet does not exist".into(),
             })?;
         let holding = wallet
             .holdings
             .iter()
             .find(|h| h.deployment_id() == holding_key)
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                message: "holding does not exist".into(),
+                reason: "holding does not exist".into(),
             })?;
         let (family, token) =
             super::send_destination::destination_probe_asset(holding, &state.token_preferences)?;
@@ -367,6 +367,49 @@ impl WalletService {
     ///
     /// A fee or a balance that cannot be read is an error, never a zero: a
     /// zero standing in for either is a wrong maximum offered to the user.
+    /// An Asset Hub asset transfer's fee, in the network's coin: the asset's
+    /// own transfer quoted, not a transfer of the coin. The caller fills in
+    /// the asset's balance, all of which may be sent.
+    pub(crate) async fn preview_asset_hub_asset_send(
+        &self,
+        chain: Chain,
+        address: &str,
+        contract: &str,
+    ) -> Result<SendPreview, SpectraBridgeError> {
+        let id = super::network_tokens::asset_id(contract)?;
+        let endpoints = self
+            .endpoints_for(
+                chain,
+                &[
+                    EndpointCapability::Fee,
+                    EndpointCapability::TokenBalance,
+                    EndpointCapability::Verification,
+                ],
+            )
+            .await;
+        let (fee, _, bytes) = crate::api::http::race(&endpoints, |endpoint| async move {
+            crate::send::polkadot::preview_asset_transfer(
+                &SubstrateClient::new(Arc::new(vec![endpoint])),
+                chain,
+                address,
+                id,
+            )
+            .await
+        })
+        .await?;
+        Ok(SendPreview {
+            estimated_network_fee: crate::amount::decimal::from_units(
+                fee,
+                u32::from(chain.native_decimals()),
+            ),
+            spendable_balance: String::new(),
+            max_sendable: String::new(),
+            fee_rate_description: Some("Substrate RPC quote of the asset transfer".into()),
+            estimated_transaction_bytes: i64::try_from(bytes).ok(),
+            terms: SendFeeTerms::Flat,
+        })
+    }
+
     pub(crate) async fn fetch_shared_send_preview(
         &self,
         chain: Chain,
@@ -374,7 +417,7 @@ impl WalletService {
     ) -> Result<SendPreview, SpectraBridgeError> {
         if !chain.has_shared_send_preview() {
             return Err(SpectraBridgeError::InvalidInput {
-                message: format!("{chain} has no shared-path send preview").into(),
+                reason: format!("{chain} has no shared-path send preview").into(),
             });
         }
         let decimals = u32::from(chain.native_decimals());

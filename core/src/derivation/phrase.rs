@@ -213,7 +213,7 @@ pub(crate) fn generate_phrase(
     if !word_counts(format).contains(&word_count) {
         let counts: Vec<String> = word_counts(format).iter().map(u32::to_string).collect();
         return Err(crate::error::SpectraBridgeError::InvalidInput {
-            message: crate::error::LocalizableMessage::new(
+            reason: crate::error::LocalizableMessage::new(
                 "A new %@ phrase has %@ words, not %@.",
                 [
                     chain.chain_display_name().to_string(),

@@ -90,7 +90,7 @@ pub fn derive_for_chain(
         _ if chain.is_evm() => evm::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
         _ => {
             return Err(SpectraBridgeError::InvalidInput {
-                message: format!("unsupported chain: {}", chain.chain_display_name()).into(),
+                reason: format!("unsupported chain: {}", chain.chain_display_name()).into(),
             });
         }
     })

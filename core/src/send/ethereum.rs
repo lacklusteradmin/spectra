@@ -134,7 +134,12 @@ pub(crate) fn evm_send_preview(
         max_sendable: spendable.clone(),
         spendable_balance: spendable,
         fee_rate_description: Some(format!(
-            "Max {max_fee} gwei / Priority {priority_fee} gwei{}",
+            "{}{}",
+            if chain.evm_legacy_transactions() {
+                format!("Gas price {max_fee} gwei")
+            } else {
+                format!("Max {max_fee} gwei / Priority {priority_fee} gwei")
+            },
             if custom_fees { " (custom)" } else { "" }
         )),
         estimated_transaction_bytes: None,

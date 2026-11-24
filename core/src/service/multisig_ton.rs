@@ -308,7 +308,8 @@ impl WalletService {
             destination: (destination.workchain, destination.account_id),
             bounce: destination.bounceable,
             nanotons,
-            comment: None,
+            comment: crate::send::payment_memo::PaymentMemo::ton_comment(spend.memo.as_ref())?
+                .map(str::to_string),
         }
         .order()?;
         Ok(SessionBody::Ton(TonSession {

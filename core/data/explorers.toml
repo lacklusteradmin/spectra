@@ -301,6 +301,102 @@ name = "Worldscan"
 tx_url = "https://worldscan.org/tx/{hash}"
 address_url = "https://worldscan.org/address/{address}"
 
+[[explorers]]
+chain_id = "kaia"
+name = "KaiaScan"
+tx_url = "https://kaiascan.io/tx/{hash}"
+address_url = "https://kaiascan.io/address/{address}"
+
+[[explorers]]
+chain_id = "xdc"
+name = "XDCScan"
+tx_url = "https://xdcscan.com/tx/{hash}"
+address_url = "https://xdcscan.com/address/{address}"
+
+[[explorers]]
+chain_id = "robinhood-chain"
+name = "Blockscout"
+tx_url = "https://robinhoodchain.blockscout.com/tx/{hash}"
+address_url = "https://robinhoodchain.blockscout.com/address/{address}"
+
+[[explorers]]
+chain_id = "kava-evm"
+name = "Kavascan"
+tx_url = "https://kavascan.com/tx/{hash}"
+address_url = "https://kavascan.com/address/{address}"
+
+[[explorers]]
+chain_id = "chiliz"
+name = "Chiliz Explorer"
+tx_url = "https://scan.chiliz.com/tx/{hash}"
+address_url = "https://scan.chiliz.com/address/{address}"
+
+[[explorers]]
+chain_id = "stable"
+name = "Stablescan"
+tx_url = "https://stablescan.xyz/tx/{hash}"
+address_url = "https://stablescan.xyz/address/{address}"
+
+[[explorers]]
+chain_id = "arc"
+name = "Arc Explorer"
+tx_url = "https://explorer.arc.io/tx/{hash}"
+address_url = "https://explorer.arc.io/address/{address}"
+
+[[explorers]]
+chain_id = "manta-pacific"
+name = "Manta Pacific Explorer"
+tx_url = "https://pacific-explorer.manta.network/tx/{hash}"
+address_url = "https://pacific-explorer.manta.network/address/{address}"
+
+[[explorers]]
+chain_id = "metis"
+name = "Metis Explorer"
+tx_url = "https://andromeda-explorer.metis.io/tx/{hash}"
+address_url = "https://andromeda-explorer.metis.io/address/{address}"
+
+[[explorers]]
+chain_id = "flare"
+name = "Flare Explorer"
+tx_url = "https://flare-explorer.flare.network/tx/{hash}"
+address_url = "https://flare-explorer.flare.network/address/{address}"
+
+[[explorers]]
+chain_id = "katana"
+name = "Katanascan"
+tx_url = "https://katanascan.com/tx/{hash}"
+address_url = "https://katanascan.com/address/{address}"
+
+[[explorers]]
+chain_id = "megaeth"
+name = "MegaETH Etherscan"
+tx_url = "https://mega.etherscan.io/tx/{hash}"
+address_url = "https://mega.etherscan.io/address/{address}"
+
+[[explorers]]
+chain_id = "merlin"
+name = "Merlin Scan"
+tx_url = "https://scan.merlinchain.io/tx/{hash}"
+address_url = "https://scan.merlinchain.io/address/{address}"
+
+[[explorers]]
+chain_id = "peaq"
+name = "Subscan"
+tx_url = "https://peaq.subscan.io/tx/{hash}"
+address_url = "https://peaq.subscan.io/account/{address}"
+
+[[explorers]]
+chain_id = "somnia"
+name = "Somnia Explorer"
+tx_url = "https://explorer.somnia.network/tx/{hash}"
+address_url = "https://explorer.somnia.network/address/{address}"
+
+[[explorers]]
+chain_id = "0g"
+name = "0G Chainscan"
+tx_url = "https://chainscan.0g.ai/tx/{hash}"
+address_url = "https://chainscan.0g.ai/address/{address}"
+
 # Testnets
 
 [[explorers]]

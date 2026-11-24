@@ -5,7 +5,7 @@ use crate::error::SpectraBridgeError;
 /// protocol decides whether it permits a zero-value transaction.
 pub fn parse_raw_amount(text: &str, decimals: u32) -> Result<u128, SpectraBridgeError> {
     let invalid = || SpectraBridgeError::InvalidInput {
-        message: "amount must be an unsigned decimal within the asset precision and integer range"
+        reason: "amount must be an unsigned decimal within the asset precision and integer range"
             .into(),
     };
     if decimals > 38 {

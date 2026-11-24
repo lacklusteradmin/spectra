@@ -1,6 +1,6 @@
 # Supported chain scope
 
-Spectra has 50 mainnets and 40 test networks. A chain entry identifies a network;
+Spectra has 66 mainnets and 40 test networks. A chain entry identifies a network;
 it does not promise every asset protocol or an address indexer. Chain facts live
 in `registry::Chain`, provider claims in `core/data/endpoints.toml`, and every
 operation refuses missing capabilities before signing or changing holdings.
@@ -76,15 +76,37 @@ XRP and Stellar accounts exist only once they hold the network's reserve,
 which the receive screen reads from the network while a wallet is empty.
 For a recipient that shares one account among many, such as an exchange's
 deposit address, an XRP payment or account deletion carries a destination
-tag and a Stellar payment or merge a text memo of up to 28 bytes or an ID
-memo, of XRP and issued assets alike. It is reviewed with the transaction and
+tag, a Stellar payment or merge a text memo of up to 28 bytes or an ID
+memo, of XRP and issued assets alike, and a TON transfer or multisig order
+a text comment of up to 123 bytes, one cell; a jetton transfer forwards it
+to the recipient as its forward payload. It is reviewed with the transaction and
 bound into its review digest. A destination that asks for one — XRP's
 `lsfRequireDestTag`, Stellar's SEP-29 `config.memo_required` — is refused
-without one, read from a verified node at build and again before signing.
+without one, read from a verified node at build and again before signing;
+TON has no such flag. A scanned code's tag or memo comes with its address
+(XRP's `dt`, SEP-7's `memo`, a `ton://transfer` code's `text`); one Spectra
+cannot send, such as a TON code's `bin` message body, refuses the code.
 Destinations are classic `r…` and `G…` accounts; XRP X-addresses and Stellar
 muxed `M…` accounts, which carry the tag in the address, are not accepted.
 
-Raw private-key import covers 49 mainnets and their corresponding test networks.
+An EVM transfer is an EIP-1559 transaction priced from the network's fee
+history, asked for with its block count as a hex quantity, which XDC and
+Somnia nodes require: the max fee is twice the next base fee plus the last
+block's lowest sampled tip, raised to the network's floor where it has one
+(1 gwei on Chiliz, 4 gwei on 0G, whose blocks fill with transactions that tip
+nothing). Kava EVM, Merlin and Metis nodes take only legacy transactions: a
+send there is an EIP-155 transaction at the node's `eth_gasPrice`, which fills
+both reviewed fee fields, and carries no access list. Rollup data fees follow
+each network's oracle: Manta Pacific, Katana and MegaETH read Fjord's upper
+bound and the operator fee, Metis Bedrock's `getL1Fee`, and Robinhood Chain,
+an Arbitrum Orbit chain, folds its L1 cost into gas. Every new EVM network
+derives along `m/44'/60'`. An EVM address written in mixed case is read
+with its EIP-55 checksum, wherever it is typed, scanned, resolved from ENS or
+kept in the address book, and refused when the checksum fails; one written
+in a single case carries none. An XDC address is also read with the `xdc`
+prefix its wallets write, and stored and sent as `0x`.
+
+Raw private-key import covers 65 mainnets and their corresponding test networks.
 Ed25519 chains accept 32-byte seeds, Substrate chains accept sr25519 seeds, and
 secp256k1 chains accept their validated scalar, each as 64 hex digits. Cardano
 accepts a validated 64-byte extended key. Each chain also reads the encoding
@@ -264,12 +286,19 @@ threshold of one, cancelling a pending Substrate operation
 | XRP Ledger | Issued currencies on trust lines (`CODE.rIssuer`) |
 | Stellar | Credit assets on trustlines (`CODE:ISSUER`) |
 | Cardano | Native assets (`POLICY.NAME` in hex) |
+| Polkadot and Westend (Asset Hub) | `Assets` pallet assets (`Asset Hub Asset`, by asset ID) |
 
 Token precision comes from validated metadata. TON master identity uses the raw
 account address, with friendly-address network flags checked first. Raw,
 bounceable and non-bounceable aliases cannot create duplicate holdings.
 Jetton amounts use TEP-74's 120-bit integer range, including amounts beyond
 64-bit units; values outside the wire format are refused before signing.
+
+On Stable and Arc the gas coin, USDT0 and USDC at 18 places, is also an
+ERC-20 at 6 places over the same balance, as Celo's CELO, Metis's METIS
+(`0xdead…0000`) and peaq's PEAQ (its balances precompile) are. That face is
+the network's coin row and never a token: discovery leaves it out of an
+indexer's listing, and adding it as a custom token is refused as a duplicate.
 
 A network lists all supported standards in `token_standards`; each deployment
 owns its actual protocol. Tron accepts TRC-10 and TRC-20, and Aptos accepts both
@@ -332,6 +361,21 @@ script address under its owner's credential, which the wallet's address does
 not hold; Spectra neither shows nor sends one. A Koios endpoint's genesis
 network magic is checked before it receives a transaction.
 
+An Asset Hub asset (`Asset Hub Asset`) is an `Assets` pallet asset, named
+by its `u32` ID in decimal: USDT is 1984 and USDC 1337 on Polkadot. Its
+decimals are its pallet metadata's, and an asset with no metadata is refused.
+Each tracked asset's balance is the account's `Account` entry, every asset
+read from one pinned state; nothing lists an account's assets, so none is
+discovered. A transfer is `Assets.transfer`, encoded from the runtime's
+metadata with its fee paid and quoted in DOT as that transfer; all of a
+holding may be sent. Refused at build and again before signing: a frozen or
+destroying asset, a frozen holding or one short of the amount, a remainder
+below the asset's minimum balance (the runtime removes such a holding), a
+recipient whose holding is blocked, less than the minimum balance to a
+recipient that holds none, and an asset that cannot open an account (not
+sufficient) to a recipient without DOT of its own; before signing, also an
+asset whose decimals changed since the review.
+
 Zcash holds transparent and [shielded funds](#zcash-shielded-funds).
 Litecoin holds transparent and [MWEB funds](#litecoin-mweb-funds).
 
@@ -347,6 +391,10 @@ proved, but issuer or official bridge operator identity remains unresolved.
 Ethereum, Arbitrum and BNB PEPE remain active.
 The [original audit list](audits/chain-support-2026-10-04/removed-token-deployments.json)
 retains the earlier decision as history. Explicit custom assets remain available.
+Eight stablecoin deployments added on 2026-11-24 — USDT and USDC on BNB
+Smart Chain and Asset Hub, USDT0 on Plasma, USDC on Sei, USDT on Celo and
+opBNB — are each named by their issuer or the bridge operator that mints
+them, and pass fixed-block chain reads ([record](audits/token-additions-2026-11-24/README.md)).
 Verified legacy BTTOLD (TRC-10 ID `1002000`)
 is separate from the redenominated TRC-20 BTT; it cannot inherit BTT's market
 quote or conflate their 1:1000 denomination.
@@ -513,7 +561,8 @@ missing or malformed components leave the total unknown while preserving the
 confirmed execution outcome.
 
 Only verified keyless public indexers are built in. BNB, HyperEVM, Linea, Sei,
-Cronos, opBNB, Sonic, Berachain, X Layer and Monad require a compatible custom
+Cronos, opBNB, Sonic, Berachain, X Layer, Monad, Kaia, XDC Network, Robinhood
+Chain, Kava EVM, Stable, Arc, Katana, peaq and 0G require a compatible custom
 address indexer for history and automatic token discovery. A Blockscout-compatible
 source can be configured on any EVM network. RPC-only access still supports
 native transfers, tracked ERC-20 balances/transfers and submitted receipts.

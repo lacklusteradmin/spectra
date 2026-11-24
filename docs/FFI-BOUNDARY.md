@@ -4,6 +4,10 @@ What core exports to the apps through **UniFFI 0.31.2**, and the rules an
 export follows. See [architecture](ARCHITECTURE.md) for ownership. An Apple app
 links core and its Swift bindings as the package `scripts/build-apple-package.sh`
 builds; how spectra-apple builds and uses it is its `docs/SWIFT-BINDINGS.md`.
+An Android app links core and its Kotlin bindings as the package
+`scripts/build-android-package.sh` builds; spectra-android's
+`docs/KOTLIN-BINDINGS.md` says how. One export serves both: a shape either
+language cannot carry is a shape to change here.
 
 ## Export shapes
 
@@ -18,12 +22,18 @@ builds; how spectra-apple builds and uses it is its `docs/SWIFT-BINDINGS.md`.
 | `#[uniffi::export(with_foreign)]` trait | Shell callbacks implemented by Swift and called by Rust |
 
 Name an exported type for what it is, once, in Rust: the binding carries that
-name to Swift, and the app uses it with no `typealias` or prefix.
+name to Swift and Kotlin, and the apps use it with no `typealias` or prefix.
 `TransactionRecord`, not `CoreTransactionRecord` — where a type is defined is
 not what it is.
 
-`SpectraBridgeError::InvalidInput` and `Failure` carry a `LocalizableMessage`: an
-English `template` with a `%@` for each of its `args`. The template is the key a
+An error variant's field is never named `message`: Kotlin's errors are
+`Throwable`s, which already have one, and the bindings would not compile.
+`SpectraBridgeError` and `SecretStoreError` call it `reason`. UniFFI's
+`uniffi.toml` renames apply only to types in the crate's root module, so a
+rename there is no way around it.
+
+`SpectraBridgeError::InvalidInput` and `Failure` carry a `LocalizableMessage` as
+their `reason`: an English `template` with a `%@` for each of its `args`. The template is the key a
 front end looks up in its string tables, so a sentence a person reads names its
 values as `args` (`SpectraBridgeError::refused`, `failed`,
 `DerivationError::refused`) rather than interpolating them with `format!`.
@@ -39,8 +49,8 @@ record: scrub its owned strings on the receiving call path.
 
 - **Async exports:** use `#[uniffi::export(async_runtime = "tokio")]` for
   exported async operations using Tokio. Rust and CLI tests run inside their
-  own runtime and cannot catch a missing reactor when Swift calls the binding.
-  Exercise the affected path in the app as well.
+  own runtime and cannot catch a missing reactor when an app calls the binding.
+  Exercise the affected path in the apps as well.
 - **Short-lived callers:** spawned work can outlive a CLI process. Provide an
   awaited operation, as `refresh_now` does alongside `trigger_immediate`.
 - **Timestamps:** a transaction's `created_at_unix` and the `created_at` index
@@ -57,7 +67,7 @@ record: scrub its owned strings on the receiving call path.
   projections; their contained state revision must also pass the front end's
   committed-state check.
 - **Secrets:** core owns layout and encryption; `SecretStore` supplies Keychain,
-  file or in-memory storage. A new secret operation must work through that
+  Keystore, file or in-memory storage. A new secret operation must work through that
   abstraction so the CLI can exercise it.
 - **Serialization:** serde controls stored JSON independently of Swift naming.
   Field, variant and numeric-meaning changes require checking all producers and

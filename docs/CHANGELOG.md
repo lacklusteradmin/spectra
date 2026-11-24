@@ -1,5 +1,149 @@
 # Changelog
 
+## Beta Commit 256
+
+- **Core builds as the package spectra-android links**
+  (`scripts/build-android-package.sh`, `make android`)
+  - A shared library per ABI (`arm64-v8a` and `x86_64`), linked by the NDK's
+    clang for the app's minimum API level (`ANDROID_MIN_SDK`, 33 by default)
+    and stripped of all but what the loader reads, and the Kotlin bindings
+    generated from the unstripped library, written to
+    `target/SpectraCoreAndroid/`; built in `target/android/`.
+  - An NDK older than r28 is refused: it links with 4 KB pages.
+- **The error field every variant called `message` is `reason`**
+  (`SpectraBridgeError`'s `Network`, `Decode`, `InvalidInput`, `Failure`,
+  `StoreUnreadable`; `SecretStoreError::Backend`; and the CLI's mapping of
+  them) (before: `message`, which a Kotlin exception already has, so the
+  Kotlin bindings did not compile).
+- **A TON transfer carries a text comment** (`PaymentMemoKind::Comment`;
+  `registry/send.rs` `payment_memo_kinds`, `send/payment_memo.rs`,
+  `send/ton.rs`, `service/send_stage_ton.rs`; CLI `--comment`)
+  - A native transfer's comment is its message body, a jetton transfer's its
+    forward payload by reference; up to 123 bytes, one cell (before: TON
+    payments carried none, so an exchange deposit that needs one could not be
+    sent).
+  - A TON multisig order carries the spend's comment (`service/multisig_ton.rs`;
+    before: `comment: None` whatever the spend named).
+  - A scanned `ton://transfer` code's `text` comes back as the comment, and a
+    code with a `bin` body or `init` state is refused; a receive request
+    writes the comment as `text` (`send/scanned_payment.rs`; before: `text`
+    was dropped).
+- **Eight stablecoin deployments join the catalog** (`core/data/tokens.toml`):
+  USDT and USDC on BNB Smart Chain (Binance-Peg, 18 decimals) and on Asset Hub
+  (assets 1984 and 1337), USDT0 on Plasma, USDC on Sei, USDT on Celo and USDT
+  on opBNB.
+- **Asset Hub `Assets` pallet assets are a token standard** (`Asset Hub
+  Asset`, by asset ID; `registry/tokens.rs`, `catalog/tokens.rs`,
+  `core/data/chains.toml` for Polkadot and Westend)
+  - Balances and decimals are read from the asset's `Account` and `Metadata`
+    entries, every tracked asset from one pinned state (new
+    `api/substrate_json_rpc/assets.rs`).
+  - A transfer is `Assets.transfer` from the runtime metadata, its fee in DOT
+    quoted as that transfer; all of a holding may be sent
+    (`send/polkadot.rs`, `service/send_stage_substrate.rs`,
+    `service/send_preview.rs`, `service/owned_send.rs`).
+  - Refused at build and again before signing: a frozen or destroying asset,
+    a frozen or short holding, a remainder below the asset's minimum balance,
+    a blocked recipient, less than the minimum to a recipient holding none,
+    and an insufficient asset to a recipient without DOT; at signing, also
+    decimals changed since the review.
+  - The four Asset Hub endpoints claim `token-balance`, which the Substrate
+    adapter now offers on a network that hosts tokens
+    (`core/data/endpoints.toml`, `api/endpoint.rs`).
+- **A storage key covers maps of several keys** (`metadata/pools.rs`
+  `storage_key`), and the runtime-metadata and storage reads the pools used
+  are the Substrate client's (`runtime_metadata`, `storage_value`).
+- **Sixteen EVM mainnets join the registry** (`registry/mod.rs`,
+  `registry/evm.rs`; `core/data/chains.toml`, `endpoints.toml`,
+  `explorers.toml`, `tokens.toml`, `chain-wiki.toml`, `crypto-wiki.toml`;
+  `icons/crypto/`)
+  - Kaia (8217), XDC Network (50), Robinhood Chain (4663), Kava EVM (2222),
+    Chiliz Chain (88888), Stable (988), Arc (5042), Manta Pacific (169), Metis
+    (1088), Flare (14), Katana (747474), MegaETH (4326), Merlin Chain (4200),
+    peaq (3338), Somnia (5031) and 0G (16661), each deriving along
+    `m/44'/60'` with its own RPC endpoints and explorer.
+  - Native coins: ETH on Robinhood Chain, Manta Pacific, Katana and MegaETH;
+    BTC at 18 places on Merlin; USDT0 on Stable and USDC on Arc, both at 18
+    places; KAIA, XDC, KAVA, CHZ, METIS, FLR, PEAQ, SOMI and 0G as new tokens.
+  - Catalog deployments: USDT on Kaia and Kava EVM, USDC on XDC, USDG on
+    Robinhood Chain, USDT0 on Flare and MegaETH, XAUt0 and STABLE on Stable,
+    EURC on Arc, MANTA on Manta Pacific, KAT on Katana, MEGA and USDe on
+    MegaETH, and MERL on Merlin.
+  - Keyless Blockscout history and discovery on Chiliz, Manta Pacific, Metis,
+    Flare, MegaETH, Merlin and Somnia; the other nine have none built in.
+  - Manta Pacific, Katana and MegaETH price L1 data and operator fees from
+    the Fjord oracle, Metis from Bedrock's `getL1Fee`.
+  - Sixteen icons, from web3icons (MIT) and the networks' own marks.
+- **Kava EVM, Merlin and Metis send legacy EIP-155 transactions**
+  (`registry/evm.rs` `evm_legacy_transactions`; `send/evm.rs`;
+  `api/evm_json_rpc.rs` `fetch_fee_estimate`; `send/ethereum.rs`)
+  - Priced at `eth_gasPrice`, which fills both reviewed fee fields, estimated
+    with `gasPrice` and signed with an EIP-155 `v`; a split fee or an access
+    list is refused (before: only EIP-1559 transactions, which these nodes
+    reject).
+  - Their preview reads "Gas price N gwei".
+- **`eth_feeHistory` asks with a hex block count** (`api/evm_json_rpc.rs`;
+  before: a JSON number, which XDC and Somnia nodes refuse).
+- **Chiliz and 0G tips have a floor** (`registry/evm.rs`
+  `evm_min_priority_fee_wei`): 1 gwei and 4 gwei, raised from a lower
+  fee-history sample (before: a zero sample priced a zero tip).
+- **A coin's own ERC-20 face is not a token** (`registry/evm.rs`
+  `evm_native_coin_contract`; `service/network_tokens.rs`,
+  `store/token_preferences.rs`)
+  - Discovery leaves Celo's CELO, Stable's USDT0, Arc's USDC, Metis's METIS
+    and peaq's PEAQ faces out of an indexer's listing.
+  - Adding one as a custom token is refused as a duplicate.
+- **An XDC address is read with its `xdc` prefix** (`validation/address.rs`,
+  `send/flow.rs`), stored and sent as `0x`.
+- **A mixed-case EVM address is read with its EIP-55 checksum wherever it
+  is normalized** (`send/flow.rs` `normalize_address`): one whose checksum
+  fails stays as typed and is refused as a destination, an ENS answer or an
+  address book entry (before: normalizing lowercased it first, so
+  `is_valid_send_address` and every caller that normalized before validating
+  accepted a mistyped address).
+- Measured: 2026-11-24, the 16 networks probed read-only (identity, fee
+  inputs, transaction types, rollup oracles, indexers, token metadata) and
+  every catalogued EVM fee endpoint asked for a hex-count fee history: 86 of
+  88 answered, the two Blast endpoints neither form
+  ([evm-mainnets-2026-11-24](audits/evm-mainnets-2026-11-24/README.md)).
+- Tests: 17 new
+  - TON 1: a multisig order dropping the spend's comment; the jetton vectors
+    (v4R2 and W5, @ton/core), memo rules and payment-code tests now also guard
+    the comment.
+  - Asset Hub 6: `Assets.transfer` and its storage keys and values diverging
+    from @polkadot/types on either runtime, a preview quoting the coin's
+    transfer, an unchecked build or signing, each refusal.
+  - EVM fees 3: a block count a node refuses, a legacy network priced from
+    the fee market, a zero tip on a network with a floor.
+  - Legacy signing 3: the signing payload or signed bytes diverging from
+    ethers.js on Kava EVM, Merlin and Metis; a split fee or an access list
+    signed or dropped; a legacy estimate asking about fee-market fields.
+  - Registry 1: the legacy, tip-floor and coin-face sets drifting, or a
+    coin's face catalogued as a token.
+  - Addresses 2: an `xdc` address refused on XDC, or read on another
+    network; a destination with a broken EIP-55 checksum accepted on any EVM
+    network.
+  - Discovery 1: a coin's ERC-20 face listed as a token; the custom-token
+    test now also guards adding one.
+  - CLI acceptance: a jetton comment missing from the signed message
+    (`send_tokens.py`); a USDT transfer across processes (`send_polkadot.py`).
+- Docs: `CHAIN-SUPPORT.md` (chain and private-key counts; wallets and
+  transfers: TON comments, scanned codes, EVM transfers and checksums;
+  fungible assets: Asset Hub assets, the coin's ERC-20 face, the added
+  deployments; history: networks without an indexer); `OPEN-ITEMS.md`
+  (built-in EVM history providers); `tests/README.md` (`send_polkadot.py`,
+  `send_tokens.py`, the new and extended generators); `AGENTS.md`
+  ("Repositories", "Verification"); `README.md`; `ARCHITECTURE.md`
+  (introduction, "Workspace", "Ownership"); `FFI-BOUNDARY.md` (introduction,
+  "Export shapes", "Runtime and storage traps"); `scripts/README.md`
+  ("Android package"); new records `docs/audits/token-additions-2026-11-24/`
+  and `docs/audits/evm-mainnets-2026-11-24/`.
+- Total: 70 .rs files changed (2 new), +2171 −252 lines; data and config
+  files: `core/data/` (6), `core/tests/fixtures/` (5, 2 new), `tests/vectors/`
+  (5, 2 new), `tests/acceptance/` (3), `icons/crypto/` (16 new), `Makefile`,
+  `scripts/build-android-package.sh` (new); dependencies unchanged; `#[test]`
+  functions 1472 → 1489, `cargo test` 1489 passing.
+
 ## Beta Commit 255
 
 - **A change here is finished when the apps match it** (`AGENTS.md`): the

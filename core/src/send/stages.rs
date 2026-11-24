@@ -470,8 +470,8 @@ pub struct SendArtifact {
     pub chain_id: crate::registry::Chain,
     pub sender: String,
     pub recipient: String,
-    /// The XRP destination tag or Stellar memo the transaction carries to
-    /// the recipient: the request's, reviewed with it.
+    /// The XRP destination tag, Stellar memo or TON comment the transaction
+    /// carries to the recipient: the request's, reviewed with it.
     pub memo: Option<super::payment_memo::PaymentMemo>,
     pub amount: String,
     /// Native symbol or exact token contract/mint identity.

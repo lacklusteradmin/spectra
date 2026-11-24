@@ -1,5 +1,6 @@
 # Mainnet token identities and deployments. Testnet assets live in testnet-tokens.toml.
 # Reverified issuer and bridge sources: docs/audits/token-verification-2026-10-04/README.md.
+# Sources of the deployments added on 2026-11-24: docs/audits/token-additions-2026-11-24/README.md.
 # Deployments reference tokens.id via token_id and chains.toml chains.id via chain_id.
 # Symbols are display labels. Precision belongs to the deployment.
 # Core derives deployment IDs from network, standard and contract; no stored deployment ID.
@@ -20,6 +21,11 @@ tags = []
 token_id = "bitcoin"
 chain_id = "bitcoin"
 decimals = 8
+
+[[deployments]]
+token_id = "bitcoin"
+chain_id = "merlin"
+decimals = 18
 
 [[tokens]]
 id = "ethereum"
@@ -84,6 +90,26 @@ decimals = 18
 [[deployments]]
 token_id = "ethereum"
 chain_id = "world-chain"
+decimals = 18
+
+[[deployments]]
+token_id = "ethereum"
+chain_id = "robinhood-chain"
+decimals = 18
+
+[[deployments]]
+token_id = "ethereum"
+chain_id = "manta-pacific"
+decimals = 18
+
+[[deployments]]
+token_id = "ethereum"
+chain_id = "katana"
+decimals = 18
+
+[[deployments]]
+token_id = "ethereum"
+chain_id = "megaeth"
 decimals = 18
 
 [[tokens]]
@@ -1330,6 +1356,13 @@ standard = "ERC-20"
 contract = "0x3ee196e78d4d4248b849b8e1c7f44c5457fafd2c"
 decimals = 6
 
+[[deployments]]
+token_id = "euro-coin"
+chain_id = "arc"
+standard = "ERC-20"
+contract = "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1"
+decimals = 6
+
 [[tokens]]
 id = "first-digital-usd"
 symbol = "FDUSD"
@@ -2458,6 +2491,39 @@ standard = "ERC-20"
 contract = "0x79a02482a880bce3f13e09da970dc34db4cd24d1"
 decimals = 6
 
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "bnb"
+standard = "BEP-20"
+contract = "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d"
+decimals = 18
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "sei"
+standard = "ERC-20"
+contract = "0xe15fc38f6d8c56af07bbcbe3baf5708a2bf42392"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "arc"
+decimals = 18
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "xdc"
+standard = "ERC-20"
+contract = "0xfa2958cb79b0491cc627c1557f441ef849ca8eb1"
+decimals = 6
+
+[[deployments]]
+token_id = "usd-coin"
+chain_id = "polkadot"
+standard = "Asset Hub Asset"
+contract = "1337"
+decimals = 6
+
 [[tokens]]
 id = "usdd"
 symbol = "USDD"
@@ -2604,6 +2670,13 @@ standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18
 
+[[deployments]]
+token_id = "ethena-usde"
+chain_id = "megaeth"
+standard = "ERC-20"
+contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
+decimals = 18
+
 [[tokens]]
 id = "global-dollar"
 symbol = "USDG"
@@ -2626,6 +2699,13 @@ token_id = "global-dollar"
 chain_id = "solana"
 standard = "SPL"
 contract = "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH"
+decimals = 6
+
+[[deployments]]
+token_id = "global-dollar"
+chain_id = "robinhood-chain"
+standard = "ERC-20"
+contract = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
 decimals = 6
 
 [[tokens]]
@@ -2746,6 +2826,48 @@ standard = "NEP-141"
 contract = "usdt.tether-token.near"
 decimals = 6
 
+[[deployments]]
+token_id = "tether"
+chain_id = "bnb"
+standard = "BEP-20"
+contract = "0x55d398326f99059ff775485246999027b3197955"
+decimals = 18
+
+[[deployments]]
+token_id = "tether"
+chain_id = "celo"
+standard = "ERC-20"
+contract = "0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e"
+decimals = 6
+
+[[deployments]]
+token_id = "tether"
+chain_id = "opbnb"
+standard = "ERC-20"
+contract = "0x9e5aac1ba1a2e6aed6b32689dfcf62a509ca96f3"
+decimals = 18
+
+[[deployments]]
+token_id = "tether"
+chain_id = "kaia"
+standard = "ERC-20"
+contract = "0xd077a400968890eacc75cdc901f0356c943e4fdb"
+decimals = 6
+
+[[deployments]]
+token_id = "tether"
+chain_id = "kava-evm"
+standard = "ERC-20"
+contract = "0x919c1c267bc06a7039e03fcc2ef738525769109c"
+decimals = 6
+
+[[deployments]]
+token_id = "tether"
+chain_id = "polkadot"
+standard = "Asset Hub Asset"
+contract = "1984"
+decimals = 6
+
 [[tokens]]
 id = "usdt0"
 symbol = "USDT0"
@@ -2824,6 +2946,32 @@ token_id = "usdt0"
 chain_id = "x-layer"
 standard = "ERC-20"
 contract = "0x779ded0c9e1022225f8e0630b35a9b54be713736"
+decimals = 6
+
+[[deployments]]
+token_id = "usdt0"
+chain_id = "plasma"
+standard = "ERC-20"
+contract = "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb"
+decimals = 6
+
+[[deployments]]
+token_id = "usdt0"
+chain_id = "stable"
+decimals = 18
+
+[[deployments]]
+token_id = "usdt0"
+chain_id = "flare"
+standard = "ERC-20"
+contract = "0xe7cd86e13ac4309349f30b3435a9d337750fc82d"
+decimals = 6
+
+[[deployments]]
+token_id = "usdt0"
+chain_id = "megaeth"
+standard = "ERC-20"
+contract = "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb"
 decimals = 6
 
 [[tokens]]
@@ -3036,6 +3184,13 @@ standard = "ERC-20"
 contract = "0xf50258d3c1dd88946c567920b986a12e65b50dac"
 decimals = 6
 
+[[deployments]]
+token_id = "tether-gold-tokens"
+chain_id = "stable"
+standard = "ERC-20"
+contract = "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb"
+decimals = 6
+
 [[tokens]]
 id = "zksync"
 symbol = "ZK"
@@ -3112,3 +3267,223 @@ tags = []
 token_id = "peercoin"
 chain_id = "peercoin"
 decimals = 6
+
+[[tokens]]
+id = "kaia"
+symbol = "KAIA"
+name = "Kaia"
+coingecko_id = "kaia"
+coinpaprika_id = "kaia-kaia"
+color = "green"
+artwork_name = "kaia"
+tags = []
+
+[[deployments]]
+token_id = "kaia"
+chain_id = "kaia"
+decimals = 18
+
+[[tokens]]
+id = "xdce-crowd-sale"
+symbol = "XDC"
+name = "XDC Network"
+coingecko_id = "xdce-crowd-sale"
+coinpaprika_id = "xdc-xdc-network"
+color = "blue"
+artwork_name = "xdc"
+tags = []
+
+[[deployments]]
+token_id = "xdce-crowd-sale"
+chain_id = "xdc"
+decimals = 18
+
+[[tokens]]
+id = "kava"
+symbol = "KAVA"
+name = "Kava"
+coingecko_id = "kava"
+coinpaprika_id = "kava-kava"
+color = "red"
+artwork_name = "kava"
+tags = []
+
+[[deployments]]
+token_id = "kava"
+chain_id = "kava-evm"
+decimals = 18
+
+[[tokens]]
+id = "chiliz"
+symbol = "CHZ"
+name = "Chiliz"
+coingecko_id = "chiliz"
+coinpaprika_id = "chz-chiliz"
+color = "red"
+artwork_name = "chiliz"
+tags = []
+
+[[deployments]]
+token_id = "chiliz"
+chain_id = "chiliz"
+decimals = 18
+
+[[tokens]]
+id = "metis-token"
+symbol = "METIS"
+name = "Metis"
+coingecko_id = "metis-token"
+coinpaprika_id = "metis-metis-token"
+color = "teal"
+artwork_name = "metis"
+tags = []
+
+[[deployments]]
+token_id = "metis-token"
+chain_id = "metis"
+decimals = 18
+
+[[tokens]]
+id = "flare-networks"
+symbol = "FLR"
+name = "Flare"
+coingecko_id = "flare-networks"
+coinpaprika_id = "flr-flare-network"
+color = "pink"
+artwork_name = "flare"
+tags = []
+
+[[deployments]]
+token_id = "flare-networks"
+chain_id = "flare"
+decimals = 18
+
+[[tokens]]
+id = "peaq-2"
+symbol = "PEAQ"
+name = "peaq"
+coingecko_id = "peaq-2"
+coinpaprika_id = "peaq-peaq-network"
+color = "indigo"
+artwork_name = "peaq"
+tags = []
+
+[[deployments]]
+token_id = "peaq-2"
+chain_id = "peaq"
+decimals = 18
+
+[[tokens]]
+id = "somnia"
+symbol = "SOMI"
+name = "Somnia"
+coingecko_id = "somnia"
+coinpaprika_id = "somi-somnia"
+color = "gray"
+artwork_name = "somnia"
+tags = []
+
+[[deployments]]
+token_id = "somnia"
+chain_id = "somnia"
+decimals = 18
+
+[[tokens]]
+id = "zero-gravity"
+symbol = "0G"
+name = "0G"
+coingecko_id = "zero-gravity"
+coinpaprika_id = "zero-gravity-0g"
+color = "gray"
+artwork_name = "0g"
+tags = []
+
+[[deployments]]
+token_id = "zero-gravity"
+chain_id = "0g"
+decimals = 18
+
+[[tokens]]
+id = "manta-network"
+symbol = "MANTA"
+name = "Manta Network"
+coingecko_id = "manta-network"
+coinpaprika_id = "manta-manta-network"
+color = "cyan"
+artwork_name = "manta"
+tags = []
+
+[[deployments]]
+token_id = "manta-network"
+chain_id = "manta-pacific"
+standard = "ERC-20"
+contract = "0x95cef13441be50d20ca4558cc0a27b601ac544e5"
+decimals = 18
+
+[[tokens]]
+id = "katana-network-token"
+symbol = "KAT"
+name = "Katana"
+coingecko_id = "katana-network-token"
+coinpaprika_id = "kat-katana-network"
+color = "yellow"
+artwork_name = "katana"
+tags = []
+
+[[deployments]]
+token_id = "katana-network-token"
+chain_id = "katana"
+standard = "ERC-20"
+contract = "0x7f1f4b4b29f5058fa32cc7a97141b8d7e5abdc2d"
+decimals = 18
+
+[[tokens]]
+id = "megaeth"
+symbol = "MEGA"
+name = "MegaETH"
+coingecko_id = "megaeth"
+coinpaprika_id = "mega-megaeth"
+color = "gray"
+artwork_name = "megaeth"
+tags = []
+
+[[deployments]]
+token_id = "megaeth"
+chain_id = "megaeth"
+standard = "ERC-20"
+contract = "0x28b7e77f82b25b95953825f1e3ea0e36c1c29861"
+decimals = 18
+
+[[tokens]]
+id = "merlin-chain"
+symbol = "MERL"
+name = "Merlin Chain"
+coingecko_id = "merlin-chain"
+coinpaprika_id = "merl-merlin-chain"
+color = "purple"
+artwork_name = "merlin"
+tags = []
+
+[[deployments]]
+token_id = "merlin-chain"
+chain_id = "merlin"
+standard = "ERC-20"
+contract = "0x5c46bff4b38dc1eae09c5bac65872a1d8bc87378"
+decimals = 18
+
+[[tokens]]
+id = "stable-2"
+symbol = "STABLE"
+name = "Stable"
+coingecko_id = "stable-2"
+coinpaprika_id = "stable-stable"
+color = "teal"
+artwork_name = "stable"
+tags = []
+
+[[deployments]]
+token_id = "stable-2"
+chain_id = "stable"
+standard = "ERC-20"
+contract = "0x0000000000000000000000000000000000001003"
+decimals = 18

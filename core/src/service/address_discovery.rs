@@ -27,7 +27,7 @@ impl WalletService {
                     .iter()
                     .find(|w| w.id == wallet_id)
                     .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                        message: "Wallet not found".into(),
+                        reason: "Wallet not found".into(),
                     })?;
                 // A mainnet of the wallet's own family names the wallet's network.
                 let network =
@@ -63,7 +63,7 @@ impl WalletService {
             };
             if !crate::send::flow::is_valid_send_address(network, address.clone()) {
                 return Err(SpectraBridgeError::InvalidInput {
-                    message: "stored receive address is invalid for its network".into(),
+                    reason: "stored receive address is invalid for its network".into(),
                 });
             }
             if reserve {
@@ -514,7 +514,7 @@ impl UtxoDerivation {
         let suffix = &indices[indices.len() - 2..];
         if suffix[0] > 1 || suffix[1] >= crate::derivation::bip32::HARDENED_OFFSET {
             return Err(SpectraBridgeError::InvalidInput {
-                message:
+                reason:
                     "UTXO discovery requires a non-hardened receive/change branch and address index"
                         .into(),
             });
@@ -523,7 +523,7 @@ impl UtxoDerivation {
             != Some(suffix[1])
         {
             return Err(SpectraBridgeError::InvalidInput {
-                message:
+                reason:
                     "UTXO discovery requires a catalog-supported purpose, coin and account path"
                         .into(),
             });

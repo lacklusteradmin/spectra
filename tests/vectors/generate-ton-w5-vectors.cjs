@@ -63,12 +63,14 @@ async function main() {
   const jettons = [];
   const source = new ton.Address(0, Buffer.alloc(32, 0x33));
   const recipient = new ton.Address(0, Buffer.alloc(32, 0x22));
-  for (const amount of [123456789n, (1n << 120n) - 1n]) {
-    const payload = ton.beginCell().storeUint(0x0f8a7ea5, 32).storeUint(7, 64).storeCoins(amount)
-      .storeAddress(recipient).storeAddress(mainnet.address).storeBit(false).storeCoins(1n).storeBit(false).endCell();
+  // A comment is the forward payload by reference; 123 bytes fill its one cell.
+  for (const [amount, comment] of [[123456789n], [(1n << 120n) - 1n], [123456789n, 'x'.repeat(123)]]) {
+    const forward = ton.beginCell().storeUint(0x0f8a7ea5, 32).storeUint(7, 64).storeCoins(amount)
+      .storeAddress(recipient).storeAddress(mainnet.address).storeBit(false).storeCoins(1n);
+    const payload = (comment ? forward.storeBit(true).storeRef(ton.comment(comment)) : forward.storeBit(false)).endCell();
     const body = mainnet.createTransfer({ seqno: 7, secretKey: key.secretKey, timeout: 1800000000, sendMode: 3,
       messages: [ton.internal({ to: source, value: 100000000n, bounce: true, body: payload })] });
-    jettons.push({ amount: amount.toString(), root_hash: hex(external(mainnet, body).hash()) });
+    jettons.push({ amount: amount.toString(), ...(comment ? { comment } : {}), root_hash: hex(external(mainnet, body).hash()) });
   }
 
   const fixtures = {

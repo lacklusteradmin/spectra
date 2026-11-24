@@ -24,8 +24,8 @@ use crate::ctx::Ctx;
 use crate::error::CliResult;
 use crate::out::{self, Out, Report};
 
-/// The XRP destination tag or Stellar memo a payment carries to a
-/// recipient that shares its account. Core checks it against the network.
+/// The XRP destination tag, Stellar memo or TON comment a payment carries to
+/// a recipient that shares its account. Core checks it against the network.
 #[derive(Args, Clone)]
 #[group(multiple = false)]
 pub struct MemoArgs {
@@ -38,14 +38,23 @@ pub struct MemoArgs {
     /// Stellar ID memo, a whole number.
     #[arg(long, value_name = "ID")]
     memo_id: Option<String>,
+    /// TON text comment, up to 123 bytes.
+    #[arg(long, value_name = "TEXT")]
+    comment: Option<String>,
 }
 
 impl MemoArgs {
     pub fn memo(self) -> Option<PaymentMemo> {
-        let (kind, value) = match (self.destination_tag, self.memo_text, self.memo_id) {
+        let (kind, value) = match (
+            self.destination_tag,
+            self.memo_text,
+            self.memo_id,
+            self.comment,
+        ) {
             (Some(tag), ..) => (PaymentMemoKind::DestinationTag, tag),
-            (_, Some(text), _) => (PaymentMemoKind::MemoText, text),
-            (.., Some(id)) => (PaymentMemoKind::MemoId, id),
+            (_, Some(text), ..) => (PaymentMemoKind::MemoText, text),
+            (_, _, Some(id), _) => (PaymentMemoKind::MemoId, id),
+            (.., Some(comment)) => (PaymentMemoKind::Comment, comment),
             _ => return None,
         };
         Some(PaymentMemo { kind, value })

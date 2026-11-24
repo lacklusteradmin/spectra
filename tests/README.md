@@ -42,9 +42,9 @@ to load under `python -O` or `PYTHONOPTIMIZE`.
 | `send.py` | A password-protected owned send: `send owned-broadcast` is refused without `--yes`; with it and the password from the environment it broadcasts exactly once. |
 | `endpoints.py` | The listing's built-in/custom source filter, the health verdict the CLI aggregates (networks without APIs, unreachable endpoints), and a balance read from an endpoint added for a network the catalog lists none for, against a loopback Blockbook node. |
 | `send_stages.py` | An EVM send built, signed and broadcast in separate processes: nothing submitted before `broadcast-signed --yes`, an identical retry, and two processes racing to sign at one nonce, one refused as reserved. |
-| `send_polkadot.py` | A Polkadot Asset Hub send across processes: a fee changed at broadcast submits nothing, one broadcast, an unchanged rebroadcast, polled finality, recovery after a lost status write, and a failed outcome with its cursor kept. |
+| `send_polkadot.py` | A Polkadot Asset Hub send across processes: a fee changed at broadcast submits nothing, one broadcast, an unchanged rebroadcast, polled finality, recovery after a lost status write, and a failed outcome with its cursor kept; then a USDT `Assets.transfer` built, signed and broadcast in separate processes. |
 | `send_cardano.py` | A Cardano send built, signed and broadcast once, exactly as signed. |
-| `send_tokens.py` | A TON jetton send broadcast once, then an incomplete trace, an aborted one and a lost status write recovered to its final outcome across processes. |
+| `send_tokens.py` | A TON jetton send built with a comment that reaches its signed message, broadcast once, then an incomplete trace, an aborted one and a lost status write recovered to its final outcome across processes. |
 | `send_icp_zcash.py` | ICP and transparent Zcash sends built, signed and broadcast in separate processes against loopback providers, with an identical retry. |
 | `trc10.py` | A mainnet TRC-10 send broadcast once with its `TransferAssetContract` body, polled to confirmed and recorded with its token and amount. |
 | `staking.py` | One stake per account chain and a DOT pool stake across processes: the stored artifact reopened exactly, a broadcast refusal, a same-bytes retry, and exact-hash and finalized recovery. |
@@ -122,10 +122,11 @@ source.
 | `generate-trc10-send-vectors.cjs` | Independent TronWeb 6.0.4 TRC-10 protobuf, digest and signature references. |
 | `generate-account-staking-vectors.cjs` | Independent Solana, Sui, Aptos and NEAR staking transaction references. |
 | `generate-polkadot-staking-vectors.cjs` | Independent @polkadot/types 17.0.2 metadata, storage values and nomination-pool call references. |
+| `generate-asset-hub-asset-vectors.cjs` | `Assets.transfer` calls on Polkadot and Westend Asset Hub, and the `Asset`, `Account` and `Metadata` storage keys and values a transfer reads, from @polkadot/types 17.0.2 and each runtime's metadata. |
 | `generate-icp-staking-vectors.cjs` | DFINITY 3.4.3 Candid, ingress IDs and secp256k1 update/read-state signatures; owned and queued-maturity responses. |
 | `generate-protocol-vectors.cjs` | Generates protocol reference data using the TON and NEAR SDKs. |
 | `generate-send-audit-vectors.cjs` | Generates address, transaction and signature reference data using Sui, Aptos, Solana, Tron and related SDKs. |
-| `generate-token-send-vectors.cjs` | Sui, Aptos and TON (v4R2 jetton) token-transfer references from the official SDKs. |
+| `generate-token-send-vectors.cjs` | Sui, Aptos and TON (v4R2 jetton, with and without a comment) token-transfer references from the official SDKs. |
 | `generate-xrp-payment-vector.cjs` | XRPL payment signing reference from the official XRPL packages. |
 | `generate-payment-memo-vectors.cjs` | XRP destination tags and Stellar text/ID memos on payments and account closing, from each network's SDK. |
 | `generate-message-signature-vectors.cjs` | Legacy Bitcoin-family, BIP-322, EVM, Tron, Solana, Sui and Substrate message signatures from independent libraries. |
@@ -143,6 +144,7 @@ source.
 | `generate-solana-token-2022-vectors.cjs` | Token-2022 `TransferCheckedWithFee` and a transfer hook's extra accounts, every seed kind, resolved by @solana/spl-token. |
 | `generate-account-closing-vectors.cjs` | XRP AccountDelete and Stellar AccountMerge, built and signed by the official XRPL packages and the Stellar SDK. |
 | `generate-derivation-profile-vectors.cjs` | Addresses for every registry derivation profile at accounts 0 and 1, from independent libraries. |
+| `generate-evm-legacy-vectors.cjs` | Legacy EIP-155 transactions on Kava EVM, Merlin and Metis (a native transfer, an ERC-20 transfer, a gas price past 2^32 wei): signing payload, signed bytes and hash, from ethers.js. |
 | `generate-account-key-vectors.cjs` | Account extended public keys in each UTXO network's encoding, from bip39, bip32 and tiny-secp256k1. |
 | `generate-account-utxo-vectors.cjs` | Signed transactions spending several account addresses with separate input keys, from bitcoinjs-lib and kaspa-wasm. |
 | `generate-substrate-path-vectors.cjs` | Substrate hard/soft derivation paths and passphrases, with sr25519 keys and SS58 addresses, from polkadot.js. |
@@ -159,7 +161,7 @@ source.
 | `generate-cardano-multisig-vectors.cjs` | Cardano native scripts, their addresses, CIP-1854 keys and witnessed spends from cardano-serialization-lib. |
 | `generate-substrate-multisig-vectors.cjs` | pallet-multisig account ids, approval calls and `Multisigs` storage on Asset Hub and Bittensor from polkadot.js. |
 | `generate-ton-multisig-vectors.cjs` | TON multisig v2 data, order addresses, orders, proposals and approvals from @ton/core and the contract's build. |
-| `generate-ton-w5-vectors.cjs` | @ton/ton W5 (wallet v5r1) accounts on both networks, transfers and jetton transfers. |
+| `generate-ton-w5-vectors.cjs` | @ton/ton W5 (wallet v5r1) accounts on both networks, transfers and jetton transfers, one with a comment. |
 | `generate-monero-subaddress-vectors.cjs` | Monero mainnet and stagenet subaddresses from wallet2 compiled to WebAssembly by monero-ts. |
 | `generate-monero-phrase-vectors.py` | Monero 25-word seeds and Polyseeds from two independent implementations (with `polyseed-vectors.c`). |
 | `polyseed-vectors.c` | Polyseed reference-implementation helper for `generate-monero-phrase-vectors.py`; build instructions are in that generator's header. |

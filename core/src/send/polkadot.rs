@@ -1,7 +1,11 @@
-//! Substrate native transfers, bound to a validated runtime contract.
+//! Substrate transfers — the network's coin, and on Asset Hub an `Assets`
+//! pallet asset — bound to a validated runtime contract.
 
 use super::substrate::decode_hash_hex;
-use crate::api::substrate_json_rpc::{PolkadotExtension, PolkadotRuntime, SubstrateClient};
+use crate::api::substrate_json_rpc::assets::{AssetAccountStatus, AssetStatus, AssetTransferState};
+use crate::api::substrate_json_rpc::{
+    AssetTransferCall, PolkadotExtension, PolkadotRuntime, SubstrateClient,
+};
 use crate::derivation::polkadot::decode_ss58;
 use crate::registry::Chain;
 use crate::send::error::SendError;
@@ -15,12 +19,26 @@ pub struct PreparedPolkadotTransaction {
     /// Exact metadata-encoded call, shared by transfers and staking.
     pub call_data: Vec<u8>,
     pub nonce: u32,
+    /// What leaves the account of the network's coin, beside the fee.
     #[serde(with = "crate::send::stages::units_u128")]
     pub amount: u128,
+    /// The asset an `Assets.transfer` moves, checked again before signing.
+    pub asset: Option<PreparedAssetTransfer>,
     #[serde(with = "crate::send::stages::units_u128")]
     pub fee: u128,
     /// Polling starts after this finalized head, then persists progress.
     pub finalized_number: u64,
+}
+
+/// An `Assets.transfer`: which asset, to whom, how much of it, and the
+/// decimals the amount was reviewed at.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreparedAssetTransfer {
+    pub id: u32,
+    pub recipient: [u8; 32],
+    #[serde(with = "crate::send::stages::units_u128")]
+    pub amount: u128,
+    pub decimals: u8,
 }
 
 impl PreparedPolkadotTransaction {
@@ -130,6 +148,20 @@ impl PreparedPolkadotTransaction {
                 "Substrate runtime, network or nonce changed; build and review again",
             ));
         }
+        if let Some(asset) = &self.asset {
+            let state = client
+                .asset_transfer_state(chain, asset.id, &self.sender, &asset.recipient)
+                .await?;
+            check_asset_transfer(&state, asset.amount)?;
+            if state.decimals != asset.decimals {
+                return Err(SendError::invalid("Asset precision changed; review again"));
+            }
+            if asset_transfer_call(state.call, asset) != self.call_data {
+                return Err(SendError::invalid(
+                    "Substrate runtime changed; build and review again",
+                ));
+            }
+        }
         if client
             .query_fee(&self.fee_extrinsic()?, &context.block_hash)
             .await?
@@ -197,6 +229,7 @@ pub async fn prepare_transfer(
         sender: sender_key,
         nonce: client.fetch_nonce(sender).await?,
         amount,
+        asset: None,
         fee: 0,
         finalized_number: context.finalized_number,
     };
@@ -249,6 +282,7 @@ pub async fn preview_transfer(
         } else {
             u128::MAX
         },
+        asset: None,
         fee: 0,
         finalized_number: context.finalized_number,
     };
@@ -303,6 +337,7 @@ pub async fn prepare_call(
         call_data,
         nonce: client.fetch_nonce(sender).await?,
         amount: spend_amount,
+        asset: None,
         fee: 0,
         finalized_number: context.finalized_number,
     };
@@ -315,4 +350,201 @@ pub async fn prepare_call(
             .await?,
     )?;
     Ok(prepared)
+}
+
+/// `Assets.transfer` of `asset` at the runtime's indices: the asset id, the
+/// recipient as `MultiAddress::Id`, the amount.
+pub(crate) fn asset_transfer_call(
+    call: AssetTransferCall,
+    asset: &PreparedAssetTransfer,
+) -> Vec<u8> {
+    let mut bytes = vec![call.pallet, call.call];
+    bytes.extend(Compact(asset.id).encode());
+    bytes.push(0);
+    bytes.extend(asset.recipient);
+    bytes.extend(Compact(asset.amount).encode());
+    bytes
+}
+
+/// Refuse what the runtime would reject, and what it would take but lose:
+/// a holding left below the asset's minimum balance is removed, and what it
+/// held is gone with it.
+fn check_asset_transfer(state: &AssetTransferState, amount: u128) -> Result<(), SendError> {
+    let details = state.details;
+    match details.status {
+        AssetStatus::Live => {}
+        AssetStatus::Frozen => {
+            return Err(SendError::invalid(
+                "This asset is frozen; it cannot be sent",
+            ));
+        }
+        AssetStatus::Destroying => {
+            return Err(SendError::invalid(
+                "This asset is being destroyed; it cannot be sent",
+            ));
+        }
+    }
+    let held = state
+        .sender
+        .ok_or_else(|| SendError::invalid("This account holds none of this asset"))?;
+    if held.status != AssetAccountStatus::Liquid {
+        return Err(SendError::invalid(
+            "This account's holding of the asset is frozen; it cannot send it",
+        ));
+    }
+    let rest = held
+        .balance
+        .checked_sub(amount)
+        .ok_or_else(|| SendError::invalid("Insufficient asset balance"))?;
+    if rest != 0 && rest < details.min_balance {
+        return Err(SendError::invalid(
+            "Send all of it, or leave at least the asset's minimum balance: less would be removed",
+        ));
+    }
+    match state.recipient {
+        Some(holding) if holding.status == AssetAccountStatus::Blocked => {
+            return Err(SendError::invalid(
+                "The recipient's holding of this asset is blocked; it cannot receive it",
+            ));
+        }
+        Some(holding) if holding.balance.checked_add(amount).is_none() => {
+            return Err(SendError::invalid("Recipient asset balance would overflow"));
+        }
+        Some(_) => {}
+        None if amount < details.min_balance => {
+            return Err(SendError::invalid(
+                "The recipient holds none of this asset; send at least its minimum balance",
+            ));
+        }
+        None if !details.is_sufficient
+            && state.recipient_native.free < state.context.runtime.existential_deposit =>
+        {
+            return Err(SendError::invalid(
+                "This asset cannot open an account: the recipient needs DOT of its own first",
+            ));
+        }
+        None => {}
+    }
+    Ok(())
+}
+
+/// Build an `Assets.transfer` of asset `id`, its fee paid in the network's
+/// coin, after checking it against the state it will meet.
+pub async fn prepare_asset_transfer(
+    client: &SubstrateClient,
+    chain: Chain,
+    sender: &str,
+    recipient: &str,
+    id: u32,
+    amount: u128,
+) -> Result<PreparedPolkadotTransaction, SendError> {
+    if amount == 0 {
+        return Err(SendError::invalid(
+            "Substrate transfer amount must be positive",
+        ));
+    }
+    let sender_key = decode_ss58(sender)?;
+    let recipient_key = decode_ss58(recipient)?;
+    let state = client
+        .asset_transfer_state(chain, id, &sender_key, &recipient_key)
+        .await?;
+    check_asset_transfer(&state, amount)?;
+    let asset = PreparedAssetTransfer {
+        id,
+        recipient: recipient_key,
+        amount,
+        decimals: state.decimals,
+    };
+    let mut prepared = PreparedPolkadotTransaction {
+        call_data: asset_transfer_call(state.call, &asset),
+        runtime: state.context.runtime,
+        sender: sender_key,
+        nonce: client.fetch_nonce(sender).await?,
+        amount: 0,
+        asset: Some(asset),
+        fee: 0,
+        finalized_number: state.context.finalized_number,
+    };
+    let block = state.context.block_hash;
+    prepared.fee = client.query_fee(&prepared.fee_extrinsic()?, &block).await?;
+    prepared.validate_funds(client.fetch_balance_at(chain, &sender_key, &block).await?)?;
+    Ok(prepared)
+}
+
+/// An asset transfer's fee, quoted at the largest amount so the transfer
+/// built later costs no more, and the account's balance of the asset.
+pub async fn preview_asset_transfer(
+    client: &SubstrateClient,
+    chain: Chain,
+    address: &str,
+    id: u32,
+) -> Result<(u128, u128, usize), SendError> {
+    let sender = decode_ss58(address)?;
+    let state = client
+        .asset_transfer_state(chain, id, &sender, &sender)
+        .await?;
+    let asset = PreparedAssetTransfer {
+        id,
+        recipient: sender,
+        amount: u128::MAX,
+        decimals: state.decimals,
+    };
+    let prepared = PreparedPolkadotTransaction {
+        call_data: asset_transfer_call(state.call, &asset),
+        runtime: state.context.runtime,
+        sender,
+        nonce: client.fetch_nonce(address).await?,
+        amount: 0,
+        asset: Some(asset),
+        fee: 0,
+        finalized_number: state.context.finalized_number,
+    };
+    let extrinsic = prepared.fee_extrinsic()?;
+    let fee = client
+        .query_fee(&extrinsic, &state.context.block_hash)
+        .await?;
+    Ok((
+        fee,
+        state.sender.map_or(0, |holding| holding.balance),
+        extrinsic.len(),
+    ))
+}
+
+#[cfg(test)]
+mod asset_tests {
+    use super::*;
+    use serde_json::Value;
+
+    fn fixture() -> Value {
+        serde_json::from_str(include_str!("../../tests/fixtures/asset-hub-assets.json")).unwrap()
+    }
+
+    #[test]
+    fn asset_transfers_match_independent_polkadot_js_calls() {
+        let fixture = fixture();
+        let recipient = [9; 32];
+        for network in ["polkadot", "westend"] {
+            let vectors = &fixture[network];
+            let call = AssetTransferCall {
+                pallet: vectors["transfer"]["pallet"].as_u64().unwrap() as u8,
+                call: vectors["transfer"]["call"].as_u64().unwrap() as u8,
+            };
+            for (name, id, amount) in [("usdt", 1984, 1_234_567), ("max", u32::MAX, u128::MAX)] {
+                let encoded = asset_transfer_call(
+                    call,
+                    &PreparedAssetTransfer {
+                        id,
+                        recipient,
+                        amount,
+                        decimals: 6,
+                    },
+                );
+                assert_eq!(
+                    format!("0x{}", hex::encode(encoded)),
+                    vectors["calls"][name],
+                    "{network} {name}"
+                );
+            }
+        }
+    }
 }

@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """A TON jetton staged send against loopback TON Center v2 and v3 nodes,
-across processes: built, signed, broadcast once as signed, and resolved from
-its trace by the locally derived message hash — not final while the trace is
-incomplete, failed when its root transaction aborted, and resolved again by
-a fresh process after a lost status write. Token reads, payloads and the
+across processes: built with an exchange's comment, signed with it,
+broadcast once as signed, and resolved from its trace by the locally derived
+message hash — not final while the trace is incomplete, failed when its root
+transaction aborted, and resolved again by a fresh process after a lost
+status write. Token reads, payloads and the
 build and signing refusals of every token network are tested in core."""
 import base64
 import urllib.parse
@@ -96,10 +97,14 @@ with serve(Node, external_hash=None, trace_response=None, submitted=[], traces=0
     run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v3',
         '--capabilities', 'verification,token-balance,token-discovery', endpoint + '/v3')
     prepared = run('send', 'build', 'Token', '--to', DESTINATION, '--endpoint', endpoint,
-                   '--contract', CONTRACT, '--decimals', '6', '--amount', '123.456789')['artifact']
+                   '--contract', CONTRACT, '--decimals', '6', '--amount', '123.456789',
+                   '--comment', 'deposit 104729')['artifact']
+    assert prepared['memo'] == {'kind': 'comment', 'value': 'deposit 104729'}, prepared['memo']
     signed = run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
                  '--endpoint', endpoint)['artifact']
     assert run('send', 'inspect', signed['id'])['artifact'] == signed
+    # The exchange's comment is in the signed message, in its own cell after op 0.
+    assert b'\0\0\0\0deposit 104729' in base64.b64decode(signed['signed_payload']), signed
     # The durable hash is the locally derived external-message hash; the
     # trace names its transactions by other hashes.
     live['external_hash'] = signed['transaction_hash']
@@ -122,4 +127,4 @@ with serve(Node, external_hash=None, trace_response=None, submitted=[], traces=0
     changes = poll()
     assert len(changes) == 1 and changes[0]['newStatus'] == 'confirmed', changes
     assert live['traces'] == 3 and len(live['submitted']) == 1, live
-    print('TON jetton staged send: broadcast once, resolved from its trace across processes')
+    print('TON jetton staged send: built with its comment, broadcast once, resolved from its trace across processes')

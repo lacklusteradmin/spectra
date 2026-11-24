@@ -1513,6 +1513,230 @@
       "account": 1,
       "path": "m/44'/60'/1'/0/0",
       "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "kaia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "kaia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "xdc",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "xdc",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "robinhood-chain",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "robinhood-chain",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "kava-evm",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "kava-evm",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "chiliz",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "chiliz",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "stable",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "stable",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "arc",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "arc",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "manta-pacific",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "manta-pacific",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "metis",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "metis",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "flare",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "flare",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "katana",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "katana",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "megaeth",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "megaeth",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "merlin",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "merlin",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "peaq",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "peaq",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "somnia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "somnia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "0g",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    },
+    {
+      "chain": "0g",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
     }
   ]
 }

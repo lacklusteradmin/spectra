@@ -50,6 +50,13 @@
       "sender": "0:efaff4bac220f88b2e98eb1d9cffcca3bfe3b66ece31a7d6c5890d30dfd7afa5",
       "root_hash": "07715dc0b87e373906a1d9747333969f46680e9b6610a2aa5dc82ccc04f9327e",
       "body_hash": "989f8474efd66092f769c9af556b5d4ef6f86e07283c80f444b711ebedbefa72"
+    },
+    {
+      "amount": "123456789",
+      "comment": "deposit 104729",
+      "sender": "0:efaff4bac220f88b2e98eb1d9cffcca3bfe3b66ece31a7d6c5890d30dfd7afa5",
+      "root_hash": "e3f242ae5d433c0fed4196de6fc591307510ad32e2316d8e75282b6c71d311c6",
+      "body_hash": "712b77a746940abfdc91735828b91a704cb8cf98f5f81fd303bc9b43a3192904"
     }
   ]
 }

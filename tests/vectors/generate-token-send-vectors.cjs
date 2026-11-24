@@ -41,13 +41,15 @@ async function main() {
   }
   const pair = keyPairFromSeed(seed); const wallet = WalletContractV4.create({ workchain: 0, publicKey: pair.publicKey });
   const source = new ton.Address(0, Buffer.alloc(32, 0x33)); const recipient = new ton.Address(0, Buffer.alloc(32, 0x22));
-  for (const amount of [123456789n, 1000000000000000123456789n, (1n << 120n) - 1n]) {
-  const payload = ton.beginCell().storeUint(0x0f8a7ea5, 32).storeUint(7, 64).storeCoins(amount)
-    .storeAddress(recipient).storeAddress(wallet.address).storeBit(false).storeCoins(1n).storeBit(false).endCell();
+  // A comment is the forward payload by reference (TEP-74 `Either Cell ^Cell`), built by @ton/core.
+  for (const [amount, comment] of [[123456789n], [1000000000000000123456789n], [(1n << 120n) - 1n], [123456789n, 'deposit 104729']]) {
+  const forward = ton.beginCell().storeUint(0x0f8a7ea5, 32).storeUint(7, 64).storeCoins(amount)
+    .storeAddress(recipient).storeAddress(wallet.address).storeBit(false).storeCoins(1n);
+  const payload = (comment ? forward.storeBit(true).storeRef(ton.comment(comment)) : forward.storeBit(false)).endCell();
   const body = wallet.createTransfer({ seqno: 7, secretKey: pair.secretKey, timeout: 1800000000, sendMode: 3,
     messages: [ton.internal({ to: source, value: 100000000n, bounce: true, body: payload })] });
   const external = ton.beginCell().store(ton.storeMessage(ton.external({ to: wallet.address, body }), { forceRef: true })).endCell();
-  fixtures.ton.push({ amount:amount.toString(),sender: wallet.address.toRawString(), root_hash: hex(external.hash()), body_hash: hex(payload.hash()) });
+  fixtures.ton.push({ amount:amount.toString(), ...(comment ? { comment } : {}), sender: wallet.address.toRawString(), root_hash: hex(external.hash()), body_hash: hex(payload.hash()) });
   }
   fs.writeFileSync('core/tests/fixtures/token-send-vectors.json', JSON.stringify(fixtures, null, 2) + '\n');
 }

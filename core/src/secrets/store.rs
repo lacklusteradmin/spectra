@@ -65,8 +65,8 @@ pub enum SecretStoreError {
     #[error("secret store not registered")]
     Unavailable,
     /// Platform backend (Keychain / Keystore) reported a failure.
-    #[error("secret store backend error: {message}")]
-    Backend { message: String },
+    #[error("secret store backend error: {reason}")]
+    Backend { reason: String },
 }
 
 impl From<SecretStoreError> for crate::error::SpectraBridgeError {

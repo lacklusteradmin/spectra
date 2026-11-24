@@ -35,11 +35,36 @@ impl PreparedEvmTransaction {
             .and_then(|fee| fee.checked_add(self.additional_fee_wei))
             .ok_or_else(|| SendError::invalid("EVM fee budget overflow"))
     }
+    /// Whether the network signs this as a legacy (EIP-155 type 0)
+    /// transaction. Its one gas price is the reviewed max fee, so the
+    /// priority fee must equal it, and it carries no access list.
+    fn legacy(&self) -> Result<bool, SendError> {
+        let chain = crate::registry::Chain::from_evm_chain_id(self.chain_id)
+            .ok_or_else(|| SendError::invalid("unknown EVM network"))?;
+        if !chain.evm_legacy_transactions() {
+            return Ok(false);
+        }
+        if self.max_priority_fee_per_gas != self.max_fee_per_gas {
+            return Err(SendError::invalid(
+                "a legacy transaction has one gas price, not separate max and priority fees",
+            ));
+        }
+        if !self.access_list.is_empty() {
+            return Err(SendError::invalid(
+                "a legacy transaction carries no access list",
+            ));
+        }
+        Ok(true)
+    }
+
     /// Inspect the exact bytes whose hash will be signed.
     pub fn signing_payload(&self) -> Result<Vec<u8>, SendError> {
         let to: [u8; 20] = decode_hex(&self.to)?
             .try_into()
             .map_err(|_| SendError::Invalid("invalid EVM destination".into()))?;
+        if self.legacy()? {
+            return Ok(encode_legacy_fields(self, &to, None));
+        }
         let mut payload = vec![2];
         encode_eip1559_fields(
             self.chain_id,
@@ -61,6 +86,20 @@ impl PreparedEvmTransaction {
 
     /// Offline signing cannot refresh or replace any reviewed field.
     pub fn sign(&self, key: &[u8]) -> Result<Vec<u8>, SendError> {
+        if self.legacy()? {
+            let payload = self.signing_payload()?;
+            let to: [u8; 20] = decode_hex(&self.to)?
+                .try_into()
+                .map_err(|_| SendError::Invalid("invalid EVM destination".into()))?;
+            let (recovery, r, s) = sign_digest(&crate::derivation::evm::keccak256(&payload), key)?;
+            // EIP-155: v = chain id × 2 + 35 + the recovery bit.
+            let v = self
+                .chain_id
+                .checked_mul(2)
+                .and_then(|v| v.checked_add(35 + recovery))
+                .ok_or_else(|| SendError::invalid("EVM chain id out of range"))?;
+            return Ok(encode_legacy_fields(self, &to, Some((v, &r, &s))));
+        }
         build_eip1559_tx(
             self.chain_id,
             self.nonce,
@@ -89,9 +128,13 @@ pub async fn prepare_transfer(
         Some(nonce) => nonce,
         None => client.fetch_nonce(from).await?,
     };
-    let (max_fee_per_gas, max_priority_fee_per_gas) = resolve_fees(client, overrides).await?;
+    let (max_fee_per_gas, mut max_priority_fee_per_gas) = resolve_fees(client, overrides).await?;
     if max_fee_per_gas == 0 || max_priority_fee_per_gas > max_fee_per_gas {
         return Err(SendError::Invalid("invalid EIP-1559 fees".into()));
+    }
+    // A legacy transaction pays its one gas price, the max fee, in full.
+    if client.chain()?.evm_legacy_transactions() {
+        max_priority_fee_per_gas = max_fee_per_gas;
     }
     let data = overrides.calldata.as_deref().unwrap_or(data);
     let gas_limit = resolve_gas(
@@ -179,14 +222,28 @@ async fn resolve_gas(
         "address": format!("0x{}", hex::encode(entry.address)),
         "storageKeys": entry.storage_keys.iter().map(|key| format!("0x{}", hex::encode(key))).collect::<Vec<_>>(),
     })).collect();
-    let gas = client
-        .estimate_transaction_gas(json!({
+    // A legacy-only node estimates the transaction it will be sent: one gas
+    // price and no access list.
+    let request = if client.chain()?.evm_legacy_transactions() {
+        if !access_list.is_empty() {
+            return Err(SendError::invalid(
+                "a legacy transaction carries no access list",
+            ));
+        }
+        json!({
+            "from": from, "to": to, "value": format!("0x{value:x}"),
+            "data": format!("0x{}", hex::encode(data)), "nonce": format!("0x{nonce:x}"),
+            "gasPrice": format!("0x{max_fee:x}"),
+        })
+    } else {
+        json!({
             "from": from, "to": to, "value": format!("0x{value:x}"),
             "data": format!("0x{}", hex::encode(data)), "nonce": format!("0x{nonce:x}"),
             "maxFeePerGas": format!("0x{max_fee:x}"),
             "maxPriorityFeePerGas": format!("0x{priority:x}"), "accessList": access_list,
-        }))
-        .await?;
+        })
+    };
+    let gas = client.estimate_transaction_gas(request).await?;
     gas_limit_with_margin(
         client.chain()?,
         gas,
@@ -292,20 +349,8 @@ pub fn build_eip1559_tx(
     );
 
     let msg_hash = crate::derivation::evm::keccak256(&signing_payload);
-
-    use secp256k1::{Message, Secp256k1, SecretKey};
-    let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_slice(private_key_bytes)
-        .map_err(|e| SendError::Invalid(format!("invalid key: {e}").into()))?;
-    let msg = Message::from_digest_slice(&msg_hash)
-        .map_err(|e| SendError::Internal(format!("msg: {e}")))?;
-    let (rec_id, sig_bytes) = secp
-        .sign_ecdsa_recoverable(&msg, &secret_key)
-        .serialize_compact();
-
-    let v: u64 = rec_id.to_i32() as u64; // 0 or 1 for EIP-1559
-    let r: [u8; 32] = sig_bytes[..32].try_into().unwrap();
-    let s: [u8; 32] = sig_bytes[32..].try_into().unwrap();
+    // The y-parity, 0 or 1, is EIP-1559's `v`.
+    let (v, r, s) = sign_digest(&msg_hash, private_key_bytes)?;
 
     let mut raw = vec![0x02u8];
     encode_eip1559_fields(
@@ -324,6 +369,65 @@ pub fn build_eip1559_tx(
         &mut raw,
     );
     Ok(raw)
+}
+
+/// A recoverable secp256k1 signature of a 32-byte digest: the recovery bit
+/// (0 or 1), then `r` and `s`.
+fn sign_digest(digest: &[u8], key: &[u8]) -> Result<(u64, [u8; 32], [u8; 32]), SendError> {
+    use secp256k1::{Message, Secp256k1, SecretKey};
+    let secret_key = SecretKey::from_slice(key)
+        .map_err(|e| SendError::Invalid(format!("invalid key: {e}").into()))?;
+    let msg =
+        Message::from_digest_slice(digest).map_err(|e| SendError::Internal(format!("msg: {e}")))?;
+    let (rec_id, sig_bytes) = Secp256k1::new()
+        .sign_ecdsa_recoverable(&msg, &secret_key)
+        .serialize_compact();
+    let r: [u8; 32] = sig_bytes[..32].try_into().expect("64-byte signature");
+    let s: [u8; 32] = sig_bytes[32..].try_into().expect("64-byte signature");
+    Ok((rec_id.to_i32() as u64, r, s))
+}
+
+/// A legacy transaction's RLP list. Unsigned, it is EIP-155's signing
+/// payload, `[nonce, gasPrice, gas, to, value, data, chainId, 0, 0]`; signed,
+/// the last three are `v`, `r` and `s`. The gas price is the max fee.
+fn encode_legacy_fields(
+    tx: &PreparedEvmTransaction,
+    to: &[u8; 20],
+    signature: Option<(u64, &[u8; 32], &[u8; 32])>,
+) -> Vec<u8> {
+    use alloy_rlp::{Encodable, Header};
+    let mut payload = Vec::new();
+    tx.nonce.encode(&mut payload);
+    tx.max_fee_per_gas.encode(&mut payload);
+    tx.gas_limit.encode(&mut payload);
+    Header {
+        list: false,
+        payload_length: 20,
+    }
+    .encode(&mut payload);
+    payload.extend_from_slice(to);
+    tx.value_wei.encode(&mut payload);
+    tx.data.as_slice().encode(&mut payload);
+    match signature {
+        None => {
+            tx.chain_id.encode(&mut payload);
+            0u8.encode(&mut payload);
+            0u8.encode(&mut payload);
+        }
+        Some((v, r, s)) => {
+            v.encode(&mut payload);
+            encode_uint256(r, &mut payload);
+            encode_uint256(s, &mut payload);
+        }
+    }
+    let mut out = Vec::new();
+    Header {
+        list: true,
+        payload_length: payload.len(),
+    }
+    .encode(&mut out);
+    out.extend_from_slice(&payload);
+    out
 }
 
 /// Encode the EIP-1559 field list into `out`. When `v/r/s` are `None`,
@@ -802,5 +906,136 @@ mod nft_vectors {
                 "quantity {bad}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod legacy_vectors {
+    use super::*;
+    use std::sync::Arc;
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+
+    fn prepared(case: &serde_json::Value) -> PreparedEvmTransaction {
+        let price: u128 = case["gas_price"].as_str().unwrap().parse().unwrap();
+        PreparedEvmTransaction {
+            chain_id: case["chain_id"].as_u64().unwrap(),
+            nonce: case["nonce"].as_u64().unwrap(),
+            max_fee_per_gas: price,
+            max_priority_fee_per_gas: price,
+            gas_limit: case["gas_limit"].as_u64().unwrap(),
+            to: case["to"].as_str().unwrap().into(),
+            value_wei: case["value"].as_str().unwrap().parse().unwrap(),
+            data: decode_hex(case["data"].as_str().unwrap()).unwrap(),
+            access_list: vec![],
+            additional_fee_wei: 0,
+        }
+    }
+
+    /// The EIP-155 signing payload and the signed transaction ethers.js 6.17.0
+    /// produces for the same fields, byte for byte, on each legacy-only
+    /// network: a native transfer, an ERC-20 transfer and a gas price past
+    /// 2^32 wei.
+    #[test]
+    fn legacy_transactions_match_ethers() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/evm-legacy-transactions.json"
+        ))
+        .unwrap();
+        let key = decode_hex(vectors["key"].as_str().unwrap()).unwrap();
+        let hex = |bytes: Vec<u8>| format!("0x{}", hex::encode(bytes));
+        for case in vectors["transactions"].as_array().unwrap() {
+            let tx = prepared(case);
+            assert!(
+                crate::registry::Chain::from_evm_chain_id(tx.chain_id)
+                    .unwrap()
+                    .evm_legacy_transactions()
+            );
+            assert_eq!(
+                hex(tx.signing_payload().unwrap()),
+                case["unsigned"],
+                "{}",
+                case["name"]
+            );
+            let raw = tx.sign(&key).unwrap();
+            assert_eq!(hex(raw.clone()), case["raw"], "{}", case["name"]);
+            assert_eq!(
+                hex(crate::derivation::evm::keccak256(&raw).to_vec()),
+                case["hash"],
+                "{}",
+                case["name"]
+            );
+        }
+    }
+
+    /// A legacy transaction has one gas price and no access list: fields that
+    /// say otherwise are refused before anything is signed, never dropped.
+    #[test]
+    fn legacy_fields_it_cannot_carry_are_refused() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/evm-legacy-transactions.json"
+        ))
+        .unwrap();
+        let case = &vectors["transactions"][0];
+        let key = [1u8; 32];
+        let mut split = prepared(case);
+        split.max_priority_fee_per_gas -= 1;
+        let mut listed = prepared(case);
+        listed.access_list = vec![AccessListEntry {
+            address: [0x11; 20],
+            storage_keys: vec![],
+        }];
+        for tx in [split, listed] {
+            assert!(tx.signing_payload().is_err());
+            assert!(tx.sign(&key).is_err());
+        }
+    }
+
+    /// On a legacy-only network the estimate asks about the transaction that
+    /// will be sent — one gas price, no fee-market fields — and the reviewed
+    /// priority fee is that price, whatever was asked for.
+    #[tokio::test]
+    async fn a_legacy_network_estimates_and_prepares_one_gas_price() {
+        let server = MockServer::start().await;
+        Mock::given(any())
+            .respond_with(|req: &Request| {
+                let body: serde_json::Value = req.body_json().unwrap();
+                assert_eq!(body["method"], "eth_estimateGas");
+                let tx = &body["params"][0];
+                assert_eq!(tx["gasPrice"], "0xa");
+                assert!(tx.get("maxFeePerGas").is_none() && tx.get("accessList").is_none());
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"jsonrpc":"2.0", "id":body["id"], "result":"0x5208"}))
+            })
+            .mount(&server)
+            .await;
+        let client = EvmClient::new(Arc::new(vec![server.uri()]), 4200);
+        let address = "0x2222222222222222222222222222222222222222";
+        let overrides = EvmSendOverrides {
+            nonce: Some(3),
+            max_fee_per_gas_wei: Some(10),
+            max_priority_fee_per_gas_wei: Some(1),
+            ..Default::default()
+        };
+        let prepared = prepare_transfer(&client, address, address, 7, &[], &overrides)
+            .await
+            .unwrap();
+        assert_eq!(
+            (prepared.max_fee_per_gas, prepared.max_priority_fee_per_gas),
+            (10, 10)
+        );
+        // An RLP list from its first byte: no typed-envelope prefix.
+        assert!(prepared.signing_payload().unwrap()[0] >= 0xc0);
+        let refused = EvmSendOverrides {
+            access_list: vec![AccessListEntry {
+                address: [0x11; 20],
+                storage_keys: vec![],
+            }],
+            ..overrides
+        };
+        assert!(
+            prepare_transfer(&client, address, address, 7, &[], &refused)
+                .await
+                .is_err()
+        );
     }
 }

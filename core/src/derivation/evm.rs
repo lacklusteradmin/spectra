@@ -105,7 +105,7 @@ fn decode_privkey_hex(hex_str: &str) -> Result<[u8; 32], SpectraBridgeError> {
     let trimmed = hex_str.trim();
     if trimmed.len() != 64 {
         return Err(SpectraBridgeError::InvalidInput {
-            message: "Private key hex must be exactly 64 characters.".into(),
+            reason: "Private key hex must be exactly 64 characters.".into(),
         });
     }
     let bytes = hex::decode(trimmed)?;

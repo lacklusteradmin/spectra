@@ -15,17 +15,30 @@ impl WalletService {
     ) -> Result<PreparedPayload, SpectraBridgeError> {
         let StagedAmount { eps, amount, .. } = staged;
         let to = request.to_address.as_str();
+        // A token is an `Assets` pallet asset, named by its id.
+        let asset = request
+            .contract_address
+            .as_deref()
+            .map(super::network_tokens::asset_id)
+            .transpose()?;
         Ok(match chain.mainnet_counterpart() {
             Chain::Polkadot | Chain::Bittensor => {
                 let prepared = crate::api::http::race(&eps, |endpoint| async move {
-                    crate::send::polkadot::prepare_transfer(
-                        &SubstrateClient::new(Arc::new(vec![endpoint])),
-                        chain,
-                        sender,
-                        to,
-                        amount,
-                    )
-                    .await
+                    let client = SubstrateClient::new(Arc::new(vec![endpoint]));
+                    match asset {
+                        Some(id) => {
+                            crate::send::polkadot::prepare_asset_transfer(
+                                &client, chain, sender, to, id, amount,
+                            )
+                            .await
+                        }
+                        None => {
+                            crate::send::polkadot::prepare_transfer(
+                                &client, chain, sender, to, amount,
+                            )
+                            .await
+                        }
+                    }
                 })
                 .await?;
                 if let Some(reviewed) = &request.fee_amount {

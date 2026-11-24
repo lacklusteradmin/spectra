@@ -81,6 +81,9 @@ pub(crate) struct PreparedJettonTransfer {
 
 /// TEP-74 transfer request sent to the sender's jetton wallet. The receiver
 /// in the body is the reviewed owner address, never the master contract.
+/// A comment is the forward payload, by reference; the one nanoton forwarded
+/// makes the recipient's wallet notify its owner with it.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_jetton_transfer(
     signer: &TonSigner<'_>,
     plan: &PreparedJettonTransfer,
@@ -88,6 +91,7 @@ pub(crate) fn build_jetton_transfer(
     response: TonAddress,
     amount: u128,
     seqno: u32,
+    comment: Option<&str>,
     valid_until: u32,
 ) -> Result<Vec<u8>, SendError> {
     if amount == 0 {
@@ -101,8 +105,11 @@ pub(crate) fn build_jetton_transfer(
         .address(recipient.workchain, &recipient.account_id)?
         .address(response.workchain, &response.account_id)?
         .uint(0, 1)?
-        .coins(1)?
-        .uint(0, 1)?;
+        .coins(1)?;
+    match comment.filter(|text| !text.is_empty()) {
+        Some(text) => payload.uint(1, 1)?.reference(comment_cell(text)?)?,
+        None => payload.uint(0, 1)?,
+    };
     let mut to = crate::derivation::ton::parse_ton_address(&plan.source_wallet)?
         .for_network(signer.chain.is_testnet())?;
     to.bounceable = true;
@@ -266,7 +273,11 @@ mod protocol_tests {
         )
     }
 
-    fn jetton(signer: &TonSigner<'_>, amount: u128) -> Result<Vec<u8>, SendError> {
+    fn jetton(
+        signer: &TonSigner<'_>,
+        amount: u128,
+        comment: Option<&str>,
+    ) -> Result<Vec<u8>, SendError> {
         let plan = PreparedJettonTransfer {
             master: format!("0:{}", "44".repeat(32)),
             source_wallet: format!("0:{}", "33".repeat(32)),
@@ -280,6 +291,7 @@ mod protocol_tests {
             parse_ton_address(&sender)?,
             amount,
             7,
+            comment,
             1800000000,
         )
     }
@@ -298,8 +310,12 @@ mod protocol_tests {
         ] {
             let signer = signer(version, Chain::Ton, &public);
             for vector in vectors.as_array().unwrap() {
-                let raw =
-                    jetton(&signer, vector["amount"].as_str().unwrap().parse().unwrap()).unwrap();
+                let raw = jetton(
+                    &signer,
+                    vector["amount"].as_str().unwrap().parse().unwrap(),
+                    vector["comment"].as_str(),
+                )
+                .unwrap();
                 assert_eq!(
                     hex::encode(boc_root_hash(&raw).unwrap()),
                     vector["root_hash"].as_str().unwrap(),
@@ -307,7 +323,7 @@ mod protocol_tests {
                 );
             }
             assert!(
-                jetton(&signer, 1u128 << 120)
+                jetton(&signer, 1u128 << 120, None)
                     .unwrap_err()
                     .to_string()
                     .contains("120-bit")

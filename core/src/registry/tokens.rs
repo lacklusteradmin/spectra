@@ -3,7 +3,7 @@
 use super::*;
 
 impl TokenStandard {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Erc20,
         Self::Bep20,
         Self::Arc20,
@@ -18,6 +18,7 @@ impl TokenStandard {
         Self::TrustLineToken,
         Self::StellarAsset,
         Self::CardanoNativeToken,
+        Self::AssetHubAsset,
     ];
 
     /// The protocol's name, as the catalogs, the store and a person spell it.
@@ -37,6 +38,7 @@ impl TokenStandard {
             Self::TrustLineToken => "Trust Line Token",
             Self::StellarAsset => "Stellar Asset",
             Self::CardanoNativeToken => "Cardano Native Token",
+            Self::AssetHubAsset => "Asset Hub Asset",
         }
     }
 
@@ -61,6 +63,7 @@ impl TokenStandard {
             Self::TrustLineToken => "Currency Code and Issuer (CODE.rIssuer)",
             Self::StellarAsset => "Asset Code and Issuer (CODE:ISSUER)",
             Self::CardanoNativeToken => "Policy ID and Asset Name (POLICY.NAME)",
+            Self::AssetHubAsset => "Asset ID",
         }
     }
 
@@ -125,6 +128,7 @@ impl Chain {
             Self::Xrp | Self::XrpTestnet => TokenStandard::TrustLineToken,
             Self::Stellar | Self::StellarTestnet => TokenStandard::StellarAsset,
             Self::Cardano | Self::CardanoPreprod => TokenStandard::CardanoNativeToken,
+            Self::Polkadot | Self::PolkadotWestend => TokenStandard::AssetHubAsset,
             _ => return None,
         })
     }
@@ -149,7 +153,8 @@ impl Chain {
             | Chain::Ton
             | Chain::Xrp
             | Chain::Stellar
-            | Chain::Cardano => true,
+            | Chain::Cardano
+            | Chain::Polkadot => true,
             _ => chain.is_evm(),
         }
     }

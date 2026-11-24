@@ -4,7 +4,7 @@
 /// remain at the existing boundary; no rounding or saturating cast crosses it.
 pub fn fee_units(amount: &str, decimals: u32) -> Result<u64, crate::error::SpectraBridgeError> {
     let invalid = || crate::error::SpectraBridgeError::InvalidInput {
-        message: "fee must be a positive decimal that fits its precision and integer range".into(),
+        reason: "fee must be a positive decimal that fits its precision and integer range".into(),
     };
     crate::amount::decimal::to_units(amount, decimals)
         .filter(|&units| units > 0)

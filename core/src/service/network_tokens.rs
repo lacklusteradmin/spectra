@@ -89,6 +89,28 @@ impl WalletService {
     }
 }
 
+/// An Asset Hub asset's id, as its validated identifier writes it.
+pub(crate) fn asset_id(contract: &str) -> Result<u32, SpectraBridgeError> {
+    contract
+        .parse()
+        .map_err(|_| SpectraBridgeError::invalid("invalid Asset Hub asset ID"))
+}
+
+/// An EVM listing without the coin's own ERC-20 face: its balance is the
+/// native one the coin's row already shows.
+fn without_native_coin_face(
+    chain: Chain,
+    held: Vec<crate::api::HeldToken>,
+) -> Vec<crate::api::HeldToken> {
+    held.into_iter()
+        .filter(|holding| {
+            chain
+                .evm_native_coin_contract()
+                .is_none_or(|native| !holding.contract.eq_ignore_ascii_case(native))
+        })
+        .collect()
+}
+
 /// The same canonical identity used by catalog, custom tokens and storage.
 fn holding_key(chain: Chain, contract: &str) -> Option<String> {
     crate::catalog::tokens::normalize_token_identifier(Some(contract.to_string()), chain)
@@ -316,11 +338,14 @@ impl WalletService {
                     return Ok(None);
                 }
                 let client = crate::api::blockscout::BlockscoutClient::new();
-                crate::api::http::race(&explorers, |base| {
-                    let client = &client;
-                    async move { client.fetch_token_holdings(address, &base).await }
-                })
-                .await?
+                without_native_coin_face(
+                    chain,
+                    crate::api::http::race(&explorers, |base| {
+                        let client = &client;
+                        async move { client.fetch_token_holdings(address, &base).await }
+                    })
+                    .await?,
+                )
             }
             _ => return Ok(None),
         };
@@ -404,6 +429,11 @@ impl WalletService {
                 .fetch_token_decimals(contract)
                 .await
                 .or_decode("token decimals unavailable")?,
+            Chain::Polkadot => {
+                SubstrateClient::new(endpoints)
+                    .fetch_asset_decimals(chain, asset_id(contract)?)
+                    .await?
+            }
             Chain::Ton => crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(
                 self.api_endpoints(
                     chain,
@@ -718,6 +748,35 @@ impl WalletService {
                         .map(u128::from)
                 })
                 .await
+            }
+            // Every asset from one pinned state; the asset's own metadata
+            // states its decimals.
+            Chain::Polkadot => {
+                let holder = crate::derivation::polkadot::decode_ss58(&address)?;
+                let ids = tokens
+                    .iter()
+                    .map(|token| asset_id(&token.contract))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let reads = SubstrateClient::new(endpoints)
+                    .fetch_asset_balances(chain, &ids, &holder)
+                    .await?;
+                readable_tokens(
+                    tokens
+                        .iter()
+                        .zip(reads)
+                        .map(|(token, read)| {
+                            read.map(|(raw, decimals)| {
+                                TokenBalanceResult::known(
+                                    chain,
+                                    token,
+                                    token.contract.clone(),
+                                    raw,
+                                    decimals,
+                                )
+                            })
+                        })
+                        .collect(),
+                )
             }
             Chain::Ton => {
                 // A jetton balance lives in a wallet contract derived per

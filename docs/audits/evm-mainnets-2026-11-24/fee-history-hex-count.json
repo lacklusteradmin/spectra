@@ -1,0 +1,557 @@
+{
+ "checked_at_utc": "2026-11-24T09:04:09+00:00",
+ "params": [
+  "0x4",
+  "latest",
+  [
+   25,
+   75
+  ]
+ ],
+ "endpoints": [
+  {
+   "id": "plasma.rpc.official",
+   "chain_id": "plasma",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "monad.rpc.quicknode",
+   "chain_id": "monad",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "monad.rpc.alchemy",
+   "chain_id": "monad",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "world-chain.rpc.alchemy",
+   "chain_id": "world-chain",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereum.rpc.publicnode",
+   "chain_id": "ethereum",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereum.rpc.1rpc",
+   "chain_id": "ethereum",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereum.sepolia.rpc.publicnode",
+   "chain_id": "ethereum-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereum.sepolia.rpc.1rpc",
+   "chain_id": "ethereum-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereum.hoodi.rpc.publicnode",
+   "chain_id": "ethereum-hoodi",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereum.hoodi.rpc.1rpc",
+   "chain_id": "ethereum-hoodi",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereumclassic.rpc.etcdesktop",
+   "chain_id": "ethereum-classic",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereumclassic.mordor.rpc.etccooperative",
+   "chain_id": "ethereum-classic-mordor",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereumclassic.mordor.rpc.etcnetwork",
+   "chain_id": "ethereum-classic-mordor",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ethereumclassic.mordor.rpc.0xrpc",
+   "chain_id": "ethereum-classic-mordor",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "arbitrum.rpc.publicnode",
+   "chain_id": "arbitrum",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "arbitrum.rpc.arb1",
+   "chain_id": "arbitrum",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "arbitrum.rpc.1rpc",
+   "chain_id": "arbitrum",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "arbitrum.sepolia.rpc.publicnode",
+   "chain_id": "arbitrum-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "optimism.rpc.mainnet",
+   "chain_id": "optimism",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "optimism.rpc.publicnode",
+   "chain_id": "optimism",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "optimism.rpc.1rpc",
+   "chain_id": "optimism",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "optimism.sepolia.rpc.publicnode",
+   "chain_id": "optimism-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "bnb.rpc.primary",
+   "chain_id": "bnb",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "bnb.rpc.binance",
+   "chain_id": "bnb",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "bnb.rpc.defibit",
+   "chain_id": "bnb",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "bnb.rpc.ninicoin",
+   "chain_id": "bnb",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "bnb.rpc.publicnode",
+   "chain_id": "bnb",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "bnb.rpc.1rpc",
+   "chain_id": "bnb",
+   "accepted": true,
+   "error": "HTTPError: HTTP Error 429: Too Many Requests",
+   "retry": {
+    "hex": true,
+    "integer": true
+   }
+  },
+  {
+   "id": "bnb.testnet.rpc.publicnode",
+   "chain_id": "bnb-testnet",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "avalanche.rpc.primary",
+   "chain_id": "avalanche",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "avalanche.rpc.publicnode",
+   "chain_id": "avalanche",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "avalanche.rpc.1rpc",
+   "chain_id": "avalanche",
+   "accepted": true,
+   "error": "HTTPError: HTTP Error 429: Too Many Requests",
+   "retry": {
+    "hex": true,
+    "integer": true
+   }
+  },
+  {
+   "id": "avalanche.fuji.rpc.publicnode",
+   "chain_id": "avalanche-fuji",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "hyperliquid.rpc.primary",
+   "chain_id": "hyperliquid",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "hyperliquid.rpc.publicnode",
+   "chain_id": "hyperliquid",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "hyperliquid.rpc.1rpc",
+   "chain_id": "hyperliquid",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "hyperliquid.testnet.rpc.primary",
+   "chain_id": "hyperliquid-testnet",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "hyperliquid.testnet.rpc.drpc",
+   "chain_id": "hyperliquid-testnet",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "base.rpc.publicnode",
+   "chain_id": "base",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "base.rpc.mainnet",
+   "chain_id": "base",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "base.rpc.1rpc",
+   "chain_id": "base",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "base.sepolia.rpc.publicnode",
+   "chain_id": "base-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "linea.rpc.linea-rpc",
+   "chain_id": "linea",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "linea.rpc.rpc",
+   "chain_id": "linea",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "linea.rpc.1rpc",
+   "chain_id": "linea",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "scroll.rpc.scroll-rpc",
+   "chain_id": "scroll",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "scroll.rpc.rpc",
+   "chain_id": "scroll",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "scroll.rpc.1rpc",
+   "chain_id": "scroll",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "blast.rpc.blast-rpc",
+   "chain_id": "blast",
+   "accepted": false,
+   "error": "HTTPError: HTTP Error 403: Forbidden",
+   "retry": {
+    "hex": "HTTPError: HTTP Error 403: Forbidden",
+    "integer": "HTTPError: HTTP Error 403: Forbidden"
+   }
+  },
+  {
+   "id": "blast.rpc.rpc",
+   "chain_id": "blast",
+   "accepted": false,
+   "error": "URLError: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>",
+   "retry": {
+    "hex": "URLError: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>",
+    "integer": "URLError: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)>"
+   }
+  },
+  {
+   "id": "mantle.rpc.mantle-rpc",
+   "chain_id": "mantle",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "mantle.rpc.rpc",
+   "chain_id": "mantle",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "polygon.rpc.publicnode",
+   "chain_id": "polygon",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "polygon.rpc.1rpc",
+   "chain_id": "polygon",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "polygon.amoy.rpc.publicnode",
+   "chain_id": "polygon-amoy",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "linea.sepolia.rpc.publicnode",
+   "chain_id": "linea-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "celo.sepolia.rpc.primary",
+   "chain_id": "celo-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "cronos.testnet.rpc.primary",
+   "chain_id": "cronos-testnet",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "zksync-era.sepolia.rpc.primary",
+   "chain_id": "zksync-era-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "sonic.testnet.rpc.primary",
+   "chain_id": "sonic-testnet",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ink.sepolia.rpc.primary",
+   "chain_id": "ink-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ink.sepolia.rpc.publicnode",
+   "chain_id": "ink-sepolia",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "x-layer.testnet.rpc.primary",
+   "chain_id": "x-layer-testnet",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "x-layer.testnet.rpc.okx",
+   "chain_id": "x-layer-testnet",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "sei.mainnet.evm",
+   "chain_id": "sei",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "sei.rpc.publicnode",
+   "chain_id": "sei",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "celo.mainnet.evm",
+   "chain_id": "celo",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "celo.rpc.publicnode",
+   "chain_id": "celo",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "celo.rpc.1rpc",
+   "chain_id": "celo",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "cronos.mainnet.evm",
+   "chain_id": "cronos",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "cronos.rpc.publicnode",
+   "chain_id": "cronos",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "cronos.rpc.1rpc",
+   "chain_id": "cronos",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "opBNB.mainnet.evm",
+   "chain_id": "opbnb",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "opbnb.rpc.publicnode",
+   "chain_id": "opbnb",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "opbnb.rpc.1rpc",
+   "chain_id": "opbnb",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "zkSyncEra.mainnet.evm",
+   "chain_id": "zksync-era",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "zksync-era.rpc.1rpc",
+   "chain_id": "zksync-era",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "sonic.mainnet.evm",
+   "chain_id": "sonic",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "sonic.rpc.publicnode",
+   "chain_id": "sonic",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "sonic.rpc.1rpc",
+   "chain_id": "sonic",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "berachain.mainnet.evm",
+   "chain_id": "berachain",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "berachain.rpc.publicnode",
+   "chain_id": "berachain",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "unichain.mainnet.evm",
+   "chain_id": "unichain",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "unichain.rpc.publicnode",
+   "chain_id": "unichain",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "unichain.rpc.1rpc",
+   "chain_id": "unichain",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ink.mainnet.evm",
+   "chain_id": "ink",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "ink.rpc.publicnode",
+   "chain_id": "ink",
+   "accepted": true,
+   "error": null
+  },
+  {
+   "id": "xLayer.mainnet.evm",
+   "chain_id": "x-layer",
+   "accepted": true,
+   "error": null
+  }
+ ]
+}

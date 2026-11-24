@@ -117,7 +117,7 @@ pub struct SendExecutionRequest {
     /// EVM overrides (nonce, custom gas fees). Typed; Rust assembles the
     /// payload fragment internally — no JSON shuttle from Swift.
     pub evm_overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
-    /// The XRP destination tag or Stellar memo the payment carries.
+    /// The XRP destination tag, Stellar memo or TON comment the payment carries.
     pub memo: Option<payment_memo::PaymentMemo>,
 }
 

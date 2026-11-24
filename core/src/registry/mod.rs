@@ -97,6 +97,22 @@ declare_chains! {
     Monad,
     WorldChain,
     Peercoin,
+    Kaia,
+    Xdc,
+    RobinhoodChain,
+    KavaEvm,
+    Chiliz,
+    Stable,
+    Arc,
+    MantaPacific,
+    Metis,
+    Flare,
+    Katana,
+    MegaEth,
+    Merlin,
+    Peaq,
+    Somnia,
+    ZeroG,
 
     // ── Testnets ─────────────────────────────────────────────────────────────
     BitcoinTestnet,
@@ -195,7 +211,7 @@ pub(crate) enum OpStackFeeModel {
 impl From<RegistryError> for crate::error::SpectraBridgeError {
     fn from(error: RegistryError) -> Self {
         Self::InvalidInput {
-            message: error.to_string().into(),
+            reason: error.to_string().into(),
         }
     }
 }
@@ -261,6 +277,8 @@ pub enum TokenStandard {
     StellarAsset,
     #[serde(rename = "Cardano Native Token")]
     CardanoNativeToken,
+    #[serde(rename = "Asset Hub Asset")]
+    AssetHubAsset,
 }
 
 /// The signature scheme a chain's raw private key belongs to.
@@ -448,6 +466,9 @@ pub enum PaymentMemoKind {
     MemoText,
     /// Stellar `MEMO_ID`: an unsigned 64-bit integer.
     MemoId,
+    /// TON text comment (op 0): up to 123 bytes of UTF-8, one cell. A
+    /// jetton transfer carries it as its forward payload.
+    Comment,
 }
 
 /// How a chain's estimated fee enters its signing request.

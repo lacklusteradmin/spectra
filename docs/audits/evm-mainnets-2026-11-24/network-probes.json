@@ -1,0 +1,2087 @@
+{
+ "checked_at_utc": "2026-11-24T09:01:34+00:00",
+ "user_agent": "spectra-core/0.1.0",
+ "chains": {
+  "kaia": {
+   "chain_id": 8217,
+   "rpc": [
+    {
+     "endpoint": "https://public-en.node.kaia.io",
+     "eth_chainId": {
+      "result": "0x2019"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x66720b300"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x0"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x5d21dba00",
+       "0x5d21dba00",
+       "0x5d21dba00",
+       "0x5d21dba00",
+       "0x5d21dba00"
+      ],
+      "reward": [
+       [
+        "0x9502f900",
+        "0x9502f900"
+       ],
+       [
+        "0x9502f900",
+        "0x3c8935280"
+       ],
+       [
+        "0x9502f900",
+        "0x9502f900"
+       ],
+       [
+        "0x3c8935280",
+        "0x3c8935280"
+       ]
+      ],
+      "oldestBlock": "0xde7f976"
+     },
+     "latest_block": 233306490,
+     "tx_types_last_12_blocks": {
+      "0x0": 16,
+      "0x2": 3
+     },
+     "sample_type2_tx": {
+      "from": "0x11c04db8b93fe7b6a76f35ae86fa484be9738f30",
+      "hash": "0x80115e55cc4ef27c3b378904444daff83061a37738081d29f866ca83e72dca46"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0xeda5"
+     },
+     "oracle_code_bytes": 0
+    }
+   ],
+   "tokens": [
+    {
+     "symbol": "USDT",
+     "contract": "0xd077a400968890eacc75cdc901f0356c943e4fdb",
+     "decimals": 6,
+     "code_bytes": 2227,
+     "decimals_read": 6,
+     "symbol_read": "USD\u20ae",
+     "matches": true
+    }
+   ]
+  },
+  "xdc": {
+   "chain_id": 50,
+   "rpc": [
+    {
+     "endpoint": "https://rpc.xinfin.network",
+     "eth_chainId": {
+      "result": "0x32"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "refused",
+     "eth_gasPrice": {
+      "result": "0x333905980"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x4a817c80"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x2e90edd00",
+       "0x2e90edd00",
+       "0x2e90edd00",
+       "0x2e90edd00",
+       "0x2e90edd00"
+      ],
+      "reward": [
+       [
+        "0x9502f900",
+        "0x9502f900"
+       ],
+       [
+        "0x3b9aca00",
+        "0x1bf08eb00"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x689c4fb"
+     },
+     "latest_block": 109692158,
+     "tx_types_last_12_blocks": {
+      "0x0": 392,
+      "0x2": 47
+     },
+     "sample_type2_tx": {
+      "from": "0x97371a5b3a1fd391a576fcb055e69f32d4eccc53",
+      "hash": "0xadc7c683eb54c1e3d3d52458b7501394ef1f2072e51afc3c4788baaee98fe284"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x1bc97"
+     },
+     "oracle_code_bytes": 0
+    },
+    {
+     "endpoint": "https://erpc.xinfin.network",
+     "eth_chainId": {
+      "result": "0x32"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "refused",
+     "eth_gasPrice": {
+      "result": "0x324a9a700"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x3b9aca00"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x2e90edd00",
+       "0x2e90edd00",
+       "0x2e90edd00",
+       "0x2e90edd00",
+       "0x2e90edd00"
+      ],
+      "reward": [
+       [
+        "0x9502f900",
+        "0x9502f900"
+       ],
+       [
+        "0x3b9aca00",
+        "0x1bf08eb00"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x689c4fb"
+     },
+     "latest_block": 109692158,
+     "tx_types_last_12_blocks": {
+      "0x0": 392,
+      "0x2": 47
+     },
+     "sample_type2_tx": {
+      "from": "0x97371a5b3a1fd391a576fcb055e69f32d4eccc53",
+      "hash": "0xadc7c683eb54c1e3d3d52458b7501394ef1f2072e51afc3c4788baaee98fe284"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x1bc97"
+     },
+     "oracle_code_bytes": 0
+    }
+   ],
+   "tokens": [
+    {
+     "symbol": "USDC",
+     "contract": "0xfa2958cb79b0491cc627c1557f441ef849ca8eb1",
+     "decimals": 6,
+     "code_bytes": 1798,
+     "decimals_read": 6,
+     "symbol_read": "USDC",
+     "matches": true
+    }
+   ]
+  },
+  "robinhood-chain": {
+   "chain_id": 4663,
+   "rpc": [
+    {
+     "endpoint": "https://rpc.mainnet.chain.robinhood.com",
+     "eth_chainId": {
+      "result": "0x1237"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x135d850"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x0"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x1327520",
+       "0x132e280",
+       "0x132ea50",
+       "0x133a5d0",
+       "0x13470f0"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x7472fd3"
+     },
+     "latest_block": 122105820,
+     "tx_types_last_12_blocks": {
+      "0x6a": 12,
+      "0x2": 205,
+      "0x0": 7
+     },
+     "sample_type2_tx": {
+      "from": "0x523b9e8e5e85dc7be49692d51df27f5263c388ef",
+      "hash": "0x448f3d865e3bc44d3ef4db61aa4f40db3faae15b608df0140cf664cc39d7952f"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "gasUsedForL1",
+      "l1BlockNumber",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {
+      "gasUsedForL1": "0x0",
+      "l1BlockNumber": "0x1941d11"
+     },
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x31865"
+     },
+     "oracle_code_bytes": 0
+    }
+   ],
+   "tokens": [
+    {
+     "symbol": "USDG",
+     "contract": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+     "decimals": 6,
+     "code_bytes": 170,
+     "decimals_read": 6,
+     "symbol_read": "USDG",
+     "matches": true
+    }
+   ]
+  },
+  "kava-evm": {
+   "chain_id": 2222,
+   "rpc": [
+    {
+     "endpoint": "https://evm.kava-rpc.com",
+     "eth_chainId": {
+      "result": "0x8ae"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x3b9aca00"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x0"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       null,
+       null,
+       null,
+       null,
+       "0x0"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x47868c00",
+        "0x47868c00"
+       ],
+       [
+        "0x47868c00",
+        "0x47868c00"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x168b398"
+     },
+     "latest_block": 23638939,
+     "tx_types_last_12_blocks": {
+      "0x0": 5
+     },
+     "sample_type2_tx": null,
+     "oracle_code_bytes": 0
+    },
+    {
+     "endpoint": "https://evm.kava.io",
+     "eth_chainId": {
+      "result": "0x8ae"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x3b9aca00"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x0"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       null,
+       null,
+       null,
+       null,
+       "0x0"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x47868c00",
+        "0x47868c00"
+       ],
+       [
+        "0x47868c00",
+        "0x47868c00"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x168b398"
+     },
+     "latest_block": 23638939,
+     "tx_types_last_12_blocks": {
+      "0x0": 5
+     },
+     "sample_type2_tx": null,
+     "oracle_code_bytes": 0
+    }
+   ],
+   "tokens": [
+    {
+     "symbol": "USDT",
+     "contract": "0x919c1c267bc06a7039e03fcc2ef738525769109c",
+     "decimals": 6,
+     "code_bytes": 2106,
+     "decimals_read": 6,
+     "symbol_read": "USDt",
+     "matches": true
+    }
+   ]
+  },
+  "chiliz": {
+   "chain_id": 88888,
+   "rpc": [
+    {
+     "endpoint": "https://rpc.chiliz.com",
+     "eth_chainId": {
+      "result": "0x15b38"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x2464f377200"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x3b9aca00"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x246139ca800",
+       "0x246139ca800",
+       "0x246139ca800",
+       "0x246139ca800",
+       "0x246139ca800"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x25bf229"
+     },
+     "latest_block": 39580204,
+     "tx_types_last_12_blocks": {
+      "0x0": 13,
+      "0x2": 1
+     },
+     "sample_type2_tx": {
+      "from": "0xd87ed54b5a57eea63ccce6215b2d1afe79b95aa0",
+      "hash": "0x9d1e52008b28e5b56c8f64153d066fc378cef810ec8869b1a128942670b15bcf"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0xc"
+     },
+     "oracle_code_bytes": 0
+    },
+    {
+     "endpoint": "https://chiliz-rpc.publicnode.com",
+     "eth_chainId": {
+      "result": "0x15b38"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x2464f377200"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x3b9aca00"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x246139ca800",
+       "0x246139ca800",
+       "0x246139ca800",
+       "0x246139ca800",
+       "0x246139ca800"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x25bf22a"
+     },
+     "latest_block": 39580205,
+     "tx_types_last_12_blocks": {
+      "0x0": 13,
+      "0x2": 1
+     },
+     "sample_type2_tx": {
+      "from": "0xd87ed54b5a57eea63ccce6215b2d1afe79b95aa0",
+      "hash": "0x9d1e52008b28e5b56c8f64153d066fc378cef810ec8869b1a128942670b15bcf"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0xc"
+     },
+     "oracle_code_bytes": 0
+    }
+   ],
+   "history": {
+    "endpoint": "https://scan-api.chiliz.com",
+    "address": "0xd87ed54b5a57eea63ccce6215b2d1afe79b95aa0",
+    "txlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokentx": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokenlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 7,
+     "error": null
+    }
+   },
+   "tokens": []
+  },
+  "stable": {
+   "chain_id": 988,
+   "rpc": [
+    {
+     "endpoint": "https://rpc.stable.xyz",
+     "eth_chainId": {
+      "result": "0x3dc"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x430e2340"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x7735940"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x3b9aca00",
+       "0x3b9aca00",
+       "0x3b9aca00",
+       "0x3b9aca00",
+       "0x3b9aca00"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x2dd35d0"
+     },
+     "latest_block": 48051668,
+     "tx_types_last_12_blocks": {
+      "0x2": 12
+     },
+     "sample_type2_tx": {
+      "from": "0x8888888888888888888888888888888888888888",
+      "hash": "0x3925cc5c6295858bfba743a829e4a12b2b4be9d988f4edf70f603153e1c75ca9"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "error": {
+       "code": -32000,
+       "message": "rpc error: code = Unknown desc = insufficient funds for gas * price + value"
+      }
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x0"
+     },
+     "oracle_code_bytes": 0
+    }
+   ],
+   "tokens": [
+    {
+     "symbol": "STABLE",
+     "contract": "0x0000000000000000000000000000000000001003",
+     "decimals": 18,
+     "code_bytes": 88,
+     "decimals_read": 18,
+     "symbol_read": "STABLE",
+     "matches": true
+    },
+    {
+     "symbol": "XAUt0",
+     "contract": "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
+     "decimals": 6,
+     "code_bytes": 2227,
+     "decimals_read": 6,
+     "symbol_read": "XAUt0",
+     "matches": true
+    },
+    {
+     "symbol": "USDT0 (native face)",
+     "contract": "0x779ded0c9e1022225f8e0630b35a9b54be713736",
+     "decimals": 6,
+     "code_bytes": 2227,
+     "decimals_read": 6,
+     "symbol_read": "USDT0",
+     "matches": true
+    }
+   ]
+  },
+  "arc": {
+   "chain_id": 5042,
+   "rpc": [
+    {
+     "endpoint": "https://rpc.mainnet.arc.io",
+     "eth_chainId": {
+      "result": "0x13b2"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x5d21dba00"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x12a05f200"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x4a817c800",
+       "0x4a817c800",
+       "0x4a817c800",
+       "0x4a817c800",
+       "0x4a817c800"
+      ],
+      "reward": [
+       [
+        "0x2540be400",
+        "0x25f54dc1cf"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x2540be400",
+        "0x2540be400"
+       ],
+       [
+        "0x5cf053621",
+        "0x5cf053621"
+       ]
+      ],
+      "oldestBlock": "0x1f5b5dd"
+     },
+     "latest_block": 32880096,
+     "tx_types_last_12_blocks": {
+      "0x2": 21,
+      "0x0": 11
+     },
+     "sample_type2_tx": {
+      "from": "0x32841b83d27b33abec362b3821161d9cb3531bfc",
+      "hash": "0x045bbe5c68257a883c1594b3d35d1f7012521a25e88ac462fd25681459f046f1"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x1cc"
+     },
+     "oracle_code_bytes": 0
+    },
+    {
+     "endpoint": "https://rpc.drpc.mainnet.arc.io",
+     "eth_chainId": {
+      "result": "0x13b2"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x6fc23ac00"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x2540be400"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x4a817c800",
+       "0x4a817c800",
+       "0x4a817c800",
+       "0x4a817c800",
+       "0x4a817c800"
+      ],
+      "reward": [
+       [
+        "0x12a05f200",
+        "0x2540be400"
+       ],
+       [
+        "0x2540be400",
+        "0x17cf0e1c04"
+       ],
+       [
+        "0x1f23c01",
+        "0x4a817c800"
+       ],
+       [
+        "0xbcb9407d",
+        "0x4a817c800"
+       ]
+      ],
+      "oldestBlock": "0x1f5b5e1"
+     },
+     "latest_block": 32880101,
+     "tx_types_last_12_blocks": {
+      "0x2": 35,
+      "0x0": 11
+     },
+     "sample_type2_tx": {
+      "from": "0x9298179251bda7ab136f02bbfa47ac24ece9518d",
+      "hash": "0xd1839128f05ade425d4be5325a4f85c292e0faa53ccc0665c5fd4ee2e700e8e3"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x21f3b"
+     },
+     "oracle_code_bytes": 0
+    }
+   ],
+   "tokens": [
+    {
+     "symbol": "EURC",
+     "contract": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+     "decimals": 6,
+     "code_bytes": 1798,
+     "decimals_read": 6,
+     "symbol_read": "EURC",
+     "matches": true
+    },
+    {
+     "symbol": "USDC (native face)",
+     "contract": "0x3600000000000000000000000000000000000000",
+     "decimals": 6,
+     "code_bytes": 1798,
+     "decimals_read": 6,
+     "symbol_read": "USDC",
+     "matches": true
+    }
+   ]
+  },
+  "manta-pacific": {
+   "chain_id": 169,
+   "rpc": [
+    {
+     "endpoint": "https://pacific-rpc.manta.network/http",
+     "eth_chainId": {
+      "result": "0xa9"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0xf43d4"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0xf4240"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x194",
+       "0x194",
+       "0x194",
+       "0x194",
+       "0x194"
+      ],
+      "reward": [
+       [
+        "0x7d0",
+        "0x249f0"
+       ],
+       [
+        "0x7d0",
+        "0x249f1"
+       ],
+       [
+        "0x7d0",
+        "0x249f0"
+       ],
+       [
+        "0x7d0",
+        "0x249f0"
+       ]
+      ],
+      "oldestBlock": "0x9a8d37"
+     },
+     "latest_block": 10128698,
+     "tx_types_last_12_blocks": {
+      "0x7e": 12,
+      "0x2": 60,
+      "0x0": 7
+     },
+     "sample_type2_tx": {
+      "from": "0xfeffd50ae071023b956ecd218aaae40b59144196",
+      "hash": "0x04c1b6c67571d83d048604e9950f0d9dcde6c6f6fa5bc40563c7bede6bb75097"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "l1BaseFeeScalar",
+      "l1BlobBaseFee",
+      "l1BlobBaseFeeScalar",
+      "l1Fee",
+      "l1GasPrice",
+      "l1GasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {
+      "l1BaseFeeScalar": "0x7530",
+      "l1BlobBaseFee": "0x3304c0",
+      "l1BlobBaseFeeScalar": "0x0",
+      "l1Fee": "0xb9b9f0e0",
+      "l1GasPrice": "0x3de8a5a",
+      "l1GasUsed": "0x640"
+     },
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x2e20"
+     },
+     "oracle_code_bytes": 2055,
+     "oracle_getL1FeeUpperBound_100": {
+      "result": "0x00000000000000000000000000000000000000000000000000000000cec51611"
+     },
+     "oracle_getOperatorFee_21000": {
+      "result": "0x0000000000000000000000000000000000000000000000000000000000000000"
+     }
+    }
+   ],
+   "history": {
+    "endpoint": "https://pacific-explorer.manta.network",
+    "address": "0xfeffd50ae071023b956ecd218aaae40b59144196",
+    "txlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokentx": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokenlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 3,
+     "error": null
+    }
+   },
+   "tokens": [
+    {
+     "symbol": "MANTA",
+     "contract": "0x95cef13441be50d20ca4558cc0a27b601ac544e5",
+     "decimals": 18,
+     "code_bytes": 9544,
+     "decimals_read": 18,
+     "symbol_read": "MANTA",
+     "matches": true
+    }
+   ]
+  },
+  "metis": {
+   "chain_id": 1088,
+   "rpc": [
+    {
+     "endpoint": "https://andromeda.metis.io/?owner=1088",
+     "eth_chainId": {
+      "result": "0x440"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "refused",
+     "eth_gasPrice": {
+      "result": "0x3ac36dc9a"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "error": {
+       "code": -32601,
+       "message": "the method eth_maxPriorityFeePerGas does not exist/is not available"
+      }
+     },
+     "eth_feeHistory": {
+      "error": {
+       "code": -32601,
+       "message": "the method eth_feeHistory does not exist/is not available"
+      }
+     },
+     "latest_block": 23457754,
+     "tx_types_last_12_blocks": {
+      "0x0": 23
+     },
+     "sample_type2_tx": null,
+     "oracle_code_bytes": 4076,
+     "oracle_getL1FeeUpperBound_100": {
+      "error": {
+       "code": 3,
+       "message": "execution reverted",
+       "data": "0x"
+      }
+     },
+     "oracle_getOperatorFee_21000": {
+      "error": {
+       "code": 3,
+       "message": "execution reverted",
+       "data": "0x"
+      }
+     }
+    },
+    {
+     "endpoint": "https://metis-rpc.publicnode.com",
+     "eth_chainId": {
+      "result": "0x440"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "refused",
+     "eth_gasPrice": {
+      "result": "0x3ac36dc9a"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "error": {
+       "code": -32601,
+       "message": "the method eth_maxPriorityFeePerGas does not exist/is not available"
+      }
+     },
+     "eth_feeHistory": {
+      "error": {
+       "code": -32601,
+       "message": "the method eth_feeHistory does not exist/is not available"
+      }
+     },
+     "latest_block": 23457754,
+     "tx_types_last_12_blocks": {
+      "0x0": 23
+     },
+     "sample_type2_tx": null,
+     "oracle_code_bytes": 4076,
+     "oracle_getL1FeeUpperBound_100": {
+      "error": {
+       "code": 3,
+       "message": "execution reverted",
+       "data": "0x"
+      }
+     },
+     "oracle_getOperatorFee_21000": {
+      "error": {
+       "code": 3,
+       "message": "execution reverted",
+       "data": "0x"
+      }
+     }
+    }
+   ],
+   "history": {
+    "endpoint": "https://andromeda-explorer.metis.io",
+    "address": "0x0000000000000000000000000000000000000000",
+    "txlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokentx": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokenlist": {
+     "status": "0",
+     "message": "No tokens found",
+     "result_is_array": true,
+     "rows": 0,
+     "error": null
+    }
+   },
+   "tokens": [
+    {
+     "symbol": "METIS (native face)",
+     "contract": "0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000",
+     "decimals": 18,
+     "code_bytes": 4299,
+     "decimals_read": 18,
+     "symbol_read": "Metis",
+     "matches": true
+    }
+   ],
+   "oracle_getL1Fee_bytes": {
+    "endpoint": "https://andromeda.metis.io",
+    "payload_bytes": 33,
+    "answer": {
+     "jsonrpc": "2.0",
+     "id": 1,
+     "result": "0x0000000000000000000000000000000000000000000000000000000000000000"
+    }
+   }
+  },
+  "flare": {
+   "chain_id": 14,
+   "rpc": [
+    {
+     "endpoint": "https://flare-api.flare.network/ext/C/rpc",
+     "eth_chainId": {
+      "result": "0xe"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x7cfb283a81"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x96"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x75b381ed31",
+       "0x7718c3cc22",
+       "0x7a7072badc",
+       "0x7bb22840e6",
+       "0x7cfb2839eb"
+      ],
+      "reward": [
+       [
+        "0x96",
+        "0x103d3d0e433"
+       ],
+       [
+        "0xe98bf200e0",
+        "0x112b1116029"
+       ],
+       [
+        "0x342f091205",
+        "0x231059ee3e8"
+       ],
+       [
+        "0xee31879844",
+        "0x1ef0498ba6a"
+       ]
+      ],
+      "oldestBlock": "0x47c8e45"
+     },
+     "latest_block": 75271753,
+     "tx_types_last_12_blocks": {
+      "0x2": 143,
+      "0x0": 9,
+      "0x1": 1
+     },
+     "sample_type2_tx": {
+      "from": "0xfa0e4a7292d67eebca15af6a487ad77c4a5ea096",
+      "hash": "0xfe0cc9a78617d96bef07d50078a6e923a38a6971b93e15e3e379cfbb6fb07e71"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x2cd01"
+     },
+     "oracle_code_bytes": 0
+    }
+   ],
+   "history": {
+    "endpoint": "https://flare-explorer.flare.network",
+    "address": "0xfa0e4a7292d67eebca15af6a487ad77c4a5ea096",
+    "txlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokentx": {
+     "status": "0",
+     "message": "No token transfers found",
+     "result_is_array": true,
+     "rows": 0,
+     "error": null
+    },
+    "tokenlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 17,
+     "error": null
+    }
+   },
+   "tokens": [
+    {
+     "symbol": "USDT0",
+     "contract": "0xe7cd86e13ac4309349f30b3435a9d337750fc82d",
+     "decimals": 6,
+     "code_bytes": 2227,
+     "decimals_read": 6,
+     "symbol_read": "USD\u20ae0",
+     "matches": true
+    }
+   ]
+  },
+  "katana": {
+   "chain_id": 747474,
+   "rpc": [
+    {
+     "endpoint": "https://rpc.katana.network",
+     "eth_chainId": {
+      "result": "0xb67d2"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x30a32c0"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0xf4240"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x2faf080",
+       "0x2faf080",
+       "0x2faf080",
+       "0x2faf080",
+       "0x2faf080"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x4c4b40",
+        "0x4c4b40"
+       ]
+      ],
+      "oldestBlock": "0x2e824a7"
+     },
+     "latest_block": 48768170,
+     "tx_types_last_12_blocks": {
+      "0x7e": 12,
+      "0x2": 4,
+      "0x0": 18
+     },
+     "sample_type2_tx": {
+      "from": "0x3dc34a1b06256842259a33bf7c6c4f7cc1688872",
+      "hash": "0x16b7fccd3af13d48ea69777198c5a4f551017de0931189be3831606d054ecbb3"
+     },
+     "receipt_fields": [
+      "blobGasUsed",
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "daFootprintGasScalar",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "l1BaseFeeScalar",
+      "l1BlobBaseFee",
+      "l1BlobBaseFeeScalar",
+      "l1Fee",
+      "l1GasPrice",
+      "l1GasUsed",
+      "logs",
+      "logsBloom",
+      "operatorFeeConstant",
+      "operatorFeeScalar",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {
+      "l1BaseFeeScalar": "0x558",
+      "l1BlobBaseFee": "0x3f234a",
+      "l1BlobBaseFeeScalar": "0xc3c9d",
+      "l1Fee": "0x93e488db",
+      "l1GasPrice": "0x483b144",
+      "l1GasUsed": "0x1f2a",
+      "operatorFeeConstant": "0x0",
+      "operatorFeeScalar": "0x927c0"
+     },
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x12422"
+     },
+     "oracle_code_bytes": 2059,
+     "oracle_getL1FeeUpperBound_100": {
+      "result": "0x000000000000000000000000000000000000000000000000000000002105386e"
+     },
+     "oracle_getOperatorFee_21000": {
+      "result": "0x000000000000000000000000000000000000000000000000000001255dda3800"
+     }
+    }
+   ],
+   "tokens": [
+    {
+     "symbol": "KAT",
+     "contract": "0x7f1f4b4b29f5058fa32cc7a97141b8d7e5abdc2d",
+     "decimals": 18,
+     "code_bytes": 10263,
+     "decimals_read": 18,
+     "symbol_read": "KAT",
+     "matches": true
+    }
+   ]
+  },
+  "megaeth": {
+   "chain_id": 4326,
+   "rpc": [
+    {
+     "endpoint": "https://mainnet.megaeth.com/rpc",
+     "eth_chainId": {
+      "result": "0x10e6"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0xf4240"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x0"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0xf4240",
+       "0xf4240",
+       "0xf4240",
+       "0xf4240",
+       "0xf4240"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0xffffd"
+     },
+     "latest_block": 32713974,
+     "tx_types_last_12_blocks": {
+      "0x7e": 12,
+      "0x0": 127,
+      "0x2": 131
+     },
+     "sample_type2_tx": {
+      "from": "0x80a7db0c2be819afa7c2755f02c8265f157cbdf6",
+      "hash": "0x041c07dc002f309ea0174c15dbaa79925e503b1e1f7d8eb54f74876c23d2896b"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "l1BaseFeeScalar",
+      "l1BlobBaseFee",
+      "l1BlobBaseFeeScalar",
+      "l1Fee",
+      "l1GasPrice",
+      "l1GasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {
+      "l1BaseFeeScalar": "0x558",
+      "l1BlobBaseFee": "0xf5f2a2d6dfc99",
+      "l1BlobBaseFeeScalar": "0x0",
+      "l1Fee": "0x176024c5",
+      "l1GasPrice": "0x5301cb0",
+      "l1GasUsed": "0xcdd"
+     },
+     "eth_estimateGas_plain_transfer": {
+      "result": "0xea60"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x3901e81"
+     },
+     "oracle_code_bytes": 2059,
+     "oracle_getL1FeeUpperBound_100": {
+      "result": "0x000000000000000000000000000000000000000000000000000000000ca457db"
+     },
+     "oracle_getOperatorFee_21000": {
+      "result": "0x0000000000000000000000000000000000000000000000000000000000000000"
+     }
+    }
+   ],
+   "history": {
+    "endpoint": "https://megaeth.blockscout.com",
+    "address": "0x80a7db0c2be819afa7c2755f02c8265f157cbdf6",
+    "txlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokentx": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 1,
+     "error": null
+    },
+    "tokenlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 1,
+     "error": null
+    }
+   },
+   "tokens": [
+    {
+     "symbol": "MEGA",
+     "contract": "0x28b7e77f82b25b95953825f1e3ea0e36c1c29861",
+     "decimals": 18,
+     "code_bytes": 5601,
+     "decimals_read": 18,
+     "symbol_read": "MEGA",
+     "matches": true
+    },
+    {
+     "symbol": "USDT0",
+     "contract": "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
+     "decimals": 6,
+     "code_bytes": 2227,
+     "decimals_read": 6,
+     "symbol_read": "USDT0",
+     "matches": true
+    },
+    {
+     "symbol": "USDe",
+     "contract": "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34",
+     "decimals": 18,
+     "code_bytes": 13639,
+     "decimals_read": 18,
+     "symbol_read": "USDe",
+     "matches": true
+    }
+   ]
+  },
+  "merlin": {
+   "chain_id": 4200,
+   "rpc": [
+    {
+     "endpoint": "https://rpc.merlinchain.io",
+     "eth_chainId": {
+      "result": "0x1068"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x5b8d80"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x229e4e0"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x0",
+       "0x0",
+       "0x0",
+       "0x0",
+       "0x0"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x1fb3972"
+     },
+     "latest_block": 33241462,
+     "tx_types_last_12_blocks": {},
+     "sample_type2_tx": null,
+     "oracle_code_bytes": 0
+    }
+   ],
+   "history": {
+    "endpoint": "https://scan.merlinchain.io",
+    "address": "0x0000000000000000000000000000000000000000",
+    "txlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokentx": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokenlist": {
+     "status": "0",
+     "message": "No tokens found",
+     "result_is_array": true,
+     "rows": 0,
+     "error": null
+    }
+   },
+   "tokens": [
+    {
+     "symbol": "MERL",
+     "contract": "0x5c46bff4b38dc1eae09c5bac65872a1d8bc87378",
+     "decimals": 18,
+     "code_bytes": 6520,
+     "decimals_read": 18,
+     "symbol_read": "MERL",
+     "matches": true
+    }
+   ]
+  },
+  "peaq": {
+   "chain_id": 3338,
+   "rpc": [
+    {
+     "endpoint": "https://quicknode1.peaq.xyz",
+     "eth_chainId": {
+      "result": "0xd0a"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x174876e800"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x0"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x174876e800",
+       "0x174876e800",
+       "0x174876e800",
+       "0x174876e800",
+       "0x174876e800"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0xba43b7400",
+        "0xba43b7400"
+       ],
+       [
+        "0x4a817c800",
+        "0xba43b7400"
+       ],
+       [
+        "0xba43b7400",
+        "0xba43b7400"
+       ]
+      ],
+      "oldestBlock": "0xbed13e"
+     },
+     "latest_block": 12505409,
+     "tx_types_last_12_blocks": {
+      "0x0": 28,
+      "0x2": 1
+     },
+     "sample_type2_tx": {
+      "from": "0x00213db86d1b91172ad2bc079d1b7378b87bad8f",
+      "hash": "0x42afbeab776a1593468adf0e9a3335173b9e2dcaa09a0e864e40be5dbe5df3c2"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x13e3a"
+     },
+     "oracle_code_bytes": 0
+    },
+    {
+     "endpoint": "https://peaq-rpc.publicnode.com",
+     "eth_chainId": {
+      "result": "0xd0a"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0x174876e800"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x0"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x174876e800",
+       "0x174876e800",
+       "0x174876e800",
+       "0x174876e800",
+       "0x174876e800"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0xba43b7400",
+        "0xba43b7400"
+       ],
+       [
+        "0x4a817c800",
+        "0xba43b7400"
+       ],
+       [
+        "0xba43b7400",
+        "0xba43b7400"
+       ]
+      ],
+      "oldestBlock": "0xbed13e"
+     },
+     "latest_block": 12505409,
+     "tx_types_last_12_blocks": {
+      "0x0": 28,
+      "0x2": 1
+     },
+     "sample_type2_tx": {
+      "from": "0x00213db86d1b91172ad2bc079d1b7378b87bad8f",
+      "hash": "0x42afbeab776a1593468adf0e9a3335173b9e2dcaa09a0e864e40be5dbe5df3c2"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0x13e3a"
+     },
+     "oracle_code_bytes": 0
+    }
+   ],
+   "tokens": [
+    {
+     "symbol": "PEAQ (native face)",
+     "contract": "0x0000000000000000000000000000000000000809",
+     "decimals": 18,
+     "code_bytes": 0,
+     "decimals_read": 18,
+     "symbol_read": "PEAQ",
+     "matches": false
+    }
+   ]
+  },
+  "somnia": {
+   "chain_id": 5031,
+   "rpc": [
+    {
+     "endpoint": "https://api.infra.mainnet.somnia.network",
+     "eth_chainId": {
+      "result": "0x13a7"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "refused",
+     "eth_gasPrice": {
+      "result": "0x165a0bc00"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0x0"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x165a0bc00",
+       "0x165a0bc00",
+       "0x165a0bc00",
+       "0x165a0bc00",
+       "0x165a0bc00"
+      ],
+      "reward": [
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ]
+      ],
+      "oldestBlock": "0x1c39fbbc"
+     },
+     "latest_block": 473562053,
+     "tx_types_last_12_blocks": {
+      "0x0": 9
+     },
+     "sample_type2_tx": null,
+     "oracle_code_bytes": 0
+    }
+   ],
+   "history": {
+    "endpoint": "https://explorer.somnia.network",
+    "address": "0x0000000000000000000000000000000000000000",
+    "txlist": {
+     "status": "1",
+     "message": "OK",
+     "result_is_array": true,
+     "rows": 2,
+     "error": null
+    },
+    "tokentx": {
+     "status": "0",
+     "message": "Not available: the explorer cannot answer this request right now",
+     "result_is_array": false,
+     "rows": null,
+     "error": null
+    },
+    "tokenlist": {
+     "status": "0",
+     "message": "No tokens found",
+     "result_is_array": true,
+     "rows": 0,
+     "error": null
+    }
+   },
+   "tokens": []
+  },
+  "0g": {
+   "chain_id": 16661,
+   "rpc": [
+    {
+     "endpoint": "https://evmrpc.0g.ai",
+     "eth_chainId": {
+      "result": "0x4115"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0xee6b2807"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0xee6b2800"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x7",
+       "0x7",
+       "0x7",
+       "0x7",
+       "0x7"
+      ],
+      "reward": [
+       [
+        "0xee6b2800",
+        "0xee6b2800"
+       ],
+       [
+        "0xee6b2800",
+        "0xee6b2800"
+       ],
+       [
+        "0xee6b2800",
+        "0xee6b2800"
+       ],
+       [
+        "0xee6b2800",
+        "0xee6b2800"
+       ]
+      ],
+      "oldestBlock": "0x30da527"
+     },
+     "latest_block": 51225898,
+     "tx_types_last_12_blocks": {
+      "0x2": 4,
+      "0x0": 4
+     },
+     "sample_type2_tx": {
+      "from": "0x5e4cd693cc4c512e4cdfde1d5a38cb3132ad95c2",
+      "hash": "0x1800990e3c3f6ed19a6b8f6fc98267e36791c0facc49622139cb0628910b6d05"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0xae15"
+     },
+     "oracle_code_bytes": 0
+    },
+    {
+     "endpoint": "https://0g-rpc.publicnode.com",
+     "eth_chainId": {
+      "result": "0x4115"
+     },
+     "chain_id_matches": true,
+     "eth_feeHistory_integer_count": "accepted",
+     "eth_gasPrice": {
+      "result": "0xee6b2807"
+     },
+     "eth_maxPriorityFeePerGas": {
+      "result": "0xee6b2800"
+     },
+     "eth_feeHistory": {
+      "baseFeePerGas": [
+       "0x7",
+       "0x7",
+       "0x7",
+       "0x7",
+       "0x7"
+      ],
+      "reward": [
+       [
+        "0xee6b2800",
+        "0xee6b2800"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0x0",
+        "0x0"
+       ],
+       [
+        "0xee6b2800",
+        "0xee6b2800"
+       ]
+      ],
+      "oldestBlock": "0x30da52a"
+     },
+     "latest_block": 51225902,
+     "tx_types_last_12_blocks": {
+      "0x0": 7,
+      "0x2": 3
+     },
+     "sample_type2_tx": {
+      "from": "0x5e4cd693cc4c512e4cdfde1d5a38cb3132ad95c2",
+      "hash": "0x1800990e3c3f6ed19a6b8f6fc98267e36791c0facc49622139cb0628910b6d05"
+     },
+     "receipt_fields": [
+      "blockHash",
+      "blockNumber",
+      "contractAddress",
+      "cumulativeGasUsed",
+      "effectiveGasPrice",
+      "from",
+      "gasUsed",
+      "logs",
+      "logsBloom",
+      "status",
+      "to",
+      "transactionHash",
+      "transactionIndex",
+      "type"
+     ],
+     "receipt_l1_fields": {},
+     "eth_estimateGas_plain_transfer": {
+      "result": "0x5208"
+     },
+     "eth_getTransactionCount_pending": {
+      "result": "0xae15"
+     },
+     "oracle_code_bytes": 0
+    }
+   ],
+   "tokens": []
+  }
+ }
+}

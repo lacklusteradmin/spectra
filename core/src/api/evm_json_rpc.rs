@@ -253,7 +253,13 @@ impl EvmClient {
 // receipts, tx nonce by hash, ENS resolution, ERC-20 balance + metadata,
 // Keyless explorer history + token transfers.
 
-fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, ApiError> {
+/// `min_priority_fee_wei` is the network's floor on the tip: a sample below
+/// it, zero included, is raised to it rather than priced into a transaction
+/// the network's nodes would not include.
+fn parse_fee_history(
+    result: &Value,
+    min_priority_fee_wei: u128,
+) -> Result<EvmFeeEstimate, ApiError> {
     // Base fee of the *next* block is the last entry in baseFeePerGas.
     let base_fees = result
         .get("baseFeePerGas")
@@ -290,7 +296,8 @@ fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, ApiError> {
                 .or_decode("feeHistory: reward sample is not a hex string")?,
         )?,
         None => 0,
-    };
+    }
+    .max(min_priority_fee_wei);
 
     // maxFeePerGas = 2 * baseFee + priorityFee (EIP-1559 recommended).
     let max_fee_per_gas_wei = base_fee_wei
@@ -306,8 +313,7 @@ fn parse_fee_history(result: &Value) -> Result<EvmFeeEstimate, ApiError> {
 
 impl EvmClient {
     pub(crate) fn chain(&self) -> Result<crate::registry::Chain, ApiError> {
-        crate::registry::Chain::all()
-            .find(|chain| chain.evm_chain_id().ok() == Some(self.chain_id))
+        crate::registry::Chain::from_evm_chain_id(self.chain_id)
             .ok_or_else(|| ApiError::invalid("unknown EVM network"))
     }
 
@@ -446,11 +452,28 @@ impl EvmClient {
         parse_hex_u64(hex)
     }
 
+    /// The fees a transaction on this network is priced at. A legacy-only
+    /// network has one gas price, `eth_gasPrice`, which fills both fields;
+    /// the rest read the fee history, its block count a hex quantity as the
+    /// method defines it (XDC and Somnia nodes refuse a JSON number).
     pub async fn fetch_fee_estimate(&self) -> Result<EvmFeeEstimate, ApiError> {
+        let chain = self.chain()?;
+        if chain.evm_legacy_transactions() {
+            let result = self.call("eth_gasPrice", json!([])).await?;
+            let price =
+                parse_hex_u128(result.as_str().or_decode("eth_gasPrice: expected string")?)?;
+            if price == 0 {
+                return Err(ApiError::Decode("eth_gasPrice: zero gas price".into()));
+            }
+            return Ok(EvmFeeEstimate {
+                priority_fee_wei: price,
+                max_fee_per_gas_wei: price,
+            });
+        }
         let result = self
-            .call("eth_feeHistory", json!([4, "latest", [25, 75]]))
+            .call("eth_feeHistory", json!(["0x4", "latest", [25, 75]]))
             .await?;
-        parse_fee_history(&result)
+        parse_fee_history(&result, chain.evm_min_priority_fee_wei())
     }
 
     /// An ERC-20's raw balance and validated decimal count.
@@ -1130,10 +1153,13 @@ mod fee_history_tests {
     /// reads.
     #[test]
     fn the_last_blocks_lowest_percentile_is_the_priority_fee() {
-        let fees = parse_fee_history(&json!({
-            "baseFeePerGas": ["0x3b9aca00", "0x77359400"],
-            "reward": [["0x1", "0x2"], ["0x5f5e100", "0xbebc200"]],
-        }))
+        let fees = parse_fee_history(
+            &json!({
+                "baseFeePerGas": ["0x3b9aca00", "0x77359400"],
+                "reward": [["0x1", "0x2"], ["0x5f5e100", "0xbebc200"]],
+            }),
+            0,
+        )
         .unwrap();
         assert_eq!(fees.priority_fee_wei, 0x5f5_e100);
         assert_eq!(fees.max_fee_per_gas_wei, 0x7735_9400 * 2 + 0x5f5_e100);
@@ -1145,13 +1171,97 @@ mod fee_history_tests {
     /// quote a fee at all on a quiet L2 or testnet.
     #[test]
     fn an_empty_reward_sample_is_a_zero_priority_fee() {
-        let fees = parse_fee_history(&json!({
-            "baseFeePerGas": ["0x3b9aca00"],
-            "reward": [[]],
-        }))
+        let fees = parse_fee_history(
+            &json!({
+                "baseFeePerGas": ["0x3b9aca00"],
+                "reward": [[]],
+            }),
+            0,
+        )
         .unwrap();
         assert_eq!(fees.priority_fee_wei, 0);
         assert_eq!(fees.max_fee_per_gas_wei, 0x3b9a_ca00 * 2);
+    }
+
+    /// A network's tip floor lifts a zero or low sample, and the max fee
+    /// covers it; a sample above the floor is kept.
+    #[test]
+    fn a_tip_below_the_networks_floor_is_raised_to_it() {
+        let gwei = 1_000_000_000;
+        for (sample, tip) in [("0x0", gwei), ("0x3b9aca01", gwei + 1)] {
+            let fees = parse_fee_history(
+                &json!({"baseFeePerGas": ["0x246139ca800"], "reward": [[sample]]}),
+                gwei,
+            )
+            .unwrap();
+            assert_eq!(fees.priority_fee_wei, tip);
+            assert_eq!(fees.max_fee_per_gas_wei, 2 * 2_500 * gwei + tip);
+        }
+        assert_eq!(
+            crate::registry::Chain::Chiliz.evm_min_priority_fee_wei(),
+            gwei
+        );
+        assert_eq!(
+            crate::registry::Chain::ZeroG.evm_min_priority_fee_wei(),
+            4 * gwei
+        );
+        assert_eq!(
+            crate::registry::Chain::Ethereum.evm_min_priority_fee_wei(),
+            0
+        );
+    }
+
+    /// The block count goes out as a hex quantity, which every node reads;
+    /// XDC and Somnia refuse a JSON number.
+    #[tokio::test]
+    async fn the_fee_history_block_count_is_a_hex_quantity() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};
+        let server = MockServer::start().await;
+        Mock::given(body_partial_json(json!({
+            "method": "eth_feeHistory", "params": ["0x4", "latest", [25, 75]]
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0", "id": 1,
+            "result": {"baseFeePerGas": ["0x2e90edd00"], "reward": [["0x0"]]}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+        let fees = EvmClient::new(std::sync::Arc::new(vec![server.uri()]), 50)
+            .fetch_fee_estimate()
+            .await
+            .unwrap();
+        assert_eq!(fees.max_fee_per_gas_wei, 2 * 12_500_000_000);
+    }
+
+    /// A legacy-only network is priced at `eth_gasPrice` alone, the same in
+    /// both fields; a zero price is refused rather than signed.
+    #[tokio::test]
+    async fn a_legacy_network_is_priced_at_its_gas_price() {
+        use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};
+        for (price, expected) in [("0x5b8d80", Some(6_000_000)), ("0x0", None)] {
+            let server = MockServer::start().await;
+            Mock::given(body_partial_json(json!({"method": "eth_gasPrice"})))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "jsonrpc": "2.0", "id": 1, "result": price
+                })))
+                .expect(1)
+                .mount(&server)
+                .await;
+            let fees = EvmClient::new(std::sync::Arc::new(vec![server.uri()]), 4200)
+                .fetch_fee_estimate()
+                .await;
+            match expected {
+                Some(wei) => {
+                    let fees = fees.unwrap();
+                    assert_eq!(
+                        (fees.max_fee_per_gas_wei, fees.priority_fee_wei),
+                        (wei, wei)
+                    );
+                }
+                None => assert!(fees.is_err()),
+            }
+        }
     }
 
     /// No `reward` array at all is a node that did not answer what was asked —
@@ -1164,7 +1274,7 @@ mod fee_history_tests {
             json!({"baseFeePerGas": ["0x3b9aca00"], "reward": Value::Null}),
             json!({"baseFeePerGas": ["0x3b9aca00"], "reward": ["0x1"]}),
         ] {
-            assert!(parse_fee_history(&body).is_err(), "{body}");
+            assert!(parse_fee_history(&body, 0).is_err(), "{body}");
         }
     }
 
@@ -1181,7 +1291,7 @@ mod fee_history_tests {
             json!({"baseFeePerGas": ["0x1"], "reward": [[7]]}),
             json!({"baseFeePerGas": ["0x1"], "reward": [["0x1"], "nope"]}),
         ] {
-            assert!(parse_fee_history(&body).is_err(), "{body}");
+            assert!(parse_fee_history(&body, 0).is_err(), "{body}");
         }
     }
 }

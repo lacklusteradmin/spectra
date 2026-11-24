@@ -73,11 +73,12 @@ impl Chain {
 
     /// What a payment on this network can say about whose deposit it is,
     /// the first the default: XRP's destination tag, Stellar's text and ID
-    /// memos. Empty where payments carry none.
+    /// memos, TON's text comment. Empty where payments carry none.
     pub fn payment_memo_kinds(self) -> &'static [PaymentMemoKind] {
         match self.mainnet_counterpart() {
             Self::Xrp => &[PaymentMemoKind::DestinationTag],
             Self::Stellar => &[PaymentMemoKind::MemoText, PaymentMemoKind::MemoId],
+            Self::Ton => &[PaymentMemoKind::Comment],
             _ => &[],
         }
     }

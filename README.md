@@ -25,7 +25,8 @@ upsells.
 This repository is the Rust wallet core and the `spectra` CLI. The apps live
 in their own repositories and link core as a package built here:
 [spectra-apple](https://github.com/lacklusteradmin/spectra-apple), the SwiftUI
-app for iOS and macOS, and `spectra-android`, not started. Core owns domain
+app for iOS and macOS, and `spectra-android`, the Compose app for Android.
+Core owns domain
 state and decisions; the front ends render its results and forward user intent.
 
 - [AGENTS.md](AGENTS.md): the rules for working in this repository, Rule 0

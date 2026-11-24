@@ -3,6 +3,8 @@
 //! `state_getMetadata`. Unknown versions and extensions are refused.
 
 use super::*;
+mod assets;
+pub use assets::AssetTransferCall;
 mod multisig;
 pub(crate) use multisig::decode_pending;
 mod pools;

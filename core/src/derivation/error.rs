@@ -35,9 +35,9 @@ impl From<crate::registry::RegistryError> for DerivationError {
 impl From<DerivationError> for crate::error::SpectraBridgeError {
     fn from(error: DerivationError) -> Self {
         match error {
-            DerivationError::Invalid(message) => Self::InvalidInput { message },
+            DerivationError::Invalid(message) => Self::InvalidInput { reason: message },
             DerivationError::Internal(message) => Self::Failure {
-                message: message.into(),
+                reason: message.into(),
             },
         }
     }

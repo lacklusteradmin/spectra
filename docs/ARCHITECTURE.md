@@ -1,9 +1,9 @@
 # Architecture decisions
 
 Spectra is one Rust core with front ends: the `spectra` CLI in this repository
-and the native app for iOS and macOS in spectra-apple, which links core as a
-package built here. An Android app, spectra-android, is not
-started. Core owns both the data and the decisions, no platform persists a second
+and the native apps in spectra-apple, for iOS and macOS, and spectra-android,
+each linking core as a package built here. Core owns both the data and the
+decisions, no platform persists a second
 authoritative copy, and the CLI can drive every domain operation.
 [FFI-BOUNDARY.md](FFI-BOUNDARY.md) covers binding mechanics,
 [CHAIN-SUPPORT.md](CHAIN-SUPPORT.md) what each network supports and
@@ -13,7 +13,7 @@ authoritative copy, and the CLI can drive every domain operation.
 
 | Directory | Responsibility |
 |---|---|
-| `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the app's static library |
+| `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the apps' native library |
 | `cli/` | Argument parsing, password prompting and each command's report, as text or `--json` |
 | `icons/crypto/` | The SVG library the apps draw tokens and chains with, one file per artwork name in the catalog |
 | `scripts/` | Source-check, icon and runtime-data tools |
@@ -36,6 +36,13 @@ versions, which would otherwise rebuild what terminal cargo builds without
 them, and terminal cargo and a package build never wait on each other's build
 lock.
 
+An Android app links core as the package `scripts/build-android-package.sh`
+builds: a shared library per Android ABI, linked by the NDK's compiler for the
+app's minimum API level, and the Kotlin bindings generated from it. `make
+android` runs it into `target/SpectraCoreAndroid/`, a developer copies that
+directory into spectra-android, and Gradle compiles no Rust. It builds in
+`target/android/` for the same reasons.
+
 ## Ownership
 
 Rust owns wallets, settings, address rules, transaction history, persistence,
@@ -46,12 +53,12 @@ writes as one document and the terminal renders as text, so neither form can
 go missing. A command about one wallet takes it as its first argument;
 `--wallet` only narrows a command over many.
 
-Swift owns navigation, sheets, text being edited, focus, animation and rendering
-caches. Keychain, biometrics, notifications, Live Activities and device signals
-stay on the platform and supply inputs to core-owned policy. Losing view state
-on restart may cost a redraw; losing domain state must not lose user data.
-How the app is put together, for iOS and macOS, is spectra-apple's
-`docs/ARCHITECTURE.md`.
+An app owns navigation, sheets, text being edited, focus, animation and
+rendering caches. Keychain or Keystore, biometrics, notifications, Live
+Activities and device signals stay on the platform and supply inputs to
+core-owned policy. Losing view state on restart may cost a redraw; losing
+domain state must not lose user data. How each app is put together is its
+repository's `docs/ARCHITECTURE.md`.
 
 `ResidentState` holds small resident collections. Unbounded history is a separate
 queryable store so changing a setting does not clone every transaction.

@@ -451,6 +451,15 @@ pub fn validate_protocol_identifier(
                 .ok_or_else(|| E::invalid("invalid TRC-10 token ID"))?;
             return Ok(id.to_string());
         }
+        // An `Assets` pallet id: a `u32`, in canonical decimal.
+        S::AssetHubAsset => {
+            let id = identifier
+                .parse::<u32>()
+                .ok()
+                .filter(|id| id.to_string() == identifier)
+                .ok_or_else(|| E::invalid("invalid Asset Hub asset ID"))?;
+            return Ok(id.to_string());
+        }
         S::SuiCoin => crate::validation::address::validate_sui_coin_type(&identifier),
         S::AptosCoin => {
             let components = identifier.split("::").collect::<Vec<_>>();

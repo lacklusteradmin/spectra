@@ -44,7 +44,7 @@ const MAX_ENCODED_KEY_LEN: usize = 200;
 fn encode_key(key: &str) -> Result<String, SecretStoreError> {
     if key.is_empty() {
         return Err(SecretStoreError::Backend {
-            message: "secret key must not be empty".to_string(),
+            reason: "secret key must not be empty".to_string(),
         });
     }
     let mut encoded = String::with_capacity(key.len());
@@ -57,7 +57,7 @@ fn encode_key(key: &str) -> Result<String, SecretStoreError> {
     }
     if encoded.len() > MAX_ENCODED_KEY_LEN {
         return Err(SecretStoreError::Backend {
-            message: format!(
+            reason: format!(
                 "secret key too long: {} bytes encoded, limit {MAX_ENCODED_KEY_LEN}",
                 encoded.len()
             ),
@@ -217,7 +217,7 @@ impl SecretStore for FileSecretStore {
 
 fn backend(path: &Path, action: &str, error: &std::io::Error) -> SecretStoreError {
     SecretStoreError::Backend {
-        message: format!("secret store: {action} {}: {error}", path.display()),
+        reason: format!("secret store: {action} {}: {error}", path.display()),
     }
 }
 

@@ -43,11 +43,11 @@ impl From<EnvelopeError> for crate::error::SpectraBridgeError {
         let message = error.to_string();
         match error {
             EnvelopeError::KeyLength => Self::InvalidInput {
-                message: message.into(),
+                reason: message.into(),
             },
-            EnvelopeError::Malformed(_) => Self::Decode { message },
+            EnvelopeError::Malformed(_) => Self::Decode { reason: message },
             EnvelopeError::Decrypt | EnvelopeError::Encrypt(_) => Self::Failure {
-                message: message.into(),
+                reason: message.into(),
             },
         }
     }

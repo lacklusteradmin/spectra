@@ -44,7 +44,7 @@ impl WalletService {
                             tokio::time::sleep(std::time::Duration::from_millis(100)).await
                         }
                         crate::api::tor::TorStatus::Error { message } => {
-                            return Err(SpectraBridgeError::Network { message });
+                            return Err(SpectraBridgeError::Network { reason: message });
                         }
                         _ => return Ok(()),
                     }

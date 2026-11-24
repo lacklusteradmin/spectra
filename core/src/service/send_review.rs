@@ -9,7 +9,7 @@ pub struct SendReviewInput {
     pub amount: String,
     pub destination: String,
     pub overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
-    /// The XRP destination tag or Stellar memo for the recipient.
+    /// The XRP destination tag, Stellar memo or TON comment for the recipient.
     #[uniffi(default = None)]
     pub memo: Option<crate::send::payment_memo::PaymentMemo>,
 }

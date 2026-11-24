@@ -30,11 +30,11 @@ impl From<DbError> for crate::error::SpectraBridgeError {
         let message = error.to_string();
         match error {
             DbError::Invalid(_) => Self::InvalidInput {
-                message: message.into(),
+                reason: message.into(),
             },
-            DbError::Corrupt(_) => Self::Decode { message },
+            DbError::Corrupt(_) => Self::Decode { reason: message },
             DbError::Open { .. } | DbError::Sqlite(_) => Self::Failure {
-                message: message.into(),
+                reason: message.into(),
             },
         }
     }

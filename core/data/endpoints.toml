@@ -77,6 +77,220 @@ chain_id = "world-chain"
 endpoint = "https://worldchain-mainnet.explorer.alchemy.com"
 capabilities = ["history", "token-history", "token-discovery"]
 
+# New EVM mainnets, probed 2026-11-24 (docs/audits/evm-mainnets-2026-11-24): identity, hex-count
+# fee history (eth_gasPrice on the legacy-only Kava EVM, Merlin and Metis), estimates and token
+# metadata. Indexers answered keyless txlist, tokentx and tokenlist.
+
+[[endpoints]]
+id = "kaia.rpc.official"
+api = "evm-json-rpc"
+chain_id = "kaia"
+endpoint = "https://public-en.node.kaia.io"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "xdc.rpc.xinfin"
+api = "evm-json-rpc"
+chain_id = "xdc"
+endpoint = "https://rpc.xinfin.network"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "xdc.rpc.xinfin-e"
+api = "evm-json-rpc"
+chain_id = "xdc"
+endpoint = "https://erpc.xinfin.network"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "robinhood-chain.rpc.official"
+api = "evm-json-rpc"
+chain_id = "robinhood-chain"
+endpoint = "https://rpc.mainnet.chain.robinhood.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "kava-evm.rpc.kava-rpc"
+api = "evm-json-rpc"
+chain_id = "kava-evm"
+endpoint = "https://evm.kava-rpc.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "kava-evm.rpc.official"
+api = "evm-json-rpc"
+chain_id = "kava-evm"
+endpoint = "https://evm.kava.io"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "chiliz.rpc.official"
+api = "evm-json-rpc"
+chain_id = "chiliz"
+endpoint = "https://rpc.chiliz.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "chiliz.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "chiliz"
+endpoint = "https://chiliz-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "chiliz.history.blockscout"
+api = "blockscout"
+chain_id = "chiliz"
+endpoint = "https://scan-api.chiliz.com"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "stable.rpc.official"
+api = "evm-json-rpc"
+chain_id = "stable"
+endpoint = "https://rpc.stable.xyz"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "arc.rpc.official"
+api = "evm-json-rpc"
+chain_id = "arc"
+endpoint = "https://rpc.mainnet.arc.io"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "arc.rpc.drpc"
+api = "evm-json-rpc"
+chain_id = "arc"
+endpoint = "https://rpc.drpc.mainnet.arc.io"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "manta-pacific.rpc.official"
+api = "evm-json-rpc"
+chain_id = "manta-pacific"
+endpoint = "https://pacific-rpc.manta.network/http"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "manta-pacific.history.blockscout"
+api = "blockscout"
+chain_id = "manta-pacific"
+endpoint = "https://pacific-explorer.manta.network"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "metis.rpc.official"
+api = "evm-json-rpc"
+chain_id = "metis"
+endpoint = "https://andromeda.metis.io"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "metis.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "metis"
+endpoint = "https://metis-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "metis.history.blockscout"
+api = "blockscout"
+chain_id = "metis"
+endpoint = "https://andromeda-explorer.metis.io"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "flare.rpc.official"
+api = "evm-json-rpc"
+chain_id = "flare"
+endpoint = "https://flare-api.flare.network/ext/C/rpc"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "flare.history.blockscout"
+api = "blockscout"
+chain_id = "flare"
+endpoint = "https://flare-explorer.flare.network"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "katana.rpc.official"
+api = "evm-json-rpc"
+chain_id = "katana"
+endpoint = "https://rpc.katana.network"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "megaeth.rpc.official"
+api = "evm-json-rpc"
+chain_id = "megaeth"
+endpoint = "https://mainnet.megaeth.com/rpc"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "megaeth.history.blockscout"
+api = "blockscout"
+chain_id = "megaeth"
+endpoint = "https://megaeth.blockscout.com"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "merlin.rpc.official"
+api = "evm-json-rpc"
+chain_id = "merlin"
+endpoint = "https://rpc.merlinchain.io"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "merlin.history.blockscout"
+api = "blockscout"
+chain_id = "merlin"
+endpoint = "https://scan.merlinchain.io"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "peaq.rpc.quicknode"
+api = "evm-json-rpc"
+chain_id = "peaq"
+endpoint = "https://quicknode1.peaq.xyz"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "peaq.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "peaq"
+endpoint = "https://peaq-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "somnia.rpc.official"
+api = "evm-json-rpc"
+chain_id = "somnia"
+endpoint = "https://api.infra.mainnet.somnia.network"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "somnia.history.blockscout"
+api = "blockscout"
+chain_id = "somnia"
+endpoint = "https://explorer.somnia.network"
+capabilities = ["history", "token-history", "token-discovery"]
+
+[[endpoints]]
+id = "0g.rpc.official"
+api = "evm-json-rpc"
+chain_id = "0g"
+endpoint = "https://evmrpc.0g.ai"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "0g.rpc.publicnode"
+api = "evm-json-rpc"
+chain_id = "0g"
+endpoint = "https://0g-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
 [[endpoints]]
 id = "bitcoin.mainnet.blockstream"
 api = "esplora"
@@ -578,28 +792,28 @@ id = "polkadot.asset-hub.rpc.dwellir"
 api = "substrate-json-rpc"
 chain_id = "polkadot"
 endpoint = "https://asset-hub-polkadot-rpc.n.dwellir.com"
-capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
+capabilities = ["balance", "fee", "broadcast", "verification", "staking", "token-balance"]
 
 [[endpoints]]
 id = "polkadot.asset-hub.rpc.official"
 api = "substrate-json-rpc"
 chain_id = "polkadot"
 endpoint = "https://polkadot-asset-hub-rpc.polkadot.io"
-capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
+capabilities = ["balance", "fee", "broadcast", "verification", "staking", "token-balance"]
 
 [[endpoints]]
 id = "polkadot.asset-hub.rpc.onfinality"
 api = "substrate-json-rpc"
 chain_id = "polkadot"
 endpoint = "https://statemint.api.onfinality.io/public"
-capabilities = ["balance", "fee", "broadcast", "verification", "staking"]
+capabilities = ["balance", "fee", "broadcast", "verification", "staking", "token-balance"]
 
 [[endpoints]]
 id = "polkadot.westend.rpc.official"
 api = "substrate-json-rpc"
 chain_id = "polkadot-westend"
 endpoint = "https://westend-asset-hub-rpc.polkadot.io"
-capabilities = ["balance", "fee", "broadcast", "verification"]
+capabilities = ["balance", "fee", "broadcast", "verification", "token-balance"]
 
 [[endpoints]]
 id = "stellar.horizon.primary"

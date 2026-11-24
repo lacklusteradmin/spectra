@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: fmt lint check-icons test test-cli apple clean
+.PHONY: fmt lint check-icons test test-cli apple android clean
 
 # ── Verification ────────────────────────────────────────────────────
 # Four targets, each run by name: lint, test, test-cli and check-icons.
@@ -41,6 +41,17 @@ apple:
 	IPHONEOS_DEPLOYMENT_TARGET="$(IPHONEOS_DEPLOYMENT_TARGET)" \
 	MACOSX_DEPLOYMENT_TARGET="$(MACOSX_DEPLOYMENT_TARGET)" \
 		scripts/build-apple-package.sh target/SpectraCore
+
+# ── Android package ─────────────────────────────────────────────────
+# The package spectra-android links, written to target/SpectraCoreAndroid/;
+# copy that directory to the app repository's root. The minimum is
+# spectra-android's minSdk. PROFILE (dev or release) and ABIS (a subset of
+# `arm64-v8a x86_64`) pass through to the script, which finds the NDK through
+# ANDROID_NDK_HOME or ANDROID_HOME.
+ANDROID_MIN_SDK ?= 33
+
+android:
+	ANDROID_MIN_SDK="$(ANDROID_MIN_SDK)" scripts/build-android-package.sh target/SpectraCoreAndroid
 
 clean:
 	cargo clean

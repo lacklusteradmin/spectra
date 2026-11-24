@@ -1,0 +1,122 @@
+{
+  "checked_at_utc": "2026-11-24T09:11:24.540Z",
+  "method": "chain_getBlockHash(0), chain_getFinalizedHead, state_getRuntimeVersion, state_getMetadata, state_getStorage(Assets.Asset, Assets.Metadata) at the finalized head, decoded by that runtime metadata with @polkadot/types 17.0.2",
+  "nodes": [
+    {
+      "network": "polkadot",
+      "endpoint": "https://polkadot-asset-hub-rpc.polkadot.io",
+      "genesis": "0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f",
+      "block": "0x5aea8e86adb43264f11f82570fc17072f5fbe3133637a8587db11e6a6efb2b7f",
+      "spec_version": 2006000,
+      "assets": {
+        "1337": {
+          "min_balance": "10,000",
+          "is_sufficient": true,
+          "status": "Live",
+          "supply": "350,019,956,319,824",
+          "owner": "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu",
+          "name": "USD Coin",
+          "symbol": "USDC",
+          "decimals": "6"
+        },
+        "1984": {
+          "min_balance": "10,000",
+          "is_sufficient": true,
+          "status": "Live",
+          "supply": "77,998,622,058,218",
+          "owner": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+          "name": "Tether USD",
+          "symbol": "USDt",
+          "decimals": "6"
+        }
+      }
+    },
+    {
+      "network": "polkadot",
+      "endpoint": "https://asset-hub-polkadot-rpc.n.dwellir.com",
+      "genesis": "0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f",
+      "block": "0x5aea8e86adb43264f11f82570fc17072f5fbe3133637a8587db11e6a6efb2b7f",
+      "spec_version": 2006000,
+      "assets": {
+        "1337": {
+          "min_balance": "10,000",
+          "is_sufficient": true,
+          "status": "Live",
+          "supply": "350,019,956,319,824",
+          "owner": "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu",
+          "name": "USD Coin",
+          "symbol": "USDC",
+          "decimals": "6"
+        },
+        "1984": {
+          "min_balance": "10,000",
+          "is_sufficient": true,
+          "status": "Live",
+          "supply": "77,998,622,058,218",
+          "owner": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+          "name": "Tether USD",
+          "symbol": "USDt",
+          "decimals": "6"
+        }
+      }
+    },
+    {
+      "network": "polkadot",
+      "endpoint": "https://statemint.api.onfinality.io/public",
+      "genesis": "0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f",
+      "block": "0x5aea8e86adb43264f11f82570fc17072f5fbe3133637a8587db11e6a6efb2b7f",
+      "spec_version": 2006000,
+      "assets": {
+        "1337": {
+          "min_balance": "10,000",
+          "is_sufficient": true,
+          "status": "Live",
+          "supply": "350,019,956,319,824",
+          "owner": "12xLgPQunSsPkwMJ3vAgfac7mtU3Xw6R4fbHQcCp2QqXzdtu",
+          "name": "USD Coin",
+          "symbol": "USDC",
+          "decimals": "6"
+        },
+        "1984": {
+          "min_balance": "10,000",
+          "is_sufficient": true,
+          "status": "Live",
+          "supply": "77,998,622,058,218",
+          "owner": "15uPcYeUE2XaMiMJuR6W7QGW2LsLdKXX7F3PxKG8gcizPh3X",
+          "name": "Tether USD",
+          "symbol": "USDt",
+          "decimals": "6"
+        }
+      }
+    },
+    {
+      "network": "polkadot-westend",
+      "endpoint": "https://westend-asset-hub-rpc.polkadot.io",
+      "genesis": "0x67f9723393ef76214df0118c34bbbd3dbebc8ed46a10973a8c969d48fe7598c9",
+      "block": "0x92478dd7410ed3e3c9f66e7092e6e679710d27b5ba734634aaaa7982ad9ce2f1",
+      "spec_version": 1025006,
+      "assets": {
+        "1337": {
+          "min_balance": "1,000",
+          "is_sufficient": false,
+          "status": "Live",
+          "supply": "123,456,799,000",
+          "owner": "5GuhG6ji8ESLcE49qhcibhysvwLLXYJS5tKwFJjdiKzsv8Gq",
+          "name": "Nacho Coin",
+          "symbol": "NACHO",
+          "decimals": "3"
+        },
+        "1984": {
+          "min_balance": "10,000",
+          "is_sufficient": true,
+          "status": "Live",
+          "supply": "101,120,000,000,000",
+          "owner": "5FRKzFPe5iY8aDEzhYEfbgdaVYHVK7VKk51kAdn8a429G7SZ",
+          "name": "Test-Tether",
+          "symbol": "USDTT",
+          "decimals": "6"
+        }
+      }
+    }
+  ]
+}

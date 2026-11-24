@@ -96,6 +96,27 @@ fn evm_chains_carry_their_eip155_ids() {
     assert_eq!(Chain::Plasma.evm_chain_id().unwrap(), 9745);
     assert_eq!(Chain::Monad.evm_chain_id().unwrap(), 143);
     assert_eq!(Chain::WorldChain.evm_chain_id().unwrap(), 480);
+    for (chain, id) in [
+        (Chain::Kaia, 8217),
+        (Chain::Xdc, 50),
+        (Chain::RobinhoodChain, 4663),
+        (Chain::KavaEvm, 2222),
+        (Chain::Chiliz, 88888),
+        (Chain::Stable, 988),
+        (Chain::Arc, 5042),
+        (Chain::MantaPacific, 169),
+        (Chain::Metis, 1088),
+        (Chain::Flare, 14),
+        (Chain::Katana, 747474),
+        (Chain::MegaEth, 4326),
+        (Chain::Merlin, 4200),
+        (Chain::Peaq, 3338),
+        (Chain::Somnia, 5031),
+        (Chain::ZeroG, 16661),
+    ] {
+        assert_eq!(chain.evm_chain_id().unwrap(), id, "{chain}");
+        assert_eq!(Chain::from_evm_chain_id(id), Some(chain));
+    }
 }
 
 #[test]
@@ -118,6 +139,43 @@ fn new_evm_mainnets_have_native_assets_and_shared_wallet_rules() {
             "ethereum",
             "worldcoin",
         ),
+        (Chain::Kaia, "kaia", 8217, "KAIA", "kaia", "kaia"),
+        (Chain::Xdc, "xdc", 50, "XDC", "xdce-crowd-sale", "xdc"),
+        (
+            Chain::RobinhoodChain,
+            "robinhood-chain",
+            4663,
+            "ETH",
+            "ethereum",
+            "robinhood",
+        ),
+        (Chain::KavaEvm, "kava-evm", 2222, "KAVA", "kava", "kava"),
+        (Chain::Chiliz, "chiliz", 88888, "CHZ", "chiliz", "chiliz"),
+        (Chain::Stable, "stable", 988, "USDT0", "usdt0", "stable"),
+        (Chain::Arc, "arc", 5042, "USDC", "usd-coin", "arc"),
+        (
+            Chain::MantaPacific,
+            "manta-pacific",
+            169,
+            "ETH",
+            "ethereum",
+            "manta",
+        ),
+        (Chain::Metis, "metis", 1088, "METIS", "metis-token", "metis"),
+        (Chain::Flare, "flare", 14, "FLR", "flare-networks", "flare"),
+        (Chain::Katana, "katana", 747474, "ETH", "ethereum", "katana"),
+        (
+            Chain::MegaEth,
+            "megaeth",
+            4326,
+            "ETH",
+            "ethereum",
+            "megaeth",
+        ),
+        (Chain::Merlin, "merlin", 4200, "BTC", "bitcoin", "merlin"),
+        (Chain::Peaq, "peaq", 3338, "PEAQ", "peaq-2", "peaq"),
+        (Chain::Somnia, "somnia", 5031, "SOMI", "somnia", "somnia"),
+        (Chain::ZeroG, "0g", 16661, "0G", "zero-gravity", "0g"),
     ] {
         assert_eq!(Chain::parse(id).unwrap(), chain);
         assert!(!chain.is_testnet());
@@ -196,6 +254,90 @@ fn verified_new_chain_tokens_have_exact_deployment_identity() {
             "0x2cfc85d8e48f8eab294be644d9e25c3030863003",
             18,
         ),
+        (
+            Chain::Kaia,
+            "tether",
+            "0xd077a400968890eacc75cdc901f0356c943e4fdb",
+            6,
+        ),
+        (
+            Chain::Xdc,
+            "usd-coin",
+            "0xfa2958cb79b0491cc627c1557f441ef849ca8eb1",
+            6,
+        ),
+        (
+            Chain::RobinhoodChain,
+            "global-dollar",
+            "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+            6,
+        ),
+        (
+            Chain::KavaEvm,
+            "tether",
+            "0x919c1c267bc06a7039e03fcc2ef738525769109c",
+            6,
+        ),
+        (
+            Chain::Stable,
+            "stable-2",
+            "0x0000000000000000000000000000000000001003",
+            18,
+        ),
+        (
+            Chain::Stable,
+            "tether-gold-tokens",
+            "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
+            6,
+        ),
+        (
+            Chain::Arc,
+            "euro-coin",
+            "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+            6,
+        ),
+        (
+            Chain::MantaPacific,
+            "manta-network",
+            "0x95cef13441be50d20ca4558cc0a27b601ac544e5",
+            18,
+        ),
+        (
+            Chain::Flare,
+            "usdt0",
+            "0xe7cd86e13ac4309349f30b3435a9d337750fc82d",
+            6,
+        ),
+        (
+            Chain::Katana,
+            "katana-network-token",
+            "0x7f1f4b4b29f5058fa32cc7a97141b8d7e5abdc2d",
+            18,
+        ),
+        (
+            Chain::MegaEth,
+            "megaeth",
+            "0x28b7e77f82b25b95953825f1e3ea0e36c1c29861",
+            18,
+        ),
+        (
+            Chain::MegaEth,
+            "usdt0",
+            "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb",
+            6,
+        ),
+        (
+            Chain::MegaEth,
+            "ethena-usde",
+            "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34",
+            18,
+        ),
+        (
+            Chain::Merlin,
+            "merlin-chain",
+            "0x5c46bff4b38dc1eae09c5bac65872a1d8bc87378",
+            18,
+        ),
     ] {
         let id = crate::catalog::tokens::deployment_id_for(chain, Some(contract)).unwrap();
         let deployment = crate::catalog::tokens::deployment(&id).unwrap();
@@ -222,6 +364,16 @@ fn new_mainnet_indexers_declare_their_verified_account_methods() {
             Chain::WorldChain,
             "https://worldchain-mainnet.explorer.alchemy.com",
         ),
+        (Chain::Chiliz, "https://scan-api.chiliz.com"),
+        (
+            Chain::MantaPacific,
+            "https://pacific-explorer.manta.network",
+        ),
+        (Chain::Metis, "https://andromeda-explorer.metis.io"),
+        (Chain::Flare, "https://flare-explorer.flare.network"),
+        (Chain::MegaEth, "https://megaeth.blockscout.com"),
+        (Chain::Merlin, "https://scan.merlinchain.io"),
+        (Chain::Somnia, "https://explorer.somnia.network"),
     ] {
         assert_eq!(chain.evm_history_source(), EvmHistorySource::Open(endpoint));
         let record = crate::catalog::endpoints::catalog()
@@ -252,6 +404,9 @@ fn rollup_fees_follow_deployed_oracle_methods() {
         Chain::Ink,
         Chain::InkSepolia,
         Chain::WorldChain,
+        Chain::MantaPacific,
+        Chain::Katana,
+        Chain::MegaEth,
     ] {
         assert_eq!(
             chain.evm_rollup_fee_model(),
@@ -267,14 +422,59 @@ fn rollup_fees_follow_deployed_oracle_methods() {
         Chain::OpBnb.evm_rollup_fee_model(),
         Some(OpStackFeeModel::Fjord)
     );
-    assert_eq!(
-        Chain::Blast.evm_rollup_fee_model(),
-        Some(OpStackFeeModel::Bedrock)
-    );
+    for chain in [Chain::Blast, Chain::Metis] {
+        assert_eq!(chain.evm_rollup_fee_model(), Some(OpStackFeeModel::Bedrock));
+    }
+    // Arbitrum Orbit folds the L1 cost into gas, as Arbitrum does.
+    assert_eq!(Chain::RobinhoodChain.evm_rollup_fee_model(), None);
     assert_eq!(Chain::Plasma.evm_rollup_fee_model(), None);
     assert_eq!(Chain::Monad.evm_rollup_fee_model(), None);
     assert_eq!(Chain::Monad.evm_gas_buffer_bps(), 750);
     assert_eq!(Chain::WorldChain.evm_gas_buffer_bps(), 2000);
+}
+
+/// Three networks' nodes decode no typed envelope; two need a tip the fee
+/// history's lowest sample does not show; five give their coin an ERC-20
+/// face over the same balance.
+#[test]
+fn per_network_evm_transaction_rules() {
+    let legacy: Vec<_> = Chain::all()
+        .filter(|c| c.evm_legacy_transactions())
+        .collect();
+    assert_eq!(legacy, [Chain::KavaEvm, Chain::Metis, Chain::Merlin]);
+    let floors: Vec<_> = Chain::all()
+        .filter(|c| c.evm_min_priority_fee_wei() > 0)
+        .map(|c| (c, c.evm_min_priority_fee_wei()))
+        .collect();
+    assert_eq!(
+        floors,
+        [
+            (Chain::Chiliz, 1_000_000_000),
+            (Chain::ZeroG, 4_000_000_000)
+        ]
+    );
+    for chain in Chain::all().filter(|c| c.evm_native_coin_contract().is_some()) {
+        assert!(chain.is_evm(), "{chain}");
+        let contract = chain.evm_native_coin_contract().unwrap();
+        assert!(
+            crate::catalog::tokens::list_token_deployments(Some(chain))
+                .iter()
+                .all(|t| !t.contract.eq_ignore_ascii_case(contract)),
+            "{chain} catalogues its coin's ERC-20 face as a token"
+        );
+    }
+    assert_eq!(
+        Chain::all()
+            .filter(|c| c.evm_native_coin_contract().is_some())
+            .collect::<Vec<_>>(),
+        [
+            Chain::Celo,
+            Chain::Stable,
+            Chain::Arc,
+            Chain::Metis,
+            Chain::Peaq
+        ]
+    );
 }
 
 /// Address slots: every chain has one, and the EVM family shares Ethereum's.
@@ -472,11 +672,13 @@ mod catalog_agreement_tests {
     /// A chain id spelled from the variant's own name, so the check below has
     /// a source independent of the catalog it is checking.
     ///
-    /// The six exceptions are the whole list of places where the enum and
+    /// The exceptions are the whole list of places where the enum and
     /// `chains.toml` spell a chain differently, which is worth being able to
     /// read in one place.
     fn expected_id(chain: Chain) -> String {
         const EXCEPTIONS: &[(Chain, &str)] = &[
+            (Chain::MegaEth, "megaeth"),
+            (Chain::ZeroG, "0g"),
             (Chain::Icp, "internet-computer"),
             (Chain::BnbChain, "bnb"),
             (Chain::OpBnb, "opbnb"),

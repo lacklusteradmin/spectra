@@ -1,0 +1,153 @@
+{
+  "sdk": "@polkadot/types@17.0.2",
+  "owner": "0x0707070707070707070707070707070707070707070707070707070707070707",
+  "recipient": "0x0909090909090909090909090909090909090909090909090909090909090909",
+  "polkadot": {
+    "metadataSha256": "104f632e638db176eefdc69bc06f7d096593330fd2766ac28b3e01205509beba",
+    "transfer": {
+      "pallet": 50,
+      "call": 8
+    },
+    "calls": {
+      "usdt": "0x3208011f0009090909090909090909090909090909090909090909090909090909090909091e5a4b00",
+      "max": "0x320803ffffffff00090909090909090909090909090909090909090909090909090909090909090933ffffffffffffffffffffffffffffffff"
+    },
+    "state": {
+      "asset": {
+        "key": "0x682a59d51ab9e48a8c8cc418ff9708d2d34371a193a751eea5883e9553457b2ea319d0e87221ca1ee751c1529f201522c0070000",
+        "hex": "0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0080c6a47e8d030000000000000000000000000000000000000000000000000060ae0a000000000000000000000000000105000000050000000000000000",
+        "decoded": {
+          "owner": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "issuer": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "admin": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "freezer": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "supply": 1000000000000000,
+          "deposit": 0,
+          "minBalance": 700000,
+          "isSufficient": true,
+          "accounts": 5,
+          "sufficients": 5,
+          "approvals": 0,
+          "status": "Live"
+        }
+      },
+      "asset_frozen": {
+        "key": "0x682a59d51ab9e48a8c8cc418ff9708d2d34371a193a751eea5883e9553457b2ea319d0e87221ca1ee751c1529f201522c0070000",
+        "hex": "0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0080c6a47e8d030000000000000000000000000000000000000000000000000060ae0a000000000000000000000000000105000000050000000000000001",
+        "decoded": {
+          "owner": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "issuer": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "admin": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "freezer": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "supply": 1000000000000000,
+          "deposit": 0,
+          "minBalance": 700000,
+          "isSufficient": true,
+          "accounts": 5,
+          "sufficients": 5,
+          "approvals": 0,
+          "status": "Frozen"
+        }
+      },
+      "asset_insufficient": {
+        "key": "0x682a59d51ab9e48a8c8cc418ff9708d2d34371a193a751eea5883e9553457b2ea319d0e87221ca1ee751c1529f201522c0070000",
+        "hex": "0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0080c6a47e8d030000000000000000000000000000000000000000000000000060ae0a000000000000000000000000000005000000050000000000000000",
+        "decoded": {
+          "owner": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "issuer": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "admin": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "freezer": "1FUopX1nKF1uhrv28USzMT97d1p8sVsS38JPTxWsHhP9dGv",
+          "supply": 1000000000000000,
+          "deposit": 0,
+          "minBalance": 700000,
+          "isSufficient": false,
+          "accounts": 5,
+          "sufficients": 5,
+          "approvals": 0,
+          "status": "Live"
+        }
+      },
+      "account": {
+        "key": "0x682a59d51ab9e48a8c8cc418ff9708d2b99d880ec681799c0cf30e8886371da9a319d0e87221ca1ee751c1529f201522c0070000ddd6249d8a7334cf5ea37d21811e66710707070707070707070707070707070707070707070707070707070707070707",
+        "hex": "0x15cd5b070000000000000000000000000001",
+        "decoded": {
+          "balance": 123456789,
+          "status": "Liquid",
+          "reason": {
+            "sufficient": null
+          },
+          "extra": null
+        }
+      },
+      "account_frozen": {
+        "key": "0x682a59d51ab9e48a8c8cc418ff9708d2b99d880ec681799c0cf30e8886371da9a319d0e87221ca1ee751c1529f201522c0070000ddd6249d8a7334cf5ea37d21811e66710707070707070707070707070707070707070707070707070707070707070707",
+        "hex": "0x15cd5b070000000000000000000000000101",
+        "decoded": {
+          "balance": 123456789,
+          "status": "Frozen",
+          "reason": {
+            "sufficient": null
+          },
+          "extra": null
+        }
+      },
+      "account_blocked": {
+        "key": "0x682a59d51ab9e48a8c8cc418ff9708d2b99d880ec681799c0cf30e8886371da9a319d0e87221ca1ee751c1529f201522c0070000ddd6249d8a7334cf5ea37d21811e66710707070707070707070707070707070707070707070707070707070707070707",
+        "hex": "0x15cd5b070000000000000000000000000201",
+        "decoded": {
+          "balance": 123456789,
+          "status": "Blocked",
+          "reason": {
+            "sufficient": null
+          },
+          "extra": null
+        }
+      },
+      "recipient": {
+        "key": "0x682a59d51ab9e48a8c8cc418ff9708d2b99d880ec681799c0cf30e8886371da9a319d0e87221ca1ee751c1529f201522c0070000c31a7a4064b2bdc1adbe1a0157befeb00909090909090909090909090909090909090909090909090909090909090909",
+        "hex": "0x404b4c000000000000000000000000000001",
+        "decoded": {
+          "balance": 5000000,
+          "status": "Liquid",
+          "reason": {
+            "sufficient": null
+          },
+          "extra": null
+        }
+      },
+      "metadata": {
+        "key": "0x682a59d51ab9e48a8c8cc418ff9708d2b5f3822e35ca2f31ce3526eab1363fd2a319d0e87221ca1ee751c1529f201522c0070000",
+        "hex": "0x00000000000000000000000000000000285465746865722055534410555344540600",
+        "decoded": {
+          "deposit": 0,
+          "name": "0x54657468657220555344",
+          "symbol": "0x55534454",
+          "decimals": 6,
+          "isFrozen": false
+        }
+      },
+      "metadata_eight": {
+        "key": "0x682a59d51ab9e48a8c8cc418ff9708d2b5f3822e35ca2f31ce3526eab1363fd2a319d0e87221ca1ee751c1529f201522c0070000",
+        "hex": "0x00000000000000000000000000000000285465746865722055534410555344540800",
+        "decoded": {
+          "deposit": 0,
+          "name": "0x54657468657220555344",
+          "symbol": "0x55534454",
+          "decimals": 8,
+          "isFrozen": false
+        }
+      }
+    }
+  },
+  "westend": {
+    "metadataSha256": "eaa21b23c8a819136988f27b1e8a789e5ea188bed44fa55ac7b9c9eb4d95c8d2",
+    "transfer": {
+      "pallet": 50,
+      "call": 8
+    },
+    "calls": {
+      "usdt": "0x3208011f0009090909090909090909090909090909090909090909090909090909090909091e5a4b00",
+      "max": "0x320803ffffffff00090909090909090909090909090909090909090909090909090909090909090933ffffffffffffffffffffffffffffffff"
+    }
+  }
+}

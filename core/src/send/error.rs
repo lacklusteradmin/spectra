@@ -73,10 +73,10 @@ impl From<SendError> for crate::error::SpectraBridgeError {
             SendError::Api(error) => error.into(),
             SendError::Derivation(error) => error.into(),
             SendError::InsufficientFunds(message) | SendError::Invalid(message) => {
-                Self::InvalidInput { message }
+                Self::InvalidInput { reason: message }
             }
             SendError::Internal(message) => Self::Failure {
-                message: message.into(),
+                reason: message.into(),
             },
         }
     }

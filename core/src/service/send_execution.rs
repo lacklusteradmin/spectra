@@ -89,7 +89,7 @@ pub(super) fn validate_execution_amount(
     }
     if raw == 0 && (!chain.is_evm() || request.contract_address.is_some()) {
         return Err(SpectraBridgeError::InvalidInput {
-            message: "amount must be positive".into(),
+            reason: "amount must be positive".into(),
         });
     }
     Ok(())
@@ -236,7 +236,7 @@ pub(crate) fn send_chain_for(
         .iter()
         .find(|w| w.id == wallet_id)
         .ok_or_else(|| SpectraBridgeError::InvalidInput {
-            message: "send wallet does not exist".into(),
+            reason: "send wallet does not exist".into(),
         })?;
     let selected = wallet.chain_id;
     if selected.mainnet_counterpart() == requested.mainnet_counterpart() && selected != requested {

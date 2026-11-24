@@ -163,6 +163,37 @@ mod a_listing_answers_for_every_known_token {
         assert_eq!(rows[1].balance_raw, "0");
     }
 
+    /// An indexer lists Arc's USDC ERC-20 face beside the coin it is: the
+    /// same balance, which the native row already shows, so discovery leaves
+    /// it out and keeps every other token; Metis's face is matched in any
+    /// case, and a network without such a face keeps the whole listing.
+    #[test]
+    fn the_coins_own_erc20_face_is_not_discovered_as_a_token() {
+        let held = |contract: &str| crate::api::HeldToken {
+            contract: contract.into(),
+            balance_raw: 2_500_000,
+            decimals: Some(6),
+        };
+        let eurc = "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1";
+        let listing = || {
+            vec![
+                held("0x3600000000000000000000000000000000000000"),
+                held("0xDEADDEADDEADDEADDEADDEADDEADDEADDEAD0000"),
+                held(eurc),
+            ]
+        };
+        let kept = |chain| {
+            super::without_native_coin_face(chain, listing())
+                .into_iter()
+                .map(|h| h.contract)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(kept(Chain::Arc).len(), 2);
+        assert!(!kept(Chain::Arc).iter().any(|c| c.starts_with("0x3600")));
+        assert!(!kept(Chain::Metis).iter().any(|c| c.starts_with("0xDEAD")));
+        assert_eq!(kept(Chain::Ethereum).len(), 3);
+    }
+
     /// The catalog spells a jetton master user-friendly; the indexer, raw.
     #[test]
     fn a_ton_master_matches_in_either_spelling() {

@@ -371,11 +371,13 @@ pub fn endpoint_capability_options(
         TrongridV1 => &[History, TokenHistory, TokenDiscovery],
         Nearblocks => &[History, TokenHistory, TokenDiscovery],
         Fastnear => &[Staking],
-        SubstrateJsonRpc => &[Balance, Fee, Broadcast, Verification, Staking],
+        // An `Assets` pallet account answers for one asset id the caller names.
+        SubstrateJsonRpc => &[Balance, Fee, Broadcast, Verification, Staking, TokenBalance],
     };
     values
         .iter()
         .copied()
         .filter(|value| *value != Staking || chain.supports_staking())
+        .filter(|value| *value != TokenBalance || chain.hosts_tokens())
         .collect()
 }

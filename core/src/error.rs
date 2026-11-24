@@ -84,41 +84,41 @@ impl From<&str> for LocalizableMessage {
 #[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
 pub enum SpectraBridgeError {
     /// Network / RPC failure — connectivity, timeout, TLS, HTTP non-2xx, etc.
-    #[error("{message}")]
-    Network { message: String },
+    #[error("{reason}")]
+    Network { reason: String },
     /// Response decoding / parsing failure (malformed JSON, unexpected shape,
     /// hex decode error). Distinct from `Network` so the UI can blame the
     /// provider rather than the connection.
-    #[error("{message}")]
-    Decode { message: String },
+    #[error("{reason}")]
+    Decode { reason: String },
     /// Bad caller input — empty seed phrase, invalid address, unsupported
     /// chain ID, etc. UI surfaces these inline against the offending field.
-    #[error("{message}")]
-    InvalidInput { message: LocalizableMessage },
+    #[error("{reason}")]
+    InvalidInput { reason: LocalizableMessage },
     /// Core could not do what was asked: storage, signing, or a state that
     /// changed underneath the request.
-    #[error("{message}")]
-    Failure { message: LocalizableMessage },
+    #[error("{reason}")]
+    Failure { reason: LocalizableMessage },
     /// The stored database holds a row this build cannot decode — written by
     /// an older build, or damaged. Only `open_state` raises it: nothing runs
     /// without the store, so a front end offers `discard_state` instead of
     /// letting every later call fail on its own.
-    #[error("{message}")]
-    StoreUnreadable { message: String },
+    #[error("{reason}")]
+    StoreUnreadable { reason: String },
 }
 
 impl SpectraBridgeError {
     /// Core refusing a request: the caller asked for something it cannot have.
     pub fn invalid(message: impl std::fmt::Display) -> Self {
         Self::InvalidInput {
-            message: message.to_string().into(),
+            reason: message.to_string().into(),
         }
     }
 
     /// Core unable to do what was asked of it.
     pub fn failure(message: impl std::fmt::Display) -> Self {
         Self::Failure {
-            message: message.to_string().into(),
+            reason: message.to_string().into(),
         }
     }
 
@@ -128,7 +128,7 @@ impl SpectraBridgeError {
         args: impl IntoIterator<Item = impl std::fmt::Display>,
     ) -> Self {
         Self::InvalidInput {
-            message: LocalizableMessage::new(template, args),
+            reason: LocalizableMessage::new(template, args),
         }
     }
 
@@ -138,7 +138,7 @@ impl SpectraBridgeError {
         args: impl IntoIterator<Item = impl std::fmt::Display>,
     ) -> Self {
         Self::Failure {
-            message: LocalizableMessage::new(template, args),
+            reason: LocalizableMessage::new(template, args),
         }
     }
 }
@@ -153,7 +153,7 @@ impl From<tokio::task::JoinError> for SpectraBridgeError {
 impl From<serde_json::Error> for SpectraBridgeError {
     fn from(error: serde_json::Error) -> Self {
         Self::Decode {
-            message: error.to_string(),
+            reason: error.to_string(),
         }
     }
 }
@@ -161,7 +161,7 @@ impl From<serde_json::Error> for SpectraBridgeError {
 impl From<hex::FromHexError> for SpectraBridgeError {
     fn from(error: hex::FromHexError) -> Self {
         Self::Decode {
-            message: error.to_string(),
+            reason: error.to_string(),
         }
     }
 }

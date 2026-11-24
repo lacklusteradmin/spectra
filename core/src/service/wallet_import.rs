@@ -446,7 +446,7 @@ pub(super) fn plan_import(
                     SpectraBridgeError::invalid(message)
                 } else {
                     SpectraBridgeError::InvalidInput {
-                        message: format!("{message} Rejected: {}", rejected_addresses.join(", "))
+                        reason: format!("{message} Rejected: {}", rejected_addresses.join(", "))
                             .into(),
                     }
                 });

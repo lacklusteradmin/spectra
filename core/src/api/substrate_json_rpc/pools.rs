@@ -68,34 +68,6 @@ fn ratio(points: u128, balance: u128, total: u128) -> Result<u128, ApiError> {
 }
 
 impl SubstrateClient {
-    async fn pools_metadata(
-        &self,
-        context: &PolkadotContext,
-    ) -> Result<metadata::Metadata, ApiError> {
-        let value = self
-            .rpc_call("state_getMetadata", json!([context.block_hash]))
-            .await?;
-        metadata::Metadata::decode(&decode_hex(value.as_str().ok_or_else(invalid)?)?)
-    }
-    async fn pool_storage(
-        &self,
-        metadata: &metadata::Metadata,
-        pallet: &str,
-        item: &str,
-        key: &[u8],
-        at: &str,
-    ) -> Result<Option<Value>, ApiError> {
-        let key = metadata.storage_key(pallet, item, key)?;
-        let raw = self.rpc_call("state_getStorage", json!([key, at])).await?;
-        if raw.is_null() {
-            return Ok(None);
-        }
-        Ok(Some(metadata.decode_storage(
-            pallet,
-            item,
-            &decode_hex(raw.as_str().ok_or_else(invalid)?)?,
-        )?))
-    }
     async fn pool_runtime<T: Decode>(
         &self,
         name: &str,
@@ -127,11 +99,11 @@ impl SubstrateClient {
         at: &str,
     ) -> Result<NominationPool, ApiError> {
         let pool = self
-            .pool_storage(metadata, "NominationPools", "BondedPools", &id.encode(), at)
+            .storage_value(metadata, "NominationPools", "BondedPools", &id.encode(), at)
             .await?
             .ok_or_else(invalid)?;
         let name = self
-            .pool_storage(metadata, "NominationPools", "Metadata", &id.encode(), at)
+            .storage_value(metadata, "NominationPools", "Metadata", &id.encode(), at)
             .await?
             .and_then(|value| value.as_array().cloned())
             .and_then(|bytes| {
@@ -176,7 +148,7 @@ impl SubstrateClient {
             needs_migration,
             minimum_join: number(
                 &self
-                    .pool_storage(metadata, "NominationPools", "MinJoinBond", &[], at)
+                    .storage_value(metadata, "NominationPools", "MinJoinBond", &[], at)
                     .await?
                     .ok_or_else(invalid)?,
             )?,
@@ -186,7 +158,7 @@ impl SubstrateClient {
         crate::api::http::race(&self.rpc_endpoints, |endpoint| async move {
             let node = Self::new(Arc::new(vec![endpoint]));
             let context = node.polkadot_context(Chain::Polkadot).await?;
-            let metadata = node.pools_metadata(&context).await?;
+            let metadata = node.runtime_metadata(&context).await?;
             let prefix = format!(
                 "0x{}",
                 hex::encode(metadata.storage_prefix("NominationPools", "BondedPools")?)
@@ -252,17 +224,17 @@ impl SubstrateClient {
         owner: &[u8; 32],
     ) -> Result<PoolsSnapshot, ApiError> {
         let context = self.polkadot_context(Chain::Polkadot).await?;
-        let metadata = self.pools_metadata(&context).await?;
+        let metadata = self.runtime_metadata(&context).await?;
         metadata.require_async_staking()?;
         let at = &context.block_hash;
         let minimum_join = number(
             &self
-                .pool_storage(&metadata, "NominationPools", "MinJoinBond", &[], at)
+                .storage_value(&metadata, "NominationPools", "MinJoinBond", &[], at)
                 .await?
                 .ok_or_else(invalid)?,
         )?;
         let Some(member) = self
-            .pool_storage(&metadata, "NominationPools", "PoolMembers", owner, at)
+            .storage_value(&metadata, "NominationPools", "PoolMembers", owner, at)
             .await?
         else {
             return Ok(PoolsSnapshot {
@@ -290,7 +262,7 @@ impl SubstrateClient {
             .pool_runtime::<u128>("member_pending_slash", owner, at)
             .await?;
         let era = self
-            .pool_storage(&metadata, "Staking", "ActiveEra", &[], at)
+            .storage_value(&metadata, "Staking", "ActiveEra", &[], at)
             .await?
             .ok_or_else(invalid)?;
         let era = u32_number(&era["index"])?;
@@ -300,7 +272,7 @@ impl SubstrateClient {
         let mut next_unlock_era = None;
         if !eras.is_empty() {
             let subpools = self
-                .pool_storage(
+                .storage_value(
                     &metadata,
                     "NominationPools",
                     "SubPoolsStorage",

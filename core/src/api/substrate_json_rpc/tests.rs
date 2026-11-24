@@ -290,6 +290,7 @@ fn keep_alive_reductions_follow_runtime_freeze_and_reserve_rules() {
         ),
         nonce: u32::MAX,
         amount: u128::MAX,
+        asset: None,
         fee: 1,
         finalized_number: 0,
     };

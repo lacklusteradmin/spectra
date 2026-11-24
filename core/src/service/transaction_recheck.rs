@@ -71,7 +71,7 @@ impl WalletService {
             .into_iter()
             .find(|row| row.id == transaction_id)
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
-                message: "Transaction not found.".into(),
+                reason: "Transaction not found.".into(),
             })?;
         let chain = recheck_chain(&expected)?;
         let hash = expected.transaction_hash.clone().unwrap_or_default();

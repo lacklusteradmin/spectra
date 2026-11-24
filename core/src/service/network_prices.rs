@@ -146,7 +146,7 @@ impl WalletService {
         let state = self.refresh_owned_fiat_rates(true).await?;
         if let Some(failure) = state.quotes.fiat_error {
             return Err(SpectraBridgeError::Network {
-                message: format!("fiat rates: {failure}"),
+                reason: format!("fiat rates: {failure}"),
             });
         }
         Ok(state.fiat_rates_from_usd)

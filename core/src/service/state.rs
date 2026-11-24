@@ -218,7 +218,7 @@ impl WalletService {
                     {
                         if !options.iter().any(|option| option.token_id == id) {
                             return Err(SpectraBridgeError::InvalidInput {
-                                message: format!("unknown or unpinnable token ID: {id}").into(),
+                                reason: format!("unknown or unpinnable token ID: {id}").into(),
                             });
                         }
                     }
@@ -231,7 +231,7 @@ impl WalletService {
                     let id = token_id.trim();
                     if !options.iter().any(|option| option.token_id == id) {
                         return Err(SpectraBridgeError::InvalidInput {
-                            message: format!("unknown or unpinnable token ID: {id}").into(),
+                            reason: format!("unknown or unpinnable token ID: {id}").into(),
                         });
                     }
                 }
@@ -692,10 +692,10 @@ fn unreadable_on_open(error: crate::wallet_db::error::DbError) -> SpectraBridgeE
         )
     };
     match error {
-        DbError::Corrupt(message) => SpectraBridgeError::StoreUnreadable { message },
+        DbError::Corrupt(message) => SpectraBridgeError::StoreUnreadable { reason: message },
         DbError::Sqlite(ref source) | DbError::Open { ref source, .. } if damaged(source) => {
             SpectraBridgeError::StoreUnreadable {
-                message: error.to_string(),
+                reason: error.to_string(),
             }
         }
         other => other.into(),

@@ -80,14 +80,14 @@ impl From<ApiError> for crate::error::SpectraBridgeError {
     fn from(error: ApiError) -> Self {
         let message = error.to_string();
         match error {
-            ApiError::Transport(_) | ApiError::NoEndpoint => Self::Network { message },
-            ApiError::Status { .. } if error.is_transient() => Self::Network { message },
-            ApiError::Decode(_) => Self::Decode { message },
+            ApiError::Transport(_) | ApiError::NoEndpoint => Self::Network { reason: message },
+            ApiError::Status { .. } if error.is_transient() => Self::Network { reason: message },
+            ApiError::Decode(_) => Self::Decode { reason: message },
             ApiError::InvalidInput(_) => Self::InvalidInput {
-                message: message.into(),
+                reason: message.into(),
             },
             ApiError::Status { .. } | ApiError::Rejected(_) => Self::Failure {
-                message: message.into(),
+                reason: message.into(),
             },
         }
     }

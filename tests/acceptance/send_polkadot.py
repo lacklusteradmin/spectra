@@ -3,18 +3,25 @@
 raised before broadcast submits nothing; the signed extrinsic is submitted
 once, and resubmitted unchanged after its nonce is used; finalized success
 and failure are found from the persisted cursor, again after a lost status
-write. The quote, runtime and fund rules are tested in core."""
+write. A USDT send is an `Assets.transfer` of asset 1984, built and signed
+in separate processes. The quote, runtime, fund and asset rules are tested
+in core."""
 import hashlib
 import json
 import sqlite3
 
-from harness import ABANDON, FIXTURES, JsonRpc, RpcError, Spectra, block_hash, scale_compact, scratch, serve
+from harness import (ABANDON, FIXTURES, JsonRpc, RpcError, Spectra, b58decode, block_hash, fixture,
+                     scale_compact, scratch, serve)
 
 SCALE = 10 ** 10
 GENESIS = '0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f'
 METADATA = '0x' + (FIXTURES / 'asset-hub-polkadot-metadata.scale').read_bytes().hex()
 EVENTS_KEY = '0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7'
 RECIPIENT = '13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB'
+# Asset 1984's `Asset`, `Account` and `Metadata` values, as @polkadot/types
+# encoded them; every account holds 123.456789 of it.
+ASSETS = fixture('asset-hub-assets.json')['polkadot']['state']
+ASSET_VALUES = {ASSETS[name]['key'][:66]: ASSETS[name]['hex'] for name in ('asset', 'account', 'metadata')}
 
 
 def dispatch_event(succeeded):
@@ -39,6 +46,8 @@ class Node(JsonRpc):
         if name == 'state_getStorage':
             if params[0] == EVENTS_KEY:
                 return dispatch_event(live['succeeded'][int(params[1], 16)])
+            if params[0][:66] in ASSET_VALUES:
+                return ASSET_VALUES[params[0][:66]]
             return '0x' + (bytes(16) + live['free'].to_bytes(16, 'little') + bytes(48)).hex()
         if name == 'author_submitExtrinsic':
             live['submitted'].append(params[0])
@@ -77,7 +86,7 @@ with serve(Node, nonce=7, fee=SCALE // 1000, free=10*SCALE, finalized=100, block
 
     run('wallet', 'import', '--chain', 'polkadot', '--name', 'DOT', '--no-password')
     run('endpoints', 'add', '--chain', 'polkadot', '--api', 'substrate-json-rpc',
-        '--capabilities', 'balance,fee,verification,broadcast', endpoint)
+        '--capabilities', 'balance,fee,verification,broadcast,token-balance', endpoint)
 
     signed = signed_send()
     raw = signed['signed_payload']
@@ -111,5 +120,18 @@ with serve(Node, nonce=7, fee=SCALE // 1000, free=10*SCALE, finalized=100, block
     assert record['failureReason']['kind'] == 'executionFailed', record
     assert verified_through(failed['id']) == 166
     assert run('txs', 'maintenance')['chains'] == []
+
+    # USDT: `Assets.transfer` (pallet 50, call 8) of asset 1984 to the
+    # recipient, its fee in DOT. The failed send above used its nonce.
+    live['nonce'] += 1
+    usdt = run('send', 'build', 'DOT', '--to', RECIPIENT, '--contract', '1984', '--decimals', '6',
+               '--amount', '1.234567', '--endpoint', endpoint)['artifact']
+    usdt = run('send', 'sign', usdt['id'], '--review-digest', usdt['review_digest'],
+               '--endpoint', endpoint)['artifact']
+    call = (bytes([50, 8]) + scale_compact(1984) + b'\x00' + b58decode(RECIPIENT)[1:33]
+            + scale_compact(1_234_567)).hex()
+    assert call in usdt['signed_payload'], usdt['signed_payload']
+    broadcast(usdt['id'])
+    assert live['submitted'][-1] == usdt['signed_payload'], live['submitted']
     print('polkadot staged sends: fee recheck at broadcast, one submission, unchanged rebroadcast, '
-          'finalized success and failure recovered across processes')
+          'finalized success and failure recovered across processes, a USDT asset transfer')

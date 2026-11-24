@@ -376,6 +376,52 @@ async fn an_order_is_built_only_within_what_the_multisig_holds_and_awaits_its_pr
 }
 
 #[tokio::test]
+async fn an_order_carries_the_comment_the_spend_names() {
+    use crate::registry::PaymentMemoKind;
+    use crate::send::payment_memo::PaymentMemo;
+    let (service, _server, live) = wallets().await;
+    let with = |kind, value: &str| MultisigSpend {
+        memo: Some(PaymentMemo {
+            kind,
+            value: value.into(),
+        }),
+        ..spend(1)
+    };
+    let created = service
+        .create_multisig("vault".into(), with(PaymentMemoKind::Comment, "rent"))
+        .await
+        .unwrap();
+    let [output] = created.outputs.as_slice() else {
+        panic!("{created:?}");
+    };
+    assert_eq!(output.memo.as_deref(), Some("rent"));
+    // The same order @ton/core builds for this transfer and comment.
+    let shared: Value = serde_json::from_str(&created.data).unwrap();
+    let order =
+        cell_from_boc(&STANDARD.decode(shared["order"].as_str().unwrap()).unwrap()).unwrap();
+    assert_eq!(
+        hex::encode(order.hash_depth().0),
+        fixture()["order"]["cell"]["hash"].as_str().unwrap()
+    );
+    for (kind, value) in [
+        (PaymentMemoKind::MemoText, "rent"),
+        (PaymentMemoKind::Comment, &"x".repeat(124)),
+    ] {
+        let refusal = service
+            .create_multisig("vault".into(), with(kind, value))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            refusal.contains("no such destination tag or memo")
+                || refusal.contains("1 to 123 bytes"),
+            "{refusal}"
+        );
+    }
+    assert!(live.lock().unwrap().sent.is_empty());
+}
+
+#[tokio::test]
 async fn a_signer_proposes_and_approves_only_what_the_contract_would_take() {
     let (service, _server, live) = wallets().await;
     let fixture = fixture();

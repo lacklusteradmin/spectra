@@ -160,7 +160,7 @@ address_prefix_hint = "addr1…"
 [[chains]]
 id = "polkadot"
 name = "Polkadot"
-token_standards = []
+token_standards = ["Asset Hub Asset"]
 derivation_path = []
 search_keywords = ["Polkadot", "DOT"]
 popular_rank = 18
@@ -699,6 +699,222 @@ tags = ["utxo", "pow", "payments"]
 color = "green"
 artwork_name = "peercoin"
 address_prefix_hint = "P… / p… / pc1q… / pc1p…"
+
+[[chains]]
+id = "kaia"
+name = "Kaia"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Kaia", "KAIA", "Klaytn", "KLAY"]
+popular_rank = 51
+color = "green"
+artwork_name = "kaia"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "xdc"
+name = "XDC Network"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["XDC Network", "XDC", "XinFin"]
+popular_rank = 52
+color = "blue"
+artwork_name = "xdc"
+address_prefix_hint = "0x… / xdc…"
+
+[[chains]]
+id = "robinhood-chain"
+name = "Robinhood Chain"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Robinhood Chain", "Robinhood", "ETH"]
+popular_rank = 53
+tags = ["layer-2"]
+color = "green"
+artwork_name = "robinhood"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "kava-evm"
+name = "Kava EVM"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Kava EVM", "Kava", "KAVA"]
+popular_rank = 54
+color = "red"
+artwork_name = "kava"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "chiliz"
+name = "Chiliz Chain"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Chiliz Chain", "Chiliz", "CHZ", "Socios"]
+popular_rank = 55
+color = "red"
+artwork_name = "chiliz"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "stable"
+name = "Stable"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Stable", "STABLE", "USDT0", "USDT"]
+popular_rank = 56
+tags = ["payments"]
+color = "teal"
+artwork_name = "stable"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "arc"
+name = "Arc"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Arc", "Circle", "USDC"]
+popular_rank = 57
+tags = ["payments"]
+color = "indigo"
+artwork_name = "arc"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "manta-pacific"
+name = "Manta Pacific"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Manta Pacific", "Manta", "MANTA", "ETH"]
+popular_rank = 58
+tags = ["layer-2"]
+color = "cyan"
+artwork_name = "manta"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "metis"
+name = "Metis"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Metis", "Metis Andromeda", "METIS"]
+popular_rank = 59
+tags = ["layer-2"]
+color = "teal"
+artwork_name = "metis"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "flare"
+name = "Flare"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Flare", "FLR"]
+popular_rank = 60
+color = "pink"
+artwork_name = "flare"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "katana"
+name = "Katana"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Katana", "KAT", "ETH"]
+popular_rank = 61
+tags = ["layer-2"]
+color = "yellow"
+artwork_name = "katana"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "megaeth"
+name = "MegaETH"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["MegaETH", "MEGA", "ETH"]
+popular_rank = 62
+tags = ["layer-2"]
+color = "gray"
+artwork_name = "megaeth"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "merlin"
+name = "Merlin Chain"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Merlin Chain", "Merlin", "MERL", "BTC"]
+popular_rank = 63
+tags = ["layer-2"]
+color = "purple"
+artwork_name = "merlin"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "peaq"
+name = "peaq"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["peaq", "PEAQ"]
+popular_rank = 64
+color = "indigo"
+artwork_name = "peaq"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "somnia"
+name = "Somnia"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["Somnia", "SOMI"]
+popular_rank = 65
+color = "gray"
+artwork_name = "somnia"
+address_prefix_hint = "0x…"
+
+[[chains]]
+id = "0g"
+name = "0G"
+token_standards = ["ERC-20"]
+derivation_path = [
+  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
+]
+search_keywords = ["0G", "Zero Gravity"]
+popular_rank = 66
+color = "gray"
+artwork_name = "0g"
+address_prefix_hint = "0x…"
 
 [[chains]]
 id = "bitcoin-testnet"
@@ -1247,7 +1463,7 @@ id = "polkadot-westend"
 name = "Polkadot Westend"
 mainnet = "polkadot"
 faucet = "https://faucet.polkadot.io/westend?parachain=1000"
-token_standards = []
+token_standards = ["Asset Hub Asset"]
 derivation_path = []
 search_keywords = ["Polkadot Westend", "Westend", "tDOT"]
 color = "pink"

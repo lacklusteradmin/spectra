@@ -246,6 +246,21 @@ fn custom_tokens_are_added_under_the_named_protocol() {
         let events = reduce_state_in_place(&mut state, command(chain, Some(standard), identifier));
         assert_eq!(events, rejected(reason), "{chain:?} {standard}");
     }
+
+    // A coin's own ERC-20 face is the native row the network already has,
+    // whatever case it is typed in.
+    for (chain, face) in [
+        (Chain::Arc, "0x3600000000000000000000000000000000000000"),
+        (Chain::Stable, "0x779DED0C9E1022225F8E0630B35A9B54BE713736"),
+        (Chain::Metis, "0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000"),
+    ] {
+        let events = reduce_state_in_place(&mut state, command(chain, None, face));
+        assert_eq!(
+            events,
+            rejected(TokenPreferenceRejection::DuplicateToken),
+            "{chain:?}"
+        );
+    }
 }
 
 const EVM_CONTRACT: &str = "0x742d35cc6634c0532925a3b844bc454e4438f44e";

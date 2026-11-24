@@ -417,18 +417,25 @@ impl WalletService {
                     "Token balance precision changed",
                 ));
             }
-            let mut preview = if chain.mainnet_counterpart() == Chain::Near {
-                self.preview_near_send(
-                    chain,
-                    &address,
-                    &destination,
-                    crate::amount::input::parse_raw_amount(&amount, u32::from(real_decimals))?,
-                    Some(&token.contract),
-                )
-                .await?
-            } else {
-                self.fetch_shared_send_preview(chain, address.clone())
+            let mut preview = match chain.mainnet_counterpart() {
+                Chain::Near => {
+                    self.preview_near_send(
+                        chain,
+                        &address,
+                        &destination,
+                        crate::amount::input::parse_raw_amount(&amount, u32::from(real_decimals))?,
+                        Some(&token.contract),
+                    )
                     .await?
+                }
+                Chain::Polkadot => {
+                    self.preview_asset_hub_asset_send(chain, &address, &token.contract)
+                        .await?
+                }
+                _ => {
+                    self.fetch_shared_send_preview(chain, address.clone())
+                        .await?
+                }
             };
             // An XRP Ledger issuer's transfer rate takes its share on top of
             // what arrives, so the most that can arrive is the balance over
@@ -625,7 +632,7 @@ impl WalletService {
             ));
         }
         if let Some(message) = amount_refusal(&verdict) {
-            return Err(SpectraBridgeError::Failure { message });
+            return Err(SpectraBridgeError::Failure { reason: message });
         }
         let fee_rate_svb = match preview.as_ref().map(|preview| &preview.terms) {
             Some(SendFeeTerms::Utxo {

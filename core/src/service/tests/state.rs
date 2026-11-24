@@ -1002,7 +1002,7 @@ impl SecretStore for FailingCleanup {
         // Salt follows the signing blobs, so this failure proves partial cleanup.
         if key.ends_with(".salt") && self.fail.load(Ordering::SeqCst) {
             return Err(SecretStoreError::Backend {
-                message: "injected cleanup failure".into(),
+                reason: "injected cleanup failure".into(),
             });
         }
         self.inner.delete_secret(kind, key)

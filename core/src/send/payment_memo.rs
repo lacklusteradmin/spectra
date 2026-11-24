@@ -1,9 +1,10 @@
 //! A payment's destination tag or memo: what tells a recipient that shares
 //! one account among many — an exchange's deposit address — whose deposit
 //! it is. XRP Ledger payments carry a `DestinationTag`, Stellar transactions
-//! a text or ID memo. A send takes one, binds it into the review digest, and
-//! is refused without one when the destination asks for it: XRP's
-//! `lsfRequireDestTag`, Stellar's SEP-29 `config.memo_required`.
+//! a text or ID memo, TON messages a text comment. A send takes one, binds
+//! it into the review digest, and is refused without one when the
+//! destination asks for it: XRP's `lsfRequireDestTag`, Stellar's SEP-29
+//! `config.memo_required`. TON has no such flag.
 
 use crate::registry::{Chain, PaymentMemoKind};
 use crate::send::error::SendError;
@@ -11,6 +12,10 @@ use serde::{Deserialize, Serialize};
 
 /// The longest `MEMO_TEXT` Stellar takes, in bytes.
 const STELLAR_MEMO_TEXT_BYTES: usize = 28;
+
+/// The longest TON comment a payment carries, in bytes: what one cell holds
+/// after the 32-bit op, so the message stays within the network's static fee.
+const TON_COMMENT_BYTES: usize = 123;
 
 /// A destination tag or memo, of a kind the payment's network takes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Record)]
@@ -75,6 +80,12 @@ impl PaymentMemo {
                 }
                 self.value.clone()
             }
+            PaymentMemoKind::Comment => {
+                if self.value.is_empty() || self.value.len() > TON_COMMENT_BYTES {
+                    return Err(SendError::invalid("A comment is 1 to 123 bytes of text."));
+                }
+                self.value.clone()
+            }
         };
         Ok(Self {
             kind: self.kind,
@@ -121,6 +132,18 @@ impl PaymentMemo {
             )),
         }
     }
+
+    /// The TON comment `memo` names, if any.
+    pub(crate) fn ton_comment(memo: Option<&Self>) -> Result<Option<&str>, SendError> {
+        match memo {
+            None => Ok(None),
+            Some(Self {
+                kind: PaymentMemoKind::Comment,
+                value,
+            }) if !value.is_empty() && value.len() <= TON_COMMENT_BYTES => Ok(Some(value)),
+            Some(_) => Err(SendError::invalid("A TON payment carries a text comment")),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -153,6 +176,13 @@ mod tests {
             ),
             (Chain::StellarTestnet, MemoText, " deposit ", " deposit "),
             (Chain::Stellar, MemoText, &"x".repeat(28), &"x".repeat(28)),
+            (Chain::Ton, Comment, "104729", "104729"),
+            (
+                Chain::TonTestnet,
+                Comment,
+                &"x".repeat(123),
+                &"x".repeat(123),
+            ),
         ] {
             assert_eq!(
                 memo(kind, value).validated(chain).unwrap(),
@@ -173,6 +203,11 @@ mod tests {
             (Chain::Stellar, MemoText, &"é".repeat(15)),
             (Chain::Ethereum, MemoText, "deposit"),
             (Chain::Bitcoin, DestinationTag, "1"),
+            (Chain::Ton, Comment, ""),
+            // 123 bytes is the limit, not 123 characters.
+            (Chain::Ton, Comment, &"é".repeat(62)),
+            (Chain::Ton, MemoText, "deposit"),
+            (Chain::Stellar, Comment, "deposit"),
         ] {
             assert!(
                 memo(kind, value).validated(chain).is_err(),
@@ -182,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn only_xrp_and_stellar_payments_carry_one() {
+    fn only_xrp_stellar_and_ton_payments_carry_one() {
         for chain in Chain::all() {
             let kinds = payment_memo_kinds(chain);
             match chain.mainnet_counterpart() {
@@ -190,6 +225,7 @@ mod tests {
                 Chain::Stellar => {
                     assert_eq!(kinds, [PaymentMemoKind::MemoText, PaymentMemoKind::MemoId])
                 }
+                Chain::Ton => assert_eq!(kinds, [PaymentMemoKind::Comment]),
                 _ => assert!(kinds.is_empty(), "{chain}"),
             }
         }

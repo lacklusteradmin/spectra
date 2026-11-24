@@ -33,7 +33,7 @@ OK, FAILED, USAGE, REJECTED = 0, 1, 2, 3
 # their sum.
 SUITES = {
     'send_stages': 'staged EVM sends across processes',
-    'send_polkadot': 'Polkadot Asset Hub staged sends and finalized outcomes',
+    'send_polkadot': 'Polkadot Asset Hub staged sends, finalized outcomes and a USDT asset transfer',
     'send_cardano': 'Cardano staged send broadcast once as signed',
     'multisig_psbt': 'a 2-of-3 Bitcoin PSBT across three data directories',
     'multisig_safe': 'Safe owners sign, join and execute a Safe transaction',
@@ -54,7 +54,7 @@ SUITES = {
     'icp_staking': 'ICP neuron staking reopened and refused on a forged certificate',
     'send_near': 'NEAR durable retries and final status recovery',
     'send': 'a password-protected owned send',
-    'send_tokens': 'a TON jetton send resolved from its trace across processes',
+    'send_tokens': 'a TON jetton send with a comment, resolved from its trace across processes',
     'send_icp_zcash': 'ICP and transparent Zcash sends with an identical retry',
     'endpoints': 'the endpoint listing and health verdict',
 }

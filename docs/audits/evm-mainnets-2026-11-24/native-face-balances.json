@@ -1,0 +1,35 @@
+{
+ "checked_at_utc": "2026-11-24T09:35:53+00:00",
+ "cases": [
+  {
+   "chain_id": "stable",
+   "block": "0x2dd4123",
+   "holder": "0x93354845030274cd4bf1686abd60ab28ec52e1a7",
+   "face": "0x779ded0c9e1022225f8e0630b35a9b54be713736",
+   "eth_getBalance": "9652144565792089539890",
+   "balanceOf": "9652144565",
+   "native_over_10_pow": 12,
+   "equal": true
+  },
+  {
+   "chain_id": "arc",
+   "block": "0x1f5c56d",
+   "holder": "0x9298179251bda7ab136f02bbfa47ac24ece9518d",
+   "face": "0x3600000000000000000000000000000000000000",
+   "eth_getBalance": "39070617160960937603071",
+   "balanceOf": "39070617160",
+   "native_over_10_pow": 12,
+   "equal": true
+  },
+  {
+   "chain_id": "metis",
+   "block": "0x165f03c",
+   "holder": "0xaa6a4e4b1c2699ae183637879270b930c5fce885",
+   "face": "0xdeaddeaddeaddeaddeaddeaddeaddeaddead0000",
+   "eth_getBalance": "2549068624354501167",
+   "balanceOf": "2549068624354501167",
+   "native_over_10_pow": 0,
+   "equal": true
+  }
+ ]
+}

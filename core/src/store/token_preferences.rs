@@ -237,6 +237,15 @@ pub(super) fn reduce(
                     _ if token_preference_row(state, hosting, &contract).is_some() => {
                         Some(TokenPreferenceRejection::DuplicateToken)
                     }
+                    // The coin's own ERC-20 face: its balance is the native
+                    // row the network already has, and a second row would
+                    // count it twice.
+                    _ if hosting
+                        .evm_native_coin_contract()
+                        .is_some_and(|native| native.eq_ignore_ascii_case(&contract)) =>
+                    {
+                        Some(TokenPreferenceRejection::DuplicateToken)
+                    }
                     _ => None,
                 },
             };

@@ -201,6 +201,7 @@ pub fn payment_request_uri(
     match (&memo, format) {
         (None, _) => {}
         (Some(memo), PaymentUriFormat::Xrpl) => params.push(("dt", memo.value.clone())),
+        (Some(memo), PaymentUriFormat::TonTransfer) => params.push(("text", memo.value.clone())),
         (Some(memo), PaymentUriFormat::Sep7) => {
             params.push(("memo", memo.value.clone()));
             params.push((
@@ -502,11 +503,23 @@ fn percent_decoded(text: &str) -> Option<String> {
 }
 
 /// The tag or memo the code asks for, on a network whose payments carry one:
-/// XRP's `dt`, SEP-7's `memo` with its `memo_type`. A memo of a kind Spectra
-/// cannot send is refused rather than dropped, since a deposit without it is
-/// lost to the account that shares the address.
+/// XRP's `dt`, SEP-7's `memo` with its `memo_type`, a TON transfer's `text`.
+/// A memo of a kind Spectra cannot send is refused rather than dropped, since
+/// a deposit without it is lost to the account that shares the address; so
+/// is a TON transfer's `bin` message body or `init` state.
 fn memo(chain: Chain, code: &PaymentCode) -> Result<Option<PaymentMemo>, SpectraBridgeError> {
     let memo = match chain.mainnet_counterpart() {
+        Chain::Ton => {
+            if code.param(&["bin", "init"]).is_some() {
+                return Err(SpectraBridgeError::invalid(
+                    "The scanned code asks for a message body Spectra cannot send.",
+                ));
+            }
+            code.param(&["text"]).map(|value| PaymentMemo {
+                kind: PaymentMemoKind::Comment,
+                value: value.to_string(),
+            })
+        }
         Chain::Xrp => code.param(&["dt", "tag"]).map(|value| PaymentMemo {
             kind: PaymentMemoKind::DestinationTag,
             value: value.to_string(),
@@ -738,6 +751,27 @@ mod tests {
             )
             .is_err()
         );
+        let ton = "UQBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVR7q";
+        let comment = read(
+            Chain::Ton,
+            &format!("ton://transfer/{ton}?amount=1500000000&text=deposit%20104729"),
+        )
+        .unwrap();
+        assert_eq!(comment.amount.as_deref(), Some("1.5"));
+        assert_eq!(
+            comment.memo,
+            Some(PaymentMemo {
+                kind: PaymentMemoKind::Comment,
+                value: "deposit 104729".into()
+            })
+        );
+        for refused in [
+            format!("ton://transfer/{ton}?bin=te6cckEBAQEAAgAAAEysuc0%3D"),
+            format!("ton://transfer/{ton}?init=te6cckEBAQEAAgAAAEysuc0%3D&text=x"),
+            format!("ton://transfer/{ton}?text={}", "x".repeat(124)),
+        ] {
+            assert!(read(Chain::Ton, &refused).is_err(), "{refused}");
+        }
         // A network without memos ignores the parameter.
         assert_eq!(
             read(Chain::Bitcoin, &format!("bitcoin:{BTC}?memo=x"))
@@ -799,6 +833,15 @@ mod tests {
                 Some(PaymentMemo {
                     kind: PaymentMemoKind::MemoId,
                     value: "9001".into(),
+                }),
+            ),
+            (
+                Chain::Ton,
+                "UQBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVR7q",
+                "2.5",
+                Some(PaymentMemo {
+                    kind: PaymentMemoKind::Comment,
+                    value: "deposit 104729 / é".into(),
                 }),
             ),
         ];

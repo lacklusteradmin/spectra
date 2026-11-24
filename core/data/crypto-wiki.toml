@@ -463,3 +463,59 @@ comment = "A 2023 memecoin with no stated utility, no team allocation and no pre
 token_id = "peercoin"
 comment = "The coin of an early proof-of-stake network launched in 2012. PPC pays transaction fees, which are burned, and can participate in coin-age-based minting through a compatible wallet."
 total_circulation_model = "No fixed lifetime supply cap. Proof-of-work and proof-of-stake create new PPC while transaction fees are destroyed."
+
+[[assets]]
+token_id = "kaia"
+comment = "Pays transaction fees on Kaia, the network formed from the merger of Klaytn and Finschia, and is staked by its validators."
+
+[[assets]]
+token_id = "xdce-crowd-sale"
+comment = "Pays transaction fees on XDC Network and is staked by its masternodes."
+
+[[assets]]
+token_id = "kava"
+comment = "Pays fees on the Kava blockchain and its EVM co-chain, and is staked by its validators."
+
+[[assets]]
+token_id = "chiliz"
+comment = "Pays fees on Chiliz Chain, where sports and entertainment fan tokens are issued, and is staked by its validators."
+
+[[assets]]
+token_id = "metis-token"
+comment = "Pays fees on the Metis rollup and is staked by its sequencers."
+
+[[assets]]
+token_id = "flare-networks"
+comment = "Pays fees on Flare, where all fees are burned, and is staked and delegated to its oracle providers."
+
+[[assets]]
+token_id = "peaq-2"
+comment = "Pays fees on peaq, a parachain for machine and DePIN applications, and is staked with its collators."
+
+[[assets]]
+token_id = "somnia"
+comment = "Pays gas on Somnia and is staked by its validators."
+
+[[assets]]
+token_id = "zero-gravity"
+comment = "Pays gas on 0G, an EVM layer 1 built for AI workloads, and is staked by its validators."
+
+[[assets]]
+token_id = "manta-network"
+comment = "Governance and staking token of the Manta Network, an ERC-20 on Manta Pacific and Ethereum."
+
+[[assets]]
+token_id = "katana-network-token"
+comment = "Governance token of Katana, an ERC-20 on the Katana network."
+
+[[assets]]
+token_id = "megaeth"
+comment = "Protocol token of MegaETH, an ERC-20 on the MegaETH network."
+
+[[assets]]
+token_id = "merlin-chain"
+comment = "Governance token of Merlin Chain, an ERC-20 on the Merlin network."
+
+[[assets]]
+token_id = "stable-2"
+comment = "Governance token of the Stable network, an ERC-20 there; USDT0, not STABLE, pays gas."

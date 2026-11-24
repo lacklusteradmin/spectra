@@ -427,7 +427,7 @@ impl WalletService {
     ) -> Result<ChainEndpoints, SpectraBridgeError> {
         let Some(model) = chain.staking_model() else {
             return Err(SpectraBridgeError::InvalidInput {
-                message: format!(
+                reason: format!(
                     "Staking queries are unavailable for {}",
                     chain.chain_display_name()
                 )

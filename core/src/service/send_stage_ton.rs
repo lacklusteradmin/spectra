@@ -3,6 +3,7 @@
 use super::send_stage_protocols::{StagedAmount, protocol_u64};
 use super::*;
 use crate::send::payload::SignedPayload;
+use crate::send::payment_memo::PaymentMemo;
 use crate::send::stages::*;
 use base64::{Engine, engine::general_purpose::STANDARD};
 
@@ -176,6 +177,7 @@ impl WalletService {
                 )?;
                 let recipient = crate::derivation::ton::parse_ton_address(&stored.view.recipient)?
                     .for_network(chain.is_testnet())?;
+                let comment = PaymentMemo::ton_comment(stored.request.memo.as_ref())?;
                 let raw = if let Some(plan) = jetton {
                     crate::send::ton::build_jetton_transfer(
                         &wallet,
@@ -185,6 +187,7 @@ impl WalletService {
                             .for_network(chain.is_testnet())?,
                         *amount,
                         *seqno,
+                        comment,
                         *valid_until,
                     )?
                 } else {
@@ -195,7 +198,7 @@ impl WalletService {
                             SpectraBridgeError::invalid("TON native amount exceeds protocol range")
                         })?,
                         *seqno,
-                        None,
+                        comment,
                         *valid_until,
                         3,
                     )?
