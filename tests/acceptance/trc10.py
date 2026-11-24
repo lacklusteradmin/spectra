@@ -4,10 +4,9 @@ signed, broadcast once as the TransferAssetContract that was signed, and
 recorded as the token's own send until a poll confirms it. Reads, refusals,
 history and receipts are tested in core."""
 import hashlib
-import json
 import urllib.parse
 
-from harness import Handler, Spectra, fixture, scratch, serve
+from harness import Handler, Spectra, fixture, protobuf, scratch, serve, tron_signed
 
 FIXTURE = fixture('trc10-send-vectors.json')
 OWNER, RECEIVER = FIXTURE['owner'], FIXTURE['receiver']
@@ -42,15 +41,18 @@ class Node(Handler):
             return self.reply({'chainParameter': [{'key': 'getTransactionFee', 'value': 1000},
                 {'key': 'getCreateAccountFee', 'value': 100_000},
                 {'key': 'getCreateNewAccountFeeInSystemContract', 'value': 1_000_000}]})
-        if route == '/wallet/broadcasttransaction':
-            assert body['raw_data']['contract'][0]['type'] == 'TransferAssetContract', body
-            assert 'fee_limit' not in body['raw_data'], body
-            value = body['raw_data']['contract'][0]['parameter']['value']
-            assert value == {'asset_name': '1009999'.encode().hex(), 'owner_address': base58_hex(OWNER),
-                             'to_address': base58_hex(RECEIVER), 'amount': 12345}, value
-            assert body['txID'] == hashlib.sha256(bytes.fromhex(body['raw_data_hex'])).hexdigest(), body
-            self.state['payloads'].append(body)
-            return self.reply({'result': True, 'txid': body['txID']})
+        if route == '/wallet/broadcasthex':
+            raw, signatures = tron_signed(body)
+            fields = dict(protobuf(raw))
+            assert 18 not in fields, 'a TRC-10 transfer sets no fee limit'
+            contract = dict(protobuf(fields[11]))
+            assert contract[1] == 2, 'a TransferAssetContract'
+            value = dict(protobuf(dict(protobuf(contract[2]))[2]))
+            assert (value[1], value[2].hex(), value[3].hex(), value[4]) == (
+                b'1009999', base58_hex(OWNER), base58_hex(RECEIVER), 12345), value
+            assert len(signatures) == 1
+            self.state['payloads'].append(body['transaction'])
+            return self.reply({'result': True, 'txid': hashlib.sha256(raw).hexdigest()})
         if route == '/walletsolidity/gettransactioninfobyid':
             if not self.state['payloads']: return self.reply({})
             return self.reply({'id': body['value'], 'blockNumber': 450, 'receipt': {'net_usage': 300}})
@@ -71,7 +73,7 @@ with serve(Node, payloads=[]) as node, scratch('trc10') as directory:
     assert spectra.run('send', 'inspect', signed['id'])['artifact']['signed_payload'] == signed['signed_payload']
     accepted = spectra.run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')['artifact']
     assert any(a['outcome'] == 'Accepted' for a in accepted['attempts']), accepted
-    assert payloads == [json.loads(signed['signed_payload'])], payloads
+    assert payloads == [signed['signed_payload']], payloads
     changes = spectra.run('txs', '--poll-chain', 'tron')['changes']
     assert changes and all(r['newStatus'] == 'confirmed' for r in changes), changes
     records = spectra.run('txs', '--page', '--wallet', 'Legacy')['page']['records']

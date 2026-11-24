@@ -64,7 +64,7 @@ impl WalletService {
                     destination,
                     amount,
                     registration,
-                    chain.near_token_gas_limit().unwrap(),
+                    chain.near_token_gas_limit()?,
                 )?;
                 let fee = client
                     .function_calls_fee_budget(
@@ -416,7 +416,7 @@ impl WalletService {
                                 .map(str::parse)
                                 .transpose()
                                 .map_err(SpectraBridgeError::invalid)?,
-                            chain.near_token_gas_limit().unwrap(),
+                            chain.near_token_gas_limit()?,
                         )?,
                         block_hash,
                         key,

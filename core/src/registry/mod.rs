@@ -446,7 +446,7 @@ pub enum PaymentMemoKind {
 }
 
 /// How a chain's estimated fee enters its signing request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendFeeField {
     /// Sui: the fee becomes the transaction's gas budget.
     GasBudget,

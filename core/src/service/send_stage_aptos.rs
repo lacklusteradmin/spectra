@@ -39,36 +39,25 @@ impl WalletService {
             .await,
         );
         client.verify_network(chain).await?;
-        if prepared.chain_id() != chain.aptos_chain_id() {
+        if prepared.chain_id() != Some(chain.aptos_chain_id()?) {
             return Err(SpectraBridgeError::failure(
                 "Aptos endpoint or prepared transaction is on the wrong network",
             ));
         }
-        let sequence = prepared.body["sequence_number"]
-            .as_str()
-            .and_then(|value| value.parse::<u64>().ok())
-            .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos sequence"))?;
-        let expiry = prepared.body["expiration_timestamp_secs"]
-            .as_str()
-            .and_then(|value| value.parse::<u64>().ok())
-            .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos expiration"))?;
+        let (sequence, expiry) = (prepared.sequence, prepared.expiration);
         if sequence != client.fetch_account_info(&stored.view.sender).await?.0 || expiry <= now {
             return Err(SpectraBridgeError::failure(
                 "Aptos sequence or expiration is stale; build and review again",
             ));
         }
-        let max_gas = chain
-            .aptos_max_gas_amount()
-            .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas limit"))?;
+        let max_gas = chain.aptos_max_gas_amount()?;
         let fee = stored
             .request
             .fee_amount
             .as_deref()
             .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas budget"))?;
         let price = aptos_reviewed_gas_price(chain, fee, max_gas)?;
-        if prepared.body["max_gas_amount"].as_str() != Some(max_gas.to_string().as_str())
-            || prepared.body["gas_unit_price"].as_str() != Some(price.to_string().as_str())
-        {
+        if prepared.max_gas != max_gas || prepared.gas_price != price {
             return Err(SpectraBridgeError::invalid(
                 "Aptos gas budget changed; build and review again",
             ));
@@ -126,9 +115,7 @@ impl WalletService {
         let to = request.to_address.as_str();
         Ok(match chain.mainnet_counterpart() {
             Chain::Aptos => {
-                let max_gas = chain
-                    .aptos_max_gas_amount()
-                    .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas limit"))?;
+                let max_gas = chain.aptos_max_gas_amount()?;
                 let gas_price = match request.fee_amount.as_deref() {
                     Some(fee) => aptos_reviewed_gas_price(chain, fee, max_gas)?,
                     None => {
@@ -146,9 +133,7 @@ impl WalletService {
                 let client = AptosClient::new(eps);
                 let sequence = client.fetch_account_info(sender).await?.0;
                 client.verify_network(chain).await?;
-                let network = chain
-                    .aptos_chain_id()
-                    .ok_or_else(|| SpectraBridgeError::failure("Missing Aptos network identity"))?;
+                let network = chain.aptos_chain_id()?;
                 let balance = AptosClient::new(
                     self.endpoints_for(chain, &[EndpointCapability::Balance])
                         .await,
@@ -190,7 +175,7 @@ impl WalletService {
                     sequence,
                     gas_price,
                     max_gas,
-                    crate::store::now_unix() as u64 + 600,
+                    crate::store::now_unix() as u64 + chain.aptos_transaction_lifetime_secs()?,
                     network,
                     request
                         .contract_address
@@ -212,8 +197,8 @@ impl WalletService {
         let seed = || crate::send::keys::Ed25519Seed::from_hex(&signer.private_key_hex);
         Ok(match &stored.prepared {
             PreparedPayload::Aptos(p) => {
-                let (body, hash) = p.clone().sign(&seed()?)?;
-                (SignedPayload::Json(body), Some(hash))
+                let (signed, hash) = p.clone().sign(&seed()?)?;
+                (SignedPayload::Hex(hex::encode(signed)), Some(hash))
             }
             _ => {
                 return Err(SpectraBridgeError::failure("Not a Aptos transaction"));
@@ -228,10 +213,7 @@ impl WalletService {
     ) -> Result<bool, SpectraBridgeError> {
         let now = crate::store::now_unix();
         Ok(match &stored.prepared {
-            PreparedPayload::Aptos(p) => p.body["expiration_timestamp_secs"]
-                .as_str()
-                .and_then(|s| s.parse::<u64>().ok())
-                .is_none_or(|expiry| now >= expiry as f64),
+            PreparedPayload::Aptos(p) => now >= p.expiration as f64,
             _ => false,
         })
     }

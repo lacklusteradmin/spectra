@@ -26,6 +26,42 @@ def b58(raw):
     return '1' * (len(raw) - len(raw.lstrip(b'\0'))) + text
 
 
+def aptos_call(raw):
+    """The entry function, arguments, max gas and Ed25519 signature of an
+    Aptos SignedTransaction's BCS: an entry-function call without type
+    arguments, as delegation calls are."""
+    at = 0
+
+    def take(n):
+        nonlocal at
+        at += n
+        return raw[at - n:at]
+
+    def uleb():
+        value = shift = 0
+        while True:
+            byte = take(1)[0]
+            value |= (byte & 0x7f) << shift
+            shift += 7
+            if byte < 0x80:
+                return value
+
+    def vector():
+        return take(uleb())
+
+    take(32 + 8)
+    assert take(1) == b'\x02', 'an entry function'
+    take(32)
+    function = vector().decode() + '::' + vector().decode()
+    assert uleb() == 0, 'no type arguments'
+    arguments = [vector() for _ in range(uleb())]
+    max_gas = int.from_bytes(take(8), 'little')
+    take(8 + 8 + 1)
+    assert take(1) == b'\x00', 'an Ed25519 authenticator'
+    vector()
+    return function, arguments, max_gas, vector()
+
+
 def unb58(text):
     number = 0
     for char in text:
@@ -71,7 +107,9 @@ class Node(JsonRpc):
             return super().do_POST()
         path = urllib.parse.urlsplit(self.path).path
         try:
-            self.aptos(self.body(), path)
+            raw = self.raw_body()
+            signed = self.headers['Content-Type'] == 'application/x.aptos.signed_transaction+bcs'
+            self.aptos(raw if signed else json.loads(raw), path)
         except (AssertionError, KeyError, ValueError) as error:
             self.state['errors'].append((path, str(error)))
             self.reply({'message': 'fixture rejected ' + path}, 400)
@@ -160,11 +198,13 @@ class Node(JsonRpc):
                       'balance': [str(s['balance'])]}[function]
             return self.reply(result)
         if path == '/transactions/simulate':
-            assert body['signature']['signature'] == '0x' + '00'*64
-            assert body['payload']['function'].endswith('::add_stake')
+            function, arguments, max_gas, signature = aptos_call(body)
+            assert signature == bytes(64)
+            assert function == 'delegation_pool::add_stake'
             result = {'success': s['simulation'], 'vm_status': 'Executed' if s['simulation'] else 'ABORT', 'gas_used': '10000',
-                      'max_gas_amount': '200000' if 'estimate_max' in self.path else body['max_gas_amount'],
-                      'events': [{'type': '0x1::delegation_pool::AddStake', 'data': {'amount_added': body['payload']['arguments'][1]}}]}
+                      'max_gas_amount': '200000' if 'estimate_max' in self.path else str(max_gas),
+                      'events': [{'type': '0x1::delegation_pool::AddStake',
+                                  'data': {'amount_added': str(int.from_bytes(arguments[1], 'little'))}}]}
             return self.reply([result])
         if path == '/transactions':
             s['submitted'].append(body)

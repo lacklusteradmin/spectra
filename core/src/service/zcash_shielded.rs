@@ -129,11 +129,7 @@ pub(super) fn shielded_account(wallet: &WalletState) -> Result<u32, SpectraBridg
         ));
     }
     let coin = if chain == Chain::Zcash { 133 } else { 1 };
-    let path = wallet
-        .address_record_on(chain)
-        .and_then(|address| address.derivation_path.as_deref())
-        .or(wallet.derivation_path.as_deref())
-        .unwrap_or("");
+    let path = wallet.derivation_path.as_deref().unwrap_or("");
     use bitcoin::bip32::ChildNumber::{Hardened, Normal};
     let steps = crate::derivation::bip32::parse_path(path).ok();
     let account = match steps.as_ref().map(|path| path.as_ref()) {
@@ -178,7 +174,10 @@ fn unified_address(db: &ZcashDb, network: &Network) -> Result<Option<String>, Sp
 }
 
 fn decimal(zatoshis: zcash_protocol::value::Zatoshis) -> String {
-    crate::amount::decimal::from_units(u128::from(u64::from(zatoshis)), 8)
+    crate::amount::decimal::from_units(
+        u128::from(u64::from(zatoshis)),
+        u32::from(Chain::Zcash.native_decimals()),
+    )
 }
 
 /// The account's shielded activity as history rows: what it received into
@@ -1064,8 +1063,7 @@ impl WalletService {
         &self,
     ) -> Result<crate::send::zcash_shielded::SaplingParameters, SpectraBridgeError> {
         use crate::send::zcash_shielded::{
-            SAPLING_PARAMETER_FILES, SAPLING_PARAMETERS_URL, SaplingParameters,
-            sapling_parameter_is_genuine,
+            SAPLING_PARAMETER_FILES, SaplingParameters, sapling_parameter_is_genuine,
         };
         let database = self.bound_database().await?;
         let directory = std::path::Path::new(database.path())
@@ -1080,8 +1078,7 @@ impl WalletService {
             let bytes = match stored.filter(|bytes| sapling_parameter_is_genuine(name, bytes)) {
                 Some(bytes) => bytes,
                 None => {
-                    let bytes = crate::api::http::HttpClient::shared()
-                        .get_bytes(&format!("{SAPLING_PARAMETERS_URL}/{name}"), size)
+                    let bytes = crate::api::zcash_parameters::fetch_sapling_parameter(name, size)
                         .await
                         .map_err(|error| {
                             SpectraBridgeError::failed(

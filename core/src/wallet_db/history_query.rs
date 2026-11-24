@@ -7,6 +7,9 @@ use crate::store::persistence_models::TransactionRecord;
 use crate::wallet_db::error::DbError;
 
 // All user-facing projections select the same canonical transaction and owner.
+/// A row that moved an amount: one of nothing reads as neither sent nor
+/// received, as `transaction_amount_direction` reads it.
+const MOVED: &str = "CAST(json_extract(h.payload, '$.amount') AS REAL) != 0";
 const VISIBLE: &str = "EXISTS (SELECT 1 FROM wallets w WHERE lower(w.id) = h.wallet_id)
     AND h.id = (SELECT candidate.id FROM history_records candidate
         WHERE candidate.wallet_id = h.wallet_id AND candidate.chain_id = h.chain_id
@@ -77,12 +80,12 @@ fn page_sql(query: &HistoryQuery) -> String {
     };
     format!("SELECT h.payload, h.created_at, h.id FROM history_records h
         WHERE {wallet} {VISIBLE} {seek} {small}
-        AND (?2 = 'all' OR (?2 = 'send' AND json_extract(h.payload, '$.kind') IN ('send', 'stake')) OR (?2 = 'receive' AND json_extract(h.payload, '$.kind') IN ('receive', 'withdraw', 'claimRewards')) OR json_extract(h.payload, '$.status') = ?2)
+        AND (?2 = 'all' OR (?2 = 'send' AND json_extract(h.payload, '$.kind') IN ('send', 'stake') AND {MOVED}) OR (?2 = 'receive' AND json_extract(h.payload, '$.kind') IN ('receive', 'withdraw', 'claimRewards') AND {MOVED}) OR json_extract(h.payload, '$.status') = ?2)
         AND (?3 = '' OR instr(spectra_lower(coalesce(json_extract(h.payload, '$.walletName'), '') || ' ' ||
           coalesce(json_extract(h.payload, '$.assetDisplayName'), '') || ' ' ||
           coalesce(json_extract(h.payload, '$.symbol'), '') || ' ' || h.chain_id || ' ' ||
           coalesce(json_extract(h.payload, '$.address'), '') || ' ' || coalesce(h.tx_hash, '') || ' ' ||
-          coalesce(json_extract(h.payload, '$.transactionHistorySource'), '')), ?3) > 0)
+          coalesce(json_extract(h.payload, '$.historySource.indexer.name'), '')), ?3) > 0)
         ORDER BY h.created_at {order}, h.id ASC LIMIT ?4")
 }
 

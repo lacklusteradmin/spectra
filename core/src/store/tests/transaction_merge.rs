@@ -35,6 +35,8 @@ async fn opened(tag: &str) -> (std::sync::Arc<WalletService>, String) {
 fn record(id: &str, hash: &str, confirmations: Option<i64>) -> TransactionRecord {
     TransactionRecord {
         actions: Default::default(),
+        direction: Default::default(),
+        submitted: false,
         deployment_id: None,
         id: id.to_string(),
         wallet_id: Some("w1".to_string()),
@@ -61,7 +63,7 @@ fn record(id: &str, hash: &str, confirmations: Option<i64>) -> TransactionRecord
         source_address: None,
         change_address: None,
         failure_reason: None,
-        transaction_history_source: None,
+        history_source: None,
         created_at_unix: 1_700_000_000.0,
     }
 }

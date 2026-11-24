@@ -76,7 +76,7 @@ async fn tron(ledger: Arc<Mutex<Ledger>>) -> wiremock::MockServer {
                 {"key": "getTransactionFee", "value": 1000},
                 {"key": "getCreateAccountFee", "value": 100_000},
                 {"key": "getCreateNewAccountFeeInSystemContract", "value": 1_000_000}]}),
-            "/wallet/broadcasttransaction" => json!({"result": true, "txid": body["txID"]}),
+            "/wallet/broadcasthex" => json!({"result": true}),
             path if path == format!("/v1/accounts/{owner}/transactions/trc20") => {
                 json!({"data": []})
             }
@@ -221,7 +221,7 @@ async fn a_reviewed_trc10_send_is_refused_when_its_funds_change_before_signing_o
             .await
             .unwrap()
             .iter()
-            .all(|request| request.url.path() != "/wallet/broadcasttransaction")
+            .all(|request| request.url.path() != "/wallet/broadcasthex")
     );
     assert!(wallet.stored(&signed).await.attempts.is_empty());
 }

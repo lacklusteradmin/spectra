@@ -30,13 +30,37 @@ pub enum SendNextStep {
     Done,
 }
 
+/// Where a staged transaction stands, as every page that shows one says it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, uniffi::Enum)]
+#[serde(rename_all = "snake_case")]
+pub enum SendStatus {
+    /// Built, and waiting for its signature.
+    AwaitingSignature,
+    /// Signed and never submitted.
+    Signed,
+    /// Submitted, and every node refused it.
+    Rejected,
+    /// Submitted, no node accepted it, and at least one may have: whether it
+    /// is on the network is not known.
+    Uncertain,
+    /// A node accepted it and the chain has not settled it. Acceptance is not
+    /// confirmation.
+    AwaitingConfirmation,
+    /// The chain confirmed it.
+    Confirmed,
+    /// The chain refused it.
+    Failed,
+}
+
 /// A staged transaction as a front end acts on it: the artifact, its
-/// history record once it was submitted, and what core allows next.
+/// history record once it was submitted, where it stands and what core
+/// allows next.
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
 pub struct SendProgress {
     pub artifact: SendArtifact,
     /// The history record, once the transaction was submitted.
     pub transaction: Option<crate::store::persistence_models::TransactionRecord>,
+    pub status: SendStatus,
     pub next: SendNextStep,
     /// The same signed transaction can go to nodes again: it was submitted,
     /// and its record allows a rebroadcast.
@@ -61,6 +85,21 @@ impl SendProgress {
         let transaction = transaction.filter(|record| submitted && record.id == artifact.id);
         let status = transaction.as_ref().map(|record| record.status);
         let signed = artifact.stage == SendStage::Signed;
+        let outcome = |wanted| {
+            artifact
+                .attempts
+                .iter()
+                .any(|attempt| attempt.outcome == wanted)
+        };
+        let shown = match status {
+            Some(TransactionStatus::Confirmed) => SendStatus::Confirmed,
+            Some(TransactionStatus::Failed) => SendStatus::Failed,
+            _ if !signed => SendStatus::AwaitingSignature,
+            _ if !submitted => SendStatus::Signed,
+            _ if outcome(SubmissionOutcome::Accepted) => SendStatus::AwaitingConfirmation,
+            _ if outcome(SubmissionOutcome::Uncertain) => SendStatus::Uncertain,
+            _ => SendStatus::Rejected,
+        };
         let next = if status.is_some_and(|status| status != TransactionStatus::Pending) {
             SendNextStep::Done
         } else if !signed {
@@ -96,6 +135,7 @@ impl SendProgress {
         Self {
             artifact,
             transaction,
+            status: shown,
             next,
             can_rebroadcast,
             can_repair,
@@ -106,18 +146,6 @@ impl SendProgress {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    pub async fn build_send(
-        &self,
-        request: crate::send::SendExecutionRequest,
-    ) -> Result<SendArtifact, SpectraBridgeError> {
-        let this = self.clone();
-        crate::service::worker::run(async move {
-            let this = &this;
-            this.build_send_with_review(request, None).await
-        })
-        .await
-    }
-
     /// Resolve owned edits and persist their review with the prepared transaction.
     pub async fn build_owned_send(
         &self,
@@ -311,6 +339,20 @@ impl WalletService {
             let this = &this;
             let service = this.clone();
             tokio::spawn(async move { service.broadcast_send_owned(id, endpoints).await }).await?
+        })
+        .await
+    }
+}
+
+impl WalletService {
+    pub async fn build_send(
+        &self,
+        request: crate::send::SendExecutionRequest,
+    ) -> Result<SendArtifact, SpectraBridgeError> {
+        let this = self.clone();
+        crate::service::worker::run(async move {
+            let this = &this;
+            this.build_send_with_review(request, None).await
         })
         .await
     }
@@ -817,33 +859,29 @@ impl WalletService {
             if overrides.nonce.is_none() {
                 overrides.nonce = Some(self.next_send_nonce(chain, &sender).await?);
             }
-            let (to, value, data) = if let Some(contract) = &request.contract_address {
-                let decimals = u32::from(
-                    self.token_decimals(chain, contract, MetadataRead::Fresh)
-                        .await?,
-                );
-                if request.token_decimals.is_some_and(|d| d != decimals) {
-                    return Err(SpectraBridgeError::failure(
-                        "Token decimals do not match the selected network",
-                    ));
+            let token_decimals = match &request.contract_address {
+                Some(contract) => {
+                    let decimals = u32::from(
+                        self.token_decimals(chain, contract, MetadataRead::Fresh)
+                            .await?,
+                    );
+                    if request.token_decimals.is_some_and(|d| d != decimals) {
+                        return Err(SpectraBridgeError::failure(
+                            "Token decimals do not match the selected network",
+                        ));
+                    }
+                    request.token_decimals = Some(decimals);
+                    Some(decimals)
                 }
-                request.token_decimals = Some(decimals);
-                let amount = crate::amount::input::parse_raw_amount(&request.amount_str, decimals)?;
-                (
-                    contract.clone(),
-                    0,
-                    crate::send::evm::encode_erc20_transfer(&request.to_address, amount)?,
-                )
-            } else {
-                (
-                    request.to_address.clone(),
-                    crate::amount::input::parse_raw_amount(
-                        &request.amount_str,
-                        u32::from(chain.native_decimals()),
-                    )?,
-                    Vec::new(),
-                )
+                None => None,
             };
+            let crate::send::evm::TransferCall { to, value, data } =
+                crate::send::evm::transfer_call(
+                    chain,
+                    &request.to_address,
+                    &request.amount_str,
+                    request.contract_address.as_deref().zip(token_decimals),
+                )?;
             PreparedPayload::Evm(
                 crate::api::http::race(&endpoints, |endpoint| {
                     let sender = &sender;

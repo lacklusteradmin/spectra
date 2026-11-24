@@ -252,16 +252,16 @@ pub(crate) fn decode(raw: &[u8]) -> Result<DecodedTronTransaction, SendError> {
             permission_id: u8::try_from(permission_id).map_err(|_| unread())?,
         },
     };
-    if decoded.prepared()?.raw != raw {
+    if decoded.prepared()?.0.raw != raw {
         return Err(unread());
     }
     Ok(decoded)
 }
 
 impl DecodedTronTransaction {
-    /// The transaction as `send::tron` writes it: its bytes and the JSON a
-    /// node reads.
-    pub(crate) fn prepared(&self) -> Result<PreparedTronTransfer, SendError> {
+    /// The transaction as `send::tron` writes it: its bytes and the JSON
+    /// TronWeb reads.
+    pub(crate) fn prepared(&self) -> Result<(PreparedTronTransfer, serde_json::Value), SendError> {
         let owner = base58(&self.owner);
         let (to, asset, contract);
         let transfer = match &self.payment {
@@ -304,7 +304,7 @@ impl DecodedTronTransaction {
                 }
             }
         };
-        crate::send::tron::encode(&owner, transfer, &self.reference)
+        crate::send::tron::encode_with_json(&owner, transfer, &self.reference)
     }
 }
 

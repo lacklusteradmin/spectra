@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use super::wallet_domain;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionStatusTrackerState {
     pub last_checked_at_unix: Option<f64>,
@@ -121,7 +121,7 @@ pub struct ResolvedPendingStatus {
 /// dropped both, so the record's three receipt columns — and the transaction
 /// sheet's "Gas Used", "Effective Gas Price" and "Network Fee" rows — were
 /// cleared on every pending pass and written by nothing.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct EvmReceiptCost {
     /// Gas consumed, as a decimal integer string.

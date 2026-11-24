@@ -60,12 +60,12 @@ fn each_protocol_signs_its_vector_through_the_transfer() {
     }
 
     let (prepared, keys) = transfer(&fixtures["kaspa"], AccountProtocol::Kaspa);
-    let crate::send::payload::SignedPayload::Json(body) = prepared.sign(&keys).unwrap().payload
+    let crate::send::payload::SignedPayload::Kaspa(transaction) =
+        prepared.sign(&keys).unwrap().payload
     else {
-        panic!("Kaspa submits a JSON body")
+        panic!("Kaspa submits a typed transaction")
     };
-    let body: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(body["transaction"]["inputs"].as_array().unwrap().len(), 3);
+    assert_eq!(transaction.inputs.len(), 3);
 
     // Fewer keys than inputs, a fee that does not balance, an input whose
     // script is not its source's: refused before signing.

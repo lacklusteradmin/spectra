@@ -66,13 +66,12 @@ mod trc10_vectors {
             )
             .unwrap();
             assert!(prepared.bandwidth_bytes().unwrap() < 512);
-            assert!(prepared.body["raw_data"].get("fee_limit").is_none());
-            let signed: Value = serde_json::from_str(&prepared.sign(&key).unwrap()).unwrap();
-            assert_eq!(signed["raw_data_hex"], vector["raw"]);
-            assert_eq!(signed["txID"], vector["txid"]);
+            let (raw, signatures) = split_signed(&prepared.sign(&key).unwrap());
+            assert_eq!(hex::encode(&raw), vector["raw"].as_str().unwrap());
+            assert_eq!(prepared.txid(), vector["txid"].as_str().unwrap());
             assert_eq!(
-                hex::decode(signed["signature"][0].as_str().unwrap()).unwrap(),
-                hex::decode(vector["signature"].as_str().unwrap()).unwrap()
+                signatures,
+                [hex::decode(vector["signature"].as_str().unwrap()).unwrap()]
             );
         }
         for (asset_id, amount, receiver) in [
@@ -98,11 +97,13 @@ mod trc10_vectors {
     }
 }
 
+/// A transaction built and ready to sign: its `raw_data` bytes, and what
+/// places them in time and under a permission.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedTronTransfer {
     owner: [u8; 21],
     pub(crate) raw: Vec<u8>,
-    pub(crate) body: Value,
+    pub(crate) reference: RawReference,
 }
 
 fn address(value: &str) -> Result<[u8; 21], SendError> {
@@ -178,7 +179,7 @@ pub(crate) fn prepare_transfer_under(
 
 /// What places a transaction in time and under a permission, beside its
 /// contract.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct RawReference {
     pub ref_bytes: [u8; 2],
     pub ref_hash: [u8; 8],
@@ -187,13 +188,22 @@ pub(crate) struct RawReference {
     pub permission_id: u8,
 }
 
-/// The transaction's `raw_data` bytes and the JSON a node reads them as,
-/// fields in protobuf order.
+/// The transaction's `raw_data` bytes.
 pub(crate) fn encode(
     from: &str,
     transfer: Transfer<'_>,
     reference: &RawReference,
 ) -> Result<PreparedTronTransfer, SendError> {
+    encode_with_json(from, transfer, reference).map(|(prepared, _)| prepared)
+}
+
+/// The transaction's `raw_data` bytes and the JSON TronWeb reads them as,
+/// fields in protobuf order, for a multisig session's signers to exchange.
+pub(crate) fn encode_with_json(
+    from: &str,
+    transfer: Transfer<'_>,
+    reference: &RawReference,
+) -> Result<(PreparedTronTransfer, Value), SendError> {
     let owner = address(from)?;
     positive_i64(reference.timestamp)?;
     positive_i64(reference.expiration)?;
@@ -293,7 +303,49 @@ pub(crate) fn encode(
         raw_json["fee_limit"] = json!(fee);
     }
     let body = json!({"visible":false,"raw_data":raw_json,"raw_data_hex":hex::encode(&raw),"txID":hex::encode(Sha256::digest(&raw))});
-    Ok(PreparedTronTransfer { owner, raw, body })
+    Ok((
+        PreparedTronTransfer {
+            owner,
+            raw,
+            reference: *reference,
+        },
+        body,
+    ))
+}
+
+/// A signed transaction's `raw_data` and signatures, read back for a test.
+#[cfg(test)]
+pub(crate) fn split_signed(signed: &[u8]) -> (Vec<u8>, Vec<Vec<u8>>) {
+    let (mut raw, mut signatures, mut rest) = (Vec::new(), Vec::new(), signed);
+    while let [tag, tail @ ..] = rest {
+        let (mut length, mut read) = (0usize, 0usize);
+        for (index, byte) in tail.iter().enumerate() {
+            length |= usize::from(byte & 0x7f) << (7 * index);
+            read = index + 1;
+            if byte & 0x80 == 0 {
+                break;
+            }
+        }
+        let value = tail[read..read + length].to_vec();
+        match tag {
+            0x0a => raw = value,
+            0x12 => signatures.push(value),
+            other => panic!("unexpected field tag {other}"),
+        }
+        rest = &tail[read + length..];
+    }
+    (raw, signatures)
+}
+
+/// A signed `Transaction`: its `raw_data` (1) and each signature (2), in
+/// protobuf, as `/wallet/broadcasthex` takes it.
+pub(crate) fn signed_transaction(raw: &[u8], signatures: &[[u8; 65]]) -> Vec<u8> {
+    let mut signed = Vec::new();
+    bytes(1, raw, &mut signed);
+    for signature in signatures {
+        bytes(2, signature, &mut signed);
+    }
+    signed
 }
 
 impl PreparedTronTransfer {
@@ -307,7 +359,18 @@ impl PreparedTronTransfer {
             .map_err(|_| SendError::Invalid("Tron transaction size overflow".into()))
     }
 
-    pub(crate) fn sign(mut self, key: &[u8]) -> Result<String, SendError> {
+    /// The transaction id: SHA-256 of `raw`, in hex.
+    pub(crate) fn txid(&self) -> String {
+        hex::encode(Sha256::digest(&self.raw))
+    }
+
+    /// When the network stops taking it, in Unix milliseconds.
+    pub(crate) fn expiration(&self) -> u64 {
+        self.reference.expiration
+    }
+
+    /// The signed `Transaction`, in protobuf.
+    pub(crate) fn sign(&self, key: &[u8]) -> Result<Vec<u8>, SendError> {
         use secp256k1::{Message, PublicKey, Secp256k1, SecretKey};
         use sha3::Keccak256;
         let secp = Secp256k1::new();
@@ -323,9 +386,9 @@ impl PreparedTronTransfer {
         let (recovery, signature) = secp
             .sign_ecdsa_recoverable(&Message::from_digest(hash), &secret)
             .serialize_compact();
-        let mut sig = signature.to_vec();
-        sig.push(recovery.to_i32() as u8 + 27);
-        self.body["signature"] = json!([hex::encode(sig)]);
-        Ok(self.body.to_string())
+        let mut sig = [0; 65];
+        sig[..64].copy_from_slice(&signature);
+        sig[64] = recovery.to_i32() as u8 + 27;
+        Ok(signed_transaction(&self.raw, &[sig]))
     }
 }

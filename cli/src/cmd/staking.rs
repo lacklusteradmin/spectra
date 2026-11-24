@@ -246,7 +246,7 @@ fn positions(ctx: &Ctx, out: Out, args: PositionsArgs) -> CliResult<()> {
         .map(resolve_chain)
         .transpose()?
         .unwrap_or(wallet.chain_id);
-    let password = if chain == Chain::Icp {
+    let password = if chain.staking_reads_require_authorization() {
         args.wallet.password.for_wallet(&wallet)?
     } else {
         None
@@ -286,7 +286,7 @@ fn build(ctx: &Ctx, out: Out, args: BuildArgs) -> CliResult<()> {
 fn recheck(ctx: &Ctx, out: Out, args: RecheckArgs, repair: bool) -> CliResult<()> {
     let service = ctx.service()?;
     let stored = ctx.rt.block_on(service.inspect_send(args.id.clone()))?;
-    let password = if stored.chain_id == Chain::Icp {
+    let password = if stored.chain_id.staking_reads_require_authorization() {
         args.password
             .for_wallet(&ctx.find_wallet(&stored.wallet_id)?)?
     } else {

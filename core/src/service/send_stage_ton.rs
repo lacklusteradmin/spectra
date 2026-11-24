@@ -137,8 +137,10 @@ impl WalletService {
                     valid_until: if seqno == 0 {
                         u32::MAX
                     } else {
-                        u32::try_from(crate::store::now_unix() as u64 + 60)
-                            .map_err(|_| SpectraBridgeError::failure("TON expiry overflow"))?
+                        u32::try_from(
+                            crate::store::now_unix() as u64 + chain.ton_message_lifetime_secs()?,
+                        )
+                        .map_err(|_| SpectraBridgeError::failure("TON expiry overflow"))?
                     },
                     jetton,
                 }

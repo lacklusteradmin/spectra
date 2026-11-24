@@ -116,6 +116,57 @@ impl KasHistoryEntry {
     }
 }
 
+/// A signed native-subnetwork Kaspa transaction (no gas, no payload).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct KaspaTransaction {
+    pub version: u16,
+    pub inputs: Vec<KaspaTransactionInput>,
+    pub outputs: Vec<KaspaTransactionOutput>,
+    pub lock_time: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct KaspaTransactionInput {
+    pub txid: String,
+    pub index: u32,
+    pub signature_script: Vec<u8>,
+    pub sequence: u64,
+    pub sig_op_count: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct KaspaTransactionOutput {
+    pub amount: u64,
+    pub script_version: u16,
+    pub script_public_key: Vec<u8>,
+}
+
+impl KaspaTransaction {
+    /// The body kaspa-rest's `POST /transactions` takes.
+    pub(crate) fn request_body(&self) -> serde_json::Value {
+        serde_json::json!({"transaction": {
+            "version": self.version,
+            "inputs": self.inputs.iter().map(|input| serde_json::json!({
+                "previousOutpoint": {"transactionId": input.txid, "index": input.index},
+                "signatureScript": hex::encode(&input.signature_script),
+                "sequence": input.sequence.to_string(),
+                "sigOpCount": input.sig_op_count,
+            })).collect::<Vec<_>>(),
+            "outputs": self.outputs.iter().map(|output| serde_json::json!({
+                "value": output.amount.to_string(),
+                "scriptPublicKey": {
+                    "version": output.script_version,
+                    "scriptPublicKey": hex::encode(&output.script_public_key),
+                },
+            })).collect::<Vec<_>>(),
+            "lockTime": self.lock_time.to_string(),
+            "subnetworkId": "0000000000000000000000000000000000000000",
+            "gas": "0",
+            "payload": "",
+        }})
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ApiBroadcastResponse {
@@ -290,9 +341,12 @@ impl KaspaClient {
         .await
     }
 
-    /// POST a constructed transaction body to `/transactions`. Body must be
-    /// the JSON shape api.kaspa.org expects: `{"transaction": {...}}`.
-    pub async fn broadcast_tx_body(&self, body: serde_json::Value) -> Result<String, ApiError> {
+    /// Submit a signed transaction to `/transactions`; returns its id.
+    pub(crate) async fn broadcast(
+        &self,
+        transaction: &KaspaTransaction,
+    ) -> Result<String, ApiError> {
+        let body = transaction.request_body();
         race(&self.endpoints, |base| {
             let client = self.client.clone();
             let body = body.clone();

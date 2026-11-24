@@ -117,12 +117,13 @@ impl Wallet {
                 named_account: None,
                 ton_wallet_version: None,
                 upgrade_wallet_id: None,
+                created: false,
             })
             .await
             .unwrap()
             .wallets
             .remove(0);
-        let address = wallet.addresses.values().next().unwrap().clone();
+        let address = wallet.address.clone().unwrap();
         Self {
             service,
             id: wallet.id,
@@ -191,7 +192,7 @@ impl Wallet {
                 contract: contract.into(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),
-                decimals,
+                decimals: Some(decimals),
             })
             .await
             .unwrap();

@@ -21,7 +21,7 @@ impl HttpTransport for DaemonTransport {
     ) -> Result<Vec<u8>, InterfaceError> {
         let error = |e: String| InterfaceError::InterfaceError(e);
         let url = format!("{}/{}", self.endpoint.trim_end_matches('/'), route);
-        let mut response = HttpClient::shared()
+        let response = HttpClient::shared()
             .reqwest_client()
             .post(url)
             .body(body)
@@ -31,14 +31,10 @@ impl HttpTransport for DaemonTransport {
             .error_for_status()
             .map_err(|e| error(e.to_string()))?;
         let limit = limit.unwrap_or(100 * 1024 * 1024).min(100 * 1024 * 1024);
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|e| error(e.to_string()))? {
-            if bytes.len().saturating_add(chunk.len()) > limit {
-                return Err(error("Monero response exceeds size limit".into()));
-            }
-            bytes.extend(chunk);
-        }
-        Ok(bytes)
+        crate::api::http::read_limited(response, limit)
+            .await
+            .map_err(|e| error(e.to_string()))?
+            .ok_or_else(|| error("Monero response exceeds size limit".into()))
     }
 }
 pub(crate) type Daemon = MoneroDaemon<DaemonTransport>;

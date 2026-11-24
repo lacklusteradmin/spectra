@@ -63,7 +63,6 @@ fn evaluate(state: &mut ResidentState, app_is_active: bool) -> Option<LargeMovem
     result.should_alert.then_some(result)
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// The device supplies activity only; holdings, quotes, settings and baseline are owned.
     pub async fn evaluate_portfolio_movement(
@@ -157,8 +156,9 @@ mod tests {
             include_in_portfolio_total: true,
             xpub: None,
             derivation_path: None,
+            derivation_profile: None,
             derivation_flags: Default::default(),
-            addresses: vec![],
+            address: None,
             holdings: vec![crate::store::wallet_domain::AssetHolding {
                 id: String::new(),
                 name: "Ethereum".into(),

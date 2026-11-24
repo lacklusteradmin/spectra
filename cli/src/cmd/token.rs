@@ -314,28 +314,6 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         ));
     }
     let chain_id = resolve_chain(&args.chain)?;
-    // The token keeps the protocol it was added under; its places follow it.
-    let stored_standard = ctx
-        .state()?
-        .token_preferences
-        .into_iter()
-        .find_map(|entry| {
-            (entry.token.chain_id == chain_id
-                && entry.token.token_standard.is_some_and(|standard| {
-                    spectra_core::catalog::tokens::validate_protocol_identifier(
-                        chain_id,
-                        standard,
-                        &args.contract,
-                    )
-                    .is_ok_and(|contract| contract == entry.token.contract)
-                }))
-            .then_some(entry.token.token_standard)
-            .flatten()
-        });
-    let decimals = args
-        .decimals
-        .or_else(|| stored_standard.and_then(|standard| standard.fixed_decimals()))
-        .ok_or_else(|| CliError::usage("--decimals is required for this token's standard"))?;
     let transition = ctx.apply(StateCommand::UpdateCustomToken {
         chain_id,
         contract: args.contract.clone(),
@@ -343,7 +321,7 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         name: args.name,
         coingecko_id: args.coingecko_id,
         coinpaprika_id: args.coinpaprika_id,
-        decimals,
+        decimals: args.decimals,
     })?;
     reject_on_event(&transition)?;
     out.report(&Done::new(format!("updated {}", args.contract)))
@@ -351,31 +329,6 @@ fn edit(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
 
 fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
     let chain_id = resolve_chain(&args.chain)?;
-    // The places a token takes: its protocol's where the protocol fixes them,
-    // otherwise the ones given. Which protocol is core's to settle: with
-    // several and none named it refuses before storing anything, so the
-    // places sent then are never read.
-    let standards = spectra_core::catalog::chains::list_all_chains()
-        .into_iter()
-        .find(|entry| entry.id == chain_id.str_id())
-        .map(|entry| entry.token_standards)
-        .unwrap_or_default();
-    let named = match args.standard {
-        Some(standard) => standards.iter().find(|s| s.standard == standard),
-        None if standards.len() == 1 => standards.first(),
-        None => None,
-    };
-    let unsettled = args.standard.is_none() && standards.len() > 1;
-    let decimals = match (args.decimals, named.and_then(|s| s.fixed_decimals)) {
-        (Some(given), _) => given,
-        (None, Some(fixed)) => fixed,
-        (None, None) if unsettled => 0,
-        (None, None) => {
-            return Err(CliError::usage(
-                "--decimals is required for this token's standard",
-            ));
-        }
-    };
     let transition = ctx.apply(StateCommand::AddCustomToken {
         standard: args.standard,
         chain_id,
@@ -384,7 +337,7 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
         contract: args.contract.clone(),
         coingecko_id: args.coingecko_id,
         coinpaprika_id: args.coinpaprika_id,
-        decimals,
+        decimals: args.decimals,
     })?;
     reject_on_event(&transition)?;
 
@@ -535,6 +488,9 @@ fn reject_on_event(transition: &StateTransition) -> CliResult<()> {
                 "that chain has more than one token standard: name one with --standard"
             }
             R::UnsupportedStandard => "that chain does not support that token standard",
+            R::DecimalsRequired => {
+                "this token's standard does not fix its decimals: give --decimals"
+            }
         })),
     }
 }

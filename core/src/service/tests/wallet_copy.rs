@@ -10,9 +10,12 @@ async fn import(
 ) -> WalletState {
     let mut commit = fixture(chain, method);
     commit.password = password.map(str::to_string);
-    service.import_wallets(commit).await.unwrap().wallets[0]
-        .to_wallet_state()
+    service
+        .import_wallets(commit)
+        .await
         .unwrap()
+        .wallets
+        .remove(0)
 }
 
 fn copy(source: &WalletState, chain: Chain, password: Option<&str>) -> WalletCopyCommit {
@@ -126,7 +129,7 @@ async fn a_copy_signs_and_stands_alone() {
             .copy_wallet_to_network(copy(&source, Chain::Arbitrum, Some(PASSWORD)))
             .await
             .unwrap();
-        let copied = outcome.wallets[0].to_wallet_state().unwrap();
+        let copied = outcome.wallets[0].clone();
         assert_ne!(copied.id, source.id);
         assert_eq!(copied.chain_id, Chain::Arbitrum);
         assert!(copied.signing.requires_password(), "{method:?}");

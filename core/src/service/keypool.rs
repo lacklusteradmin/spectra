@@ -59,7 +59,9 @@ impl WalletService {
         })
         .await
     }
+}
 
+impl WalletService {
     /// Reserve the next receive index, or return the one already reserved.
     pub async fn reserve_receive_index(
         &self,
@@ -238,7 +240,7 @@ impl WalletService {
                 .wallets
                 .iter()
                 .find(|wallet| wallet.id == wallet_id)
-                .map(|wallet| wallet.addresses.iter().map(|a| a.address.clone()).collect())
+                .map(|wallet| wallet.address.iter().cloned().collect())
                 .unwrap_or_default()
         };
         let sent: Vec<String> = self
@@ -420,22 +422,20 @@ impl WalletService {
         let mut wallet_indices = [None, None];
         {
             let state = self.wallet_state.read().await;
-            if let Some(wallet) = state.wallets.iter().find(|wallet| wallet.id == wallet_id) {
-                for path in wallet
-                    .addresses
-                    .iter()
-                    .filter(|address| address.chain_id == chain)
-                    .filter_map(|address| address.derivation_path.as_deref())
-                {
-                    for (branch, maximum) in wallet_indices.iter_mut().enumerate() {
-                        if let Some(index) = crate::derivation::path::utxo_discovery_index(
-                            path,
-                            chain,
-                            branch as u32,
-                        ) {
-                            let index = i64::from(index);
-                            *maximum = Some(maximum.map_or(index, |old: i64| old.max(index)));
-                        }
+            // The wallet's own address sits at its path's index.
+            if let Some(path) = state
+                .wallets
+                .iter()
+                .find(|wallet| wallet.id == wallet_id)
+                .filter(|wallet| wallet.chain_id == chain && wallet.address.is_some())
+                .and_then(|wallet| wallet.derivation_path.as_deref())
+            {
+                for (branch, maximum) in wallet_indices.iter_mut().enumerate() {
+                    if let Some(index) =
+                        crate::derivation::path::utxo_discovery_index(path, chain, branch as u32)
+                    {
+                        let index = i64::from(index);
+                        *maximum = Some(maximum.map_or(index, |old: i64| old.max(index)));
                     }
                 }
             }
@@ -713,7 +713,7 @@ pub struct KeypoolDiagnostic {
 // The owning keypool service supplies maxima from persisted transactions and
 // addresses. These calculations keep allocation indices monotonic.
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainKeypoolStateRecord {
     pub next_external_index: i32,
@@ -721,7 +721,7 @@ pub struct ChainKeypoolStateRecord {
     pub reserved_receive_index: Option<i32>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainKeypoolBaselineInput {
     pub uses_account_utxo: bool,

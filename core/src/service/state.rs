@@ -112,7 +112,6 @@ impl WalletService {
                 if let Some(error) = cleanup_error {
                     append_secret_cleanup_warning(&mut state.diagnostics, &error);
                 }
-                reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
                 if state != loaded {
                     let changes =
                         crate::wallet_db::AppStateChanges::between(Some(&loaded), &state)?;
@@ -238,6 +237,21 @@ impl WalletService {
         .await
     }
 
+    /// Current snapshot of the owned state.
+    pub async fn app_state(&self) -> ResidentState {
+        let this = self.clone();
+        crate::service::worker::run(async move {
+            let this = &this;
+            this.wallet_state.read().await.clone()
+        })
+        .await
+    }
+
+    // ── History pagination cursor methods live in `service/history_cursor.rs` ──
+    // (split out to keep this file navigable; UniFFI merges the impl blocks).
+}
+
+impl WalletService {
     // ── Operational events ────────────────────────────────────────────────
 
     /// Pin candidates, with pinned assets first and each group ordered by symbol.
@@ -354,19 +368,6 @@ impl WalletService {
         })
         .await
     }
-
-    /// Current snapshot of the owned state.
-    pub async fn app_state(&self) -> ResidentState {
-        let this = self.clone();
-        crate::service::worker::run(async move {
-            let this = &this;
-            this.wallet_state.read().await.clone()
-        })
-        .await
-    }
-
-    // ── History pagination cursor methods live in `service/history_cursor.rs` ──
-    // (split out to keep this file navigable; UniFFI merges the impl blocks).
 }
 
 impl WalletService {
@@ -785,17 +786,16 @@ mod secret_deletion_tests;
 #[path = "tests/address_discovery.rs"]
 mod address_discovery_tests;
 
-fn wallets_for_display(
-    state: &ResidentState,
-) -> Result<Vec<crate::store::wallet_domain::WalletView>, SpectraBridgeError> {
-    let wallets = &state.wallets;
-    let mut rendered = Vec::with_capacity(wallets.len());
-    for wallet in wallets {
-        let mut view = wallet.to_wallet_view();
-        valuation::order_holdings_by_value(state, &mut view.holdings);
-        rendered.push(view);
-    }
-    Ok(rendered)
+fn wallets_for_display(state: &ResidentState) -> Vec<crate::store::state::WalletState> {
+    state
+        .wallets
+        .iter()
+        .map(|wallet| {
+            let mut served = wallet.served();
+            valuation::order_holdings_by_value(state, &mut served.holdings);
+            served
+        })
+        .collect()
 }
 
 fn derive_wallet_state(
@@ -1186,7 +1186,7 @@ pub struct PortfolioSnapshot {
     /// its balances: what history rows and transaction details read.
     pub wallet_identity_revision: u64,
     pub state: ResidentState,
-    pub wallets: Vec<crate::store::wallet_domain::WalletView>,
+    pub wallets: Vec<crate::store::state::WalletState>,
     pub derived: WalletDerivedState,
     pub groups: Vec<crate::store::wallet_domain::DashboardAssetGroup>,
     pub pin_options: Vec<crate::store::wallet_domain::DashboardPinOption>,
@@ -1212,7 +1212,7 @@ impl WalletService {
                 wallet_identity_revision: this
                     .wallet_identity_revision
                     .load(std::sync::atomic::Ordering::SeqCst),
-                wallets: wallets_for_display(&state)?,
+                wallets: wallets_for_display(&state),
                 groups: dashboard_groups_from(&state, &derived)?,
                 pin_options: dashboard_pin_options_from(&state)?,
                 valuation: valuation::portfolio_valuation(&state),

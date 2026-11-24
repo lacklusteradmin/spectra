@@ -1065,22 +1065,28 @@ impl TronHttpClient {
         })
     }
 
-    pub async fn broadcast_raw(&self, signed_tx_json: &str) -> Result<String, ApiError> {
-        let body: Value = serde_json::from_str(signed_tx_json)
-            .map_err(|e| ApiError::InvalidInput(format!("invalid signed Tron transaction: {e}")))?;
-        let raw = hex::decode(
-            body["raw_data_hex"]
-                .as_str()
-                .or_decode("missing Tron raw bytes")?,
-        )
-        .map_err(|_| ApiError::InvalidInput("invalid Tron raw bytes".into()))?;
-        let txid = hex::encode(Sha256::digest(&raw));
-        if body["txID"].as_str() != Some(txid.as_str()) {
-            return Err(ApiError::InvalidInput(
-                "Tron transaction hash mismatch".into(),
-            ));
+    /// Submit a signed `Transaction` in protobuf; its id, the SHA-256 of the
+    /// `raw_data` it opens with.
+    pub(crate) async fn broadcast_signed(&self, signed: &[u8]) -> Result<String, ApiError> {
+        // Field 1, length-delimited: tag 0x0a, then a varint length.
+        let invalid = || ApiError::InvalidInput("invalid signed Tron transaction".into());
+        let rest = signed.strip_prefix(&[0x0a]).ok_or_else(invalid)?;
+        let (mut length, mut read) = (0usize, 0usize);
+        for (index, byte) in rest.iter().enumerate().take(5) {
+            length |= usize::from(byte & 0x7f) << (7 * index);
+            read = index + 1;
+            if byte & 0x80 == 0 {
+                break;
+            }
         }
-        let result = self.post("/wallet/broadcasttransaction", &body).await?;
+        let raw = rest.get(read..read + length).ok_or_else(invalid)?;
+        let txid = hex::encode(Sha256::digest(raw));
+        let result = self
+            .post(
+                "/wallet/broadcasthex",
+                &serde_json::json!({ "transaction": hex::encode(signed) }),
+            )
+            .await?;
         if result["result"].as_bool() != Some(true) {
             return Err(ApiError::Rejected(format!(
                 "Tron broadcast refused: {result}"

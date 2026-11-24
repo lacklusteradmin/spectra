@@ -32,6 +32,7 @@ fn commit(chain: Chain, kind: WalletImportKind, name: &str) -> WalletImportCommi
         named_account: None,
         ton_wallet_version: None,
         upgrade_wallet_id: None,
+        created: false,
     }
 }
 

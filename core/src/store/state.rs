@@ -3,15 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use super::wallet_domain;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct WalletAddress {
-    pub chain_id: crate::registry::Chain,
-    pub address: String,
-    pub kind: String,
-    pub derivation_path: Option<String>,
-}
-
 /// What a wallet signs with, recorded when its secret is stored.
 ///
 /// Non-secret metadata about the secret store's contents, kept with the wallet
@@ -60,15 +51,23 @@ pub struct WalletState {
     /// mainnet counterpart; there is no second spelling of either.
     pub chain_id: crate::registry::Chain,
     pub include_in_portfolio_total: bool,
+    /// The wallet's address on its network: the one it receives at and
+    /// queries. `None` for a watched account key, which has none of its own.
+    pub address: Option<String>,
+    /// An account public key, for receiving and recovery without unlocking a
+    /// seed.
     pub xpub: Option<String>,
     /// The single path this wallet derives from: a profile's or a custom one,
     /// fixed at import. `None` on a chain that derives without a path.
     pub derivation_path: Option<String>,
+    /// The profile and account `derivation_path` is on, or `None` for a
+    /// custom path or none. Set when core serves the wallet; never stored.
+    #[serde(skip)]
+    pub derivation_profile: Option<crate::derivation::path::DerivationProfileChoice>,
     /// Which power-user derivation overrides the wallet was imported with.
     /// The overrides themselves are sealed in the `SecretStore`.
     pub derivation_flags: crate::store::wallet_domain::WalletDerivationFlags,
     pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
-    pub addresses: Vec<WalletAddress>,
     /// The block height a scanning wallet starts from, fixed when it is
     /// imported: a Monero wallet's restore height, or where a Zcash wallet's
     /// scan for shielded funds starts. `None` on every other chain, which
@@ -110,11 +109,22 @@ impl WalletState {
             .filter(|holding| !self.hidden_holdings.contains(&holding.deployment_id()))
     }
 
-    /// Build a summary for a wallet with one address on one chain.
-    ///
-    /// This is the shape most chains produce: a single derived address, no
-    /// xpub, no network-mode variants. Multi-address wallets (Bitcoin and the
-    /// other UTXO chains) push into `addresses` instead.
+    /// The wallet as core serves it to a front end: each holding with its
+    /// id, and the profile its derivation path is on.
+    pub(crate) fn served(&self) -> Self {
+        let mut wallet = self.clone();
+        wallet.holdings = wallet
+            .holdings
+            .into_iter()
+            .map(crate::store::wallet_domain::AssetHolding::identified)
+            .collect();
+        wallet.derivation_profile = wallet.derivation_path.as_deref().and_then(|path| {
+            crate::derivation::path::derivation_profile_of_path(wallet.chain_id, path)
+        });
+        wallet
+    }
+
+    /// A wallet with one address on one chain.
     ///
     /// A test constructor: production wallets are built by the import and
     /// derivation paths, which fill in the fields this shortcut defaults.
@@ -139,16 +149,12 @@ impl WalletState {
             },
             chain_id,
             include_in_portfolio_total: true,
+            address: Some(address.into()),
             xpub: None,
-            derivation_path: derivation_path.clone(),
+            derivation_path,
+            derivation_profile: None,
             derivation_flags: Default::default(),
             holdings: Vec::new(),
-            addresses: vec![WalletAddress {
-                chain_id,
-                address: address.into(),
-                kind: "receive".to_string(),
-                derivation_path,
-            }],
             restore_height: None,
             hidden_holdings: Vec::new(),
             icp_principal: None,
@@ -156,20 +162,6 @@ impl WalletState {
             multisig_policy: None,
             balances_read_at: None,
         }
-    }
-
-    /// The address to show and query for this wallet.
-    ///
-    /// Prefers the first `"receive"` address and falls back to the first
-    /// address of any kind, so a wallet whose addresses were built by a path
-    /// that doesn't classify them still resolves. `None` only when the wallet
-    /// has no addresses at all.
-    pub fn primary_address(&self) -> Option<&str> {
-        self.addresses
-            .iter()
-            .find(|a| a.kind == "receive")
-            .or_else(|| self.addresses.first())
-            .map(|a| a.address.as_str())
     }
 
     pub fn is_watch_only(&self) -> bool {
@@ -181,26 +173,18 @@ impl WalletState {
         self.chain_id.mainnet_counterpart()
     }
 
-    /// The recorded network's address. An absent testnet address must never
-    /// fall back to a mainnet address.
-    pub fn active_address(&self) -> Option<&str> {
-        self.address_on(self.chain_id)
-    }
-
-    /// EVM networks can use this wallet's same key and address. Other networks
-    /// require their own address slot.
+    /// The wallet's address where `chain` reads it: its own, on any network
+    /// whose addresses share its network's slot (every EVM network shares
+    /// one key and address). `None` on another network.
     pub fn address_on(&self, chain: crate::registry::Chain) -> Option<&str> {
-        self.address_record_on(chain).map(|a| a.address.as_str())
+        self.shares_address_with(chain)
+            .then_some(self.address.as_deref())
+            .flatten()
     }
 
-    pub(crate) fn address_record_on(
-        &self,
-        chain: crate::registry::Chain,
-    ) -> Option<&WalletAddress> {
-        let slot = chain.address_slot();
-        self.addresses
-            .iter()
-            .find(|a| a.chain_id.address_slot() == slot)
+    /// Whether `chain` takes this wallet's address and derivation path.
+    pub(crate) fn shares_address_with(&self, chain: crate::registry::Chain) -> bool {
+        self.chain_id.address_slot() == chain.address_slot()
     }
 }
 
@@ -258,6 +242,9 @@ pub enum TokenPreferenceRejection {
     StandardRequired,
     /// The named protocol is not one the network supports.
     UnsupportedStandard,
+    /// The token's protocol does not fix its decimal places and none were
+    /// given.
+    DecimalsRequired,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
@@ -578,7 +565,9 @@ pub struct ResidentState {
     pub settings: AppSettings,
     /// Saved recipients, most recently added first.
     pub address_book: Vec<AddressBookEntry>,
-    /// Which tokens the user tracks, and how many decimals each displays.
+    /// The built-in catalog's tokens and the ones the user added, in
+    /// `sort_token_preferences` order. Only the user's are stored; the
+    /// catalog's are its own each time state is built.
     pub token_preferences: Vec<crate::store::wallet_domain::TokenPreferenceEntry>,
     /// Price alerts. Domain state by rule 4 — losing one on restart means an
     /// alert the user set never fires.
@@ -607,7 +596,7 @@ impl Default for ResidentState {
             selected_wallet_id: None,
             settings: AppSettings::default(),
             address_book: Vec::new(),
-            token_preferences: Vec::new(),
+            token_preferences: built_in_token_preferences(),
             price_alerts: Vec::new(),
             fiat_rates_from_usd: std::collections::HashMap::new(),
         }
@@ -756,7 +745,7 @@ pub enum StateCommand {
         contract: String,
         coingecko_id: String,
         coinpaprika_id: String,
-        decimals: u32,
+        decimals: Option<u32>,
     },
     UpdateCustomToken {
         chain_id: crate::registry::Chain,
@@ -765,7 +754,7 @@ pub enum StateCommand {
         name: String,
         coingecko_id: String,
         coinpaprika_id: String,
-        decimals: u32,
+        decimals: Option<u32>,
     },
     /// Forget a custom token. A built-in is the catalog's, not the user's.
     RemoveCustomToken {
@@ -781,9 +770,6 @@ pub enum StateCommand {
     },
     /// Back to the catalog's own list, with every custom token dropped.
     ResetTokenPreferences,
-    /// Merge the catalog into stored preferences: refresh the built-ins and
-    /// retain user-added tokens.
-    MergeBuiltInTokens,
     /// Add a recipient. `address` is normalized and validated by the reducer,
     /// which also assigns the entry's id; a rejected entry produces an
     /// `addressBookRejected` event and no change.
@@ -1352,11 +1338,11 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                 contract = normalized;
             }
             // Where the protocol fixes a token's places, they are the
-            // protocol's, whatever was typed.
+            // protocol's, whatever was typed; otherwise they must be given.
             let decimals = standard
                 .ok()
                 .and_then(|standard| standard.fixed_decimals())
-                .unwrap_or(decimals);
+                .or(decimals);
 
             let rejection = match (hosting, standard) {
                 (None, _) => Some(TokenPreferenceRejection::UnknownChain),
@@ -1373,7 +1359,8 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                         Some(TokenPreferenceRejection::InvalidPriceId)
                     }
                     _ if contract.is_empty() => Some(TokenPreferenceRejection::EmptyContract),
-                    _ if decimals > MAX_TOKEN_DECIMALS => {
+                    _ if decimals.is_none() => Some(TokenPreferenceRejection::DecimalsRequired),
+                    _ if decimals > Some(MAX_TOKEN_DECIMALS) => {
                         Some(TokenPreferenceRejection::TooManyDecimals)
                     }
                     _ if crate::catalog::tokens::validate_protocol_identifier(
@@ -1408,7 +1395,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                                 contract,
                                 coingecko_id: coingecko_id.trim().to_lowercase(),
                                 coinpaprika_id: coinpaprika_id.trim().to_lowercase(),
-                                decimals,
+                                decimals: decimals.unwrap_or_default(),
                                 tags: Vec::new(),
                                 color: None,
                                 artwork_name: String::new(),
@@ -1435,6 +1422,12 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
             let symbol = symbol.trim().to_uppercase();
             let name = name.trim().to_string();
             let index = token_preference_index(state, chain_id, &contract);
+            // The token keeps the protocol it was added under; where that
+            // fixes its places, they are the protocol's.
+            let decimals = index
+                .and_then(|i| state.token_preferences[i].token.token_standard)
+                .and_then(|standard| standard.fixed_decimals())
+                .or(decimals);
             let rejection = match index {
                 None => Some(TokenPreferenceRejection::UnknownToken),
                 Some(i) if state.token_preferences[i].is_built_in => {
@@ -1448,7 +1441,8 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                 Some(_) if !valid_price_id(&coingecko_id) || !valid_price_id(&coinpaprika_id) => {
                     Some(TokenPreferenceRejection::InvalidPriceId)
                 }
-                Some(_) if decimals > MAX_TOKEN_DECIMALS => {
+                Some(_) if decimals.is_none() => Some(TokenPreferenceRejection::DecimalsRequired),
+                Some(_) if decimals > Some(MAX_TOKEN_DECIMALS) => {
                     Some(TokenPreferenceRejection::TooManyDecimals)
                 }
                 Some(_) => None,
@@ -1461,10 +1455,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                 token.symbol = symbol.clone();
                 token.coingecko_id = coingecko_id.trim().to_lowercase();
                 token.coinpaprika_id = coinpaprika_id.trim().to_lowercase();
-                token.decimals = token
-                    .token_standard
-                    .and_then(|standard| standard.fixed_decimals())
-                    .unwrap_or(decimals);
+                token.decimals = decimals.unwrap_or_default();
                 state.quotes.prices.remove(&token.deployment_id);
                 state.quotes.prices_attempt_at = None;
                 sort_token_preferences(&mut state.token_preferences);
@@ -1512,18 +1503,6 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                 }
             }
         },
-        StateCommand::MergeBuiltInTokens => {
-            let merged = merge_built_in_token_preferences(
-                built_in_token_preferences(),
-                std::mem::take(&mut state.token_preferences),
-            );
-            if merged != state.token_preferences {
-                state.token_preferences = merged;
-                events.push(StateEvent::TokenPreferencesChanged { symbol: None });
-            } else {
-                state.token_preferences = merged;
-            }
-        }
         StateCommand::ResetTokenPreferences => {
             let defaults = built_in_token_preferences();
             if defaults != state.token_preferences {
@@ -1563,7 +1542,7 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
 /// `id` is derived from chain and contract rather than minted at random: a
 /// built-in's identity *is* its contract.
 pub fn built_in_token_preferences() -> Vec<wallet_domain::TokenPreferenceEntry> {
-    crate::catalog::tokens::catalog()
+    let mut entries: Vec<_> = crate::catalog::tokens::catalog()
         .iter()
         .filter(|token| !token.is_native())
         .filter_map(|token| {
@@ -1575,17 +1554,18 @@ pub fn built_in_token_preferences() -> Vec<wallet_domain::TokenPreferenceEntry> 
                 token: token.clone(),
             })
         })
-        .collect()
+        .collect();
+    sort_token_preferences(&mut entries);
+    entries
 }
 
-/// Merge the built-in catalog with persisted user preferences: the catalog's
-/// rows replace persisted copies and custom aliases of them. Each normalized
+/// The built-in catalog with the user's stored tokens: a stored token the
+/// catalog now ships is the catalog's row. Each normalized
 /// network/identifier appears once, even when its protocol label differs.
-pub fn merge_built_in_token_preferences(
-    built_ins: Vec<wallet_domain::TokenPreferenceEntry>,
-    persisted: Vec<wallet_domain::TokenPreferenceEntry>,
+pub fn with_custom_tokens(
+    custom: Vec<crate::catalog::tokens::TokenDeploymentEntry>,
 ) -> Vec<wallet_domain::TokenPreferenceEntry> {
-    let mut merged = built_ins;
+    let mut merged = built_in_token_preferences();
     let key = |entry: &wallet_domain::TokenPreferenceEntry| {
         (
             entry.token.chain_id,
@@ -1597,9 +1577,13 @@ pub fn merge_built_in_token_preferences(
     };
     let mut seen: std::collections::HashSet<_> = merged.iter().map(key).collect();
     merged.extend(
-        persisted
+        custom
             .into_iter()
-            .filter(|entry| !entry.is_built_in && seen.insert(key(entry))),
+            .map(|token| wallet_domain::TokenPreferenceEntry {
+                is_built_in: false,
+                token,
+            })
+            .filter(|entry| seen.insert(key(entry))),
     );
     sort_token_preferences(&mut merged);
     merged
@@ -1623,6 +1607,15 @@ pub(crate) fn sort_token_preferences(entries: &mut [wallet_domain::TokenPreferen
 mod tests {
     use super::*;
 
+    /// A state with no tokens at all, so a test of the user's tokens sees
+    /// only the ones it adds.
+    fn no_tokens() -> ResidentState {
+        ResidentState {
+            token_preferences: Vec::new(),
+            ..ResidentState::default()
+        }
+    }
+
     fn reduce_state(mut state: ResidentState, command: StateCommand) -> StateTransition {
         let events = reduce_state_in_place(&mut state, command);
         StateTransition { state, events }
@@ -1638,15 +1631,11 @@ mod tests {
             chain_id: chain,
             include_in_portfolio_total: true,
             xpub: None,
+            derivation_profile: None,
             derivation_flags: Default::default(),
             derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
             holdings: Vec::new(),
-            addresses: vec![WalletAddress {
-                chain_id: chain,
-                address: "bc1qexample".to_string(),
-                kind: "address".to_string(),
-                derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
-            }],
+            address: Some("bc1qexample".to_string()),
             restore_height: None,
             hidden_holdings: Vec::new(),
             icp_principal: None,
@@ -1670,8 +1659,45 @@ mod tests {
             contract: contract.to_string(),
             coingecko_id: String::new(),
             coinpaprika_id: String::new(),
-            decimals,
+            decimals: Some(decimals),
         }
+    }
+
+    /// A token's places are its protocol's where the protocol fixes them,
+    /// and otherwise must be given: none are guessed.
+    #[test]
+    fn decimals_are_the_protocols_or_given() {
+        let mut untyped = add_token(crate::registry::Chain::Base, "MOON", EVM_CONTRACT, 18);
+        if let StateCommand::AddCustomToken { decimals, .. } = &mut untyped {
+            *decimals = None;
+        }
+        assert_eq!(
+            rejection(&reduce_state(no_tokens(), untyped.clone())),
+            Some(TokenPreferenceRejection::DecimalsRequired)
+        );
+        let added = reduce_state(
+            no_tokens(),
+            add_token(crate::registry::Chain::Base, "MOON", EVM_CONTRACT, 18),
+        );
+        let mut edit = StateCommand::UpdateCustomToken {
+            chain_id: crate::registry::Chain::Base,
+            contract: EVM_CONTRACT.into(),
+            symbol: "MOON".into(),
+            name: "Moon".into(),
+            coingecko_id: String::new(),
+            coinpaprika_id: String::new(),
+            decimals: None,
+        };
+        assert_eq!(
+            rejection(&reduce_state(added.state.clone(), edit.clone())),
+            Some(TokenPreferenceRejection::DecimalsRequired)
+        );
+        if let StateCommand::UpdateCustomToken { decimals, .. } = &mut edit {
+            *decimals = Some(6);
+        }
+        let edited = reduce_state(added.state, edit);
+        assert_eq!(rejection(&edited), None);
+        assert_eq!(edited.state.token_preferences[0].token.decimals, 6);
     }
 
     fn rejection(transition: &StateTransition) -> Option<TokenPreferenceRejection> {
@@ -1688,7 +1714,7 @@ mod tests {
     #[test]
     fn custom_tokens_are_added_under_the_named_protocol() {
         use crate::registry::Chain;
-        let mut state = ResidentState::default();
+        let mut state = no_tokens();
         let command =
             |chain_id, standard: Option<&str>, contract: &str| StateCommand::AddCustomToken {
                 chain_id,
@@ -1700,7 +1726,7 @@ mod tests {
                 contract: contract.into(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),
-                decimals: 6,
+                decimals: Some(6),
             };
         let rejected = |reason| [StateEvent::TokenPreferenceRejected { reason }];
         let added = |events: &[StateEvent]| {
@@ -1834,7 +1860,7 @@ mod tests {
         let bounds = input_bounds();
         let at = |decimals| {
             reduce_state(
-                ResidentState::default(),
+                no_tokens(),
                 add_token(
                     crate::registry::Chain::Ethereum,
                     "AT",
@@ -1868,7 +1894,7 @@ mod tests {
     fn a_contract_is_judged_by_the_chain_that_hosts_it() {
         let solana_mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
         let wrong_chain = reduce_state(
-            ResidentState::default(),
+            no_tokens(),
             add_token(crate::registry::Chain::Base, "USDC", solana_mint, 6),
         );
         assert_eq!(
@@ -1878,7 +1904,7 @@ mod tests {
         assert!(wrong_chain.state.token_preferences.is_empty());
 
         let wrong_way_round = reduce_state(
-            ResidentState::default(),
+            no_tokens(),
             add_token(crate::registry::Chain::Solana, "USDC", EVM_CONTRACT, 6),
         );
         assert_eq!(
@@ -1887,7 +1913,7 @@ mod tests {
         );
 
         let right = reduce_state(
-            ResidentState::default(),
+            no_tokens(),
             add_token(crate::registry::Chain::Solana, "USDC", solana_mint, 6),
         );
         assert_eq!(rejection(&right), None);
@@ -1899,7 +1925,7 @@ mod tests {
     #[test]
     fn a_symbol_is_normalized_and_a_pasted_name_is_not_one() {
         let added = reduce_state(
-            ResidentState::default(),
+            no_tokens(),
             add_token(crate::registry::Chain::Base, "  moon ", EVM_CONTRACT, 18),
         );
         assert_eq!(added.state.token_preferences[0].token.symbol, "MOON");
@@ -1911,7 +1937,7 @@ mod tests {
         assert!(!added.state.token_preferences[0].is_built_in);
 
         let pasted = reduce_state(
-            ResidentState::default(),
+            no_tokens(),
             add_token(
                 crate::registry::Chain::Base,
                 "Moonbeam Network Token",
@@ -1925,7 +1951,7 @@ mod tests {
         );
 
         let empty = reduce_state(
-            ResidentState::default(),
+            no_tokens(),
             add_token(crate::registry::Chain::Base, "  ", EVM_CONTRACT, 18),
         );
         assert_eq!(
@@ -1940,7 +1966,7 @@ mod tests {
     #[test]
     fn a_duplicate_is_the_same_contract_however_it_is_spelled() {
         let first = reduce_state(
-            ResidentState::default(),
+            no_tokens(),
             add_token(crate::registry::Chain::Base, "MOON", EVM_CONTRACT, 18),
         );
         let again = reduce_state(
@@ -1970,8 +1996,7 @@ mod tests {
     /// The catalog's rows are not the user's to edit or delete.
     #[test]
     fn a_built_in_token_is_not_editable() {
-        let mut state = ResidentState::default();
-        reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
+        let state = ResidentState::default();
         let built_in = state
             .token_preferences
             .iter()
@@ -2020,7 +2045,7 @@ mod tests {
             name: "Independent token".into(),
             coingecko_id: coingecko_id.into(),
             coinpaprika_id: coinpaprika_id.into(),
-            decimals: 6,
+            decimals: Some(6),
         };
         let ids = |state: &ResidentState| {
             let token = &state.token_preferences[0].token;
@@ -2030,7 +2055,7 @@ mod tests {
                 token.coinpaprika_id.clone(),
             )
         };
-        let mut state = ResidentState::default();
+        let mut state = no_tokens();
         reduce_state_in_place(
             &mut state,
             StateCommand::AddCustomToken {
@@ -2041,7 +2066,7 @@ mod tests {
                 contract: EVM_CONTRACT.into(),
                 coingecko_id: String::new(),
                 coinpaprika_id: " Custom-Independent ".into(),
-                decimals: 6,
+                decimals: Some(6),
             },
         );
         let token_id = format!("custom:base:erc-20:{EVM_CONTRACT}");
@@ -2079,7 +2104,7 @@ mod tests {
     #[test]
     fn a_reset_drops_what_the_user_added() {
         let added = reduce_state(
-            ResidentState::default(),
+            no_tokens(),
             add_token(crate::registry::Chain::Base, "MOON", EVM_CONTRACT, 18),
         );
         let reset = reduce_state(added.state, StateCommand::ResetTokenPreferences);
@@ -2110,7 +2135,7 @@ mod tests {
 
     #[test]
     fn upsert_wallet_selects_first_wallet() {
-        let mut state = ResidentState::default();
+        let mut state = no_tokens();
         let events = upsert_wallet_in_place(
             &mut state,
             test_wallet("wallet-1", crate::registry::Chain::Bitcoin),

@@ -296,7 +296,10 @@ build defect.
   Tor client every transport routes through when it is on.
   `litecoin_p2p::wire` holds MWEB's wire format, which `send::litecoin_mweb`
   builds with. `price` reads market quotes and fiat rates from their
-  keyless providers. `send`, `staking` and `service` call `api`, never the
+  keyless providers, and `zcash_parameters` downloads the Sapling proving
+  parameters. A request's body is the adapter's to write: `send` hands it
+  signed bytes or a typed transaction (`kaspa_rest::KaspaTransaction`), never
+  a document in the service's schema. `send`, `staking` and `service` call `api`, never the
   other way round. It may use what sits below them: `registry`, `catalog`,
   `amount` and `derivation`'s address codecs and hashes; `tor` also reads the
   committed `AppSettings`.

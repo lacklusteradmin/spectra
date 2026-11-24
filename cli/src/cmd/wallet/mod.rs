@@ -16,8 +16,6 @@ mod secrets;
 mod setup;
 mod show;
 
-use std::collections::BTreeMap;
-
 use clap::Subcommand;
 use colored::Colorize as _;
 use serde::Serialize;
@@ -248,8 +246,6 @@ pub struct WalletView {
     name: String,
     chain: Chain,
     address: String,
-    /// Stored addresses for each network in the wallet's family.
-    addresses: BTreeMap<&'static str, String>,
     derivation_path: Option<String>,
     restore_height: Option<u64>,
     hidden_holdings: Vec<String>,
@@ -266,11 +262,6 @@ impl From<&WalletState> for WalletView {
             name: wallet.name.clone(),
             chain: wallet.chain_id,
             address: wallet_address(wallet).to_string(),
-            addresses: wallet
-                .addresses
-                .iter()
-                .map(|entry| (entry.chain_id.str_id(), entry.address.clone()))
-                .collect(),
             derivation_path: wallet.derivation_path.clone(),
             restore_height: wallet.restore_height,
             hidden_holdings: wallet.hidden_holdings.clone(),

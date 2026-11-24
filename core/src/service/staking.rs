@@ -495,21 +495,13 @@ fn staking_review(
             p.stake_rent.map(u128::from),
         ),
         PreparedPayload::Sui(p) => (u128::from(p.gas_budget), AtMost, None),
-        PreparedPayload::Aptos(p) => {
-            let number = |field: &str| {
-                p.body[field]
-                    .as_str()
-                    .and_then(|s| s.parse::<u128>().ok())
-                    .ok_or_else(invalid)
-            };
-            (
-                number("gas_unit_price")?
-                    .checked_mul(number("max_gas_amount")?)
-                    .ok_or_else(invalid)?,
-                AtMost,
-                None,
-            )
-        }
+        PreparedPayload::Aptos(p) => (
+            u128::from(p.gas_price)
+                .checked_mul(u128::from(p.max_gas))
+                .ok_or_else(invalid)?,
+            AtMost,
+            None,
+        ),
         PreparedPayload::NearFunctionCall(p) => (
             p.fee_budget
                 .parse::<u128>()

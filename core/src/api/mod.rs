@@ -66,6 +66,7 @@ pub mod trongrid_v1;
 pub mod whatsonchain;
 pub(crate) mod xrpl_amount;
 pub mod xrpl_json_rpc;
+pub(crate) mod zcash_parameters;
 
 /// One token holding an address turned out to have, as the service that
 /// enumerated it reports it.

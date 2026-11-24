@@ -1,7 +1,7 @@
 //! UTXO discovery and receive-address derivation.
 use super::*;
 
-#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct WalletAddressDiscovery {
     pub wallet_id: String,
     pub addresses: Vec<String>,
@@ -10,54 +10,6 @@ pub struct WalletAddressDiscovery {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Select the wallets and their networks from core state for a chain rescan.
-    pub async fn discover_chain_addresses(
-        &self,
-        chain: crate::registry::Chain,
-    ) -> Result<Vec<WalletAddressDiscovery>, SpectraBridgeError> {
-        let this = self.clone();
-        crate::service::worker::run(async move {
-            let this = &this;
-            let wallets: Vec<_> = {
-                let state = this.wallet_state.read().await;
-                state
-                    .wallets
-                    .iter()
-                    .filter_map(|w| {
-                        let network = w.chain_id;
-                        (network.uses_account_utxo()
-                            && if chain.is_testnet() {
-                                network == chain
-                            } else {
-                                network.mainnet_counterpart() == chain
-                            })
-                        .then(|| (w.id.clone(), network))
-                    })
-                    .collect()
-            };
-            let mut results = Vec::new();
-            for (wallet_id, network) in wallets {
-                let result = this
-                    .discover_utxo_addresses(wallet_id.clone(), network)
-                    .await;
-                results.push(match result {
-                    Ok(addresses) => WalletAddressDiscovery {
-                        wallet_id,
-                        addresses,
-                        error: None,
-                    },
-                    Err(error) => WalletAddressDiscovery {
-                        wallet_id,
-                        addresses: Vec::new(),
-                        error: Some(error.to_string()),
-                    },
-                });
-            }
-            Ok(results)
-        })
-        .await
-    }
-
     /// Select and optionally reserve a receive address from stored wallet identity.
     pub async fn receive_address(
         &self,
@@ -119,6 +71,56 @@ impl WalletService {
                     .await?;
             }
             Ok(Some(address))
+        })
+        .await
+    }
+}
+
+impl WalletService {
+    /// Select the wallets and their networks from core state for a chain rescan.
+    pub async fn discover_chain_addresses(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<Vec<WalletAddressDiscovery>, SpectraBridgeError> {
+        let this = self.clone();
+        crate::service::worker::run(async move {
+            let this = &this;
+            let wallets: Vec<_> = {
+                let state = this.wallet_state.read().await;
+                state
+                    .wallets
+                    .iter()
+                    .filter_map(|w| {
+                        let network = w.chain_id;
+                        (network.uses_account_utxo()
+                            && if chain.is_testnet() {
+                                network == chain
+                            } else {
+                                network.mainnet_counterpart() == chain
+                            })
+                        .then(|| (w.id.clone(), network))
+                    })
+                    .collect()
+            };
+            let mut results = Vec::new();
+            for (wallet_id, network) in wallets {
+                let result = this
+                    .discover_utxo_addresses(wallet_id.clone(), network)
+                    .await;
+                results.push(match result {
+                    Ok(addresses) => WalletAddressDiscovery {
+                        wallet_id,
+                        addresses,
+                        error: None,
+                    },
+                    Err(error) => WalletAddressDiscovery {
+                        wallet_id,
+                        addresses: Vec::new(),
+                        error: Some(error.to_string()),
+                    },
+                });
+            }
+            Ok(results)
         })
         .await
     }
@@ -417,13 +419,9 @@ impl WalletService {
             crate::store::state::WalletSigning::SeedPhrase { .. } => {
                 // An empty path resolves to the chain's default.
                 let raw_path = wallet
-                    .address_record_on(chain)
-                    .and_then(|a| a.derivation_path.clone())
-                    .or_else(|| {
-                        (wallet.chain_id == chain)
-                            .then(|| wallet.derivation_path.clone())
-                            .flatten()
-                    })
+                    .shares_address_with(chain)
+                    .then(|| wallet.derivation_path.clone())
+                    .flatten()
                     .unwrap_or_default();
                 let resolved = crate::derivation::path::resolve_derivation_path(chain, raw_path)?;
                 let xpub = xpub.ok_or_else(|| {

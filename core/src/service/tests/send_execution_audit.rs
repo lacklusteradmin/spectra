@@ -86,8 +86,9 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                 "/estimate_gas_price" => json!({"gas_estimate":100}),
                 "/view" => json!(["10000000000"]),
                 "/transactions" => {
-                    assert_eq!(body["sender"],v["aptos"]["address"]);
-                    assert_eq!(body["signature"]["public_key"],format!("0x{}",v["aptos"]["public_key"].as_str().unwrap()));
+                    let signed = crate::send::aptos::decode(&request.body);
+                    assert_eq!(format!("0x{}", hex::encode(signed.sender)), v["aptos"]["address"].as_str().unwrap());
+                    assert_eq!(hex::encode(signed.authenticator.unwrap().0), v["aptos"]["public_key"].as_str().unwrap());
                     let hash = if response_is_wrong.load(std::sync::atomic::Ordering::Relaxed) {
                         format!("0x{}","ab".repeat(32))
                     } else {
@@ -102,8 +103,11 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                     assert_eq!(body,json!({"num":0}));
                     json!({"blockID":Chain::Tron.tron_genesis_block_id().unwrap()})
                 },
-                "/wallet/broadcasttransaction" => {
-                    assert_eq!(body["raw_data"]["contract"][0]["parameter"]["value"]["owner_address"],v["tron"]["transactions"][0]["raw_data"]["contract"][0]["parameter"]["value"]["owner_address"]);
+                "/wallet/broadcasthex" => {
+                    let signed = hex::decode(body["transaction"].as_str().unwrap()).unwrap();
+                    let (raw, _) = crate::send::tron::split_signed(&signed);
+                    let decoded = crate::send::tron_multisig::decode(&raw).unwrap();
+                    assert_eq!(decoded.owner_address(), v["tron"]["from"].as_str().unwrap());
                     json!({"result":true})
                 },
                 "/wallet/triggerconstantcontract" => {
@@ -225,7 +229,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             !text.contains("sendTransaction")
                 && !text.contains("executeTransactionBlock")
                 && !r.url.path().ends_with("/transactions")
-                && !r.url.path().contains("broadcasttransaction")
+                && !r.url.path().contains("broadcasthex")
         }));
         if matches!(chain, Chain::Sui | Chain::Aptos) {
             assert!(signed.transaction_hash.is_some());
@@ -405,16 +409,17 @@ async fn aptos_build_and_sign_bind_the_reviewed_total_gas_budget() {
 
         let prepared = service.build_send(quote.request).await.unwrap();
         let details: Value = serde_json::from_str(&prepared.prepared_details).unwrap();
-        assert_eq!(details["Aptos"]["body"]["max_gas_amount"], "10000");
-        assert_eq!(details["Aptos"]["body"]["gas_unit_price"], "100");
+        assert_eq!(details["Aptos"]["max_gas"], 10000);
+        assert_eq!(details["Aptos"]["gas_price"], 100);
         let signed = service
             .sign_send(prepared.id, prepared.review_digest, None)
             .await
             .unwrap();
-        let body: Value = serde_json::from_str(signed.signed_payload.as_deref().unwrap()).unwrap();
-        assert_eq!(body["max_gas_amount"], "10000");
-        assert_eq!(body["gas_unit_price"], "100");
-        assert_eq!(body["payload"]["arguments"][1], "99000000");
+        let signed = crate::send::aptos::decode(
+            &hex::decode(signed.signed_payload.as_deref().unwrap()).unwrap(),
+        );
+        assert_eq!((signed.max_gas, signed.gas_price), (10000, 100));
+        assert_eq!(signed.arguments[1], 99_000_000u64.to_le_bytes());
     }
 }
 

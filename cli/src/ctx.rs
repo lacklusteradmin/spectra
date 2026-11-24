@@ -244,12 +244,13 @@ fn wallet_matches(wallet: &WalletState, needle: &str) -> bool {
     wallet.id.eq_ignore_ascii_case(needle)
         || wallet.name.eq_ignore_ascii_case(needle)
         || wallet
-            .primary_address()
+            .address
+            .as_deref()
             .is_some_and(|address| address.eq_ignore_ascii_case(needle))
 }
 
 /// Wallets carry an address by construction; the fallback keeps a malformed
 /// record printable rather than panicking mid-listing.
 pub fn wallet_address(wallet: &WalletState) -> &str {
-    wallet.active_address().unwrap_or("")
+    wallet.address.as_deref().unwrap_or("")
 }

@@ -69,23 +69,42 @@ impl Chain {
         }
     }
 
+    /// Whether reading this network's staking positions, or checking a staking
+    /// transaction's execution, signs a request with the wallet's key: an ICP
+    /// neuron is read through an authenticated `read_state` call.
+    pub fn staking_reads_require_authorization(self) -> bool {
+        self == Self::Icp
+    }
+
     /// Delegation-pool shares must retain at least 10 APT (framework constant).
-    pub fn aptos_delegation_minimum(self) -> Option<u64> {
-        (self == Self::Aptos).then_some(1_000_000_000)
+    pub fn aptos_delegation_minimum(self) -> Result<u64, RegistryError> {
+        match self {
+            Self::Aptos => Ok(1_000_000_000),
+            _ => Err(self.not_in("Aptos staking")),
+        }
     }
 
     /// Validator-set minimum stake, expressed in MIST.
-    pub fn sui_staking_minimum(self) -> Option<u64> {
-        (self == Self::Sui).then_some(1_000_000_000)
+    pub fn sui_staking_minimum(self) -> Result<u64, RegistryError> {
+        match self {
+            Self::Sui => Ok(1_000_000_000),
+            _ => Err(self.not_in("Sui staking")),
+        }
     }
 
     /// Maximum native payment reviewed for the staking PTB; dry-run must fit it.
-    pub fn sui_staking_gas_budget(self) -> Option<u64> {
-        (self == Self::Sui).then_some(10_000_000)
+    pub fn sui_staking_gas_budget(self) -> Result<u64, RegistryError> {
+        match self {
+            Self::Sui => Ok(10_000_000),
+            _ => Err(self.not_in("Sui staking")),
+        }
     }
 
     /// Attached gas budget for the standard staking-pool entry points.
-    pub fn near_staking_gas_limit(self) -> Option<u64> {
-        (self == Self::Near).then_some(100_000_000_000_000)
+    pub fn near_staking_gas_limit(self) -> Result<u64, RegistryError> {
+        match self {
+            Self::Near => Ok(100_000_000_000_000),
+            _ => Err(self.not_in("NEAR staking")),
+        }
     }
 }

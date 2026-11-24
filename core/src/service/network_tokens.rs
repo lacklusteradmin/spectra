@@ -175,9 +175,7 @@ impl WalletService {
                 if endpoints.is_empty() {
                     return Ok(None);
                 }
-                let expected = chain
-                    .aptos_chain_id()
-                    .ok_or_else(|| SpectraBridgeError::failure("Missing Aptos network identity"))?;
+                let expected = chain.aptos_chain_id()?;
                 crate::api::aptos_indexer::AptosIndexerClient::new(Arc::new(endpoints), expected)
                     .fetch_holdings(address)
                     .await?
@@ -510,7 +508,6 @@ impl WalletService {
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Every token this address actually holds, named where the catalog knows
     /// the contract and left unnamed where it does not.
@@ -873,10 +870,9 @@ impl WalletService {
 }
 
 /// Token descriptor passed across UniFFI without JSON-shuttle marshalling.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct TokenDescriptor {
     /// The actual deployment protocol; `None` resolves from identifier shape.
-    #[uniffi(default = None)]
     pub standard: Option<crate::registry::TokenStandard>,
     pub contract: String,
     pub symbol: String,
@@ -892,7 +888,7 @@ impl TokenDescriptor {
 }
 
 /// Typed token-balance result returned via UniFFI.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct TokenBalanceResult {
     /// The token's protocol, resolved from the read when the caller named none.
     pub standard: Option<crate::registry::TokenStandard>,

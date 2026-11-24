@@ -13,8 +13,9 @@ fn coin(symbol: &str, chain: crate::registry::Chain, amount: f64) -> AssetHoldin
         } else {
             Some(crate::registry::TokenStandard::Erc20)
         },
+        // A contract the catalog does not ship.
         contract_address: if symbol == "SHIB" {
-            Some("0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce".into())
+            Some("0x1111111111111111111111111111111111111111".into())
         } else {
             None
         },

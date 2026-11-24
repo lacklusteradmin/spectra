@@ -13,9 +13,7 @@ pub(crate) fn normalize_bch_address(address: &str) -> String {
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::DerivationResult;
 use crate::error::SpectraBridgeError;
-
-pub(crate) const BCH_MAINNET_VERSION: u8 = 0x00;
-pub(crate) const BCH_TESTNET_VERSION: u8 = 0x6f;
+use crate::registry::Chain;
 
 /// Derive Bitcoin Cash mainnet keys (P2PKH only).
 pub fn derive_bitcoin_cash(
@@ -28,7 +26,7 @@ pub fn derive_bitcoin_cash(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     derive_legacy_p2pkh(
-        BCH_MAINNET_VERSION,
+        Chain::BitcoinCash.fixed_utxo_address_versions()?.0,
         seed_phrase,
         derivation_path,
         passphrase,
@@ -50,7 +48,7 @@ pub fn derive_bitcoin_cash_testnet(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     derive_legacy_p2pkh(
-        BCH_TESTNET_VERSION,
+        Chain::BitcoinCashTestnet.fixed_utxo_address_versions()?.0,
         seed_phrase,
         derivation_path,
         passphrase,

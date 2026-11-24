@@ -1,8 +1,6 @@
 // Wallet value types crossing the FFI. Display color is deliberately absent:
 // the platform derives it from the asset symbol.
 
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
@@ -69,18 +67,18 @@ impl TransactionKind {
         !matches!(self, Self::Send | Self::Receive)
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum TransactionDirection {
     Outgoing,
     Incoming,
+    #[default]
     Neutral,
 }
 /// Which way a transaction moved its amount. A transfer of nothing — a
 /// zero-value contract call recorded as a send — moved nothing, whatever its
 /// kind, and reads neither as money out nor in.
-#[uniffi::export]
-pub fn transaction_amount_direction(kind: TransactionKind, amount: String) -> TransactionDirection {
-    if crate::amount::decimal::is_zero(&amount) {
+pub fn transaction_amount_direction(kind: TransactionKind, amount: &str) -> TransactionDirection {
+    if crate::amount::decimal::is_zero(amount) {
         return TransactionDirection::Neutral;
     }
     match kind {
@@ -99,10 +97,6 @@ pub fn transaction_amount_direction(kind: TransactionKind, amount: String) -> Tr
         | TransactionKind::RemoveTrustLine
         | TransactionKind::Shield => TransactionDirection::Neutral,
     }
-}
-#[uniffi::export]
-pub fn transaction_kind_is_submitted(kind: TransactionKind) -> bool {
-    kind.is_submitted()
 }
 
 /// Where a transaction stands; stored as `"pending"`, `"confirmed"` or `"failed"`.
@@ -378,174 +372,6 @@ impl Drop for SensitiveOverrides {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
-#[serde(rename_all = "camelCase")]
-pub struct WalletView {
-    pub id: String,
-    pub name: String,
-    /// The network this wallet is on, as a registry chain id — the chain's
-    /// own id on a family with one network.
-    pub chain_id: crate::registry::Chain,
-    /// `Chain::address_slot()` → address for this wallet.
-    ///
-    /// A wallet belongs to one chain (`chain_id`), so in practice this
-    /// holds a single entry. It is a map rather than one `Option<String>`
-    /// per chain so that adding a chain is a registry edit and not a schema
-    /// change here, in the Swift record, in its `Codable`, and at every
-    /// construction site.
-    pub addresses: HashMap<String, String>,
-    /// Account public key for receiving and recovery without unlocking a seed.
-    pub account_xpub: Option<String>,
-    /// The one path this wallet derives from: a profile's, or a custom one.
-    /// `None` on a chain that derives without a path.
-    pub derivation_path: Option<String>,
-    pub derivation_flags: WalletDerivationFlags,
-    pub holdings: Vec<AssetHolding>,
-    pub include_in_portfolio_total: bool,
-    /// What the wallet signs with and whether a password guards it — read
-    /// from the wallet record, so rendering one touches no secret store.
-    pub signing: crate::store::state::WalletSigning,
-    /// A Monero wallet's restore height; `None` on other chains.
-    pub restore_height: Option<u64>,
-    /// The deployment ids of the holdings the user hid from the wallet's
-    /// total and the portfolio.
-    pub hidden_holdings: Vec<String>,
-    /// An ICP wallet's principal; `None` elsewhere.
-    pub icp_principal: Option<String>,
-    /// The key a NEAR named account signs with, as `ed25519:…`; `None`
-    /// elsewhere, and for an implicit account, whose address is its key.
-    pub near_account_key: Option<String>,
-    /// A multisig account's descriptor; `None` for a single-key wallet.
-    pub multisig_policy: Option<String>,
-    /// When the wallet's balances were first read; `None` while its holdings
-    /// are still the import's zero placeholders.
-    #[uniffi(default = None)]
-    pub balances_read_at: Option<f64>,
-}
-
-impl WalletView {
-    /// This wallet's address for `chain`, if it has one.
-    pub fn address_for(&self, chain: crate::registry::Chain) -> Option<&str> {
-        self.addresses.get(chain.address_slot()).map(String::as_str)
-    }
-
-    /// The address for the wallet's own chain — what the UI shows and what
-    /// balance/history calls query.
-    pub fn primary_address(&self) -> Option<&str> {
-        self.address_for(self.chain_id)
-    }
-}
-
-// ── WalletView ↔ WalletState ───────────────────────────────────────
-//
-// `WalletState` owns persisted wallet facts; `WalletView` projects them for the
-// native UI. Both identify the selected chain with `chain_id` and carry the
-// wallet's one derivation path.
-
-impl WalletView {
-    /// Convert to the model core computes with.
-    ///
-    /// The import operation supplies signing capability. Network identity must
-    /// be valid before a state can be stored.
-    pub fn to_wallet_state(
-        &self,
-    ) -> Result<crate::store::state::WalletState, crate::error::SpectraBridgeError> {
-        use crate::registry::Chain;
-        use crate::store::state::{WalletAddress, WalletState};
-
-        let chain = self.chain_id;
-        Ok(WalletState {
-            id: self.id.clone(),
-            name: self.name.clone(),
-            signing: self.signing,
-            chain_id: chain,
-            include_in_portfolio_total: self.include_in_portfolio_total,
-            xpub: self.account_xpub.clone(),
-            derivation_path: self.derivation_path.clone(),
-            derivation_flags: self.derivation_flags,
-            holdings: self.holdings.clone(),
-            // The wallet's own slot comes first and the rest follow by slot id:
-            // `primary_address` takes the first `receive` entry, and a
-            // `HashMap`'s order would make that whichever network the iterator
-            // happened to yield.
-            addresses: {
-                let own_slot = chain.address_slot();
-                let mut slots: Vec<(&str, &String)> = self
-                    .addresses
-                    .iter()
-                    .map(|(slot, address)| (slot.as_str(), address))
-                    .collect();
-                slots.sort_by_key(|(slot, _)| (*slot != own_slot, *slot));
-                slots
-                    .into_iter()
-                    .filter_map(|(slot, address)| {
-                        let owner = if slot == own_slot {
-                            chain
-                        } else {
-                            Chain::all().find(|candidate| candidate.address_slot() == slot)?
-                        };
-                        Some(WalletAddress {
-                            chain_id: owner,
-                            address: address.clone(),
-                            kind: "receive".to_string(),
-                            derivation_path: (owner == chain)
-                                .then(|| self.derivation_path.clone())
-                                .flatten(),
-                        })
-                    })
-                    .collect()
-            },
-            restore_height: self.restore_height,
-            hidden_holdings: self.hidden_holdings.clone(),
-            icp_principal: self.icp_principal.clone(),
-            near_account_key: self.near_account_key.clone(),
-            multisig_policy: self.multisig_policy.clone(),
-            balances_read_at: self.balances_read_at,
-        })
-    }
-}
-
-impl crate::store::state::WalletState {
-    /// Convert back into the shape the iOS app renders.
-    ///
-    /// The reverse of [`WalletView::to_wallet_state`]. `WalletState`
-    /// remains the authority; this produces a view model.
-    pub fn to_wallet_view(&self) -> WalletView {
-        WalletView {
-            id: self.id.clone(),
-            name: self.name.clone(),
-            chain_id: self.chain_id,
-            addresses: self
-                .addresses
-                .iter()
-                .map(|entry| {
-                    (
-                        entry.chain_id.address_slot().to_string(),
-                        entry.address.clone(),
-                    )
-                })
-                .collect(),
-            account_xpub: self.xpub.clone(),
-            derivation_path: self.derivation_path.clone(),
-            derivation_flags: self.derivation_flags,
-            holdings: self
-                .holdings
-                .iter()
-                .cloned()
-                .map(AssetHolding::identified)
-                .collect(),
-            include_in_portfolio_total: self.include_in_portfolio_total,
-            signing: self.signing,
-            restore_height: self.restore_height,
-            hidden_holdings: self.hidden_holdings.clone(),
-            icp_principal: self.icp_principal.clone(),
-            near_account_key: self.near_account_key.clone(),
-            multisig_policy: self.multisig_policy.clone(),
-            balances_read_at: self.balances_read_at,
-        }
-    }
-}
-
 /// A token the app knows about, and what the user has done to it.
 ///
 /// Held seven copies of the catalog's fields under different names —
@@ -648,17 +474,16 @@ mod direction_tests {
 
     #[test]
     fn a_transfer_of_nothing_moves_neither_way() {
-        let send =
-            |amount: &str| transaction_amount_direction(TransactionKind::Send, amount.into());
+        let send = |amount: &str| transaction_amount_direction(TransactionKind::Send, amount);
         assert_eq!(send("0.5"), TransactionDirection::Outgoing);
         assert_eq!(send("0"), TransactionDirection::Neutral);
         assert_eq!(send("0.000"), TransactionDirection::Neutral);
         assert_eq!(
-            transaction_amount_direction(TransactionKind::Receive, "0".into()),
+            transaction_amount_direction(TransactionKind::Receive, "0"),
             TransactionDirection::Neutral
         );
         assert_eq!(
-            transaction_amount_direction(TransactionKind::ClaimRewards, "1".into()),
+            transaction_amount_direction(TransactionKind::ClaimRewards, "1"),
             TransactionDirection::Incoming
         );
     }

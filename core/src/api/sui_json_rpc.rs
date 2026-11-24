@@ -523,7 +523,10 @@ fn sui_history_from_blocks(
                 timestamp_ms,
                 is_incoming,
                 amount_display: if coin_type == SUI_COIN_TYPE {
-                    crate::amount::decimal::from_unit_digits(&amount_mist, 9)
+                    crate::amount::decimal::from_unit_digits(
+                        &amount_mist,
+                        u32::from(crate::registry::Chain::Sui.native_decimals()),
+                    )
                 } else {
                     None
                 },

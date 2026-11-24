@@ -25,7 +25,7 @@ fn add_custom(symbol: &str, decimals: u32) -> StateCommand {
         contract: "0x0000000000000000000000000000000000000001".to_string(),
         coingecko_id: symbol.to_lowercase(),
         coinpaprika_id: String::new(),
-        decimals,
+        decimals: Some(decimals),
     }
 }
 
@@ -38,6 +38,7 @@ fn add_custom(symbol: &str, decimals: u32) -> StateCommand {
 fn an_impossible_precision_is_refused_rather_than_clamped() {
     let db = tmp_db();
     let mut state = ResidentState::default();
+    let catalog = state.token_preferences.clone();
     let events = crate::store::state::reduce_state_in_place(&mut state, add_custom("USDT", 99));
     assert_eq!(
         events.first(),
@@ -46,7 +47,7 @@ fn an_impossible_precision_is_refused_rather_than_clamped() {
         })
     );
     assert!(
-        state.token_preferences.is_empty(),
+        state.token_preferences == catalog,
         "a refused token must not be stored at any precision"
     );
 
@@ -54,9 +55,14 @@ fn an_impossible_precision_is_refused_rather_than_clamped() {
         &mut state,
         add_custom("USDT", crate::store::state::MAX_TOKEN_DECIMALS),
     );
-    assert_eq!(state.token_preferences.len(), 1);
+    let added: Vec<_> = state
+        .token_preferences
+        .iter()
+        .filter(|entry| !entry.is_built_in)
+        .collect();
+    assert_eq!(added.len(), 1);
     assert_eq!(
-        state.token_preferences[0].token.decimals,
+        added[0].token.decimals,
         crate::store::state::MAX_TOKEN_DECIMALS
     );
     wallet_db::app_state_save(&crate::wallet_db::WalletDatabase::new(&db), &state).expect("save");

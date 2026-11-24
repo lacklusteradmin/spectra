@@ -94,7 +94,7 @@ pub(crate) fn exportable_keys(wallet: &WalletState) -> Vec<WalletKeyKind> {
 fn account_key_version(wallet: &WalletState) -> Option<[u8; 4]> {
     let chain = wallet.chain_id;
     let path = wallet.derivation_path.clone()?;
-    crate::derivation::path::derivation_profile_of_path(chain, path.clone())?;
+    crate::derivation::path::derivation_profile_of_path(chain, &path)?;
     let script = crate::derivation::dispatch::script_type_for_path(&path);
     chain
         .account_key_versions()

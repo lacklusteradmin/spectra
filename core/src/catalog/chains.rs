@@ -246,9 +246,6 @@ pub struct ChainEntry {
     /// A test network's faucet page, where its coins are free; `None` on
     /// mainnets and on test networks without a working one.
     pub faucet_url: Option<String>,
-    /// Which chain's slot this chain's address is stored under. The EVM family
-    /// shares Ethereum's.
-    pub address_slot: String,
     /// A wallet on this chain is an account of many addresses
     /// (`Chain::uses_account_utxo`), which a rescan can walk.
     pub uses_account_utxo: bool,
@@ -496,7 +493,6 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 is_testnet,
                 is_evm: chain.is_evm(),
                 faucet_url: c.faucet.clone(),
-                address_slot: chain.address_slot().to_string(),
                 uses_account_utxo: chain.uses_account_utxo(),
                 account_key_prefixes: chain
                     .account_key_prefixes()
@@ -617,6 +613,21 @@ pub fn list_all_chains() -> Vec<ChainEntry> {
 #[uniffi::export]
 pub fn list_chain_tags() -> Vec<ChainTag> {
     ChainTag::ALL.to_vec()
+}
+
+/// Whether `query` names `chain`, ignoring case: its name, its coin's symbol,
+/// one of its search keywords or one of its tags. A front end adds what it
+/// calls the chain in the reader's language.
+#[uniffi::export]
+pub fn chain_matches_search(chain: crate::registry::Chain, query: String) -> bool {
+    let query = query.trim().to_lowercase();
+    let entry = chain.entry();
+    query.is_empty()
+        || [chain.chain_display_name(), chain.coin_symbol()]
+            .into_iter()
+            .chain(entry.search_keywords.iter().map(String::as_str))
+            .any(|text| text.to_lowercase().contains(&query))
+        || entry.tags.iter().any(|tag| tag.as_str().contains(&query))
 }
 
 /// Return the chain wiki rows — one per chain, never one per network, by name.
@@ -1030,6 +1041,31 @@ mod staking_table_tests {
                     !field.trim().is_empty(),
                     "{} has a blank field",
                     row.chain.str_id()
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::chain_matches_search;
+    use crate::registry::Chain;
+
+    /// A search names a chain by its name, symbol, keywords or tags.
+    #[test]
+    fn a_search_reads_name_symbol_keywords_and_tags() {
+        assert!(chain_matches_search(Chain::Ethereum, "ether".into()));
+        assert!(chain_matches_search(Chain::Ethereum, "ETH".into()));
+        assert!(chain_matches_search(Chain::Arbitrum, "layer-2".into()));
+        assert!(chain_matches_search(Chain::Bitcoin, "utxo".into()));
+        assert!(chain_matches_search(Chain::Bitcoin, " ".into()));
+        assert!(!chain_matches_search(Chain::Bitcoin, "solana".into()));
+        for chain in Chain::all() {
+            for keyword in &chain.entry().search_keywords {
+                assert!(
+                    chain_matches_search(chain, keyword.to_uppercase()),
+                    "{chain} {keyword}"
                 );
             }
         }

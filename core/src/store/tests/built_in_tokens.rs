@@ -31,11 +31,17 @@ fn the_catalog_chain_ids_all_resolve() {
     }
 }
 
-/// The catalog is the catalog: a merge brings every built-in and keeps the
-/// tokens the user added.
+/// The catalog is the catalog: a reopened state brings every built-in and
+/// keeps the tokens the user added, and only the user's are stored.
 #[tokio::test]
-async fn merging_keeps_what_the_user_added() {
+async fn only_the_users_tokens_are_stored() {
+    let db = std::env::temp_dir().join(format!(
+        "spectra-custom-tokens-{}.sqlite",
+        crate::store::new_event_id()
+    ));
+    let db = db.to_string_lossy().into_owned();
     let service = WalletService::new(Vec::new()).expect("service");
+    service.open_state(db.clone()).await.expect("open");
     service
         .apply_state_command(StateCommand::AddCustomToken {
             standard: None,
@@ -45,18 +51,34 @@ async fn merging_keeps_what_the_user_added() {
             contract: format!("0x{}", "42".repeat(20)),
             coingecko_id: String::new(),
             coinpaprika_id: String::new(),
-            decimals: 18,
+            decimals: Some(18),
         })
         .await
         .expect("add");
-    let after = service
-        .apply_state_command(StateCommand::MergeBuiltInTokens)
+    let stored: Vec<crate::catalog::tokens::TokenDeploymentEntry> = serde_json::from_str(
+        &rusqlite::Connection::open(&db)
+            .unwrap()
+            .query_row(
+                "SELECT value FROM app_state_meta WHERE key = 'token_preferences'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        stored.iter().map(|t| t.symbol.as_str()).collect::<Vec<_>>(),
+        ["MOON"]
+    );
+
+    let reopened = WalletService::new(Vec::new())
+        .unwrap()
+        .open_state(db.clone())
         .await
-        .map(|transition| transition.state)
-        .expect("merge");
+        .unwrap();
     let built_ins = crate::store::state::built_in_token_preferences();
     assert_eq!(
-        after
+        reopened
             .token_preferences
             .iter()
             .filter(|e| e.is_built_in)
@@ -64,12 +86,13 @@ async fn merging_keeps_what_the_user_added() {
         built_ins.len()
     );
     assert!(
-        after
+        reopened
             .token_preferences
             .iter()
             .any(|e| !e.is_built_in && e.token.symbol == "MOON"),
-        "the merge dropped a token the user added"
+        "reopening dropped a token the user added"
     );
+    let _ = std::fs::remove_file(&db);
 }
 
 /// A built-in row is not the user's to remove.
@@ -79,7 +102,6 @@ fn a_built_in_cannot_be_removed() {
         ResidentState, StateEvent, TokenPreferenceRejection, reduce_state_in_place,
     };
     let mut state = ResidentState::default();
-    reduce_state_in_place(&mut state, StateCommand::MergeBuiltInTokens);
     let usdc = state
         .token_preferences
         .iter()
@@ -124,10 +146,7 @@ fn the_token_list_keeps_each_tokens_deployments_together() {
         &custom.token.contract,
     )
     .unwrap();
-    let merged = crate::store::state::merge_built_in_token_preferences(
-        crate::store::state::built_in_token_preferences(),
-        vec![custom],
-    );
+    let merged = crate::store::state::with_custom_tokens(vec![custom.token]);
     assert!(!merged.last().unwrap().is_built_in, "built-ins come first");
     let mut finished = std::collections::HashSet::new();
     for pair in merged.windows(2) {

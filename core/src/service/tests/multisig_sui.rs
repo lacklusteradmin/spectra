@@ -138,7 +138,7 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
         store_seed_phrase(&*secrets, id, phrase, &Default::default(), None).unwrap();
     }
     assert_eq!(
-        wallets[2].primary_address(),
+        wallets[2].address.as_deref(),
         fixture["keys"][0]["address"].as_str()
     );
     for wallet in wallets {

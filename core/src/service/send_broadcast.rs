@@ -47,7 +47,7 @@ impl WalletService {
         payload: &SignedPayload,
     ) -> Result<String, SpectraBridgeError> {
         use EndpointApi as Api;
-        use SignedPayload::{Base64, Hex, Json};
+        use SignedPayload::{Base64, Hex, Kaspa};
         let txid = match (api, payload) {
             (api, Hex(raw)) if api.is_utxo_indexer() => {
                 let endpoints = eps
@@ -73,7 +73,11 @@ impl WalletService {
                 txid
             }
             (Api::SolanaJsonRpc, Base64(tx)) => SolanaClient::new(eps).broadcast_raw(tx).await?,
-            (Api::TronHttp, Json(tx)) => TronHttpClient::new(eps).broadcast_raw(tx).await?,
+            (Api::TronHttp, Hex(signed)) => {
+                TronHttpClient::new(eps)
+                    .broadcast_signed(&hex::decode(signed)?)
+                    .await?
+            }
             (Api::EvmJsonRpc, Hex(raw)) => {
                 EvmClient::new(eps, chain.evm_chain_id()?)
                     .broadcast_raw(raw)
@@ -98,8 +102,6 @@ impl WalletService {
                     .execute_signed_tx(transaction, signature)
                     .await?
             }
-            (Api::AptosRest, Json(body)) => AptosClient::new(eps).submit_signed_body(body).await?,
-            // A multi-key transaction travels as BCS.
             (Api::AptosRest, Hex(bcs)) => {
                 AptosClient::new(eps)
                     .submit_signed_bcs(&hex::decode(bcs)?)
@@ -109,8 +111,10 @@ impl WalletService {
             (Api::NearJsonRpc, Base64(tx)) => {
                 NearClient::new(eps).broadcast_signed_tx_b64(tx).await?
             }
-            (Api::IcpRosetta, Json(body)) => {
-                IcpClient::new(eps).submit_signed_transaction(body).await?
+            (Api::IcpRosetta, Hex(signed)) => {
+                IcpClient::new(eps)
+                    .submit_signed_transaction(&hex::decode(signed)?)
+                    .await?
             }
             (Api::MoneroDaemonRpc, Hex(raw)) => {
                 use ::monero_wallet::interface::PublishTransaction;
@@ -133,10 +137,8 @@ impl WalletService {
                     .map_err(SpectraBridgeError::failure)?;
                 hex::encode(tx.hash())
             }
-            (Api::KaspaRest, Json(body)) => {
-                KaspaClient::new(eps)
-                    .broadcast_tx_body(serde_json::from_str(body)?)
-                    .await?
+            (Api::KaspaRest, Kaspa(transaction)) => {
+                KaspaClient::new(eps).broadcast(transaction).await?
             }
             (Api::Insight, Hex(raw)) => InsightClient::new(eps).broadcast_raw_tx(raw).await?,
             (api, _) => {

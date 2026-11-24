@@ -304,30 +304,17 @@ impl Report for CopyTargetsReport {
 
 pub fn new(ctx: &Ctx, out: Out, args: NewArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.creation.chain)?;
-    // Core generates in the chain's own format and validates the length.
-    let words = match args.words {
-        Some(words) => words,
-        None => {
-            let format = spectra_core::derivation::setup::wallet_setup_descriptor(chain)
-                .option(spectra_core::derivation::setup::WalletSetupMethod::CreatePhrase)
-                .and_then(|option| option.formats.first().copied())
-                .ok_or_else(|| CliError::failure("the chain creates no phrase"))?;
-            spectra_core::validation::seed_phrase_lengths(Some(chain))
-                .into_iter()
-                .find(|length| length.format == format)
-                .map(|length| length.word_count)
-                .ok_or_else(|| CliError::failure("the chain's format has no length"))?
-        }
-    };
-    let seed_phrase = spectra_core::derivation::phrase::generate_seed_phrase(chain, words)
+    // Core generates in the chain's own format, at its shortest length unless
+    // one is asked for, and starts a scanning wallet's scan now.
+    let seed_phrase = spectra_core::derivation::phrase::generate_seed_phrase(chain, args.words)
         .map_err(|error| CliError::usage(error.to_string()))?;
-    // A new wallet on a scanning network has no outputs before now, so its
-    // scan starts here.
-    let restore_height = args
-        .creation
-        .restore_height
-        .or_else(|| spectra_core::catalog::restore_heights::new_wallet_restore_height(chain));
-    let mut commit = phrase_commit(&args.creation, chain, &seed_phrase, restore_height)?;
+    let mut commit = phrase_commit(
+        &args.creation,
+        chain,
+        &seed_phrase,
+        args.creation.restore_height,
+    )?;
+    commit.created = true;
     commit.password = args.creation.optional_password()?;
     let outcome = ctx.rt.block_on(ctx.service()?.import_wallets(commit))?;
     let wallet = first_wallet(&outcome)?;
@@ -451,15 +438,7 @@ pub fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
         return preview(ctx, out, commit);
     }
     let outcome = ctx.rt.block_on(ctx.service()?.import_wallets(commit))?;
-    let wallets: Vec<WalletView> = outcome
-        .wallets
-        .iter()
-        .map(|wallet| {
-            wallet
-                .to_wallet_state()
-                .map(|state| WalletView::from(&state))
-        })
-        .collect::<Result<_, _>>()?;
+    let wallets: Vec<WalletView> = outcome.wallets.iter().map(WalletView::from).collect();
     let first = first_wallet(&outcome)?;
     out.report(&WatchedReport {
         count: wallets.len(),
@@ -611,6 +590,7 @@ fn commit_for(chain: Chain, name: &str, kind: WalletImportKind) -> WalletImportC
         named_account: None,
         ton_wallet_version: None,
         upgrade_wallet_id: None,
+        created: false,
     }
 }
 
@@ -618,7 +598,6 @@ fn first_wallet(outcome: &WalletImportOutcome) -> CliResult<WalletState> {
     outcome
         .wallets
         .first()
-        .ok_or_else(|| CliError::failure("import completed without creating a wallet"))?
-        .to_wallet_state()
-        .map_err(CliError::from)
+        .cloned()
+        .ok_or_else(|| CliError::failure("import completed without creating a wallet"))
 }

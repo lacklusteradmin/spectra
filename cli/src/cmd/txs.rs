@@ -10,8 +10,8 @@ use spectra_core::service::{
     ReplaceableSend, TransactionEndpoints, TransactionSnapshot,
 };
 use spectra_core::store::TransactionStatusChange;
+use spectra_core::store::persistence_models::HistorySource;
 use spectra_core::store::persistence_models::TransactionRecord;
-use spectra_core::store::transaction_merge::{HistorySource, history_source};
 use spectra_core::store::wallet_domain::{
     TransactionDirection, TransactionKind, transaction_amount_direction,
 };
@@ -193,7 +193,7 @@ fn render_line(
     address: &str,
     hash: Option<&str>,
 ) {
-    let mark = match transaction_amount_direction(kind, amount.to_string()) {
+    let mark = match transaction_amount_direction(kind, amount) {
         TransactionDirection::Incoming => out::up("↓"),
         TransactionDirection::Outgoing => out::down("↑"),
         TransactionDirection::Neutral => out::hint("↔"),
@@ -221,17 +221,6 @@ fn render_record_line(record: &TransactionRecord) {
     );
 }
 
-/// What the detail sheet's "History Source" row shows, as the app reads it:
-/// a proper noun, a chain's provider set, or Spectra's own reader, which the
-/// row does not name.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-enum SourceView {
-    Provider(String),
-    ChainProviders(Chain),
-    Internal,
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TransactionRow {
@@ -243,7 +232,7 @@ struct TransactionRow {
     symbol: String,
     chain: Chain,
     address: String,
-    history_source: Option<SourceView>,
+    history_source: Option<HistorySource>,
 }
 
 impl From<&TransactionRecord> for TransactionRow {
@@ -256,17 +245,7 @@ impl From<&TransactionRecord> for TransactionRow {
             symbol: record.symbol.clone(),
             chain: record.chain_id,
             address: record.address.clone(),
-            history_source: record
-                .transaction_history_source
-                .clone()
-                .and_then(history_source)
-                .map(|source| match source {
-                    HistorySource::Provider { name } => SourceView::Provider(name),
-                    HistorySource::ChainProviders { chain_id } => {
-                        SourceView::ChainProviders(chain_id)
-                    }
-                    HistorySource::Internal => SourceView::Internal,
-                }),
+            history_source: record.history_source.clone(),
         }
     }
 }

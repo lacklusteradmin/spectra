@@ -7,7 +7,7 @@ use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
 /// One transaction of a chain's history in the shape every chain shares, with
 /// nothing chain-specific left to read.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 // Serialized only to compare rows against the test fixtures.
 #[cfg_attr(test, derive(serde::Serialize))]
 pub struct NormalizedHistoryItem {
@@ -92,7 +92,6 @@ pub(crate) struct EvmHistoryPage {
     pub exhausted: bool,
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Fetch history for `address` on `chain_id` and normalize the raw
     /// chain-specific shape into a standard `NormalizedHistoryItem` array,
@@ -321,10 +320,13 @@ impl WalletService {
             .into_iter()
             .map(|e| {
                 // A value that is not an integer is not a transfer of nothing.
-                let amount_decimal = crate::amount::decimal::from_unit_digits(&e.value_wei, 18)
-                    .ok_or_else(|| {
-                        SpectraBridgeError::failure(format!("transfer {}: malformed value", e.txid))
-                    })?;
+                let amount_decimal = crate::amount::decimal::from_unit_digits(
+                    &e.value_wei,
+                    u32::from(chain.native_decimals()),
+                )
+                .ok_or_else(|| {
+                    SpectraBridgeError::failure(format!("transfer {}: malformed value", e.txid))
+                })?;
                 let status = crate::store::wallet_domain::TransactionStatus::from_raw(&e.status)
                     .ok_or_else(|| {
                         SpectraBridgeError::failure(format!("transfer {}: unknown status", e.txid))
@@ -431,9 +433,7 @@ async fn fetch_history_page(
         let (_, nodes) = service
             .fetch_endpoints(chain, &[EndpointCapability::Balance])
             .await?;
-        let expected = chain
-            .aptos_chain_id()
-            .ok_or_else(|| SpectraBridgeError::failure("missing Aptos chain id"))?;
+        let expected = chain.aptos_chain_id()?;
         return Ok(crate::api::aptos_indexer::AptosIndexerClient::new(
             Arc::new(endpoints),
             expected,

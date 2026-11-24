@@ -144,6 +144,44 @@ class Spectra:
                         '--signer', signer)['session']
 
 
+def protobuf(raw):
+    """Each field of a protobuf message, as (number, value): an int for a
+    varint, bytes for a length-delimited field."""
+    fields, at = [], 0
+
+    def varint():
+        nonlocal at
+        value = shift = 0
+        while True:
+            byte = raw[at]
+            at += 1
+            value |= (byte & 0x7f) << shift
+            shift += 7
+            if byte < 0x80:
+                return value
+
+    while at < len(raw):
+        key = varint()
+        number, kind = key >> 3, key & 7
+        if kind == 0:
+            fields.append((number, varint()))
+        elif kind == 2:
+            length = varint()
+            fields.append((number, raw[at:at + length]))
+            at += length
+        else:
+            raise AssertionError(f'wire type {kind}')
+    return fields
+
+
+def tron_signed(body):
+    """A `/wallet/broadcasthex` body's transaction: its `raw_data` and
+    signatures."""
+    fields = protobuf(bytes.fromhex(body['transaction']))
+    [raw] = [value for number, value in fields if number == 1]
+    return raw, [value for number, value in fields if number == 2]
+
+
 def signed_by(session):
     """The signers that have signed a multisig session, sorted."""
     return sorted(signer['signer'] for signer in session['signers'] if signer['signed'])

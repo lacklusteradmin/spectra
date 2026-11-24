@@ -161,12 +161,7 @@ impl StoredSend {
             PreparedPayload::StellarAssetPayment(p) => vec![sequence(p.sequence)],
             PreparedPayload::StellarChangeTrust(p) => vec![sequence(p.sequence)],
             PreparedPayload::Substrate(p) => vec![sequence(u64::from(p.nonce))],
-            PreparedPayload::Aptos(p) => vec![sequence(
-                p.body["sequence_number"]
-                    .as_str()
-                    .and_then(|value| value.parse().ok())
-                    .ok_or_else(|| SendError::invalid("Missing Aptos sequence"))?,
-            )],
+            PreparedPayload::Aptos(p) => vec![sequence(p.sequence)],
             PreparedPayload::Icp(p) => vec![Reservation::IcpTransfer {
                 sender: sender(),
                 created_at_ns: p.created_at_time_ns,

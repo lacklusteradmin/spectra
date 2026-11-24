@@ -282,6 +282,7 @@ pub(crate) mod tests {
             named_account: None,
             ton_wallet_version: None,
             upgrade_wallet_id: None,
+            created: false,
         }
     }
 
@@ -337,12 +338,7 @@ pub(crate) mod tests {
             WalletSetupMethod::CreatePhrase | WalletSetupMethod::ImportPhrase => {
                 let mut commit = commit(chain, WalletImportKind::Phrase);
                 commit.seed_phrase = Some(if method == WalletSetupMethod::CreatePhrase {
-                    let length = crate::validation::seed_phrase_lengths(Some(chain))
-                        .into_iter()
-                        .find(|length| length.format == chain.created_phrase_format())
-                        .unwrap();
-                    crate::derivation::phrase::generate_seed_phrase(chain, length.word_count)
-                        .unwrap()
+                    crate::derivation::phrase::generate_seed_phrase(chain, None).unwrap()
                 } else {
                     phrase(chain).to_string()
                 });
@@ -549,11 +545,11 @@ pub(crate) mod tests {
                 let stored: Vec<String> = outcome
                     .wallets
                     .iter()
-                    .map(|wallet| match wallet.primary_address() {
+                    .map(|wallet| match wallet.address.as_deref() {
                         Some(address) => address.to_string(),
                         None => crate::derivation::account_key::first_receive_address(
                             chain,
-                            wallet.account_xpub.as_deref().unwrap(),
+                            wallet.xpub.as_deref().unwrap(),
                         )
                         .unwrap(),
                     })

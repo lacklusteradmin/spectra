@@ -192,9 +192,7 @@ impl WalletService {
             .map_err(|_| {
                 SpectraBridgeError::refused("%@ is not a NEAR token contract.", [&contract])
             })?;
-            let gas = chain
-                .near_token_gas_limit()
-                .ok_or_else(|| SpectraBridgeError::failure("Missing NEAR gas limit"))?;
+            let gas = chain.near_token_gas_limit()?;
             let endpoints = this.near_nodes(chain).await?;
             let reads = crate::api::http::race(&endpoints, |endpoint| {
                 let (contract, account) = (&contract, &account);

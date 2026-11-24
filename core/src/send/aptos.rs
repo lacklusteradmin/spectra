@@ -4,14 +4,19 @@
 use super::bcs;
 use crate::send::error::SendError;
 use crate::send::keys::Ed25519Seed;
-use serde_json::{Value, json};
 use sha3::{Digest, Sha3_256};
 
+/// A transaction built and ready to sign: its signing message (the
+/// RawTransaction prefix hash and its BCS) and the terms that message holds
+/// which the send stages check again before signing.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PreparedAptosTransfer {
     sender: [u8; 32],
     pub(crate) message: Vec<u8>,
-    pub(crate) body: Value,
+    pub(crate) sequence: u64,
+    pub(crate) max_gas: u64,
+    pub(crate) gas_price: u64,
+    pub(crate) expiration: u64,
     pub(crate) staking_public_key: Option<[u8; 32]>,
 }
 
@@ -41,8 +46,7 @@ pub(crate) fn prepare_transfer(
 }
 
 /// Coin types call `coin::transfer<T>`; fungible-asset metadata objects call
-/// `primary_fungible_store::transfer<Metadata>`. Both payloads are encoded
-/// locally so the signed BCS commits to the same asset as the reviewed JSON.
+/// `primary_fungible_store::transfer<Metadata>`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare_token_transfer(
     from: &str,
@@ -112,31 +116,47 @@ pub(crate) fn prepare_token_transfer(
     message.extend_from_slice(&gas_price.to_le_bytes());
     message.extend_from_slice(&expiration.to_le_bytes());
     message.push(chain_id);
-    let json_arguments = if identifier.contains("::") {
-        vec![format!("0x{}", hex::encode(recipient)), amount.to_string()]
-    } else {
-        vec![
-            format!("0x{}", hex::encode(bcs::address(identifier)?)),
-            format!("0x{}", hex::encode(recipient)),
-            amount.to_string(),
-        ]
-    };
-    let body = json!({"sender":format!("0x{}",hex::encode(sender)),"sequence_number":sequence.to_string(),"max_gas_amount":max_gas.to_string(),"gas_unit_price":gas_price.to_string(),"expiration_timestamp_secs":expiration.to_string(),"payload":{"type":"entry_function_payload","function":format!("0x1::{module}::transfer"),"type_arguments":[coin_type],"arguments":json_arguments}});
     Ok(PreparedAptosTransfer {
         sender,
         message,
-        body,
+        sequence,
+        max_gas,
+        gas_price,
+        expiration,
         staking_public_key: None,
     })
 }
 impl PreparedAptosTransfer {
-    /// RawTransaction's chain id is its final BCS byte; the submission JSON
-    /// intentionally omits it as required by the REST transaction schema.
+    /// RawTransaction's chain id is its final BCS byte.
     pub(crate) fn chain_id(&self) -> Option<u8> {
         self.message.last().copied()
     }
 
-    pub(crate) fn sign(mut self, key: &Ed25519Seed) -> Result<(String, String), SendError> {
+    /// The SignedTransaction BCS: the RawTransaction the message signs, then
+    /// an Ed25519 authenticator (0) with its public key and signature.
+    fn signed_transaction(&self, public: &[u8], signature: &[u8]) -> Result<Vec<u8>, SendError> {
+        let raw = self
+            .message
+            .get(32..)
+            .filter(|_| self.message[..32] == Sha3_256::digest(b"APTOS::RawTransaction")[..])
+            .ok_or_else(|| SendError::invalid("Invalid Aptos signing message"))?;
+        let mut signed = raw.to_vec();
+        signed.push(0);
+        bcs::bytes(public, &mut signed);
+        bcs::bytes(signature, &mut signed);
+        Ok(signed)
+    }
+
+    /// The transaction as a simulation takes it: signed by `public` with an
+    /// all-zero signature, which a node executes without checking.
+    pub(crate) fn simulation(&self, public: &[u8; 32]) -> Result<Vec<u8>, SendError> {
+        self.signed_transaction(public, &[0; 64])
+    }
+
+    /// The SignedTransaction BCS a node takes, and the hash it lands under:
+    /// SHA3 of the `APTOS::Transaction` prefix, `Transaction::UserTransaction`
+    /// (0) and the signed BCS.
+    pub(crate) fn sign(self, key: &Ed25519Seed) -> Result<(Vec<u8>, String), SendError> {
         let public = key.public_key();
         let address: [u8; 32] = Sha3_256::new()
             .chain_update(public)
@@ -148,25 +168,27 @@ impl PreparedAptosTransfer {
                 "Aptos sender does not match signing seed".into(),
             ));
         }
-        let signature = key.sign(&self.message);
-        let raw = self
-            .message
-            .get(32..)
-            .filter(|_| self.message[..32] == Sha3_256::digest(b"APTOS::RawTransaction")[..])
-            .ok_or_else(|| SendError::invalid("Invalid Aptos signing message"))?;
-        // Transaction::UserTransaction(0), followed by SignedTransaction BCS:
-        // RawTransaction, Ed25519 authenticator(0), byte-vector public/signature.
-        let mut transaction = vec![0];
-        transaction.extend_from_slice(raw);
-        transaction.push(0);
-        bcs::bytes(&public, &mut transaction);
-        bcs::bytes(&signature, &mut transaction);
+        let signed = self.signed_transaction(&public, &key.sign(&self.message))?;
         let hash = Sha3_256::new()
             .chain_update(Sha3_256::digest(b"APTOS::Transaction"))
-            .chain_update(transaction)
+            .chain_update([0])
+            .chain_update(&signed)
             .finalize();
-        self.body["signature"] = json!({"type":"ed25519_signature","public_key":format!("0x{}",hex::encode(public)),"signature":format!("0x{}",hex::encode(signature))});
-        Ok((self.body.to_string(), format!("0x{}", hex::encode(hash))))
+        Ok((signed, format!("0x{}", hex::encode(hash))))
+    }
+}
+
+/// The `delegation_pool` entry function a staking action calls.
+pub(crate) fn delegation_function(
+    action: crate::staking::StakingAction,
+) -> Result<&'static str, SendError> {
+    match action {
+        crate::staking::StakingAction::Stake => Ok("add_stake"),
+        crate::staking::StakingAction::Unstake => Ok("unlock"),
+        crate::staking::StakingAction::Withdraw => Ok("withdraw"),
+        _ => Err(SendError::invalid(
+            "Aptos delegation rewards compound into stake",
+        )),
     }
 }
 
@@ -182,16 +204,7 @@ pub(crate) fn prepare_delegation(
     chain_id: u8,
     action: crate::staking::StakingAction,
 ) -> Result<PreparedAptosTransfer, SendError> {
-    let function = match action {
-        crate::staking::StakingAction::Stake => "add_stake",
-        crate::staking::StakingAction::Unstake => "unlock",
-        crate::staking::StakingAction::Withdraw => "withdraw",
-        _ => {
-            return Err(SendError::invalid(
-                "Aptos delegation rewards compound into stake",
-            ));
-        }
-    };
+    let function = delegation_function(action)?;
     if amount == 0 || gas_price == 0 || max_gas == 0 || expiration == 0 {
         return Err(SendError::invalid(
             "Invalid Aptos delegation amount, gas or expiration",
@@ -214,18 +227,103 @@ pub(crate) fn prepare_delegation(
     message.extend_from_slice(&gas_price.to_le_bytes());
     message.extend_from_slice(&expiration.to_le_bytes());
     message.push(chain_id);
-    let body = json!({"sender":format!("0x{}",hex::encode(sender)),"sequence_number":sequence.to_string(),"max_gas_amount":max_gas.to_string(),"gas_unit_price":gas_price.to_string(),"expiration_timestamp_secs":expiration.to_string(),"payload":{"type":"entry_function_payload","function":format!("0x1::delegation_pool::{function}"),"type_arguments":[],"arguments":[format!("0x{}",hex::encode(pool)),amount.to_string()]}});
     Ok(PreparedAptosTransfer {
         sender,
         message,
-        body,
+        sequence,
+        max_gas,
+        gas_price,
+        expiration,
         staking_public_key: None,
     })
+}
+
+/// A RawTransaction or SignedTransaction this module encodes, read back for a
+/// test's loopback node: an entry-function call whose type arguments are
+/// structs without type parameters.
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) struct DecodedAptosTransaction {
+    pub sender: [u8; 32],
+    pub function: String,
+    pub arguments: Vec<Vec<u8>>,
+    pub max_gas: u64,
+    pub gas_price: u64,
+    /// The Ed25519 public key and signature of a signed transaction.
+    pub authenticator: Option<([u8; 32], Vec<u8>)>,
+}
+
+#[cfg(test)]
+pub(crate) fn decode(bytes: &[u8]) -> DecodedAptosTransaction {
+    struct Reader<'a>(&'a [u8]);
+    impl<'a> Reader<'a> {
+        fn take(&mut self, n: usize) -> &'a [u8] {
+            let (out, rest) = self.0.split_at(n);
+            self.0 = rest;
+            out
+        }
+        fn byte(&mut self) -> u8 {
+            self.take(1)[0]
+        }
+        fn u64(&mut self) -> u64 {
+            u64::from_le_bytes(self.take(8).try_into().unwrap())
+        }
+        fn uleb(&mut self) -> usize {
+            let (mut value, mut shift) = (0usize, 0);
+            loop {
+                let byte = self.byte();
+                value |= usize::from(byte & 0x7f) << shift;
+                if byte & 0x80 == 0 {
+                    return value;
+                }
+                shift += 7;
+            }
+        }
+        fn vector(&mut self) -> &'a [u8] {
+            let len = self.uleb();
+            self.take(len)
+        }
+        fn text(&mut self) -> String {
+            String::from_utf8(self.vector().to_vec()).unwrap()
+        }
+    }
+    let mut r = Reader(bytes);
+    let sender: [u8; 32] = r.take(32).try_into().unwrap();
+    r.u64(); // sequence
+    assert_eq!(r.byte(), 2, "an entry function");
+    let address = hex::encode(r.take(32));
+    let address = address.trim_start_matches('0');
+    let function = format!("0x{address}::{}::{}", r.text(), r.text());
+    for _ in 0..r.uleb() {
+        assert_eq!(r.byte(), 7, "a struct type argument");
+        r.take(32);
+        r.vector();
+        r.vector();
+        assert_eq!(r.uleb(), 0, "no type parameters");
+    }
+    let arguments = (0..r.uleb()).map(|_| r.vector().to_vec()).collect();
+    let max_gas = r.u64();
+    let gas_price = r.u64();
+    r.take(9); // expiration, chain id
+    let authenticator = (!r.0.is_empty()).then(|| {
+        assert_eq!(r.byte(), 0, "an Ed25519 authenticator");
+        let public: [u8; 32] = r.vector().try_into().unwrap();
+        (public, r.vector().to_vec())
+    });
+    DecodedAptosTransaction {
+        sender,
+        function,
+        arguments,
+        max_gas,
+        gas_price,
+        authenticator,
+    }
 }
 
 #[cfg(test)]
 mod token_tests {
     use super::*;
+    use serde_json::Value;
     #[test]
     fn token_transfers_match_official_sdk_signing_vectors() {
         let fixtures: Value =
@@ -249,12 +347,11 @@ mod token_tests {
                 hex::encode(&prepared.message),
                 vector["message"].as_str().unwrap()
             );
-            let (body, hash) = prepared.sign(&key).unwrap();
+            let (signed, hash) = prepared.sign(&key).unwrap();
             assert_eq!(hash, vector["transaction_hash"].as_str().unwrap());
-            let signed: Value = serde_json::from_str(&body).unwrap();
             assert_eq!(
-                signed["signature"]["signature"].as_str().unwrap(),
-                format!("0x{}", vector["signature"].as_str().unwrap())
+                hex::encode(&signed[signed.len() - 64..]),
+                vector["signature"].as_str().unwrap()
             );
         }
     }

@@ -7,7 +7,7 @@ use crate::registry::Chain;
 use crate::validation::address::validate_address;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct EvmReceiptClassification {
     pub is_confirmed: bool,
     pub is_failed: bool,
@@ -334,7 +334,7 @@ pub fn evm_has_contract_code(code: String) -> bool {
 // is missing / blank). Returns formatted strings (3 decimals) the way Swift
 // renders them into the composer fields.
 
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct EvmReplacementFeeBump {
     pub max_fee_gwei: String,
     pub priority_fee_gwei: String,

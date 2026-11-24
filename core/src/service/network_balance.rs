@@ -85,7 +85,6 @@ pub struct NativeBalanceSummary {
 #[path = "tests/network_balance.rs"]
 mod tests;
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Unified per-chain native balance summary, replacing chain-specific JSON
     /// decoding on the Swift side. Smallest unit is returned as a decimal

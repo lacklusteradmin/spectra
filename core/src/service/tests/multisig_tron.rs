@@ -51,8 +51,11 @@ async fn node() -> (MockServer, Shared) {
                     {"key": "getTransactionFee", "value": 1000},
                     {"key": "getEnergyFee", "value": 210},
                 ]}),
-                "/wallet/broadcasttransaction" => {
-                    let txid = body["txID"].clone();
+                "/wallet/broadcasthex" => {
+                    let signed = hex::decode(body["transaction"].as_str().unwrap()).unwrap();
+                    let (raw, signatures) = crate::send::tron::split_signed(&signed);
+                    assert_eq!(signatures.len(), 2, "both signers' signatures");
+                    let txid = hex::encode(crate::send::tron_multisig::transaction_id(&raw));
                     node.broadcasts.push(body);
                     json!({"result": true, "txid": txid})
                 }
@@ -112,6 +115,7 @@ async fn wallets(server: &MockServer) -> Wallets {
                     named_account: None,
                     ton_wallet_version: None,
                     upgrade_wallet_id: None,
+                    created: false,
                 })
                 .await
                 .unwrap()

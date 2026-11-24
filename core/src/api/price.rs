@@ -55,7 +55,7 @@ pub enum FiatRateProvider {
 /// One coin the caller wants priced. `holding_key` is the caller's own
 /// identifier, returned in the quote map. Each provider has its own explicit
 /// id; nothing matches on ticker symbol — see [`PRICE_PROVIDERS`].
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceRequestCoin {
     pub holding_key: String,

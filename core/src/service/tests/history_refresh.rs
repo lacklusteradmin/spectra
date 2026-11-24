@@ -1,8 +1,8 @@
 use super::*;
 use crate::api::endpoint::EndpointCapability;
-use crate::store::state::{WalletAddress, WalletState};
+use crate::store::state::WalletState;
 
-fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
+fn wallet(id: &str, chain: Chain, address: Option<&str>) -> WalletState {
     WalletState {
         id: id.to_string(),
         name: format!("{id} wallet"),
@@ -13,17 +13,10 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
         chain_id: chain,
         xpub: None,
         derivation_path: None,
+        derivation_profile: None,
         derivation_flags: Default::default(),
         holdings: Vec::new(),
-        addresses: addresses
-            .iter()
-            .map(|(chain, address)| WalletAddress {
-                chain_id: *chain,
-                address: (*address).to_string(),
-                kind: "receive".to_string(),
-                derivation_path: None,
-            })
-            .collect(),
+        address: address.map(str::to_string),
         restore_height: None,
         hidden_holdings: Vec::new(),
         icp_principal: None,
@@ -39,9 +32,9 @@ fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
 fn targets_are_the_chains_wallets_that_have_an_address() {
     let state = ResidentState {
         wallets: vec![
-            wallet("w1", Chain::Solana, &[(Chain::Solana, "So1")]),
-            wallet("w2", Chain::Solana, &[]),
-            wallet("w3", Chain::Bitcoin, &[(Chain::Bitcoin, "bc1")]),
+            wallet("w1", Chain::Solana, Some("So1")),
+            wallet("w2", Chain::Solana, None),
+            wallet("w3", Chain::Bitcoin, Some("bc1")),
         ],
         ..Default::default()
     };
@@ -66,18 +59,10 @@ fn targets_are_the_chains_wallets_that_have_an_address() {
 /// found nothing. The two are separate answers.
 #[test]
 fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
-    let mut state = ResidentState {
-        wallets: vec![wallet(
-            "w1",
-            Chain::Bitcoin,
-            &[
-                (Chain::Bitcoin, "bc1main"),
-                (Chain::BitcoinTestnet4, "tb1test"),
-            ],
-        )],
+    let state = ResidentState {
+        wallets: vec![wallet("w1", Chain::BitcoinTestnet4, Some("tb1test"))],
         ..Default::default()
     };
-    state.wallets[0].chain_id = crate::registry::Chain::BitcoinTestnet4;
     let target = &targets(&state, Chain::Bitcoin, &[])[0];
     assert_eq!(target.network, Chain::BitcoinTestnet4, "fetched from");
     assert_eq!(target.address, "tb1test");
@@ -115,11 +100,7 @@ fn a_testnet_wallet_fetches_and_persists_its_exact_network() {
 #[test]
 fn an_undated_entry_is_stored_as_unknown() {
     let state = ResidentState {
-        wallets: vec![wallet(
-            "w1",
-            Chain::Litecoin,
-            &[(Chain::Litecoin, "ltc1me")],
-        )],
+        wallets: vec![wallet("w1", Chain::Litecoin, Some("ltc1me"))],
         ..Default::default()
     };
     let target = &targets(&state, Chain::Litecoin, &[])[0];
@@ -149,21 +130,19 @@ fn an_undated_entry_is_stored_as_unknown() {
 /// A wallet on a testnet fetches the address for that network.
 #[test]
 fn a_target_follows_the_network_the_wallet_is_on() {
-    let mut state = ResidentState {
-        wallets: vec![wallet(
-            "w1",
-            Chain::Bitcoin,
-            &[
-                (Chain::Bitcoin, "bc1main"),
-                (Chain::BitcoinTestnet4, "tb1test"),
-            ],
-        )],
+    let state = ResidentState {
+        wallets: vec![
+            wallet("w1", Chain::Bitcoin, Some("bc1main")),
+            wallet("w2", Chain::BitcoinTestnet4, Some("tb1test")),
+        ],
         ..Default::default()
     };
-    assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "bc1main");
-
-    state.wallets[0].chain_id = crate::registry::Chain::BitcoinTestnet4;
-    assert_eq!(targets(&state, Chain::Bitcoin, &[])[0].address, "tb1test");
+    let addresses: Vec<_> = targets(&state, Chain::Bitcoin, &[])
+        .into_iter()
+        .map(|target| (target.network, target.address))
+        .collect();
+    assert!(addresses.contains(&(Chain::Bitcoin, "bc1main".to_string())));
+    assert!(addresses.contains(&(Chain::BitcoinTestnet4, "tb1test".to_string())));
 }
 
 /// The record carries the wallet the entry belongs to, and an id a front
@@ -195,7 +174,10 @@ fn a_record_names_its_wallet_and_carries_a_uuid() {
     );
     assert_eq!(record.wallet_id.as_deref(), Some("w1"));
     assert_eq!(record.wallet_name, "Main");
-    assert_eq!(record.transaction_history_source.as_deref(), Some("rust"));
+    assert_eq!(
+        record.history_source,
+        Some(crate::store::persistence_models::HistorySource::Internal)
+    );
     assert_eq!(record.created_at_unix, 1_700_000_000.0);
     assert_eq!(record.receipt_block_number, Some(7));
     // Parseable as a UUID: a front end drops a row whose id is not.
@@ -362,7 +344,7 @@ async fn a_chain_no_explorer_serves_counts_a_failure_and_reports_it() {
         .into_owned();
     service.open_state(db).await.expect("open");
     service
-        .upsert_wallet(wallet("w1", Chain::Cronos, &[(Chain::Ethereum, "0xabc")]))
+        .upsert_wallet(wallet("w1", Chain::Cronos, Some("0xabc")))
         .await
         .expect("wallet");
 
@@ -396,7 +378,7 @@ async fn a_utxo_wallet_with_no_known_addresses_is_not_exhausted() {
         .into_owned();
     service.open_state(db).await.expect("open");
     service
-        .upsert_wallet(wallet("w1", Chain::Litecoin, &[(Chain::Litecoin, "ltc1")]))
+        .upsert_wallet(wallet("w1", Chain::Litecoin, Some("ltc1")))
         .await
         .expect("wallet");
 
@@ -460,7 +442,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
         .into_owned();
     service.open_state(db).await.expect("open");
     service
-        .upsert_wallet(wallet("w1", Chain::Litecoin, &[(Chain::Litecoin, ANSWERS)]))
+        .upsert_wallet(wallet("w1", Chain::Litecoin, Some(ANSWERS)))
         .await
         .expect("wallet");
     // The second address is the wallet's keypool, which is where the
@@ -547,7 +529,7 @@ async fn owned_history_scope_and_failed_clock_are_core_decisions() {
         .await
         .unwrap();
     service
-        .upsert_wallet(wallet("w1", Chain::Cronos, &[(Chain::Ethereum, "0xabc")]))
+        .upsert_wallet(wallet("w1", Chain::Cronos, Some("0xabc")))
         .await
         .unwrap();
     assert!(
@@ -640,7 +622,7 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
     // Cronos has no keyless history provider: refusal is offline and remains retryable.
     for id in ["a", "b"] {
         service
-            .upsert_wallet(wallet(id, Chain::Cronos, &[(Chain::Ethereum, "0xabc")]))
+            .upsert_wallet(wallet(id, Chain::Cronos, Some("0xabc")))
             .await
             .unwrap();
     }
@@ -680,10 +662,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
     let mut w = wallet(
         "w",
         Chain::Ethereum,
-        &[(
-            Chain::Ethereum,
-            "0x1111111111111111111111111111111111111111",
-        )],
+        Some("0x1111111111111111111111111111111111111111"),
     );
     w.chain_id = Chain::EthereumSepolia;
     service.upsert_wallet(w).await.unwrap();
@@ -703,7 +682,6 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
         decoded_page: page,
         normalized_address: "0x1111111111111111111111111111111111111111".into(),
         chain_id: Chain::EthereumSepolia,
-        token_source_used: None,
         wallets: vec![EvmTransactionRecordWalletInput {
             wallet_id: "w".into(),
             wallet_name: "W".into(),
@@ -807,7 +785,6 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
         },
         normalized_address: "from".into(),
         chain_id: crate::registry::Chain::Ethereum,
-        token_source_used: None,
         wallets: vec![EvmTransactionRecordWalletInput {
             wallet_id: "w".into(),
             wallet_name: "W".into(),
@@ -906,7 +883,7 @@ async fn a_full_token_page_of_unknown_contracts_is_not_the_end_of_the_history() 
             .await
             .expect("endpoint");
     }
-    let mut sepolia = wallet("w1", Chain::Ethereum, &[(Chain::EthereumSepolia, OWNER)]);
+    let mut sepolia = wallet("w1", Chain::Ethereum, Some(OWNER));
     sepolia.chain_id = Chain::EthereumSepolia;
     service.upsert_wallet(sepolia).await.expect("wallet");
 
@@ -1017,7 +994,7 @@ async fn a_solana_page_that_stores_nothing_still_pages_on_from_its_last_signatur
     }])
     .await;
     service
-        .upsert_wallet(wallet("w1", Chain::Solana, &[(Chain::Solana, OWNER)]))
+        .upsert_wallet(wallet("w1", Chain::Solana, Some(OWNER)))
         .await
         .expect("wallet");
 

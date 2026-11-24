@@ -2,6 +2,22 @@
 use super::*;
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
+    /// Always resolve afresh; no service-lifetime cache for payment destinations.
+    pub async fn resolve_send_destination(
+        &self,
+        chain_id: crate::registry::Chain,
+        input: String,
+    ) -> Result<SendDestinationResolution, SpectraBridgeError> {
+        let this = self.clone();
+        crate::service::worker::run(async move {
+            let this = &this;
+            resolve_destination(chain_id, input, |name| this.resolve_ens_name(name)).await
+        })
+        .await
+    }
+}
+
+impl WalletService {
     /// Does this destination look unused for the asset this holding sends?
     ///
     /// Named by wallet and holding, not by chain and token descriptor: which
@@ -95,20 +111,6 @@ impl WalletService {
                 balance_is_zero,
                 has_history,
             ))
-        })
-        .await
-    }
-
-    /// Always resolve afresh; no service-lifetime cache for payment destinations.
-    pub async fn resolve_send_destination(
-        &self,
-        chain_id: crate::registry::Chain,
-        input: String,
-    ) -> Result<SendDestinationResolution, SpectraBridgeError> {
-        let this = self.clone();
-        crate::service::worker::run(async move {
-            let this = &this;
-            resolve_destination(chain_id, input, |name| this.resolve_ens_name(name)).await
         })
         .await
     }
@@ -275,7 +277,7 @@ pub enum SendDestinationActivity {
     Funded,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendDestinationRisk {
     pub balance_is_zero: bool,
     pub has_history: bool,

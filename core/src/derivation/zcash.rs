@@ -6,11 +6,11 @@ use crate::derivation::bitcoin::{base58check_encode, derive_secp_keypair, hash16
 use crate::derivation::types::{DerivationResult, parse_path_metadata};
 use crate::error::SpectraBridgeError;
 
-const ZCASH_MAINNET_VERSION: [u8; 2] = [0x1C, 0xB8];
-const ZCASH_TESTNET_VERSION: [u8; 2] = [0x1D, 0x25];
+use crate::registry::Chain;
 
-// Build a Zcash transparent P2PKH address from a 2-byte version prefix and compressed pubkey.
-fn zcash_p2pkh_addr(version: [u8; 2], pubkey: &secp256k1::PublicKey) -> String {
+/// A Zcash transparent P2PKH address from its 2-byte version prefix and a
+/// compressed public key.
+pub(crate) fn zcash_p2pkh_addr(version: [u8; 2], pubkey: &secp256k1::PublicKey) -> String {
     let mut payload = vec![version[0], version[1]];
     payload.extend_from_slice(&hash160(&pubkey.serialize()));
     base58check_encode(&payload)
@@ -49,7 +49,7 @@ pub fn derive_zcash(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     zcash_internal(
-        ZCASH_MAINNET_VERSION,
+        Chain::Zcash.zcash_transparent_p2pkh_version()?,
         seed_phrase,
         derivation_path,
         passphrase,
@@ -69,7 +69,7 @@ pub fn derive_zcash_testnet(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     zcash_internal(
-        ZCASH_TESTNET_VERSION,
+        Chain::ZcashTestnet.zcash_transparent_p2pkh_version()?,
         seed_phrase,
         derivation_path,
         passphrase,

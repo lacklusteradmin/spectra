@@ -13,7 +13,9 @@ Core's tests own the rules: ordinary sends the account's key cannot make
 alone, deadlines, weights, thresholds and changed permissions
 (core/src/send/tests/tron_multisig.rs, core/src/service/tests/multisig_tron.rs).
 """
-from harness import Handler, Spectra, fixture, scratch, serve, signed_by
+import hashlib
+
+from harness import Handler, Spectra, fixture, scratch, serve, signed_by, tron_signed
 
 FIXTURE = fixture('tron-multisig.json')
 GENESIS = '00000000000000001ebf88508a03865c71d452e25f4d51194196a1d22b6653dc'
@@ -38,9 +40,11 @@ class Node(Handler):
             return self.reply({'chainParameter': [{'key': 'getMultiSignFee', 'value': 1_000_000},
                                                   {'key': 'getTransactionFee', 'value': 1000},
                                                   {'key': 'getEnergyFee', 'value': 210}]})
-        if path == '/wallet/broadcasttransaction':
-            self.state['broadcasts'].append(body)
-            return self.reply({'result': True, 'txid': body['txID']})
+        if path == '/wallet/broadcasthex':
+            raw, signatures = tron_signed(body)
+            txid = hashlib.sha256(raw).hexdigest()
+            self.state['broadcasts'].append((txid, signatures))
+            return self.reply({'result': True, 'txid': txid})
         self.send_error(404, path)
 
 
@@ -73,8 +77,8 @@ with serve(Node, broadcasts=[]) as node, scratch('tron-multisig') as directory:
     assert not broadcasts
     sent = a.run('multisig', 'submit', created['id'], '--yes')['session']
     assert sent['submittedTxid'] == created['transactionId'], sent
-    [broadcast] = broadcasts
-    assert broadcast['txID'] == created['transactionId'] and len(broadcast['signature']) == 2, broadcast
+    [(txid, signatures)] = broadcasts
+    assert txid == created['transactionId'] and len(signatures) == 2, broadcasts
     assert a.run('multisig', 'show', created['id'])['session']['submittedTxid'] == created['transactionId']
 print('PASS tron multisig: an active-permission session signed in two data directories, '
       'joined and broadcast once')

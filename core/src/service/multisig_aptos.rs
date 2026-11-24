@@ -238,9 +238,7 @@ impl WalletService {
         let policy = policy(wallet)?;
         let client = self.aptos_verified_client(chain).await?;
         let sequence = self.aptos_sequence(&client, &policy).await?;
-        let max_gas = chain
-            .aptos_max_gas_amount()
-            .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos gas limit"))?;
+        let max_gas = chain.aptos_max_gas_amount()?;
         let gas_price = client.fetch_gas_price().await?;
         let balance = client
             .fetch_balance(&policy.authentication_key())
@@ -261,9 +259,7 @@ impl WalletService {
             max_gas,
             gas_price,
             expiration: crate::store::now_unix() as u64 + lifetime,
-            chain_id: chain
-                .aptos_chain_id()
-                .ok_or_else(|| SpectraBridgeError::invalid("Missing Aptos chain id"))?,
+            chain_id: chain.aptos_chain_id()?,
         };
         Ok(SessionBody::Aptos(AptosSession {
             transaction: format!("0x{}", hex::encode(transfer.raw()?)),

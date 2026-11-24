@@ -270,7 +270,7 @@ mod tests {
                     contract: contract.into(),
                     coingecko_id: String::new(),
                     coinpaprika_id: String::new(),
-                    decimals,
+                    decimals: Some(decimals),
                 },
             );
         }

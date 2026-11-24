@@ -1,5 +1,194 @@
 # Changelog
 
+## Beta Commit 253
+
+- **Per-chain constants that callers restated are read from `registry::Chain`**
+  (`registry/utxo.rs`, `registry/networks.rs`, `registry/staking.rs`)
+  - Dogecoin and Bitcoin Cash P2PKH versions come from
+    `fixed_utxo_address_versions`; Zcash's transparent version from
+    `zcash_transparent_p2pkh_version` and Kaspa's address prefix from
+    `kaspa_address_hrp` (before: constants in `derivation/dogecoin.rs`,
+    `bitcoin_cash.rs`, `zcash.rs` and `kaspa.rs`, and literal bytes in the
+    registry's discovery encoder).
+  - Native-coin decimals in the EVM preview and history, Sui history, the PSBT
+    spend amount, the Zcash shielded review check and the MWEB and Zcash
+    shielded balances come from `native_decimals` (before: 18, 9 and 8 written
+    at each site).
+  - Substrate message verification decodes with the network's `ss58_prefix`,
+    and refuses a network without one (before: 0 for Polkadot and 42 for
+    anything else).
+  - Aptos transaction and TON message lifetimes are
+    `aptos_transaction_lifetime_secs` (600) and `ton_message_lifetime_secs`
+    (60).
+  - `aptos_chain_id`, `aptos_max_gas_amount`, `near_token_gas_limit`,
+    `near_zero_balance_storage_limit`, `aptos_delegation_minimum`,
+    `sui_staking_minimum`, `sui_staking_gas_budget` and `near_staking_gas_limit`
+    return a `RegistryError` for another network (before: `None`, unwrapped or
+    given a message at each call site).
+  - Whether a network's staking reads sign with the wallet's key is
+    `staking_reads_require_authorization`, which `staking_input_rules` and the
+    CLI's `staking positions`, `recheck` and `repair` read (before: the CLI
+    compared the chain with ICP itself).
+- **ICP and Kaspa requests are written in `api/`; `send/` signs and hands over
+  bytes or a typed transaction** (`api/icp_rosetta.rs`, `api/kaspa_rest.rs`,
+  `send/icp_stages.rs`, `send/kaspa.rs`, `send/payload.rs`)
+  - `IcpClient::suggested_transfer_fee` makes the Rosetta preprocess and
+    metadata calls, and `submit_signed_transaction` takes the signed CBOR;
+    `rosetta_post` is private (before: `send::icp_stages` built both
+    construction requests and the submit document).
+  - A signed ICP transfer is kept as `SignedPayload::Hex` of its CBOR (before:
+    the Rosetta submit document as `Json`).
+  - The balance and history reads name the ledger through
+    `network_identifier()` (before: the ledger id written out in each).
+  - A signed Kaspa transaction is `SignedPayload::Kaspa(KaspaTransaction)`,
+    which `KaspaClient::broadcast` writes as kaspa-rest's `/transactions` body
+    (before: `send::kaspa` wrote that body and the client posted it as given).
+- **The Sapling parameters download from `api::zcash_parameters`** (before:
+  `service/zcash_shielded.rs` fetched from a URL kept in
+  `send/zcash_shielded.rs`).
+- **One bounded body reader, `api::http::read_limited`**, used by
+  `HttpClient::get_bytes`, the ICP replica status read and Monero's RPC
+  transport (before: the latter two each read chunks by hand, and `get_bytes`
+  read a body without a length header whole before checking it).
+- **An EVM send's preview and its build encode the transfer with one function,
+  `send::evm::transfer_call`** (`service/send_preview.rs`,
+  `service/send_stages.rs`)
+  - `fetch_evm_send_preview` takes the `TransferCall` (before: `value_wei` and
+    `data_hex` strings it parsed back, from `prepare_evm_send_assembly`'s own
+    hex encoder).
+  - The `prepare_evm_send_assembly` export and its `EvmSendAssemblyInput`,
+    `EvmSendAssembly`, `EvmSupportedToken` and `EvmSendError` types are
+    removed; `spectra send assemble` prints `transfer_call`'s answer and no
+    longer takes `--from`, which decided nothing.
+- **An export exists only for a call the app's Swift makes; the CLI calls core
+  as plain Rust** (`docs/FFI-BOUNDARY.md` "Callers and coverage")
+  - 37 functions and methods only the CLI called are no longer exported,
+    among them `build_send`, `review_owned_send`, `execute_owned_send`,
+    `multisig_session`, `finalize_multisig`, `refresh_now`, `wallet_derived_state`,
+    `send_affordability`, `self_tests_run_all`, `list_token_deployments` and
+    the three artwork-name functions; the methods sit in `impl` blocks without
+    `#[uniffi::export]`.
+  - `tor_status` stays exported for the app's Tor test, which has no other
+    reading of the status.
+  - 30 types no export reaches lose their UniFFI derives, among them
+    `SendAffordability`, `MaintenancePlan`, `NormalizedHistoryItem`,
+    `DerivationResult`, `SendFeeField`, `TransactionStatusTrackerState` and the
+    price-alert evaluation records; `HistoryDiagnostics` and
+    `HistoryDiagnosticsSource` are plain structs (before: a macro that derived
+    a UniFFI record).
+- **A transaction record and a wallet carry what core decides about them;
+  the exports that took them back to decide are removed**
+  (`store/persistence_models.rs`, `store/wallet_domain.rs`,
+  `service/transaction_actions.rs`)
+  - A served `TransactionRecord` carries `direction` and `submitted`, set
+    beside `actions` (before: the `transaction_amount_direction` and
+    `transaction_kind_is_submitted` exports, called on every record).
+  - A served wallet's `derivation_profile` names the profile and account of
+    its path (before: the `derivation_profile_of_path` export).
+  - The history page's sent and received filters leave out a transfer of
+    nothing, as `direction` does (before: they listed it by kind alone).
+- **A record's history source is typed: `HistorySource::Internal` or
+  `Indexer { name }`** (`TransactionRecord.history_source`, before
+  `transaction_history_source`, a free string)
+  - Every EVM row, native or token, names the Blockscout indexer it was read
+    from (before: `etherscan` for native rows and `rust/etherscan`, shown as
+    is, for token rows).
+  - The `history_source` export, its `ChainProviders` case and the aliases no
+    producer wrote (`rpc`, `rust.hd`, `blockchair`, `esplora` and others) are
+    removed; the history search matches an indexer's name.
+  - The CLI's `txs` reports `historySource` in core's form (before: its own
+    `provider`, `chainProviders` or `internal`).
+- **Only the user's tokens are stored; the built-in catalog joins them each
+  time state is built** (`store/state.rs` `with_custom_tokens`;
+  `wallet_db/state.rs`)
+  - The `token_preferences` row holds the custom tokens' deployment entries
+    (before: every catalog token as a preference entry, rewritten by
+    `open_state` on every launch).
+  - `ResidentState::default()` carries the catalog's tokens, so a service
+    that has not opened a database has them too.
+  - `StateCommand::MergeBuiltInTokens` and `merge_built_in_token_preferences`
+    are removed.
+- **A wallet is one record, `WalletState`, stored and served alike**
+  (`store/state.rs`; `store/wallet_domain.rs` `WalletView` removed)
+  - A wallet has one `address: Option<String>` (before: a list of
+    `WalletAddress` rows, each with a kind that was always `receive` and a
+    copy of the wallet's path, and a slot-keyed map in `WalletView`);
+    `address_on` answers for every network sharing the wallet's address slot.
+  - Discovery, send identity, Zcash shielded keys, UTXO sources and the
+    keypool read the wallet's own `derivation_path` (before: three of them
+    each fell back from the address row's copy differently).
+  - `WalletState::served` fills each holding's id when core hands a wallet to
+    a front end (before: the `to_wallet_view`/`to_wallet_state`
+    conversions).
+  - Import builds `WalletState` directly, and `WalletImportOutcome` and
+    `PortfolioSnapshot` carry it; `ChainEntry.address_slot` is removed.
+  - A stored wallet row in the earlier shape (`addresses`) does not load.
+  - The CLI's wallet report drops `addresses`; `address` carries the one.
+- **Aptos and Tron sign and submit the bytes they built; the hand-written
+  JSON beside them is removed** (`send/aptos.rs`, `send/tron.rs`,
+  `send/payload.rs`)
+  - `PreparedAptosTransfer` keeps its sequence, gas and expiration as fields
+    and signs to SignedTransaction BCS, submitted and simulated as BCS
+    (before: a JSON body, submitted as JSON and read back by field name by
+    the send stages, staking and reservations).
+  - `PreparedTronTransfer` keeps its `RawReference` and signs to a protobuf
+    `Transaction`, submitted through `/wallet/broadcasthex`
+    (`TronHttpClient::broadcast_signed`; before: a JSON body through
+    `/wallet/broadcasttransaction`); a TRC-10 send is checked by encoding the
+    reviewed transfer again under the same reference.
+  - A Tron multisig session is submitted as protobuf with its gathered
+    signatures; TronWeb's JSON is written only for the signers to exchange
+    (`tron::encode_with_json`).
+  - `SignedPayload::Json` is removed: a signed ICP, Kaspa, Aptos or Tron
+    transaction is `Hex` (or `Kaspa`).
+- **Core decides a new wallet's phrase length and scan start, a chain
+  search's match and a custom token's decimals** (`validation`,
+  `derivation/phrase.rs`, `catalog/chains.rs`, `store/state.rs`; the CLI's
+  `wallet new`, `chains --filter` and `token add`/`edit`)
+  - `created_phrase_lengths` lists the lengths a created phrase may have,
+    and `generate_seed_phrase` takes the shortest when given none (before:
+    each front end read the setup descriptor's format and filtered the
+    lengths itself).
+  - `WalletImportCommit.created` starts a created scanning wallet's scan at
+    the current height (before: each front end asked
+    `new_wallet_restore_height`, now no longer exported).
+  - `chain_matches_search` matches a chain's name, symbol, search keywords
+    and tags; the CLI's filter reads it (before: name and symbol only) and
+    the app adds the localized name and tag titles.
+  - `AddCustomToken` and `UpdateCustomToken` take `decimals: Option<u32>`:
+    the protocol's fixed places, else the ones given, else
+    `TokenPreferenceRejection::DecimalsRequired` (before: the CLI looked up
+    the chain's standards to pick a number, sending 0 as a placeholder);
+    the CLI exits 3, rejected, without the places such a token needs
+    (before: 2, usage).
+- **A staged transaction's status is core's: `SendProgress.status`**
+  (`service/send_stages.rs` `SendStatus`): awaiting signature, signed,
+  rejected, uncertain, awaiting confirmation, confirmed or failed, read from
+  its record, its stage and the nodes' answers in that order (before: each
+  front-end page worked it out).
+- Tests: 8 new, 21 removed
+  - EVM transfer call 2: a typed decimal rounded or refused differently from
+    the build, and a token sent as value or the coin as a contract call.
+  - History filter 1: a transfer of nothing listed as sent or received.
+  - Stored tokens 1: catalog tokens written to the database or a custom one
+    lost on reopening.
+  - Served wallet 1: a holding without its id, a path without its profile,
+    or an address answered for another family's network.
+  - Token decimals 1: places guessed for a standard that fixes none.
+  - Chain search 1: a search that misses a keyword or tag.
+  - Send status 1: a status read other than from the record, then the stage,
+    then the nodes' answers.
+  - The removed tests checked the EVM assembly export, the history-source
+    parser, the wallet model conversions, a fallback between one wallet's
+    network addresses and the built-in token merge command.
+- Docs: `ARCHITECTURE.md` "Core module boundaries" (`api/`); `FFI-BOUNDARY.md`
+  "Callers and coverage".
+- Total: 159 .rs files changed (2 new, 2 deleted), +2142 −2721 lines; data and
+  config files: `scripts/test-source-scan.py`, `tests/acceptance/harness.py`,
+  `tests/acceptance/multisig_tron.py`, `tests/acceptance/staking.py`,
+  `tests/acceptance/trc10.py`; dependencies unchanged; `#[test]` functions
+  1572 → 1559, `cargo test` 1559 passing.
+
 ## Beta Commit 252
 
 - **A phrase wallet's derivation overrides are sealed beside its phrase; the

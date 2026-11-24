@@ -103,7 +103,19 @@ impl AppStateChanges {
         json_field!(diagnostics, "diagnostics");
         json_field!(schema_version, META_SCHEMA_VERSION);
         json_field!(settings, META_SETTINGS);
-        json_field!(token_preferences, META_TOKEN_PREFERENCES);
+        // Only the user's tokens are stored: the catalog's are its own.
+        if before.map(|state| &state.token_preferences) != Some(&after.token_preferences) {
+            let custom: Vec<_> = after
+                .token_preferences
+                .iter()
+                .filter(|entry| !entry.is_built_in)
+                .map(|entry| &entry.token)
+                .collect();
+            changes.meta.push((
+                META_TOKEN_PREFERENCES,
+                Some(serde_json::to_string(&custom).map_err(DbError::from)?),
+            ));
+        }
         json_field!(price_alerts, META_PRICE_ALERTS);
         json_field!(fiat_rates_from_usd, META_FIAT_RATES);
         json_field!(quotes, "quotes");
@@ -332,8 +344,11 @@ pub fn app_state_load(database: &WalletDatabase) -> Result<ResidentState, DbErro
                         .map_err(|e| DbError::Corrupt(format!("app_state_load settings: {e}")))?;
                 }
                 META_TOKEN_PREFERENCES => {
-                    state.token_preferences = serde_json::from_str(&value)
-                        .map_err(|e| DbError::Corrupt(format!("invalid token_preferences: {e}")))?;
+                    state.token_preferences = crate::store::state::with_custom_tokens(
+                        serde_json::from_str(&value).map_err(|e| {
+                            DbError::Corrupt(format!("invalid token_preferences: {e}"))
+                        })?,
+                    );
                 }
                 META_PRICE_ALERTS => {
                     state.price_alerts = serde_json::from_str(&value)

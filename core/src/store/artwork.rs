@@ -1,5 +1,4 @@
 //! Artwork is catalog metadata, addressed by token or network identity.
-#[uniffi::export]
 pub fn token_artwork_name(token_id: String) -> String {
     crate::catalog::tokens::catalog()
         .iter()
@@ -7,13 +6,11 @@ pub fn token_artwork_name(token_id: String) -> String {
         .map(|t| t.artwork_name.clone())
         .unwrap_or_default()
 }
-#[uniffi::export]
 pub fn chain_artwork_name(chain_id: crate::registry::Chain) -> String {
     Some(chain_id.entry())
         .map(|c| c.artwork_name.clone())
         .unwrap_or_default()
 }
-#[uniffi::export]
 pub fn deployment_artwork_name(deployment_id: Option<String>) -> String {
     deployment_id
         .and_then(|id| {

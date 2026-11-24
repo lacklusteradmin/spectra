@@ -159,8 +159,7 @@ fn now() -> u64 {
 /// The restore height for a wallet created now on `chain`, where wallets
 /// scan from one: no earlier output can belong to it, so its scan need not
 /// start further back. `None` on a network that does not scan.
-#[uniffi::export]
-pub fn new_wallet_restore_height(chain: Chain) -> Option<u64> {
+pub(crate) fn new_wallet_restore_height(chain: Chain) -> Option<u64> {
     takes_restore_height(chain).then(|| height_at_or_before(chain, now()))
 }
 

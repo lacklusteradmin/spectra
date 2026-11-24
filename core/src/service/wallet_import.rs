@@ -166,10 +166,7 @@ impl WalletService {
                 let previous = snapshot.clone();
                 let states = match &upgrade {
                     Some(upgraded) => vec![upgraded.clone()],
-                    None => wallets
-                        .iter()
-                        .map(|wallet| wallet.to_wallet_state())
-                        .collect::<Result<Vec<_>, _>>()?,
+                    None => wallets.clone(),
                 };
                 for wallet in states {
                     crate::store::state::upsert_wallet_in_place(&mut snapshot, wallet);
@@ -256,7 +253,7 @@ impl WalletService {
 /// both start here, so the address a page shows is the one the import stores.
 pub(super) struct ImportPlan {
     commit: crate::derivation::import::WalletImportCommit,
-    wallets: Vec<crate::store::wallet_domain::WalletView>,
+    wallets: Vec<crate::store::state::WalletState>,
     rejected_addresses: Vec<String>,
     /// The named account the wallet holds and the public key (hex) the
     /// network must list among its full-access keys before it is stored.
@@ -511,6 +508,10 @@ pub(super) fn plan_import(
                 crate::catalog::restore_heights::check_restore_height(chain, height)?;
                 height
             }
+            None if commit.created => crate::catalog::restore_heights::new_wallet_restore_height(
+                chain,
+            )
+            .unwrap_or_else(|| crate::catalog::restore_heights::default_restore_height(chain)),
             None => commit
                 .seed_phrase
                 .as_deref()
@@ -559,7 +560,7 @@ pub(super) fn plan_import(
             &commit.derivation_overrides,
         )?;
         for wallet in &mut wallets {
-            wallet.account_xpub = Some(xpub.clone());
+            wallet.xpub = Some(xpub.clone());
         }
     }
     Ok(ImportPlan {
@@ -584,13 +585,13 @@ fn free_wallet_name(
 }
 
 fn preview_address(
-    wallet: &crate::store::wallet_domain::WalletView,
+    wallet: &crate::store::state::WalletState,
 ) -> Result<String, SpectraBridgeError> {
-    if let Some(address) = wallet.primary_address() {
+    if let Some(address) = wallet.address.as_deref() {
         return Ok(address.to_string());
     }
     let xpub = wallet
-        .account_xpub
+        .xpub
         .as_deref()
         .ok_or_else(|| SpectraBridgeError::failure("a planned wallet has no address"))?;
     Ok(crate::derivation::account_key::first_receive_address(
@@ -630,8 +631,7 @@ fn place_import(
         .iter()
         .filter(|wallet| wallet.chain_id == chain)
         .map(|wallet| {
-            let mut addresses: Vec<String> =
-                wallet.addresses.iter().map(|a| a.address.clone()).collect();
+            let mut addresses: Vec<String> = wallet.address.iter().cloned().collect();
             // A watched account's first address; a phrase wallet's stored
             // key is its own address's account, already listed.
             addresses.extend(
@@ -661,12 +661,9 @@ fn place_import(
         .ok()
     })
     .flatten();
-    let holder = |wallet: &crate::store::wallet_domain::WalletView| {
+    let holder = |wallet: &crate::store::state::WalletState| {
         let address = preview_address(wallet).ok();
-        let key = wallet
-            .account_xpub
-            .as_deref()
-            .or(phrase_account_key.as_deref());
+        let key = wallet.xpub.as_deref().or(phrase_account_key.as_deref());
         held.iter()
             .find(|(_, addresses, stored_key)| {
                 address.as_ref().is_some_and(|a| addresses.contains(a))
@@ -732,7 +729,7 @@ fn place_import(
         upgraded.derivation_path = Some(format!("m/{}", policy.cosigners[cosigner].origin));
         upgraded.derivation_flags = plan.commit.derivation_overrides.flags();
         upgraded.xpub = None;
-        plan.wallets = vec![upgraded.to_wallet_view()];
+        plan.wallets = vec![upgraded.clone()];
         return Ok(Placed {
             plan,
             upgrade: Some(upgraded),
@@ -761,13 +758,13 @@ fn place_import(
             if !existing.is_watch_only() {
                 return Err(refused(existing));
             }
-            let mut upgraded = plan.wallets[0].to_wallet_state()?;
+            let mut upgraded = plan.wallets[0].clone();
             upgraded.id = existing.id.clone();
             upgraded.name = existing.name.clone();
             upgraded.include_in_portfolio_total = existing.include_in_portfolio_total;
             upgraded.holdings = existing.holdings.clone();
             upgraded.hidden_holdings = existing.hidden_holdings.clone();
-            plan.wallets = vec![upgraded.to_wallet_view()];
+            plan.wallets = vec![upgraded.clone()];
             Ok(Placed {
                 plan,
                 upgrade: Some(upgraded),
@@ -784,13 +781,13 @@ fn place_import(
             ))
         }
         WalletImportKind::WatchAddresses { .. } => {
-            let mut kept: Vec<crate::store::wallet_domain::WalletView> = Vec::new();
+            let mut kept: Vec<crate::store::state::WalletState> = Vec::new();
             let mut first_holder = None;
             for wallet in std::mem::take(&mut plan.wallets) {
-                let address = wallet.primary_address().unwrap_or_default().to_string();
+                let address = wallet.address.as_deref().unwrap_or_default().to_string();
                 let repeated = kept
                     .iter()
-                    .any(|k| k.primary_address() == Some(address.as_str()));
+                    .any(|k| k.address.as_deref() == Some(address.as_str()));
                 match holder(&wallet) {
                     Some(held_by) => {
                         first_holder.get_or_insert(held_by);

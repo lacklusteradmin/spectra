@@ -2,13 +2,12 @@
 //! Wire definitions: dfinity/ic rs/rosetta-api/icp/{models,convert}.rs and
 //! rs/ledger_suite/icp/proto/ic_ledger/pb/v1/types.proto.
 
-use crate::api::icp_rosetta::{IcpClient, network_identifier as network};
+use crate::api::icp_rosetta::IcpClient;
 use crate::send::error::SendError;
 use crate::send::keys::Secp256k1Key;
 use crate::{derivation::icp::*, registry::Chain};
 use ciborium::Value as Cbor;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,7 +141,8 @@ impl PreparedIcpTransaction {
         arg.extend(message(7, &integer(self.created_at_time_ns)));
         Ok(arg)
     }
-    pub(crate) fn sign(&self, key: &Secp256k1Key) -> Result<String, SendError> {
+    /// The signed `TRANSACTION` request set, as CBOR.
+    pub(crate) fn sign(&self, key: &Secp256k1Key) -> Result<Vec<u8>, SendError> {
         let sender = principal(&key.public_key());
         if hex::encode(account_from_principal(&sender)) != self.sender {
             return Err(SendError::Invalid(
@@ -195,11 +195,7 @@ impl PreparedIcpTransaction {
                 Cbor::Array(vec![pair]),
             ])]),
         )]);
-        let raw = encode(&signed)?;
-        Ok(
-            json!({"network_identifier":network(),"signed_transaction":hex::encode(raw)})
-                .to_string(),
-        )
+        encode(&signed)
     }
 }
 
@@ -218,39 +214,10 @@ pub(crate) async fn prepare_transfer(
             .ok_or_else(|| SendError::Invalid("Missing ICP ledger fee".into()))?,
     )
     .map_err(|_| SendError::Invalid("ICP fee overflow".into()))?;
-    let currency = json!({
-        "symbol": Chain::Icp.coin_symbol(),
-        "decimals": Chain::Icp.native_decimals(),
-    });
-    let operations = json!([
-        {"operation_identifier":{"index":0},"type":"TRANSACTION","account":{"address":sender},"amount":{"value":format!("-{amount}"),"currency":currency}},
-        {"operation_identifier":{"index":1},"type":"TRANSACTION","account":{"address":recipient},"amount":{"value":amount.to_string(),"currency":currency}},
-        {"operation_identifier":{"index":2},"type":"FEE","account":{"address":sender},"amount":{"value":format!("-{fee}"),"currency":currency}}
-    ]);
-    let pre: Value = client
-        .rosetta_post(
-            "/construction/preprocess",
-            &json!({"network_identifier":network(),"operations":operations}),
-        )
-        .await?;
-    let options = pre
-        .get("options")
-        .ok_or_else(|| SendError::Invalid("Missing ICP construction options".into()))?;
-    let meta: Value = client
-        .rosetta_post(
-            "/construction/metadata",
-            &json!({"network_identifier":network(),"options":options}),
-        )
-        .await?;
-    let fees = meta["suggested_fee"]
-        .as_array()
-        .ok_or_else(|| SendError::Invalid("Missing ICP suggested fee".into()))?;
-    if fees.len() != 1
-        || fees[0]["value"]
-            .as_str()
-            .and_then(|s| s.parse::<u64>().ok())
-            != Some(fee)
-        || fees[0]["currency"] != currency
+    if client
+        .suggested_transfer_fee(sender, recipient, amount, fee)
+        .await?
+        != Some(fee)
     {
         return Err(SendError::Invalid(
             "ICP ledger fee changed or is unsupported".into(),
@@ -298,13 +265,7 @@ mod tests {
             argument_hex: String::new(),
         };
         p.argument_hex = hex::encode(p.argument().unwrap());
-        let payload: Value = serde_json::from_str(&p.sign(&key).unwrap()).unwrap();
-        let signed: Cbor = ciborium::from_reader(
-            hex::decode(payload["signed_transaction"].as_str().unwrap())
-                .unwrap()
-                .as_slice(),
-        )
-        .unwrap();
+        let signed: Cbor = ciborium::from_reader(p.sign(&key).unwrap().as_slice()).unwrap();
         fn get<'a>(map: &'a [(Cbor, Cbor)], key: &str) -> &'a Cbor {
             &map.iter().find(|(k, _)| *k == text(key)).unwrap().1
         }
@@ -375,8 +336,7 @@ mod tests {
             argument_hex: String::new(),
         };
         p.argument_hex = hex::encode(p.argument().unwrap());
-        let payload: Value = serde_json::from_str(&p.sign(&key).unwrap()).unwrap();
-        let raw = hex::decode(payload["signed_transaction"].as_str().unwrap()).unwrap();
+        let raw = p.sign(&key).unwrap();
         assert_eq!(
             hex::encode(Sha256::digest(raw)),
             "1fa4ebe1ce2377ccc4d06dae8810bdbb11539aa56fc6bd4298e3de3e92dd9dd3"

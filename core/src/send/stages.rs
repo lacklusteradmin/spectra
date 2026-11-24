@@ -806,8 +806,10 @@ impl StoredSend {
                     && matches!(prepared.payments.as_slice(), [payment]
                         if payment.address == self.view.recipient
                             && payment.memo == *memo
-                            && crate::amount::decimal::from_units(u128::from(payment.zatoshis), 8)
-                                == self.view.amount),
+                            && crate::amount::decimal::from_units(
+                                u128::from(payment.zatoshis),
+                                u32::from(self.view.chain_id.native_decimals()),
+                            ) == self.view.amount),
                 u128::from(prepared.fee_zat),
                 Exact,
             ),

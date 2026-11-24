@@ -71,7 +71,7 @@ fn targets(state: &ResidentState, chain: Chain, wallet_ids: &[String]) -> Vec<Ta
             Some(Target {
                 wallet_id: wallet.id.clone(),
                 wallet_name: wallet.name.clone(),
-                address: wallet.active_address()?.to_string(),
+                address: wallet.address.as_deref()?.to_string(),
                 network: wallet.chain_id,
             })
         })
@@ -133,6 +133,8 @@ pub(super) fn record_for(
         .unwrap_or((entry.asset_display_name, entry.symbol));
     crate::store::persistence_models::TransactionRecord {
         actions: Default::default(),
+        direction: Default::default(),
+        submitted: false,
         // The feed names every row's deployment; the ticker is display text.
         deployment_id: entry.deployment_id,
         id: crate::store::new_transaction_id(),
@@ -160,7 +162,7 @@ pub(super) fn record_for(
         source_address: None,
         change_address: None,
         failure_reason: None,
-        transaction_history_source: Some("rust".to_string()),
+        history_source: Some(crate::store::persistence_models::HistorySource::Internal),
         // A provider that gives no time (an unconfirmed transaction, a
         // Solana block without `blockTime`) gives 0. That is stored as unknown,
         // the sentinel every other history path stores, not as the Unix epoch.
@@ -442,7 +444,6 @@ impl WalletService {
                     decoded_page: decoded,
                     normalized_address: normalized_address.clone(),
                     chain_id: network,
-                    token_source_used: Some("rust/etherscan".to_string()),
                     wallets: group_wallet_ids
                         .iter()
                         .map(|wallet_id| {

@@ -268,3 +268,52 @@ fn a_cursor_seeks_by_time_then_id_and_continues_only_its_own_query() {
         DbError::Invalid("Invalid history cursor".into()).to_string()
     );
 }
+
+/// The sent and received filters read direction as the records do: a
+/// transfer of nothing moved nothing, so neither filter lists it, while a
+/// record carries the direction and submission core derives when it serves it.
+#[test]
+fn a_transfer_of_nothing_is_neither_sent_nor_received() {
+    use crate::store::wallet_domain::{TransactionDirection, TransactionKind};
+    let db = database_with(vec![wallet("w1", Chain::Ethereum)]);
+    let mut sent = receive("sent", "w1", &format!("0x{:064x}", 1), 1.0);
+    sent.kind = TransactionKind::Send;
+    sent.amount = "0.5".into();
+    let mut call = receive("call", "w1", &format!("0x{:064x}", 2), 2.0);
+    call.kind = TransactionKind::Send;
+    call.amount = "0.000".into();
+    let mut received = receive("received", "w1", &format!("0x{:064x}", 3), 3.0);
+    received.amount = "1".into();
+    history_upsert_batch(&db, &[sent, call, received]).unwrap();
+
+    let ids = |filter: HistoryQueryFilter| {
+        history_page(
+            &db,
+            &HistoryQuery {
+                filter,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .records
+        .into_iter()
+        .map(|record| record.id)
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(ids(HistoryQueryFilter::Send), ["sent"]);
+    assert_eq!(ids(HistoryQueryFilter::Receive), ["received"]);
+
+    let served = |id: &str| {
+        let record = history_page(&db, &HistoryQuery::default())
+            .unwrap()
+            .records
+            .into_iter()
+            .find(|record| record.id == id)
+            .unwrap()
+            .with_actions(false);
+        (record.direction, record.submitted)
+    };
+    assert_eq!(served("sent"), (TransactionDirection::Outgoing, true));
+    assert_eq!(served("call"), (TransactionDirection::Neutral, true));
+    assert_eq!(served("received"), (TransactionDirection::Incoming, false));
+}

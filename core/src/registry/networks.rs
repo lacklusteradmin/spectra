@@ -90,26 +90,51 @@ impl Chain {
     }
 
     /// Aptos network identity bound into each locally constructed transaction.
-    pub fn aptos_chain_id(self) -> Option<u8> {
+    pub fn aptos_chain_id(self) -> Result<u8, RegistryError> {
         match self {
-            Self::Aptos => Some(1),
-            Self::AptosTestnet => Some(2),
-            _ => None,
+            Self::Aptos => Ok(1),
+            Self::AptosTestnet => Ok(2),
+            _ => Err(self.not_in("Aptos")),
         }
     }
 
     /// Gas units reserved by Aptos previews and committed into its builders.
-    pub fn aptos_max_gas_amount(self) -> Option<u64> {
-        matches!(self, Self::Aptos | Self::AptosTestnet).then_some(10_000)
+    pub fn aptos_max_gas_amount(self) -> Result<u64, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Aptos => Ok(10_000),
+            _ => Err(self.not_in("Aptos")),
+        }
     }
 
-    pub(crate) fn near_token_gas_limit(self) -> Option<u64> {
-        (self.mainnet_counterpart() == Self::Near).then_some(30_000_000_000_000)
+    /// Seconds from signing until an Aptos transaction it builds expires.
+    pub(crate) fn aptos_transaction_lifetime_secs(self) -> Result<u64, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Aptos => Ok(600),
+            _ => Err(self.not_in("Aptos")),
+        }
+    }
+
+    /// Seconds from signing until a TON external message it builds expires.
+    pub(crate) fn ton_message_lifetime_secs(self) -> Result<u64, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Ton => Ok(60),
+            _ => Err(self.not_in("TON")),
+        }
+    }
+
+    pub(crate) fn near_token_gas_limit(self) -> Result<u64, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Near => Ok(30_000_000_000_000),
+            _ => Err(self.not_in("NEAR")),
+        }
     }
 
     /// NEP-448: accounts with no more than 770 storage bytes need no storage stake.
-    pub(crate) fn near_zero_balance_storage_limit(self) -> Option<u64> {
-        (self.mainnet_counterpart() == Self::Near).then_some(770)
+    pub(crate) fn near_zero_balance_storage_limit(self) -> Result<u64, RegistryError> {
+        match self.mainnet_counterpart() {
+            Self::Near => Ok(770),
+            _ => Err(self.not_in("NEAR")),
+        }
     }
 
     /// Ripple's public Mainnet/Testnet IDs, checked against official RPCs.

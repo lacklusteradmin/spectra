@@ -103,7 +103,7 @@ class ExportTests(unittest.TestCase):
     def test_core_exports_are_found(self):
         with contextlib.chdir(REPOSITORY):
             names = {name for name, _, _ in exports()}
-        self.assertIn('token_artwork_name', names)
+        self.assertIn('list_all_builtin_token_deployments', names)
 
 
 class CallTextTests(unittest.TestCase):

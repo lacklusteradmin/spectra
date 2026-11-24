@@ -203,8 +203,8 @@ impl HttpClient {
         })
     }
 
-    /// Access the underlying reqwest client for callers that need full control
-    /// over request construction (e.g. the generic UniFFI `http_request` bridge).
+    /// The underlying reqwest client, for an adapter whose requests the
+    /// helpers here do not cover (a CBOR status read, Monero's RPC transport).
     pub fn reqwest_client(&self) -> Client {
         self.get_client()
     }
@@ -301,14 +301,9 @@ impl HttpClient {
         {
             return Err(ApiError::Decode(format!("{url}: larger than expected")));
         }
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|error| ApiError::Transport(format_reqwest_error(&error)))?;
-        if bytes.len() > limit {
-            return Err(ApiError::Decode(format!("{url}: larger than expected")));
-        }
-        Ok(bytes.to_vec())
+        read_limited(response, limit)
+            .await?
+            .ok_or_else(|| ApiError::Decode(format!("{url}: larger than expected")))
     }
 
     /// GET a JSON response.
@@ -484,6 +479,26 @@ pub(crate) fn current_proxy() -> Option<String> {
 }
 
 // ── Fallback helpers
+
+/// A response's body, read a chunk at a time; `None` once it passes `limit`
+/// bytes, without reading the rest.
+pub(crate) async fn read_limited(
+    mut response: reqwest::Response,
+    limit: usize,
+) -> Result<Option<Vec<u8>>, ApiError> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| ApiError::Transport(format_reqwest_error(&error)))?
+    {
+        if bytes.len().saturating_add(chunk.len()) > limit {
+            return Ok(None);
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(Some(bytes))
+}
 
 fn format_reqwest_error(e: &reqwest::Error) -> String {
     let mut parts = vec![e.to_string()];

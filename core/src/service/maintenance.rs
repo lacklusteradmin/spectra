@@ -2,7 +2,6 @@
 use crate::service::WalletService;
 use crate::service::refresh_policy::{DeviceConditions, MaintenancePlan, RefreshKind};
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// What to do this tick, and how long to wait for the next one.
     pub async fn maintenance_plan(&self, conditions: DeviceConditions) -> MaintenancePlan {

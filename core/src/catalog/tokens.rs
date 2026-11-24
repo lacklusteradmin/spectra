@@ -282,7 +282,6 @@ pub fn deployment(id: &str) -> Option<&'static TokenDeploymentEntry> {
 // ── Public API
 
 /// Token entries on `chain`, or on every chain for `None`.
-#[uniffi::export]
 pub fn list_token_deployments(chain: Option<crate::registry::Chain>) -> Vec<TokenDeploymentEntry> {
     CATALOG
         .iter()

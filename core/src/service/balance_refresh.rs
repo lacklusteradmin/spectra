@@ -389,7 +389,7 @@ mod tests {
                 symbol: "T10".into(),
                 name: "T10".into(),
                 contract: "1002000".into(),
-                decimals: 6,
+                decimals: Some(6),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),
             })

@@ -180,7 +180,7 @@ async fn owned_non_evm_preview_needs_only_stored_watch_address_and_valid_input()
     assert!(quote.shortcuts.contains_key(&100));
     assert_eq!(quote.chain_id, crate::registry::Chain::Solana);
     assert_eq!(quote.preview.max_sendable, "1.999995");
-    svc.wallet_state.write().await.wallets[0].addresses.clear();
+    svc.wallet_state.write().await.wallets[0].address = None;
     let count = server.received_requests().await.unwrap().len();
     assert!(
         svc.preview_owned_send(

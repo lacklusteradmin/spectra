@@ -37,14 +37,12 @@ async fn evm_imports_keep_each_networks_address_and_derivation_path() {
         .address
         .unwrap();
         let expected = crate::send::flow::normalize_address(chain, &expected);
-        assert_eq!(wallet.active_address(), Some(expected.as_str()), "{chain}");
+        assert_eq!(
+            wallet.address.as_deref(),
+            Some(expected.as_str()),
+            "{chain}"
+        );
         assert_eq!(wallet.derivation_path.as_deref(), Some(path));
-        let address = wallet
-            .addresses
-            .iter()
-            .find(|a| a.chain_id == chain)
-            .unwrap();
-        assert_eq!(address.derivation_path.as_deref(), Some(path));
         assert_eq!(
             reopened
                 .send_identity_address(wallet.id.clone(), chain, None)
@@ -80,22 +78,9 @@ async fn evm_identity_reuses_the_wallets_path_without_duplicate_address_records(
     reopened.set_secret_store(secrets);
     let state = reopened.open_state(path).await.unwrap();
     for wallet in state.wallets {
-        assert_eq!(wallet.addresses.len(), 1);
-        assert_eq!(wallet.addresses[0].chain_id, wallet.chain_id);
-        let expected = wallet.active_address().unwrap();
-        let view = wallet.to_wallet_view();
-        assert_eq!(view.addresses.len(), 1);
-        assert_eq!(
-            view.addresses.get("ethereum").map(String::as_str),
-            Some(expected)
-        );
-        let round_tripped = view.to_wallet_state().unwrap();
-        assert_eq!(round_tripped.chain_id, wallet.chain_id);
-        assert_eq!(round_tripped.derivation_path, wallet.derivation_path);
-        assert_eq!(round_tripped.addresses, wallet.addresses);
+        let expected = wallet.address.as_deref().unwrap();
         for chain in Chain::all().filter(|c| c.is_evm()) {
             assert_eq!(wallet.address_on(chain), Some(expected));
-            assert_eq!(view.address_for(chain), Some(expected));
             assert_eq!(
                 reopened
                     .send_identity_address(wallet.id.clone(), chain, None)
@@ -126,6 +111,7 @@ fn commit(chain: crate::registry::Chain) -> WalletImportCommit {
         named_account: None,
         ton_wallet_version: None,
         upgrade_wallet_id: None,
+        created: false,
     }
 }
 
@@ -259,7 +245,7 @@ async fn imported_wallets_land_in_core_state() {
     assert_eq!(stored.len(), 1);
     assert_eq!(stored[0].chain_id, crate::registry::Chain::Solana);
     assert_eq!(
-        stored[0].addresses.get("solana").map(String::as_str),
+        stored[0].address.as_deref(),
         Some(
             crate::derivation::import::derive_import_address(
                 MNEMONIC,
@@ -299,17 +285,14 @@ async fn a_seed_import_stores_only_its_own_networks_address() {
         .expect("snapshot")
         .wallets;
     assert_eq!(stored.len(), 1);
-    let addresses = &stored[0].addresses;
     let bitcoin = crate::registry::Chain::Bitcoin;
-    let address = addresses
-        .get(bitcoin.address_slot())
-        .expect("no Bitcoin address");
+    let address = stored[0].address_on(bitcoin).expect("no Bitcoin address");
     assert!(crate::derivation::import::is_valid_watch_only_address(
         bitcoin,
-        address.clone()
+        address.to_string()
     ));
     assert_eq!(
-        addresses.get(crate::registry::Chain::BitcoinTestnet4.address_slot()),
+        stored[0].address_on(crate::registry::Chain::BitcoinTestnet4),
         None
     );
 }
@@ -609,7 +592,7 @@ async fn raw_mnemonic_is_canonical_before_derivation_and_storage() {
     ));
     let imported = service.import_wallets(raw).await.unwrap();
     assert_eq!(
-        imported.wallets[0].primary_address(),
+        imported.wallets[0].address.as_deref(),
         Some(derived(crate::registry::Chain::Ethereum).as_str())
     );
     // The canonical phrase is the same wallet, so a second import of it is
@@ -734,20 +717,6 @@ async fn testnet_paths_survive_reopen_and_signing() {
             expected
         );
     }
-}
-
-#[test]
-fn an_absent_testnet_address_never_falls_back_to_mainnet() {
-    let mut wallet = crate::store::state::WalletState::single_address(
-        "w",
-        "Wallet",
-        crate::registry::Chain::Bitcoin,
-        "bc1main",
-        Some("m/84'/0'/0'/0/0".into()),
-        false,
-    );
-    wallet.chain_id = crate::registry::Chain::BitcoinTestnet4;
-    assert!(wallet.active_address().is_none());
 }
 
 async fn fresh_service(
@@ -890,7 +859,7 @@ async fn a_bitcoin_phrase_upgrades_its_watched_account_key() {
     assert!(outcome.upgraded);
     assert_eq!(outcome.wallets[0].id, watched.id);
     assert_eq!(
-        outcome.wallets[0].primary_address(),
+        outcome.wallets[0].address.as_deref(),
         Some(derived(Chain::Bitcoin).as_str())
     );
     assert_eq!(service.app_state().await.wallets.len(), 1);
@@ -1101,7 +1070,7 @@ async fn a_near_named_account_is_held_once_the_network_lists_the_key() {
         .unwrap()
         .wallets
         .remove(0);
-    assert_eq!(wallet.primary_address(), Some("alice.near"));
+    assert_eq!(wallet.address.as_deref(), Some("alice.near"));
     assert_eq!(
         service
             .send_identity_address(wallet.id, Chain::Near, None)
@@ -1145,7 +1114,11 @@ async fn a_private_key_upgrades_the_watched_testnet_wallet_that_holds_its_addres
             .unwrap_or_else(|error| panic!("{chain}: {error}"))
             .wallets
             .remove(0);
-        assert_eq!(watched.primary_address(), Some(address.as_str()), "{chain}");
+        assert_eq!(
+            watched.address.as_deref(),
+            Some(address.as_str()),
+            "{chain}"
+        );
         key.request.wallet_name = "Ignored".into();
         let outcome = service
             .import_wallets(key)
@@ -1171,7 +1144,7 @@ async fn a_private_key_upgrades_the_watched_testnet_wallet_that_holds_its_addres
                 .send_identity_address(wallet.id.clone(), chain, None)
                 .await
                 .unwrap_or_else(|error| panic!("{chain}: {error}")),
-            wallet.primary_address().unwrap(),
+            wallet.address.as_deref().unwrap(),
             "{chain}"
         );
         checked += 1;
@@ -1231,7 +1204,7 @@ async fn a_ton_key_is_one_account_per_wallet_version() {
         .await
         .unwrap();
     assert!(!new.upgraded);
-    assert_eq!(new.wallets[0].primary_address(), Some(w5));
+    assert_eq!(new.wallets[0].address.as_deref(), Some(w5));
     for (wallet, address) in [(&old.wallets[0], v4r2.as_str()), (&new.wallets[0], w5)] {
         assert_eq!(
             service
@@ -1278,7 +1251,7 @@ async fn an_imported_polyseed_restores_from_its_birthday() {
         .unwrap()
         .wallets
         .remove(0);
-    assert_eq!(wallet.primary_address(), polyseed["address"].as_str());
+    assert_eq!(wallet.address.as_deref(), polyseed["address"].as_str());
     let birthday = polyseed["birthday"].as_u64().unwrap();
     let height = crate::catalog::restore_heights::height_at_or_before(Chain::Monero, birthday);
     assert!(height > crate::catalog::restore_heights::default_restore_height(Chain::Monero));
@@ -1289,7 +1262,7 @@ async fn an_imported_polyseed_restores_from_its_birthday() {
         .unwrap()
         .wallets
         .remove(0);
-    assert_eq!(wallet.primary_address(), electrum["address"].as_str());
+    assert_eq!(wallet.address.as_deref(), electrum["address"].as_str());
     assert_eq!(wallet.restore_height, Some(0));
 }
 

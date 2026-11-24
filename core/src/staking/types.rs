@@ -109,7 +109,7 @@ pub fn staking_input_rules(
             || (chain == Chain::Icp && action == StakingAction::Withdraw),
         validator_required: action == StakingAction::Stake && chain.supports_staking(),
         lockup_required: chain == Chain::Icp && action == StakingAction::Stake,
-        positions_require_authorization: chain == Chain::Icp,
+        positions_require_authorization: chain.staking_reads_require_authorization(),
     }
 }
 

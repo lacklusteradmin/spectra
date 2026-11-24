@@ -4,58 +4,6 @@ use std::collections::HashMap;
 use crate::store::persistence_models::TransactionRecord;
 use crate::store::wallet_domain::TransactionKind;
 
-/// What a stored `transaction_history_source` names.
-///
-/// The id is core's own — five producers write one — so core says what each
-/// means.
-///
-/// An enum rather than a display string because only the first variant is a
-/// proper noun; the other two are sentences, and sentences are the app's to
-/// write and translate.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
-pub enum HistorySource {
-    /// A named third-party indexer. A proper noun, shown as it is.
-    Provider { name: String },
-    /// The aggregate of one chain's own history providers.
-    ChainProviders { chain_id: crate::registry::Chain },
-    /// Spectra's own reader. Not a third party, so not a source to name.
-    Internal,
-}
-
-/// Which source a stored history-source id names, or `None` when it names
-/// nothing — an absent, blank or `none` value.
-#[uniffi::export]
-pub fn history_source(source: String) -> Option<HistorySource> {
-    let trimmed = source.trim();
-    if trimmed.is_empty() || trimmed == "none" {
-        return None;
-    }
-    // `<chain-id>.providers`, written by the history aggregate. Resolved
-    // through the registry so a new chain needs no arm here.
-    if let Some(id) = trimmed.strip_suffix(".providers")
-        && let Some(chain) = crate::registry::Chain::from_str_id(id)
-    {
-        return Some(HistorySource::ChainProviders { chain_id: chain });
-    }
-    // `rust` is a single address read in-process, `rust.hd` an xpub account
-    // walked from it. Both are Spectra reading the chain's own endpoints;
-    // neither is a provider the user can act on.
-    if trimmed == "rust" || trimmed == "rust.hd" {
-        return Some(HistorySource::Internal);
-    }
-    Some(HistorySource::Provider {
-        name: match trimmed {
-            "rpc" => "RPC".to_string(),
-            "etherscan" => "Etherscan".to_string(),
-            "blockchair" => "Blockchair".to_string(),
-            "esplora" => "Esplora".to_string(),
-            "litecoinspace" => "LitecoinSpace".to_string(),
-            "blockchain.info" => "Blockchain.info".to_string(),
-            other => other.to_string(),
-        },
-    })
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransactionMergeStrategy {
     Utxo,
@@ -270,6 +218,8 @@ fn counterparty(existing: String, incoming: String) -> String {
 fn merge_utxo(existing: TransactionRecord, incoming: TransactionRecord) -> TransactionRecord {
     TransactionRecord {
         actions: Default::default(),
+        direction: Default::default(),
+        submitted: false,
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -306,9 +256,7 @@ fn merge_utxo(existing: TransactionRecord, incoming: TransactionRecord) -> Trans
         source_address: incoming.source_address.or(existing.source_address),
         change_address: incoming.change_address.or(existing.change_address),
         failure_reason: incoming.failure_reason.or(existing.failure_reason),
-        transaction_history_source: incoming
-            .transaction_history_source
-            .or(existing.transaction_history_source),
+        history_source: incoming.history_source.or(existing.history_source),
         created_at_unix: incoming.created_at_unix,
     }
 }
@@ -320,6 +268,8 @@ fn merge_account_based(
 ) -> TransactionRecord {
     TransactionRecord {
         actions: Default::default(),
+        direction: Default::default(),
+        submitted: false,
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -350,9 +300,7 @@ fn merge_account_based(
         source_address: incoming.source_address.or(existing.source_address),
         change_address: incoming.change_address.or(existing.change_address),
         failure_reason: incoming.failure_reason.or(existing.failure_reason),
-        transaction_history_source: incoming
-            .transaction_history_source
-            .or(existing.transaction_history_source),
+        history_source: incoming.history_source.or(existing.history_source),
         created_at_unix: resolve_created_at(
             existing.created_at_unix,
             incoming.created_at_unix,
@@ -368,6 +316,8 @@ fn merge_evm(
 ) -> TransactionRecord {
     TransactionRecord {
         actions: Default::default(),
+        direction: Default::default(),
+        submitted: false,
         deployment_id: existing.deployment_id.or(incoming.deployment_id),
         id: existing.id,
         wallet_id: incoming.wallet_id.or(existing.wallet_id),
@@ -402,9 +352,7 @@ fn merge_evm(
         source_address: existing.source_address,
         change_address: existing.change_address,
         failure_reason: incoming.failure_reason.or(existing.failure_reason),
-        transaction_history_source: incoming
-            .transaction_history_source
-            .or(existing.transaction_history_source),
+        history_source: incoming.history_source.or(existing.history_source),
         created_at_unix: resolve_created_at(
             existing.created_at_unix,
             incoming.created_at_unix,
@@ -439,6 +387,8 @@ mod tests {
     fn sample_transaction(chain_id: crate::registry::Chain) -> TransactionRecord {
         TransactionRecord {
             actions: Default::default(),
+            direction: Default::default(),
+            submitted: false,
             deployment_id: None,
             id: "tx-1".to_string(),
             wallet_id: Some("wallet-1".to_string()),
@@ -469,7 +419,7 @@ mod tests {
                     message: "old-failure".into(),
                 },
             ),
-            transaction_history_source: Some("rpc".to_string()),
+            history_source: Some(crate::store::persistence_models::HistorySource::Internal),
             created_at_unix: 250.0,
         }
     }
@@ -531,7 +481,9 @@ mod tests {
         incoming.source_address = Some("source-new".to_string());
         incoming.change_address = Some("change-new".to_string());
         incoming.failure_reason = None;
-        incoming.transaction_history_source = Some("esplora".to_string());
+        incoming.history_source = Some(crate::store::persistence_models::HistorySource::Indexer {
+            name: "Esplora".into(),
+        });
         incoming.created_at_unix = 500.0;
 
         let merged = merge_transactions(TransactionMergeRequest {
@@ -562,8 +514,10 @@ mod tests {
             )
         );
         assert_eq!(
-            record.transaction_history_source.as_deref(),
-            Some("esplora")
+            record.history_source,
+            Some(crate::store::persistence_models::HistorySource::Indexer {
+                name: "Esplora".into()
+            })
         );
         assert_eq!(record.created_at_unix, 500.0);
         assert_eq!(record.address, "incoming-address");
@@ -749,40 +703,5 @@ mod tests {
             )
         );
         assert_eq!(record.created_at_unix, 900.0);
-    }
-}
-
-#[cfg(test)]
-mod history_source_tests {
-    use super::{HistorySource, history_source};
-
-    /// Every id a producer writes names something, and the ones the app's
-    /// switch missed are among them.
-    #[test]
-    fn every_emitted_history_source_is_named() {
-        let provider = |name: &str| Some(HistorySource::Provider { name: name.into() });
-        assert_eq!(history_source("rpc".into()), provider("RPC"));
-        assert_eq!(history_source("etherscan".into()), provider("Etherscan"));
-        assert_eq!(history_source(" esplora ".into()), provider("Esplora"));
-        assert_eq!(history_source("rust".into()), Some(HistorySource::Internal));
-        assert_eq!(
-            history_source("rust.hd".into()),
-            Some(HistorySource::Internal)
-        );
-        // The aggregate names any chain, not only the one the switch spelled out.
-        for chain in [
-            crate::registry::Chain::Dogecoin,
-            crate::registry::Chain::Litecoin,
-        ] {
-            assert_eq!(
-                history_source(format!("{chain}.providers")),
-                Some(HistorySource::ChainProviders { chain_id: chain })
-            );
-        }
-        for nothing in ["", "  ", "none"] {
-            assert_eq!(history_source(nothing.into()), None, "{nothing:?}");
-        }
-        // An id core does not know is still shown rather than hidden.
-        assert_eq!(history_source("mystery".into()), provider("mystery"));
     }
 }

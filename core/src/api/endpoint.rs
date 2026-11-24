@@ -273,7 +273,6 @@ pub fn endpoint_api_options(chain: crate::registry::Chain) -> Vec<EndpointApiOpt
 
 /// Operations implemented by Spectra's adapter. This is an editing constraint,
 /// never a claim that any particular provider enables those operations.
-#[uniffi::export]
 pub fn endpoint_capability_options(
     chain: crate::registry::Chain,
     api: EndpointApi,

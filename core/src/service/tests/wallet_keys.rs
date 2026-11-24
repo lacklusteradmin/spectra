@@ -7,9 +7,12 @@ const ABANDON: &str =
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
 
 async fn import(service: &WalletService, commit: WalletImportCommit) -> WalletState {
-    service.import_wallets(commit).await.unwrap().wallets[0]
-        .to_wallet_state()
+    service
+        .import_wallets(commit)
+        .await
         .unwrap()
+        .wallets
+        .remove(0)
 }
 
 fn watch(chain: Chain, kind: WalletImportKind) -> WalletImportCommit {

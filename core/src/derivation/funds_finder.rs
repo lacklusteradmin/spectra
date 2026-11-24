@@ -178,7 +178,7 @@ mod tests {
                     assert_eq!(
                         crate::derivation::path::derivation_profile_of_path(
                             chain,
-                            candidate.derivation_path.clone()
+                            &candidate.derivation_path
                         ),
                         Some(crate::derivation::path::DerivationProfileChoice {
                             profile,

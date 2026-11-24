@@ -50,6 +50,16 @@ pub fn seed_phrase_lengths(chain: Option<Chain>) -> Vec<SeedPhraseLength> {
     lengths
 }
 
+/// The lengths a phrase created for a wallet on `chain` may have: those of
+/// the format it creates in, shortest first.
+#[uniffi::export]
+pub fn created_phrase_lengths(chain: Chain) -> Vec<SeedPhraseLength> {
+    seed_phrase_lengths(Some(chain))
+        .into_iter()
+        .filter(|length| length.format == chain.created_phrase_format())
+        .collect()
+}
+
 pub(crate) const STANDARD_SEED_PHRASE_WORD_COUNTS: [u32; 5] = [12, 15, 18, 21, 24];
 
 /// One seed-phrase entry, as the user typed it.
@@ -499,16 +509,18 @@ mod seed_phrase_length_tests {
     fn a_non_standard_length_is_refused_rather_than_substituted() {
         // Twelve words in answer to a request for eighteen is a weaker wallet
         // than the caller asked for.
-        let refusal = crate::derivation::phrase::generate_seed_phrase(Chain::Bitcoin, 13)
+        let refusal = crate::derivation::phrase::generate_seed_phrase(Chain::Bitcoin, Some(13))
             .expect_err("13 is not a length");
         assert!(
             refusal.to_string().contains("12, 15, 18, 21, 24"),
             "{refusal}"
         );
         for length in seed_phrase_lengths(Some(Chain::Bitcoin)) {
-            let phrase =
-                crate::derivation::phrase::generate_seed_phrase(Chain::Bitcoin, length.word_count)
-                    .expect("a standard length generates");
+            let phrase = crate::derivation::phrase::generate_seed_phrase(
+                Chain::Bitcoin,
+                Some(length.word_count),
+            )
+            .expect("a standard length generates");
             assert_eq!(
                 phrase.split_whitespace().count() as u32,
                 length.word_count,

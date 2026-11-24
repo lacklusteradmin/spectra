@@ -25,8 +25,7 @@
 
 use crate::send::error::SendError;
 
-use serde::Serialize;
-
+use crate::api::kaspa_rest::{KaspaTransaction, KaspaTransactionInput, KaspaTransactionOutput};
 use crate::api::utxo::{Txid, UtxoInput};
 use crate::derivation::kaspa::decode_kaspa_address;
 use crate::registry::Chain;
@@ -107,12 +106,12 @@ pub(crate) struct KaspaSigningInput<'a> {
     pub private_key: &'a [u8],
 }
 
-/// Sign `inputs`, each with its own key, into the `/transactions` request
-/// paying `outputs` in order. Every input must pay its key's Schnorr P2PK.
+/// Sign `inputs`, each with its own key, into a transaction paying `outputs`
+/// in order. Every input must pay its key's Schnorr P2PK.
 pub(crate) fn sign(
     inputs: &[KaspaSigningInput<'_>],
     outputs: &[(Vec<u8>, u64)],
-) -> Result<serde_json::Value, SendError> {
+) -> Result<KaspaTransaction, SendError> {
     if inputs.is_empty() || outputs.is_empty() {
         return Err(SendError::Invalid(
             "kaspa transaction must have inputs and outputs".into(),
@@ -140,7 +139,7 @@ pub(crate) fn sign(
         .collect();
     let keys: Vec<&[u8]> = inputs.iter().map(|input| input.private_key).collect();
     let signatures = sign_kaspa_inputs(&builds, &outputs, &keys)?;
-    Ok(build_broadcast_body(&builds, &outputs, &signatures))
+    Ok(signed_transaction(&builds, &outputs, signatures))
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -355,110 +354,37 @@ fn sign_kaspa_inputs(
     Ok(signed)
 }
 
-// ── REST broadcast body ───────────────────────────────────────────────────
-//
-// Canonical /transactions request shape per kaspa-rest spec:
-//   {"transaction": {"version": 0, "inputs": [...], "outputs": [...],
-//                    "lockTime": "0", "subnetworkId": "00…",
-//                    "gas": "0", "payload": ""}}
-//   inputs[i] = {"previousOutpoint": {"transactionId": txid,
-//                                     "index": vout},
-//                "signatureScript": <hex>,
-//                "sequence": "0",
-//                "sigOpCount": 1}
-//   outputs[i] = {"value": "<amount>",
-//                 "scriptPublicKey": {"version": 0, "scriptPublicKey": <hex>}}
-
-#[derive(Serialize)]
-struct WireOutpoint {
-    #[serde(rename = "transactionId")]
-    transaction_id: String,
-    index: u32,
-}
-
-#[derive(Serialize)]
-struct WireInput {
-    #[serde(rename = "previousOutpoint")]
-    previous_outpoint: WireOutpoint,
-    #[serde(rename = "signatureScript")]
-    signature_script: String,
-    sequence: String,
-    #[serde(rename = "sigOpCount")]
-    sig_op_count: u8,
-}
-
-#[derive(Serialize)]
-struct WireScriptPublicKey {
-    version: u16,
-    #[serde(rename = "scriptPublicKey")]
-    script_public_key: String,
-}
-
-#[derive(Serialize)]
-struct WireOutput {
-    value: String,
-    #[serde(rename = "scriptPublicKey")]
-    script_public_key: WireScriptPublicKey,
-}
-
-#[derive(Serialize)]
-struct WireTransaction {
-    version: u16,
-    inputs: Vec<WireInput>,
-    outputs: Vec<WireOutput>,
-    #[serde(rename = "lockTime")]
-    lock_time: String,
-    #[serde(rename = "subnetworkId")]
-    subnetwork_id: String,
-    gas: String,
-    payload: String,
-}
-
-#[derive(Serialize)]
-struct WireBroadcast {
-    transaction: WireTransaction,
-}
-
-fn build_broadcast_body(
+/// The signed transaction: each input's outpoint and signature script, each
+/// output's amount and script, under the version and lock time the
+/// signatures commit to.
+fn signed_transaction(
     inputs: &[KaspaInputBuild],
     outputs: &[KaspaOutputBuild],
-    signed_sig_scripts: &[Vec<u8>],
-) -> serde_json::Value {
-    let wire_inputs = inputs
-        .iter()
-        .zip(signed_sig_scripts)
-        .map(|(input, script)| WireInput {
-            previous_outpoint: WireOutpoint {
-                transaction_id: input.txid.to_string(),
+    signature_scripts: Vec<Vec<u8>>,
+) -> KaspaTransaction {
+    KaspaTransaction {
+        version: TX_VERSION,
+        inputs: inputs
+            .iter()
+            .zip(signature_scripts)
+            .map(|(input, signature_script)| KaspaTransactionInput {
+                txid: input.txid.to_string(),
                 index: input.vout,
-            },
-            signature_script: hex::encode(script),
-            sequence: input.sequence.to_string(),
-            sig_op_count: input.sig_op_count,
-        })
-        .collect();
-    let wire_outputs = outputs
-        .iter()
-        .map(|output| WireOutput {
-            value: output.amount.to_string(),
-            script_public_key: WireScriptPublicKey {
-                version: output.script_version,
-                script_public_key: hex::encode(&output.script_pubkey),
-            },
-        })
-        .collect();
-    let body = WireBroadcast {
-        transaction: WireTransaction {
-            version: TX_VERSION,
-            inputs: wire_inputs,
-            outputs: wire_outputs,
-            lock_time: "0".to_string(),
-            subnetwork_id: "0000000000000000000000000000000000000000".to_string(),
-            gas: "0".to_string(),
-            payload: String::new(),
-        },
-    };
-    serde_json::to_value(body).expect("static schema")
+                signature_script,
+                sequence: input.sequence,
+                sig_op_count: input.sig_op_count,
+            })
+            .collect(),
+        outputs: outputs
+            .iter()
+            .map(|output| KaspaTransactionOutput {
+                amount: output.amount,
+                script_version: output.script_version,
+                script_public_key: output.script_pubkey.clone(),
+            })
+            .collect(),
+        lock_time: 0,
+    }
 }
 
 #[cfg(test)]
@@ -575,12 +501,7 @@ mod tests {
                 expected.as_str().unwrap(),
                 "input {index}"
             );
-            let script = hex::decode(
-                body["transaction"]["inputs"][index]["signatureScript"]
-                    .as_str()
-                    .unwrap(),
-            )
-            .unwrap();
+            let script = &body.inputs[index].signature_script;
             assert_eq!((script[0], script[65]), (65, SIGHASH_ALL));
             let key =
                 secp256k1::XOnlyPublicKey::from_slice(&utxos[index].script_pubkey[1..33]).unwrap();

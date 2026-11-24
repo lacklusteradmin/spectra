@@ -79,28 +79,6 @@ impl RefreshEngine {
         *self.inner.observer.write().unwrap() = Some(observer);
     }
 
-    pub fn clear_observer(&self) {
-        *self.inner.observer.write().unwrap() = None;
-    }
-
-    /// Rebuild refresh entries from core-owned wallets and their selected
-    /// networks. `wallet_id` scopes the rebuild; returns the entry count.
-    pub async fn sync_entries(&self, wallet_id: Option<String>) -> u32 {
-        let this = self.clone();
-        crate::service::worker::run(async move {
-            let this = &this;
-            let state = this.inner.wallet_service.app_state().await;
-            let mut entries = refresh_entries_for(&state);
-            if let Some(wallet_id) = wallet_id {
-                entries.retain(|entry| entry.wallet_id.eq_ignore_ascii_case(&wallet_id));
-            }
-            let count = entries.len() as u32;
-            *this.inner.entries.write().unwrap() = entries;
-            count
-        })
-        .await
-    }
-
     /// What only the device knows. Coming to the foreground restarts the
     /// balance sweep, whose first tick runs at once; leaving it stops both
     /// loops. Other changes only reach the next maintenance tick.
@@ -122,6 +100,30 @@ impl RefreshEngine {
             }
             this.reconcile_maintenance();
             this.follow_wallets();
+        })
+        .await
+    }
+}
+
+impl RefreshEngine {
+    pub fn clear_observer(&self) {
+        *self.inner.observer.write().unwrap() = None;
+    }
+
+    /// Rebuild refresh entries from core-owned wallets and their selected
+    /// networks. `wallet_id` scopes the rebuild; returns the entry count.
+    pub async fn sync_entries(&self, wallet_id: Option<String>) -> u32 {
+        let this = self.clone();
+        crate::service::worker::run(async move {
+            let this = &this;
+            let state = this.inner.wallet_service.app_state().await;
+            let mut entries = refresh_entries_for(&state);
+            if let Some(wallet_id) = wallet_id {
+                entries.retain(|entry| entry.wallet_id.eq_ignore_ascii_case(&wallet_id));
+            }
+            let count = entries.len() as u32;
+            *this.inner.entries.write().unwrap() = entries;
+            count
         })
         .await
     }
@@ -612,7 +614,7 @@ pub(crate) fn refresh_entry_for(wallet: &crate::store::state::WalletState) -> Op
     let chain = wallet.family();
     // A watched account has no address of its own: it is its key, whose
     // addresses the account balance sums.
-    let address = wallet.active_address().or_else(|| {
+    let address = wallet.address.as_deref().or_else(|| {
         wallet
             .xpub
             .as_deref()
@@ -649,9 +651,9 @@ pub struct RefreshEntry {
 mod refresh_entry_tests {
     use super::refresh_entries_for;
     use crate::registry::Chain;
-    use crate::store::state::{ResidentState, WalletAddress, WalletState};
+    use crate::store::state::{ResidentState, WalletState};
 
-    fn wallet(id: &str, chain: Chain, addresses: &[(Chain, &str)]) -> WalletState {
+    fn wallet(id: &str, chain: Chain, address: Option<&str>) -> WalletState {
         WalletState {
             id: id.to_string(),
             name: id.to_string(),
@@ -662,17 +664,10 @@ mod refresh_entry_tests {
             chain_id: chain,
             xpub: None,
             derivation_path: None,
+            derivation_profile: None,
             derivation_flags: Default::default(),
             holdings: Vec::new(),
-            addresses: addresses
-                .iter()
-                .map(|(chain, address)| WalletAddress {
-                    chain_id: *chain,
-                    address: (*address).to_string(),
-                    kind: "receive".to_string(),
-                    derivation_path: None,
-                })
-                .collect(),
+            address: address.map(str::to_string),
             restore_height: None,
             hidden_holdings: Vec::new(),
             icp_principal: None,
@@ -686,27 +681,23 @@ mod refresh_entry_tests {
     /// the network that wallet is on.
     #[test]
     fn an_entry_carries_the_address_for_the_network_the_wallet_is_on() {
-        let mut state = ResidentState {
-            wallets: vec![wallet(
-                "w1",
-                Chain::Bitcoin,
-                &[
-                    (Chain::Bitcoin, "bc1main"),
-                    (Chain::BitcoinTestnet4, "tb1test"),
-                ],
-            )],
+        let state = ResidentState {
+            wallets: vec![
+                wallet("w1", Chain::Bitcoin, Some("bc1main")),
+                wallet("w2", Chain::BitcoinTestnet4, Some("tb1test")),
+            ],
             ..Default::default()
         };
-
-        let mainnet = refresh_entries_for(&state);
-        assert_eq!(mainnet.len(), 1);
-        assert_eq!(mainnet[0].address, "bc1main");
-
-        state.wallets[0].chain_id = crate::registry::Chain::BitcoinTestnet4;
-        assert_eq!(refresh_entries_for(&state)[0].address, "tb1test");
-
-        state.wallets[0].chain_id = Chain::Bitcoin;
-        assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
+        let entries = refresh_entries_for(&state);
+        let address = |id: &str| {
+            entries
+                .iter()
+                .find(|entry| entry.wallet_id == id)
+                .map(|entry| entry.address.as_str())
+        };
+        assert_eq!(entries.len(), 2);
+        assert_eq!(address("w1"), Some("bc1main"));
+        assert_eq!(address("w2"), Some("tb1test"));
     }
 
     /// A watched account has no address of its own, so its key is the fetch
@@ -715,7 +706,7 @@ mod refresh_entry_tests {
     #[test]
     fn a_watched_account_key_is_the_fetch_key() {
         let mut state = ResidentState::default();
-        let mut btc = wallet("w1", Chain::Bitcoin, &[]);
+        let mut btc = wallet("w1", Chain::Bitcoin, None);
         btc.xpub = Some("zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs".to_string());
         state.wallets = vec![btc];
         assert!(refresh_entries_for(&state)[0].address.starts_with("zpub"));
@@ -725,7 +716,7 @@ mod refresh_entry_tests {
         assert!(refresh_entries_for(&state).is_empty());
 
         // A phrase wallet's stored account key does not displace its address.
-        let mut phrase = wallet("w2", Chain::Bitcoin, &[(Chain::Bitcoin, "bc1main")]);
+        let mut phrase = wallet("w2", Chain::Bitcoin, Some("bc1main"));
         phrase.xpub = Some("xpub-stored".into());
         state.wallets = vec![phrase];
         assert_eq!(refresh_entries_for(&state)[0].address, "bc1main");
@@ -736,8 +727,8 @@ mod refresh_entry_tests {
     fn a_wallet_with_no_address_is_not_an_entry() {
         let state = ResidentState {
             wallets: vec![
-                wallet("w1", Chain::Solana, &[]),
-                wallet("w2", Chain::Solana, &[(Chain::Solana, "So1")]),
+                wallet("w1", Chain::Solana, None),
+                wallet("w2", Chain::Solana, Some("So1")),
             ],
             ..Default::default()
         };
@@ -752,7 +743,7 @@ mod refresh_entry_tests {
     #[test]
     fn the_evm_family_shares_one_address() {
         let state = ResidentState {
-            wallets: vec![wallet("w1", Chain::Arbitrum, &[(Chain::Ethereum, "0xabc")])],
+            wallets: vec![wallet("w1", Chain::Arbitrum, Some("0xabc"))],
             ..Default::default()
         };
         let entries = refresh_entries_for(&state);

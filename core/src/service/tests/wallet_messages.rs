@@ -39,7 +39,7 @@ async fn every_scheme_signs_what_its_address_verifies() {
                     let signed =
                         signed.unwrap_or_else(|error| panic!("{chain} {method:?}: {error}"));
                     assert_eq!(signed.scheme, scheme);
-                    assert_eq!(Some(signed.address.as_str()), wallet.primary_address());
+                    assert_eq!(Some(signed.address.as_str()), wallet.address.as_deref());
                     assert!(
                         crate::send::message::verify_message(
                             chain,

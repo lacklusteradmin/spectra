@@ -17,9 +17,7 @@
 //!   4. Final form: `kaspa:` + base32(payload + checksum).
 
 use crate::derivation::error::DerivationError;
-
-pub(crate) const KASPA_HRP: &str = "kaspa";
-pub(crate) const KASPA_TESTNET_HRP: &str = "kaspatest";
+use crate::registry::Chain;
 
 const KASPA_VERSION_SCHNORR: u8 = 0x00;
 const KASPA_VERSION_ECDSA: u8 = 0x01;
@@ -127,8 +125,12 @@ pub(crate) fn encode_kaspa_address(
 /// the 32-byte x-only secp256k1 public key.
 #[cfg(test)]
 pub(crate) fn encode_kaspa_schnorr(pubkey_x_only: &[u8; 32]) -> String {
-    encode_kaspa_address(KASPA_VERSION_SCHNORR, pubkey_x_only, KASPA_HRP)
-        .expect("schnorr payload is always valid")
+    encode_kaspa_address(
+        KASPA_VERSION_SCHNORR,
+        pubkey_x_only,
+        Chain::Kaspa.kaspa_address_hrp().expect("Kaspa has an HRP"),
+    )
+    .expect("schnorr payload is always valid")
 }
 
 /// Decode a Kaspa address into `(version, payload, is_testnet)`.
@@ -137,15 +139,11 @@ pub(crate) fn decode_kaspa_address(address: &str) -> Result<(u8, Vec<u8>, bool),
     let (hrp, body) = lower
         .split_once(':')
         .ok_or_else(|| DerivationError::Invalid("kaspa address missing HRP separator".into()))?;
-    let is_testnet = match hrp {
-        KASPA_HRP => false,
-        KASPA_TESTNET_HRP => true,
-        other => {
-            return Err(DerivationError::Invalid(
-                format!("unknown kaspa hrp: {other}").into(),
-            ));
-        }
-    };
+    let is_testnet = [Chain::Kaspa, Chain::KaspaTestnet]
+        .into_iter()
+        .find(|chain| chain.kaspa_address_hrp().ok() == Some(hrp))
+        .map(Chain::is_testnet)
+        .ok_or_else(|| DerivationError::Invalid(format!("unknown kaspa hrp: {hrp}").into()))?;
     let mut data = Vec::with_capacity(body.len());
     for ch in body.bytes() {
         let pos = CHARSET.iter().position(|&c| c == ch).ok_or_else(|| {
@@ -253,7 +251,7 @@ pub fn derive_kaspa(
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        KASPA_HRP,
+        Chain::Kaspa.kaspa_address_hrp()?,
         &seed_phrase,
         &derivation_path,
         passphrase.as_deref(),
@@ -282,7 +280,7 @@ pub fn derive_kaspa_testnet(
 ) -> Result<DerivationResult, SpectraBridgeError> {
     let (account, branch, index) = parse_path_metadata(&derivation_path);
     let (address, public_key_hex, private_key_hex) = derive_from_seed_phrase(
-        KASPA_TESTNET_HRP,
+        Chain::KaspaTestnet.kaspa_address_hrp()?,
         &seed_phrase,
         &derivation_path,
         passphrase.as_deref(),

@@ -20,6 +20,9 @@ impl TransactionRecord {
     /// `signed_here`: whether this device stored the send's signed
     /// transaction, which is what a rebroadcast submits.
     pub(crate) fn with_actions(mut self, signed_here: bool) -> Self {
+        self.direction =
+            crate::store::wallet_domain::transaction_amount_direction(self.kind, &self.amount);
+        self.submitted = self.kind.is_submitted();
         self.actions = TransactionActions {
             recheck_unavailable_reason: super::transaction_recheck::recheck_chain(&self)
                 .err()

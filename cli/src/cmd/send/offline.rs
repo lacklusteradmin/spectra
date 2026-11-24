@@ -7,8 +7,7 @@ use colored::Colorize as _;
 use serde::Serialize;
 use spectra_core::registry::Chain;
 use spectra_core::send::ethereum::{
-    EvmCustomFeeConfiguration, EvmSendAssemblyInput, EvmSendOverridesInput, EvmSupportedToken,
-    parse_evm_custom_fees, parse_evm_nonce, prepare_evm_send_assembly,
+    EvmCustomFeeConfiguration, EvmSendOverridesInput, parse_evm_custom_fees, parse_evm_nonce,
 };
 use spectra_core::send::payment_memo::PaymentMemo;
 use spectra_core::send::{SendAffordability, SendAffordabilityInput, send_affordability};
@@ -354,9 +353,6 @@ pub struct AssembleArgs {
     /// Chain to assemble for.
     #[arg(long)]
     chain: String,
-    /// Sender address.
-    #[arg(long)]
-    from: String,
     /// Recipient address.
     #[arg(long)]
     to: String,
@@ -406,8 +402,8 @@ impl Report for AssembleReport {
     }
 }
 
-/// The transaction an EVM send would sign: the one place a suite can see
-/// `prepare_evm_send_assembly`, which the iOS send sheet also calls.
+/// The call an EVM send would sign: core's `transfer_call`, which both the
+/// send preview and the build use.
 pub fn assemble(out: Out, args: AssembleArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.chain)?;
     if !chain.is_evm() {
@@ -416,43 +412,25 @@ pub fn assemble(out: Out, args: AssembleArgs) -> CliResult<()> {
             chain.chain_display_name()
         )));
     }
-    let symbol = args
-        .symbol
-        .clone()
-        .unwrap_or_else(|| chain.coin_symbol().to_string());
-    let token = match (&args.contract, args.decimals) {
-        (Some(contract), Some(decimals)) => Some(EvmSupportedToken {
-            symbol: symbol.clone(),
-            contract_address: contract.clone(),
-            decimals,
-        }),
+    let token = match (args.contract.as_deref(), args.decimals) {
+        (Some(contract), Some(decimals)) => Some((contract, decimals)),
         (Some(_), None) => return Err(CliError::usage("--contract needs --decimals")),
         (None, Some(_)) => return Err(CliError::usage("--decimals needs --contract")),
         (None, None) => None,
     };
-    // The asset is its deployment: the contract's on this chain, or the gas
-    // asset's when there is none. The ticker only labels the output.
-    let deployment_id =
-        spectra_core::catalog::tokens::deployment_id_for(chain, args.contract.as_deref())
-            .ok_or_else(|| CliError::rejected("the contract is not valid on this chain"))?;
-    // The typed decimal goes through untouched; the assembler checks it
-    // against the asset's precision.
-    let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-        chain_id: chain,
-        deployment_id,
-        from_address: args.from,
-        resolved_destination: args.to,
-        amount: args.amount.trim().to_string(),
-        token,
-    })
-    .map_err(|e| CliError::rejected(e.to_string()))?;
+    let call = spectra_core::send::evm::transfer_call(chain, &args.to, args.amount.trim(), token)
+        .map_err(|e| CliError::rejected(e.to_string()))?;
     out.report(&AssembleReport {
         chain,
-        symbol,
-        is_native: assembly.is_native,
-        to: assembly.to_address,
-        value_wei: assembly.value_wei,
-        data: assembly.data_hex,
+        symbol: args
+            .symbol
+            .unwrap_or_else(|| chain.coin_symbol().to_string()),
+        is_native: token.is_none(),
+        to: call.to,
+        value_wei: call.value.to_string(),
+        data: std::iter::once("0x".to_string())
+            .chain(call.data.iter().map(|byte| format!("{byte:02x}")))
+            .collect(),
     })
 }
 

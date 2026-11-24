@@ -170,18 +170,15 @@ impl Report for WikiReport {
 }
 
 pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
-    let needle = args.filter.as_deref().map(str::to_lowercase);
     // The picker's popular order; a testnet shares its mainnet's rank and
     // follows it in catalog order.
     let mut listed: Vec<Chain> = Chain::all()
         .filter(|chain| args.testnets || chain.mainnet_counterpart() == *chain)
         .filter(|chain| args.tag.is_none_or(|tag| chain.entry().tags.contains(&tag)))
-        .filter(|chain| match &needle {
-            None => true,
-            Some(needle) => {
-                chain.chain_display_name().to_lowercase().contains(needle)
-                    || chain.coin_symbol().to_lowercase().contains(needle)
-            }
+        .filter(|chain| {
+            args.filter.as_ref().is_none_or(|query| {
+                spectra_core::catalog::chains::chain_matches_search(*chain, query.clone())
+            })
         })
         .collect();
     listed.sort_by_key(|chain| chain.entry().popular_rank);
@@ -895,7 +892,8 @@ pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
         );
     }
     let address = wallet
-        .active_address()
+        .address
+        .as_deref()
         .ok_or_else(|| CliError::rejected("wallet has no address on selected network"))?
         .to_string();
     let entries = ctx

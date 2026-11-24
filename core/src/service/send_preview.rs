@@ -48,39 +48,21 @@ impl WalletService {
         };
         // The stored holding says what is sent: its token's contract on this
         // network, or the network's own coin.
-        let deployment_id = holding.deployment_id();
-        let assembly = crate::send::ethereum::prepare_evm_send_assembly(
-            crate::send::ethereum::EvmSendAssemblyInput {
-                chain_id: chain,
-                deployment_id,
-                from_address: from.clone(),
-                resolved_destination: destination,
-                amount,
-                token: token.map(|t| crate::send::ethereum::EvmSupportedToken {
-                    symbol: t.symbol,
-                    contract_address: t.contract,
-                    decimals: t.decimals.into(),
-                }),
-            },
-        )
-        .map_err(|e| SpectraBridgeError::InvalidInput {
-            message: e.to_string().into(),
-        })?;
+        let call = crate::send::evm::transfer_call(
+            chain,
+            &destination,
+            &amount,
+            token
+                .as_ref()
+                .map(|t| (t.contract.as_str(), u32::from(t.decimals))),
+        )?;
         let nonce = match explicit_nonce {
             Some(nonce) => nonce,
             None => i64::try_from(self.next_send_nonce(chain, &from).await?)
                 .map_err(|_| SpectraBridgeError::failure("Nonce exceeds supported range"))?,
         };
-        self.fetch_evm_send_preview(
-            chain,
-            from,
-            assembly.to_address,
-            assembly.value_wei,
-            assembly.data_hex,
-            Some(nonce),
-            custom_fees,
-        )
-        .await
+        self.fetch_evm_send_preview(chain, from, call, Some(nonce), custom_fees)
+            .await
     }
 }
 
@@ -135,7 +117,7 @@ impl WalletService {
             }
             Chain::Aptos => {
                 let price = AptosClient::new(endpoints).fetch_gas_price().await?;
-                let max_gas = chain.aptos_max_gas_amount().expect("Aptos gas limit");
+                let max_gas = chain.aptos_max_gas_amount()?;
                 let budget = price
                     .checked_mul(max_gas)
                     .filter(|budget| *budget > 0)
@@ -177,9 +159,7 @@ impl WalletService {
         &self,
         chain_id: crate::registry::Chain,
         from: String,
-        to: String,
-        value_wei: String,
-        data_hex: String,
+        call: crate::send::evm::TransferCall,
         explicit_nonce: Option<i64>,
         custom_fees: Option<crate::send::ethereum::EvmCustomFeeConfiguration>,
     ) -> Result<SendPreview, SpectraBridgeError> {
@@ -193,24 +173,13 @@ impl WalletService {
         let eps = self.endpoints_for(chain, &[EndpointCapability::Fee]).await;
         let client = EvmClient::new(eps, chain.evm_chain_id()?);
 
-        if value_wei.is_empty() || !value_wei.bytes().all(|b| b.is_ascii_digit()) {
-            return Err(SpectraBridgeError::failure(
-                "value_wei must be an unsigned integer",
-            ));
-        }
-        let value_u128: u128 = value_wei
-            .parse()
-            .map_err(|_| SpectraBridgeError::failure("value_wei exceeds u128 range"))?;
-        let data_opt: Option<&str> = if data_hex == "0x" || data_hex.is_empty() {
-            None
-        } else {
-            Some(&data_hex)
-        };
         // An ERC-20 transfer is addressed to the token contract, so the
         // destination *is* the token whose balance this send spends.
-        let token_contract = data_opt
-            .filter(|data| crate::api::evm_json_rpc::is_erc20_transfer(data))
-            .map(|_| to.as_str());
+        let token_contract = (call.value == 0
+            && call
+                .data
+                .starts_with(&crate::api::evm_json_rpc::SEL_TRANSFER))
+        .then_some(call.to.as_str());
 
         let verification = EvmClient::new(
             self.endpoints_for(chain, &[EndpointCapability::Verification])
@@ -254,12 +223,7 @@ impl WalletService {
                 .unwrap_or(fee.priority_fee_wei),
         );
         let prepared = crate::send::evm::prepare_transfer(
-            &client,
-            &from,
-            &to,
-            value_u128,
-            &crate::api::evm_json_rpc::decode_hex(&data_hex)?,
-            &overrides,
+            &client, &from, &call.to, call.value, &call.data, &overrides,
         )
         .await?;
         let native_balance_wei: u128 = bal_res?
@@ -279,6 +243,7 @@ impl WalletService {
             })
             .transpose()?;
         Ok(crate::send::ethereum::evm_send_preview(
+            chain,
             &prepared,
             native_balance_wei,
             token_balance,

@@ -130,18 +130,15 @@ impl WalletService {
     ) -> Result<(SignedPayload, Option<String>), SpectraBridgeError> {
         Ok(match &stored.prepared {
             PreparedPayload::Tron(p) => {
-                let expiry = p.body["raw_data"]["expiration"]
-                    .as_u64()
-                    .ok_or_else(|| SpectraBridgeError::failure("Invalid Tron expiration"))?;
-                if expiry <= (crate::store::now_unix() * 1000.0) as u64 {
+                if p.expiration() <= (crate::store::now_unix() * 1000.0) as u64 {
                     return Err(SpectraBridgeError::failure(
                         "Tron transaction expired; build and review again",
                     ));
                 }
                 let key = signer.private_key()?;
                 (
-                    SignedPayload::Json(p.clone().sign(&key)?),
-                    p.body["txID"].as_str().map(str::to_string),
+                    SignedPayload::Hex(hex::encode(p.sign(&key)?)),
+                    Some(p.txid()),
                 )
             }
             _ => {
@@ -157,9 +154,7 @@ impl WalletService {
     ) -> Result<bool, SpectraBridgeError> {
         let now = crate::store::now_unix();
         Ok(match &stored.prepared {
-            PreparedPayload::Tron(p) => p.body["raw_data"]["expiration"]
-                .as_u64()
-                .is_none_or(|expiry| now * 1000.0 >= expiry as f64),
+            PreparedPayload::Tron(p) => now * 1000.0 >= p.expiration() as f64,
             _ => false,
         })
     }
@@ -185,30 +180,23 @@ impl WalletService {
             .ok_or_else(|| {
                 SpectraBridgeError::invalid("TRC-10 amount exceeds positive int64 protocol range")
             })?;
-        let contract = &prepared.body["raw_data"]["contract"][0];
-        let value = &contract["parameter"]["value"];
-        let owner = format!(
-            "41{}",
-            crate::derivation::tron::tron_base58_to_evm_hex(sender)?
-        );
-        let receiver = format!(
-            "41{}",
-            crate::derivation::tron::tron_base58_to_evm_hex(&request.to_address)?
-        );
-        if contract["type"].as_str() != Some("TransferAssetContract")
-            || value["asset_name"].as_str() != Some(hex::encode(id).as_str())
-            || value["owner_address"].as_str() != Some(owner.as_str())
-            || value["to_address"].as_str() != Some(receiver.as_str())
-            || value["amount"].as_u64() != Some(amount)
-        {
+        // The reviewed transfer, encoded under the same reference, is the
+        // transaction's bytes or another transaction.
+        let reviewed = crate::send::tron::encode(
+            sender,
+            crate::send::tron::Transfer::Trc10 {
+                asset_id: id,
+                to: &request.to_address,
+                amount,
+            },
+            &prepared.reference,
+        )?;
+        if reviewed.raw != prepared.raw {
             return Err(SpectraBridgeError::invalid(
                 "TRC-10 transaction differs from the reviewed transfer",
             ));
         }
-        let expiry = prepared.body["raw_data"]["expiration"]
-            .as_u64()
-            .ok_or_else(|| SpectraBridgeError::invalid("Missing Tron expiration"))?;
-        if expiry <= (crate::store::now_unix() * 1000.0) as u64 {
+        if prepared.expiration() <= (crate::store::now_unix() * 1000.0) as u64 {
             return Err(SpectraBridgeError::failure(
                 "Tron transaction expired; build and review again",
             ));

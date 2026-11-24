@@ -365,7 +365,7 @@ impl WalletService {
                 .iter()
                 .filter(|w| Some(w.id.as_str()) != wallet_id && w.chain_id == chain_id)
                 .map(|w| {
-                    let addresses = w.addresses.iter().map(|a| a.address.clone()).collect();
+                    let addresses = w.address.iter().cloned().collect();
                     (w.id.clone(), w.name.clone(), addresses)
                 })
                 .collect();

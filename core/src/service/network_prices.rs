@@ -153,7 +153,6 @@ impl WalletService {
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Core chooses assets from stored holdings and price alerts, then persists valid quotes.
     pub async fn refresh_owned_prices(

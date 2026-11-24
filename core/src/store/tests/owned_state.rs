@@ -25,24 +25,14 @@ async fn defaults_to_usd_before_anything_is_stored() {
         state.settings.fiat_currency,
         crate::store::state::FiatCurrency::Usd
     );
-    // Everything a user supplies is still empty; the token list is not one
-    // of those, because opening seeds it from the catalog rather than
-    // leaving a caller to remember the merge.
+    // Everything a user supplies is still empty, and the token list is the
+    // catalog's own.
     assert_eq!(
         ResidentState {
             revision: 0,
-            token_preferences: Vec::new(),
             ..state.clone()
         },
         ResidentState::default()
-    );
-    assert_eq!(
-        state.token_preferences,
-        crate::store::state::merge_built_in_token_preferences(
-            crate::store::state::built_in_token_preferences(),
-            Vec::new()
-        ),
-        "opening seeds the catalog's own list, in the order the merge gives it"
     );
     let _ = std::fs::remove_file(&db);
 }

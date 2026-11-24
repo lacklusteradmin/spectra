@@ -58,7 +58,7 @@ impl IcpClient {
         }
     }
 
-    pub(crate) async fn rosetta_post<T: serde::de::DeserializeOwned>(
+    async fn rosetta_post<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
         body: &Value,
@@ -119,7 +119,7 @@ impl IcpClient {
             .rosetta_post(
                 "/account/balance",
                 &json!({
-                    "network_identifier": {"blockchain": "Internet Computer", "network": "00000000000000020101"},
+                    "network_identifier": network_identifier(),
                     "account_identifier": {"address": account_address}
                 }),
             )
@@ -145,7 +145,7 @@ impl IcpClient {
             .rosetta_post(
                 "/search/transactions",
                 &json!({
-                    "network_identifier": {"blockchain": "Internet Computer", "network": "00000000000000020101"},
+                    "network_identifier": network_identifier(),
                     "account_identifier": {"address": account_address},
                     "limit": 50, "offset": offset
                 }),
@@ -307,12 +307,65 @@ fn icp_history_from_transactions(
     Ok(entries)
 }
 
+/// Rosetta's currency for the ledger's own coin.
+fn icp_currency() -> Value {
+    let chain = crate::registry::Chain::Icp;
+    json!({"symbol": chain.coin_symbol(), "decimals": chain.native_decimals()})
+}
+
 impl IcpClient {
+    /// The fee Rosetta's construction API suggests for a ledger transfer of
+    /// `amount` e8s from `sender` to `recipient` that pays `fee`: preprocess,
+    /// then metadata. `None` unless it suggests exactly one fee, in ICP.
+    pub(crate) async fn suggested_transfer_fee(
+        &self,
+        sender: &str,
+        recipient: &str,
+        amount: u64,
+        fee: u64,
+    ) -> Result<Option<u64>, ApiError> {
+        let currency = icp_currency();
+        let operations = json!([
+            {"operation_identifier":{"index":0},"type":"TRANSACTION","account":{"address":sender},"amount":{"value":format!("-{amount}"),"currency":currency}},
+            {"operation_identifier":{"index":1},"type":"TRANSACTION","account":{"address":recipient},"amount":{"value":amount.to_string(),"currency":currency}},
+            {"operation_identifier":{"index":2},"type":"FEE","account":{"address":sender},"amount":{"value":format!("-{fee}"),"currency":currency}}
+        ]);
+        let preprocess: Value = self
+            .rosetta_post(
+                "/construction/preprocess",
+                &json!({"network_identifier":network_identifier(),"operations":operations}),
+            )
+            .await?;
+        let options = preprocess
+            .get("options")
+            .or_decode("Missing ICP construction options")?;
+        let metadata: Value = self
+            .rosetta_post(
+                "/construction/metadata",
+                &json!({"network_identifier":network_identifier(),"options":options}),
+            )
+            .await?;
+        let fees = metadata["suggested_fee"]
+            .as_array()
+            .or_decode("Missing ICP suggested fee")?;
+        Ok(match fees.as_slice() {
+            [suggested] if suggested["currency"] == currency => suggested["value"]
+                .as_str()
+                .and_then(|value| value.parse().ok()),
+            _ => None,
+        })
+    }
+
+    /// Submit a signed ledger transfer: the CBOR of its `TRANSACTION`
+    /// request set. Returns the transaction hash.
     pub(crate) async fn submit_signed_transaction(
         &self,
-        payload: &str,
+        signed: &[u8],
     ) -> Result<String, ApiError> {
-        let body: Value = serde_json::from_str(payload).map_err(ApiError::invalid)?;
+        let body = json!({
+            "network_identifier": network_identifier(),
+            "signed_transaction": hex::encode(signed),
+        });
         let submit: Value = self.rosetta_post("/construction/submit", &body).await?;
         let txid = submit
             .pointer("/transaction_identifier/hash")

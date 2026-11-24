@@ -205,17 +205,15 @@ fn aptos(node: &Node, request: &Request, body: &Value) -> Value {
             }
         }
         ("POST", "/transactions/simulate") => {
-            let function = body["payload"]["function"].as_str().unwrap();
-            let (event, field) = match function.rsplit("::").next().unwrap() {
+            let simulated = crate::send::aptos::decode(&request.body);
+            let (_, signature) = simulated.authenticator.as_ref().unwrap();
+            assert_eq!(signature, &[0; 64], "a simulation carries no signature");
+            let (event, field) = match simulated.function.rsplit("::").next().unwrap() {
                 "add_stake" => ("AddStake", "amount_added"),
                 "unlock" => ("UnlockStake", "amount_unlocked"),
                 _ => ("WithdrawStake", "amount_withdrawn"),
             };
-            let asked: u64 = body["payload"]["arguments"][1]
-                .as_str()
-                .unwrap()
-                .parse()
-                .unwrap();
+            let asked = u64::from_le_bytes(simulated.arguments[1].clone().try_into().unwrap());
             let moved = asked + u64::from(node.adjusted);
             let estimate = request
                 .url
@@ -224,7 +222,7 @@ fn aptos(node: &Node, request: &Request, body: &Value) -> Value {
             json!([{"success": node.simulation,
                 "vm_status": if node.simulation { "Executed" } else { "ABORT" },
                 "gas_used": "10000",
-                "max_gas_amount": if estimate { json!("200000") } else { body["max_gas_amount"].clone() },
+                "max_gas_amount": if estimate { json!("200000") } else { json!(simulated.max_gas.to_string()) },
                 "events": [{"type": format!("0x1::delegation_pool::{event}"),
                     "data": {field: moved.to_string()}}]}])
         }

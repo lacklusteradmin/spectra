@@ -31,7 +31,9 @@ impl WalletService {
         })
         .await
     }
+}
 
+impl WalletService {
     /// Short-lived clients must await bootstrap before their first network request.
     pub async fn await_network_ready(&self) -> Result<(), SpectraBridgeError> {
         crate::service::worker::run(async move {

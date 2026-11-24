@@ -71,14 +71,15 @@ fn transactions_and_signatures_are_tronwebs() {
             "{}",
             vector["name"]
         );
-        assert_eq!(prepared.body["txID"], vector["txID"]);
-        assert_eq!(
-            prepared.body["raw_data"]["contract"][0].get("Permission_id"),
-            raw_data["contract"][0].get("Permission_id")
-        );
+        assert_eq!(prepared.txid(), vector["txID"].as_str().unwrap());
         let decoded = decode(&prepared.raw).unwrap();
         assert_eq!(decoded.owner_address(), owner);
-        assert_eq!(decoded.prepared().unwrap().body, prepared.body);
+        let (reencoded, json) = decoded.prepared().unwrap();
+        assert_eq!(reencoded.raw, prepared.raw);
+        assert_eq!(
+            json["raw_data"]["contract"][0].get("Permission_id"),
+            raw_data["contract"][0].get("Permission_id")
+        );
         for (signed, key) in vector["signatures"].as_array().unwrap().iter().zip(&keys) {
             let signature = sign(&prepared.raw, key).unwrap();
             assert_eq!(

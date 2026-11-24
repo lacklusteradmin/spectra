@@ -256,9 +256,7 @@ impl AptosClient {
         &self,
         chain: crate::registry::Chain,
     ) -> Result<(), ApiError> {
-        let expected = chain
-            .aptos_chain_id()
-            .or_decode("Missing Aptos network identity")?;
+        let expected = chain.aptos_chain_id()?;
         if self.fetch_ledger_info().await?.0 != u64::from(expected) {
             return Err(ApiError::invalid("Aptos endpoint is on the wrong network"));
         }
@@ -295,13 +293,12 @@ impl AptosClient {
 }
 
 impl AptosClient {
-    /// Submit a signed transaction in BCS, as the REST API takes one whose
-    /// authenticator its JSON form does not name; the hash it answers.
-    pub(crate) async fn submit_signed_bcs(&self, signed: &[u8]) -> Result<String, ApiError> {
+    /// POST a signed transaction's BCS to `path`; the node's JSON answer.
+    async fn post_signed_bcs(&self, path: &str, signed: &[u8]) -> Result<Value, ApiError> {
         let body = signed.to_vec();
-        let response: Value = race(&self.endpoints, |base| {
+        race(&self.endpoints, |base| {
             let client = self.client.clone();
-            let url = format!("{}/transactions", base.trim_end_matches('/'));
+            let url = format!("{}{path}", base.trim_end_matches('/'));
             let body = body.clone();
             async move {
                 let (status, bytes) = client
@@ -309,7 +306,11 @@ impl AptosClient {
                         &url,
                         "application/x.aptos.signed_transaction+bcs",
                         body,
-                        RetryProfile::ChainWrite,
+                        if path == "/transactions" {
+                            RetryProfile::ChainWrite
+                        } else {
+                            RetryProfile::ChainRead
+                        },
                     )
                     .await?;
                 if !(200..300).contains(&status) {
@@ -319,22 +320,15 @@ impl AptosClient {
                     });
                 }
                 serde_json::from_slice(&bytes)
-                    .map_err(|e| ApiError::Decode(format!("Aptos submit: {e}")))
+                    .map_err(|e| ApiError::Decode(format!("Aptos {path}: {e}")))
             }
         })
-        .await?;
-        let txid = response["hash"]
-            .as_str()
-            .filter(|s| !s.is_empty())
-            .or_decode("Aptos submit: missing hash")?
-            .to_string();
-        Ok(txid)
+        .await
     }
 
-    pub async fn submit_signed_body(&self, signed_json: &str) -> Result<String, ApiError> {
-        let body: Value = serde_json::from_str(signed_json)
-            .map_err(|e| ApiError::InvalidInput(format!("invalid Aptos transaction: {e}")))?;
-        let response = self.post_val("/transactions", &body).await?;
+    /// Submit a signed transaction's BCS; the hash the node answers.
+    pub(crate) async fn submit_signed_bcs(&self, signed: &[u8]) -> Result<String, ApiError> {
+        let response = self.post_signed_bcs("/transactions", signed).await?;
         let txid = response["hash"]
             .as_str()
             .filter(|s| !s.is_empty())
@@ -404,23 +398,22 @@ impl AptosClient {
         .or_decode("Invalid delegation-pool add-stake fee")
     }
 
-    /// No usable signature is sent. The node executes this exact entry function
-    /// at its current ledger state and reports the gas needed and resulting events.
+    /// No usable signature is sent. The node executes this exact
+    /// transaction, a `delegation_pool::{function}` call, at its current ledger
+    /// state and reports the gas needed and resulting events.
     pub(crate) async fn simulate_staking(
         &self,
-        body: &Value,
-        public: &[u8; 32],
+        simulation: &[u8],
+        function: &str,
         estimate: bool,
         amount: u64,
     ) -> Result<(u64, u64), ApiError> {
-        let mut body = body.clone();
-        body["signature"] = serde_json::json!({"type":"ed25519_signature","public_key":format!("0x{}",hex::encode(public)),"signature":format!("0x{}",hex::encode([0u8;64]))});
         let path = if estimate {
             "/transactions/simulate?estimate_max_gas_amount=true"
         } else {
             "/transactions/simulate"
         };
-        let result = self.post_val(path, &body).await?;
+        let result = self.post_signed_bcs(path, simulation).await?;
         let tx = result
             .as_array()
             .filter(|v| v.len() == 1)
@@ -440,15 +433,15 @@ impl AptosClient {
         };
         let gas = number("gas_used")?;
         let maximum = number("max_gas_amount")?;
-        let function = body["payload"]["function"]
-            .as_str()
-            .or_decode("Missing delegation entry function")?;
-        let (event, field) = if function.ends_with("::add_stake") {
-            ("AddStake", "amount_added")
-        } else if function.ends_with("::unlock") {
-            ("UnlockStake", "amount_unlocked")
-        } else {
-            ("WithdrawStake", "amount_withdrawn")
+        let (event, field) = match function {
+            "add_stake" => ("AddStake", "amount_added"),
+            "unlock" => ("UnlockStake", "amount_unlocked"),
+            "withdraw" => ("WithdrawStake", "amount_withdrawn"),
+            other => {
+                return Err(ApiError::invalid(format!(
+                    "not a delegation entry function: {other}"
+                )));
+            }
         };
         let matches = tx["events"]
             .as_array()

@@ -217,7 +217,7 @@ async fn standing_approvals_are_found_revoked_and_named() {
     }
     let import = |chain| service.import_wallets(fixture(chain, WalletSetupMethod::ImportPhrase));
     let approver = import(Chain::Ethereum).await.unwrap().wallets.remove(0);
-    assert_eq!(approver.primary_address(), Some(OWNER));
+    assert_eq!(approver.address.as_deref(), Some(OWNER));
     let unindexed = import(Chain::BnbChain).await.unwrap().wallets.remove(0);
     let refused = service
         .wallet_token_approvals(unindexed.id.clone())

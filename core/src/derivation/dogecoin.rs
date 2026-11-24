@@ -4,9 +4,7 @@
 use crate::derivation::bitcoin::derive_legacy_p2pkh;
 use crate::derivation::types::{BitcoinScriptType, DerivationResult};
 use crate::error::SpectraBridgeError;
-
-pub(crate) const DOGE_MAINNET_VERSION: u8 = 0x1e;
-pub(crate) const DOGE_TESTNET_VERSION: u8 = 0x71;
+use crate::registry::Chain;
 
 /// Derive Dogecoin mainnet keys (P2PKH only).
 pub fn derive_dogecoin(
@@ -19,7 +17,7 @@ pub fn derive_dogecoin(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     derive_legacy_p2pkh(
-        DOGE_MAINNET_VERSION,
+        Chain::Dogecoin.fixed_utxo_address_versions()?.0,
         seed_phrase,
         derivation_path,
         passphrase,
@@ -40,7 +38,7 @@ pub fn derive_dogecoin_testnet(
     want_private_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
     derive_legacy_p2pkh(
-        DOGE_TESTNET_VERSION,
+        Chain::DogecoinTestnet.fixed_utxo_address_versions()?.0,
         seed_phrase,
         derivation_path,
         passphrase,

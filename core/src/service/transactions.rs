@@ -31,14 +31,6 @@ impl WalletService {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
-    /// Every stored transaction, newest first.
-    pub async fn transactions(
-        &self,
-    ) -> Result<Vec<crate::store::persistence_models::TransactionRecord>, SpectraBridgeError> {
-        let this = self.clone();
-        crate::service::worker::run(async move { this.fetch_all_history_records().await }).await
-    }
-
     /// What to tell the user about a send, from its stored record.
     ///
     /// A missing record answers "no notice": nothing is known to say.
@@ -59,6 +51,16 @@ impl WalletService {
             )
         })
         .await
+    }
+}
+
+impl WalletService {
+    /// Every stored transaction, newest first.
+    pub async fn transactions(
+        &self,
+    ) -> Result<Vec<crate::store::persistence_models::TransactionRecord>, SpectraBridgeError> {
+        let this = self.clone();
+        crate::service::worker::run(async move { this.fetch_all_history_records().await }).await
     }
 }
 
@@ -332,7 +334,7 @@ impl WalletService {
 
 /// What one confirmation poll found. Provider errors remain separate from
 /// transaction execution outcomes.
-#[derive(Debug, Clone, Copy, uniffi::Enum)]
+#[derive(Debug, Clone, Copy)]
 pub enum StatusPollOutcome {
     /// The provider reported the transaction confirmed.
     Confirmed,

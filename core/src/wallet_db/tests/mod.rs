@@ -302,7 +302,7 @@ fn address_round_trip() {
 }
 
 use crate::store::persistence_models::TransactionRecord;
-use crate::store::state::{AppSettings, WalletAddress};
+use crate::store::state::AppSettings;
 
 /// Minimal history record, decoded from JSON rather than built
 /// field-by-field: `TransactionRecord` has ~30 fields of which only these
@@ -345,14 +345,10 @@ fn wallet(id: &str, chain: crate::registry::Chain) -> WalletState {
         include_in_portfolio_total: true,
         xpub: None,
         derivation_path: Some("m/84'/0'/0'/0/0".to_string()),
+        derivation_profile: None,
         derivation_flags: Default::default(),
         holdings: Vec::new(),
-        addresses: vec![WalletAddress {
-            chain_id: chain,
-            address: format!("addr-{id}"),
-            kind: "receive".to_string(),
-            derivation_path: None,
-        }],
+        address: Some(format!("addr-{id}")),
         restore_height: None,
         hidden_holdings: Vec::new(),
         icp_principal: None,
@@ -412,7 +408,7 @@ fn app_state_round_trips() {
             // `every_settings_field_round_trips` covers them together.
             ..AppSettings::default()
         },
-        token_preferences: Vec::new(),
+        token_preferences: crate::store::state::built_in_token_preferences(),
         price_alerts: Vec::new(),
         fiat_rates_from_usd: std::collections::HashMap::new(),
         address_book: vec![AddressBookEntry {

@@ -16,16 +16,9 @@ fn account_utxo_root_path(
     chain: Chain,
 ) -> Result<String, SpectraBridgeError> {
     // An empty path resolves to the chain's default.
-    let path = wallet
-        .addresses
-        .iter()
-        .find(|a| a.chain_id == chain)
-        .and_then(|a| a.derivation_path.as_deref())
-        .or_else(|| {
-            (wallet.chain_id == chain)
-                .then_some(wallet.derivation_path.as_deref())
-                .flatten()
-        })
+    let path = (wallet.chain_id == chain)
+        .then_some(wallet.derivation_path.as_deref())
+        .flatten()
         .unwrap_or_default();
     crate::derivation::path::resolve_derivation_path(chain, path.into())
 }
@@ -115,10 +108,10 @@ impl WalletService {
             }
         };
         let mut candidates: Vec<_> = wallet
-            .addresses
+            .address
             .iter()
-            .filter(|a| a.chain_id == chain)
-            .map(|a| (a.address.clone(), a.derivation_path.clone()))
+            .filter(|_| wallet.chain_id == chain)
+            .map(|address| (address.clone(), wallet.derivation_path.clone()))
             .collect();
         candidates.extend(
             self.keypool

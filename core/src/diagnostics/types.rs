@@ -1,60 +1,45 @@
-//! Diagnostic record types exposed through UniFFI. The serde names below are
-//! the field names of the exported diagnostics bundle.
+//! Diagnostic record types. The serde names below are the field names of the
+//! exported diagnostics bundle.
 
 use serde::{Deserialize, Serialize};
 
-macro_rules! diagnostics_record {
-    (
-        $(#[$meta:meta])*
-        $name:ident { $( $(#[$fmeta:meta])* $field:ident : $ty:ty ),* $(,)? }
-    ) => {
-        $(#[$meta])*
-        #[derive(uniffi::Record, Serialize, Deserialize, Clone, Debug, PartialEq)]
-        pub struct $name {
-            $( $(#[$fmeta])* pub $field : $ty, )*
-        }
-    };
+/// What one backend answered when a history run asked it.
+///
+/// Present only for chains that ask more than one — the EVM family asks
+/// four, Tron asks TronScan for transactions and TRC-20 transfers
+/// separately. A chain with a single backend leaves this empty and
+/// `source_used` says which one it was.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct HistoryDiagnosticsSource {
+    pub name: String,
+    pub count: i32,
+    pub error: Option<String>,
 }
 
-diagnostics_record! {
-    /// What one backend answered when a history run asked it.
-    ///
-    /// Present only for chains that ask more than one — the EVM family asks
-    /// four, Tron asks TronScan for transactions and TRC-20 transfers
-    /// separately. A chain with a single backend leaves this empty and
-    /// `source_used` says which one it was.
-    HistoryDiagnosticsSource {
-        name: String,
-        count: i32,
-        error: Option<String>,
-    }
-}
-
-diagnostics_record! {
-    /// One wallet's history-run result on one chain.
-    HistoryDiagnostics {
-        #[serde(rename = "walletID")]
-        wallet_id: String,
-        /// The address or xpub the run looked at.
-        identifier: String,
-        /// Which backend the reported count came from.
-        #[serde(rename = "sourceUsed")]
-        source_used: String,
-        /// Rows the run ended up with.
-        #[serde(rename = "transactionCount")]
-        transaction_count: i32,
-        /// Rows seen before decoding, where the chain decodes and can see more
-        /// than it can use. `None` where the scan and the count are the same
-        /// thing, which is every chain but the EVM family.
-        #[serde(rename = "scannedCount")]
-        scanned_count: Option<i32>,
-        #[serde(rename = "nextCursor")]
-        next_cursor: Option<String>,
-        error: Option<String>,
-        /// One entry per backend asked, where the chain asks more than one.
-        #[serde(rename = "perSource")]
-        per_source: Vec<HistoryDiagnosticsSource>,
-    }
+/// One wallet's history-run result on one chain.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct HistoryDiagnostics {
+    #[serde(rename = "walletID")]
+    pub wallet_id: String,
+    /// The address or xpub the run looked at.
+    pub identifier: String,
+    /// Which backend the reported count came from.
+    #[serde(rename = "sourceUsed")]
+    pub source_used: String,
+    /// Rows the run ended up with.
+    #[serde(rename = "transactionCount")]
+    pub transaction_count: i32,
+    /// Rows seen before decoding, where the chain decodes and can see more
+    /// than it can use. `None` where the scan and the count are the same
+    /// thing, which is every chain but the EVM family.
+    #[serde(rename = "scannedCount")]
+    pub scanned_count: Option<i32>,
+    #[serde(rename = "nextCursor")]
+    pub next_cursor: Option<String>,
+    pub error: Option<String>,
+    /// One entry per backend asked, where the chain asks more than one.
+    #[serde(rename = "perSource")]
+    pub per_source: Vec<HistoryDiagnosticsSource>,
 }
 
 impl HistoryDiagnostics {

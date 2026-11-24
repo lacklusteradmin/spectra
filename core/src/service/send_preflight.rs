@@ -2,7 +2,6 @@
 use crate::error::SpectraBridgeError;
 use crate::service::WalletService;
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Can this send be made?
     pub async fn send_submit_preflight(
@@ -372,7 +371,8 @@ mod preflight_tests {
     #[tokio::test]
     async fn sendability_follows_the_token_list_core_holds() {
         let service = WalletService::new(Vec::new()).expect("service");
-        let mint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+        // A mint the catalog does not ship.
+        let mint = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
         let standard = Chain::Solana.token_standard_for_identifier(mint).unwrap();
         {
             let mut state = service.wallet_state.write().await;

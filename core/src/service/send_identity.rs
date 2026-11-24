@@ -131,19 +131,10 @@ impl WalletService {
         };
         let (derived, private_key_hex) = match material {
             SigningMaterial::Mnemonic(mnemonic) => {
-                let owner = if wallet.chain_id.is_evm() && chain.is_evm() {
-                    wallet.chain_id
-                } else {
-                    chain
-                };
                 let path = wallet
-                    .address_record_on(chain)
-                    .and_then(|a| a.derivation_path.as_deref())
-                    .or_else(|| {
-                        (wallet.chain_id == owner)
-                            .then_some(wallet.derivation_path.as_deref())
-                            .flatten()
-                    })
+                    .shares_address_with(chain)
+                    .then_some(wallet.derivation_path.as_deref())
+                    .flatten()
                     .unwrap_or_default();
                 let path = crate::derivation::path::resolve_derivation_path(id, path.into())?;
                 mnemonic.overrides.0.validate_for_chain(chain)?;

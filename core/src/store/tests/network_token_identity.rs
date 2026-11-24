@@ -66,33 +66,6 @@ async fn invalid_protocol_identity_is_refused_before_storage() {
 }
 
 #[test]
-fn a_contract_called_eth_is_encoded_as_erc20() {
-    use crate::send::ethereum::*;
-    let contract = "0x1111111111111111111111111111111111111111";
-    let assembly = prepare_evm_send_assembly(EvmSendAssemblyInput {
-        chain_id: crate::registry::Chain::Ethereum,
-        deployment_id: crate::catalog::tokens::deployment_id_for(
-            crate::registry::Chain::from_str_id(&String::from("ethereum")).unwrap(),
-            Some(&String::from(contract)),
-        )
-        .unwrap(),
-        from_address: "0x2222222222222222222222222222222222222222".into(),
-        resolved_destination: "0x3333333333333333333333333333333333333333".into(),
-        amount: "1".into(),
-        token: Some(EvmSupportedToken {
-            symbol: "ETH".into(),
-            contract_address: contract.into(),
-            decimals: 6,
-        }),
-    })
-    .unwrap();
-    assert!(!assembly.is_native);
-    assert_eq!(assembly.to_address, contract);
-    assert_eq!(assembly.value_wei, "0");
-    assert!(assembly.data_hex.starts_with("0xa9059cbb"));
-}
-
-#[test]
 fn display_precision_is_deployment_specific() {
     use crate::catalog::tokens::token_display_decimals;
     assert_eq!(

@@ -270,11 +270,13 @@ async fn an_aptos_token_send_calls_its_standards_transfer_and_rechecks_the_accou
         )
         .await;
         let built = wallet.build(send(&wallet, &contract)).await.unwrap();
-        let payload = &prepared(&built)["Aptos"]["body"]["payload"];
-        assert_eq!(payload["function"], function);
+        let message: Vec<u8> =
+            serde_json::from_value(prepared(&built)["Aptos"]["message"].clone()).unwrap();
+        let call = crate::send::aptos::decode(&message[32..]);
+        assert_eq!(call.function, function);
         assert_eq!(
-            payload["arguments"].as_array().unwrap().last().unwrap(),
-            "123456789"
+            call.arguments.last().unwrap(),
+            &123_456_789u64.to_le_bytes()
         );
         refused_at_signing(
             &wallet,
@@ -492,10 +494,11 @@ async fn a_trc20_amount_past_u64_builds_whole() {
         .build(wallet.token_request("THHsfg2eNiv6MSXC4y5d4t5wkvRVADRKiF", "100", contract, 18))
         .await
         .unwrap();
-    let call =
-        prepared(&built)["Tron"]["body"]["raw_data"]["contract"][0]["parameter"]["value"]["data"]
-            .as_str()
-            .unwrap()
-            .to_string();
-    assert!(call.ends_with(&format!("{amount:064x}")), "{call}");
+    let raw: Vec<u8> = serde_json::from_value(prepared(&built)["Tron"]["raw"].clone()).unwrap();
+    let crate::send::tron_multisig::TronPayment::Trc20 { amount: built, .. } =
+        crate::send::tron_multisig::decode(&raw).unwrap().payment
+    else {
+        panic!("a TRC-20 transfer")
+    };
+    assert_eq!(built, amount);
 }

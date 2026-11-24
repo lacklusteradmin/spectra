@@ -507,9 +507,11 @@ mod failed_reads {
                 .fetch_evm_send_preview(
                     crate::registry::Chain::Ethereum,
                     format!("0x{}", "11".repeat(20)),
-                    format!("0x{}", "22".repeat(20)),
-                    "1".into(),
-                    "0x".into(),
+                    crate::send::evm::TransferCall {
+                        to: format!("0x{}", "22".repeat(20)),
+                        value: 1,
+                        data: Vec::new(),
+                    },
                     None,
                     None,
                 )
@@ -525,24 +527,6 @@ mod failed_reads {
             } else {
                 assert!(preview.is_err(), "{failed}");
             }
-            let before = server.received_requests().await.unwrap().len();
-            for value in ["bad", "-1", "+1", "340282366920938463463374607431768211456"] {
-                assert!(
-                    service
-                        .fetch_evm_send_preview(
-                            crate::registry::Chain::Ethereum,
-                            format!("0x{}", "11".repeat(20)),
-                            format!("0x{}", "22".repeat(20)),
-                            value.into(),
-                            "0x".into(),
-                            None,
-                            None,
-                        )
-                        .await
-                        .is_err()
-                );
-            }
-            assert_eq!(server.received_requests().await.unwrap().len(), before);
         }
     }
 
@@ -682,7 +666,7 @@ mod a_preview_quotes_the_asset_it_moves {
         {
             let mut state = service.wallet_state.write().await;
             state.wallets[0].chain_id = crate::registry::Chain::EthereumSepolia;
-            state.wallets[0].addresses[0].address = format!("0x{}", "11".repeat(20));
+            state.wallets[0].address = Some(format!("0x{}", "11".repeat(20)));
         }
         for amount in ["NaN", "-1", "0.0000000000000000001"] {
             assert!(matches!(
@@ -724,14 +708,11 @@ mod a_preview_quotes_the_asset_it_moves {
         assert_eq!(estimate["params"][0]["value"], "0xf43fc2c04ee0000");
     }
 
-    /// `value_wei` and `data_hex` are what `prepare_evm_send_assembly` hands
-    /// this call for the send in question — a token transfer carries its
-    /// amount in the calldata and moves no ether, so its value is zero.
+    /// A token transfer carries its amount in the calldata and moves no
+    /// ether, so its value is zero.
     async fn preview(
         server: &MockServer,
-        to: String,
-        value_wei: &str,
-        data_hex: String,
+        call: crate::send::evm::TransferCall,
     ) -> crate::send::preview_types::SendPreview {
         let service = WalletService::new(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
@@ -743,9 +724,7 @@ mod a_preview_quotes_the_asset_it_moves {
             .fetch_evm_send_preview(
                 crate::registry::Chain::Ethereum,
                 format!("0x{}", "11".repeat(20)),
-                to,
-                value_wei.into(),
-                data_hex,
+                call,
                 None,
                 None,
             )
@@ -761,10 +740,14 @@ mod a_preview_quotes_the_asset_it_moves {
     #[tokio::test]
     async fn an_erc20_send_is_limited_by_the_token_and_not_by_the_ether() {
         let server = evm_node().await;
-        let contract = format!("0x{}", "22".repeat(20));
-        // transfer(0x33…, 1)
-        let data = format!("0xa9059cbb{:0>64}{:0>64}", "33".repeat(20), "1");
-        let value = preview(&server, contract, "0", data).await;
+        let call = crate::send::evm::transfer_call(
+            crate::registry::Chain::Ethereum,
+            &format!("0x{}", "33".repeat(20)),
+            "0.000001",
+            Some((&format!("0x{}", "22".repeat(20)), 6)),
+        )
+        .unwrap();
+        let value = preview(&server, call).await;
 
         assert_eq!(value.spendable_balance, TOKEN_DISPLAY);
         assert_ne!(
@@ -784,9 +767,11 @@ mod a_preview_quotes_the_asset_it_moves {
         let server = evm_node().await;
         let value = preview(
             &server,
-            format!("0x{}", "33".repeat(20)),
-            "1000000000000000",
-            "0x".into(),
+            crate::send::evm::TransferCall {
+                to: format!("0x{}", "33".repeat(20)),
+                value: 1_000_000_000_000_000,
+                data: Vec::new(),
+            },
         )
         .await;
 
@@ -1123,9 +1108,11 @@ mod evm_network_fee_budgets {
                 .fetch_evm_send_preview(
                     Chain::Monad,
                     format!("0x{}", "11".repeat(20)),
-                    format!("0x{}", "22".repeat(20)),
-                    "1000000000000000".into(),
-                    "0x".into(),
+                    crate::send::evm::TransferCall {
+                        to: format!("0x{}", "22".repeat(20)),
+                        value: 1000000000000000,
+                        data: Vec::new(),
+                    },
                     None,
                     None,
                 )
@@ -1159,9 +1146,11 @@ mod evm_network_fee_budgets {
             .fetch_evm_send_preview(
                 Chain::WorldChain,
                 format!("0x{}", "11".repeat(20)),
-                format!("0x{}", "22".repeat(20)),
-                "1000000000000000".into(),
-                "0x".into(),
+                crate::send::evm::TransferCall {
+                    to: format!("0x{}", "22".repeat(20)),
+                    value: 1000000000000000,
+                    data: Vec::new(),
+                },
                 None,
                 Some(EvmCustomFeeConfiguration {
                     max_fee_per_gas_gwei: "5".into(),
@@ -1228,9 +1217,11 @@ mod evm_network_fee_budgets {
                 .fetch_evm_send_preview(
                     Chain::WorldChain,
                     format!("0x{}", "11".repeat(20)),
-                    format!("0x{}", "22".repeat(20)),
-                    "1000000000000000".into(),
-                    "0x".into(),
+                    crate::send::evm::TransferCall {
+                        to: format!("0x{}", "22".repeat(20)),
+                        value: 1000000000000000,
+                        data: Vec::new(),
+                    },
                     None,
                     None,
                 )

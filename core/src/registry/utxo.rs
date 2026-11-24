@@ -162,6 +162,25 @@ impl Chain {
         }
     }
 
+    /// Zcash's two-byte transparent P2PKH version (`t1…` on mainnet, `tm…` on
+    /// testnet), from zcashd's chainparams.
+    pub(crate) fn zcash_transparent_p2pkh_version(self) -> Result<[u8; 2], RegistryError> {
+        match self {
+            Self::Zcash => Ok([0x1c, 0xb8]),
+            Self::ZcashTestnet => Ok([0x1d, 0x25]),
+            _ => Err(self.not_in("Zcash")),
+        }
+    }
+
+    /// The human-readable part of a Kaspa address (`kaspa:`, `kaspatest:`).
+    pub(crate) fn kaspa_address_hrp(self) -> Result<&'static str, RegistryError> {
+        match self {
+            Self::Kaspa => Ok("kaspa"),
+            Self::KaspaTestnet => Ok("kaspatest"),
+            _ => Err(self.not_in("Kaspa")),
+        }
+    }
+
     pub(crate) fn cashaddr_prefix(self) -> Option<&'static str> {
         match self {
             Self::BitcoinCash => Some("bitcoincash"),
@@ -244,24 +263,22 @@ impl Chain {
         script: crate::derivation::types::BitcoinScriptType,
     ) -> Result<String, crate::derivation::error::DerivationError> {
         use crate::derivation::error::DerivationError;
-        use crate::derivation::{
-            bitcoin as btc, bitcoin_cash as bch, dogecoin as doge, litecoin as ltc,
-        };
+        use crate::derivation::{bitcoin as btc, litecoin as ltc};
         Ok(match self {
             Self::Bitcoin => return btc::encode_address_inner(btc::BTC_MAINNET, script, key),
             Self::BitcoinTestnet | Self::BitcoinTestnet4 | Self::BitcoinSignet => {
                 return btc::encode_address_inner(btc::BTC_TESTNET, script, key);
             }
-            Self::BitcoinCash => btc::encode_p2pkh(bch::BCH_MAINNET_VERSION, &key.serialize()),
-            Self::BitcoinCashTestnet => {
-                btc::encode_p2pkh(bch::BCH_TESTNET_VERSION, &key.serialize())
-            }
-            Self::BitcoinSV | Self::BitcoinSVTestnet => {
+            Self::BitcoinCash
+            | Self::BitcoinCashTestnet
+            | Self::BitcoinSV
+            | Self::BitcoinSVTestnet
+            | Self::Dogecoin
+            | Self::DogecoinTestnet
+            | Self::BitcoinGold
+            | Self::Dash
+            | Self::DashTestnet => {
                 btc::encode_p2pkh(self.fixed_utxo_address_versions()?.0, &key.serialize())
-            }
-            Self::Dogecoin => btc::encode_p2pkh(doge::DOGE_MAINNET_VERSION, &key.serialize()),
-            Self::DogecoinTestnet => {
-                btc::encode_p2pkh(doge::DOGE_TESTNET_VERSION, &key.serialize())
             }
             Self::Litecoin | Self::LitecoinTestnet => {
                 return ltc::encode_litecoin_address(self, script, key);
@@ -269,33 +286,19 @@ impl Chain {
             Self::Peercoin | Self::PeercoinTestnet => {
                 return crate::derivation::peercoin::encode_peercoin_address(self, script, key);
             }
-            Self::BitcoinGold | Self::Dash | Self::DashTestnet => {
-                btc::encode_p2pkh(self.fixed_utxo_address_versions()?.0, &key.serialize())
-            }
-            Self::Zcash | Self::ZcashTestnet => {
-                let version = if self.is_testnet() {
-                    [0x1d, 0x25]
-                } else {
-                    [0x1c, 0xb8]
-                };
-                let mut payload = version.to_vec();
-                payload.extend(btc::hash160(&key.serialize()));
-                btc::base58check_encode(&payload)
-            }
+            Self::Zcash | Self::ZcashTestnet => crate::derivation::zcash::zcash_p2pkh_addr(
+                self.zcash_transparent_p2pkh_version()?,
+                key,
+            ),
             Self::Decred | Self::DecredTestnet => crate::derivation::decred::encode_decred_p2pkh(
                 self,
                 &crate::derivation::decred::dcr_hash160(&key.serialize()),
             )?,
             Self::Kaspa | Self::KaspaTestnet => {
-                let hrp = if self.is_testnet() {
-                    crate::derivation::kaspa::KASPA_TESTNET_HRP
-                } else {
-                    crate::derivation::kaspa::KASPA_HRP
-                };
                 return crate::derivation::kaspa::encode_kaspa_address(
                     0,
                     &key.x_only_public_key().0.serialize(),
-                    hrp,
+                    self.kaspa_address_hrp()?,
                 );
             }
             _ => {

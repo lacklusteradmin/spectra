@@ -180,19 +180,16 @@ impl PreparedAccountTransfer {
                 transaction_hash: None,
             },
             AccountProtocol::Kaspa => SignedAccountTransfer {
-                payload: SignedPayload::Json(
-                    super::kaspa::sign(
-                        &utxos
-                            .zip(keys)
-                            .map(|(utxo, key)| super::kaspa::KaspaSigningInput {
-                                utxo,
-                                private_key: key,
-                            })
-                            .collect::<Vec<_>>(),
-                        &self.outputs,
-                    )?
-                    .to_string(),
-                ),
+                payload: SignedPayload::Kaspa(super::kaspa::sign(
+                    &utxos
+                        .zip(keys)
+                        .map(|(utxo, key)| super::kaspa::KaspaSigningInput {
+                            utxo,
+                            private_key: key,
+                        })
+                        .collect::<Vec<_>>(),
+                    &self.outputs,
+                )?),
                 transaction_hash: None,
             },
         })

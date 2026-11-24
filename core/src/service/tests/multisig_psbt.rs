@@ -138,6 +138,7 @@ fn commit(chain: Chain, kind: WalletImportKind) -> WalletImportCommit {
         named_account: None,
         ton_wallet_version: None,
         upgrade_wallet_id: None,
+        created: false,
     }
 }
 

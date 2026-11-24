@@ -79,7 +79,6 @@ pub(crate) struct EvmTransactionRecordRequest {
     pub decoded_page: EvmHistoryPageDecoded,
     pub normalized_address: String,
     pub chain_id: crate::registry::Chain,
-    pub token_source_used: Option<String>,
     pub wallets: Vec<EvmTransactionRecordWalletInput>,
     pub unknown_timestamp_sentinel_unix: f64,
 }
@@ -96,7 +95,6 @@ struct Transfer {
     transaction_hash: String,
     block_number: i64,
     timestamp: f64,
-    source: String,
 }
 
 pub(crate) fn build_evm_transaction_records(
@@ -104,9 +102,6 @@ pub(crate) fn build_evm_transaction_records(
 ) -> Vec<TransactionRecord> {
     let normalized = request.normalized_address;
     let chain = request.chain_id;
-    let token_source = request
-        .token_source_used
-        .unwrap_or_else(|| "none".to_string());
     let page = request.decoded_page;
     let tokens = page.tokens.into_iter().map(|transfer| Transfer {
         status: TransactionStatus::Confirmed,
@@ -128,7 +123,6 @@ pub(crate) fn build_evm_transaction_records(
         transaction_hash: transfer.transaction_hash,
         block_number: transfer.block_number,
         timestamp: transfer.timestamp,
-        source: token_source.clone(),
     });
     // The token is its own asset: its quantity is the amount, and no catalog
     // token, price or holding shares its identity.
@@ -151,7 +145,6 @@ pub(crate) fn build_evm_transaction_records(
         transaction_hash: transfer.transaction_hash,
         block_number: transfer.block_number,
         timestamp: transfer.timestamp,
-        source: token_source.clone(),
     });
     let native = page.native.into_iter().map(|transfer| Transfer {
         status: transfer.status,
@@ -164,7 +157,6 @@ pub(crate) fn build_evm_transaction_records(
         transaction_hash: transfer.transaction_hash,
         block_number: transfer.block_number,
         timestamp: transfer.timestamp,
-        source: "etherscan".to_string(),
     });
     // A transfer whose amount cannot be read is refused, as every history
     // row's is, not stored as 0.
@@ -191,6 +183,8 @@ pub(crate) fn build_evm_transaction_records(
             };
             out.push(TransactionRecord {
                 actions: Default::default(),
+                direction: Default::default(),
+                submitted: false,
                 deployment_id: transfer.deployment_id.clone(),
                 id: crate::store::new_transaction_id(),
                 wallet_id: Some(wallet.wallet_id.clone()),
@@ -222,7 +216,11 @@ pub(crate) fn build_evm_transaction_records(
                 source_address: Some(wallet_side.clone()).filter(|address| !address.is_empty()),
                 change_address: None,
                 failure_reason: None,
-                transaction_history_source: Some(transfer.source.clone()),
+                // Every EVM transfer, native or token, is read from a
+                // Blockscout-API indexer.
+                history_source: Some(crate::store::persistence_models::HistorySource::Indexer {
+                    name: "Blockscout".into(),
+                }),
                 created_at_unix: if transfer.timestamp > 0.0 {
                     transfer.timestamp
                 } else {
@@ -268,7 +266,6 @@ mod tests {
             decoded_page: page,
             normalized_address: "0xself".into(),
             chain_id: crate::registry::Chain::Ethereum,
-            token_source_used: Some("rust/etherscan".into()),
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w1".into(),
                 wallet_name: "Primary".into(),
@@ -284,8 +281,10 @@ mod tests {
         assert_eq!(out[1].kind, TransactionKind::Receive);
         assert_eq!(out[1].symbol, "ETH");
         assert_eq!(
-            out[1].transaction_history_source.as_deref(),
-            Some("etherscan")
+            out[1].history_source,
+            Some(crate::store::persistence_models::HistorySource::Indexer {
+                name: "Blockscout".into()
+            })
         );
         assert_eq!(out[1].created_at_unix, -1.0);
     }
@@ -344,7 +343,6 @@ mod tests {
             },
             normalized_address: "0xself".into(),
             chain_id: crate::registry::Chain::Ethereum,
-            token_source_used: None,
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w1".into(),
                 wallet_name: "Collector".into(),
@@ -405,7 +403,6 @@ mod tests {
             decoded_page: page,
             normalized_address: "0xself".into(),
             chain_id: crate::registry::Chain::Ethereum,
-            token_source_used: None,
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w1".into(),
                 wallet_name: "Primary".into(),
@@ -443,7 +440,6 @@ mod tests {
             },
             normalized_address: "0xself".into(),
             chain_id: crate::registry::Chain::Ethereum,
-            token_source_used: None,
             wallets: vec![EvmTransactionRecordWalletInput {
                 wallet_id: "w1".into(),
                 wallet_name: "Collector".into(),

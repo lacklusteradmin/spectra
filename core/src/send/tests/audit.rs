@@ -53,21 +53,14 @@ fn audit_aptos_mnemonic_address_and_signed_message_match_official_sdk() {
         1,
     )
     .unwrap();
-    let (body, hash) = prepared.sign(&key(&d)).unwrap();
+    let (signed, hash) = prepared.sign(&key(&d)).unwrap();
     assert_eq!(hash, expected["transaction_hash"].as_str().unwrap());
-    let signed: Value = serde_json::from_str(&body).unwrap();
+    let signature = signed[signed.len() - 64..].to_vec();
     assert_eq!(
-        signed["signature"]["signature"],
-        format!("0x{}", expected["signature"].as_str().unwrap())
+        hex::encode(&signature),
+        expected["signature"].as_str().unwrap()
     );
     let message = hex::decode(expected["message"].as_str().unwrap()).unwrap();
-    let signature = hex::decode(
-        signed["signature"]["signature"]
-            .as_str()
-            .unwrap()
-            .trim_start_matches("0x"),
-    )
-    .unwrap();
     ed25519_dalek::VerifyingKey::from_bytes(&key(&d).public_key())
         .unwrap()
         .verify_strict(
@@ -166,18 +159,26 @@ fn audit_tron_local_native_and_token_bytes_match_tronweb() {
             },
         )
         .unwrap();
-        let actual: Value = serde_json::from_str(&prepared.sign(&key).unwrap()).unwrap();
+        let (raw, signatures) = tron::split_signed(&prepared.sign(&key).unwrap());
         let expected = &t["transactions"][usize::from(token)];
-        assert_eq!(actual["raw_data_hex"], expected["raw_data_hex"]);
-        assert_eq!(actual["txID"], expected["txID"]);
         assert_eq!(
-            actual["signature"][0].as_str().unwrap(),
+            hex::encode(&raw),
+            expected["raw_data_hex"].as_str().unwrap()
+        );
+        assert_eq!(prepared.txid(), expected["txID"].as_str().unwrap());
+        assert_eq!(
+            hex::encode(&signatures[0]),
             expected["signature"][0]
                 .as_str()
                 .unwrap()
                 .to_ascii_lowercase()
         );
-        assert_eq!(actual["raw_data"], expected["raw_data"]);
+        // The JSON a multisig session's signers exchange is TronWeb's.
+        let (_, json) = crate::send::tron_multisig::decode(&raw)
+            .unwrap()
+            .prepared()
+            .unwrap();
+        assert_eq!(json["raw_data"], expected["raw_data"]);
     }
 }
 #[test]

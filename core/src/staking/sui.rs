@@ -41,6 +41,7 @@ impl SuiStakingClient {
                     tags: vec![],
                     min_delegation_smallest_unit: crate::registry::Chain::Sui
                         .sui_staking_minimum()
+                        .ok()
                         .map(|v| v.to_string()),
                     uptime_pct: None,
                     website: if v.project_url.is_empty() {

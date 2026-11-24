@@ -70,9 +70,7 @@ impl NearStorageState {
             .or_decode("NEAR storage reserve overflow")?;
         Ok(
             if self.storage_usage
-                <= crate::registry::Chain::Near
-                    .near_zero_balance_storage_limit()
-                    .unwrap_or(0)
+                <= crate::registry::Chain::Near.near_zero_balance_storage_limit()?
             {
                 0
             } else {

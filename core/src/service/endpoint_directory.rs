@@ -1003,9 +1003,11 @@ mod tests {
             .fetch_evm_send_preview(
                 crate::registry::Chain::Ethereum,
                 format!("0x{}", "11".repeat(20)),
-                format!("0x{}", "22".repeat(20)),
-                "1".into(),
-                "0x".into(),
+                crate::send::evm::TransferCall {
+                    to: format!("0x{}", "22".repeat(20)),
+                    value: 1,
+                    data: Vec::new(),
+                },
                 None,
                 None,
             )

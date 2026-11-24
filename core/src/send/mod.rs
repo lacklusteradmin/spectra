@@ -77,7 +77,7 @@ use zeroize::Zeroize;
 pub use transfer::{SendAsset, SendAssetKind};
 
 /// Whether a send can be made, with what core resolved to make it.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SendPreflight {
     pub chain: crate::registry::Chain,
@@ -92,7 +92,7 @@ pub struct SendPreflight {
 }
 
 /// A send request: what `WalletService::build_send` prepares as an artifact.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SendExecutionRequest {
     /// Spectra chain ID string (e.g. "bitcoin", "ethereum").
     pub chain_id: crate::registry::Chain,
@@ -108,7 +108,6 @@ pub struct SendExecutionRequest {
     /// Contract/mint address for token sends (ERC-20, SPL, TRC-20, NEP-141).
     pub contract_address: Option<String>,
     /// Actual token protocol; omitted values are resolved by core before reads.
-    #[uniffi(default = None)]
     pub token_standard: Option<crate::registry::TokenStandard>,
     /// Token decimals for raw-unit conversion.
     pub token_decimals: Option<u32>,
@@ -126,7 +125,6 @@ pub struct SendExecutionRequest {
     /// payload fragment internally — no JSON shuttle from Swift.
     pub evm_overrides: Option<crate::send::ethereum::EvmSendOverridesInput>,
     /// The XRP destination tag or Stellar memo the payment carries.
-    #[uniffi(default = None)]
     pub memo: Option<payment_memo::PaymentMemo>,
 }
 
@@ -139,7 +137,7 @@ impl SendExecutionRequest {
 }
 
 /// What a send that built, signed and broadcast in one call produced.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct SendExecutionResult {
     pub transaction_hash: String,
     /// EVM-specific details (nonce, raw_tx_hex, gas_limit), converted directly
@@ -153,7 +151,7 @@ pub struct SendExecutionResult {
 /// That is half the question: the fee comes out of the chain's gas asset,
 /// which for a token send is a different balance entirely, and the half that
 /// knew about it lived in Swift.
-#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SendAffordability {
     Unavailable,
     /// Amount and fee both fit.
@@ -178,7 +176,7 @@ pub enum SendAffordability {
 /// What the caller knows. Everything else — whether this is the chain's own
 /// asset, what that asset is called, how many decimals a fee is quoted to —
 /// is read from the registry here.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct SendAffordabilityInput {
     pub is_native: bool,
     pub chain_id: crate::registry::Chain,
@@ -201,7 +199,6 @@ pub struct SendAffordabilityInput {
 ///
 /// The verdict is an enum, not a sentence: the wording is localized in the
 /// front end's own bundle.
-#[uniffi::export]
 pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
     if !input.is_native && input.gas_balance.is_none() {
         return SendAffordability::Unavailable;

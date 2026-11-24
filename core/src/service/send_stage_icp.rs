@@ -54,7 +54,7 @@ impl WalletService {
                 }
                 let key = crate::send::keys::Secp256k1Key::from_hex(&signer.private_key_hex)?;
                 (
-                    SignedPayload::Json(p.sign(&key)?),
+                    SignedPayload::Hex(hex::encode(p.sign(&key)?)),
                     Some(p.transaction_hash()?),
                 )
             }

@@ -50,14 +50,13 @@ pub(crate) struct PreparedSubmission {
 #[serde(rename_all = "snake_case")]
 pub(crate) enum SignedPayload {
     /// The transaction's bytes in hex, `0x`-prefixed where the network
-    /// writes them so (EVM, Substrate). An Aptos transaction in this form
-    /// is its BCS.
+    /// writes them so (EVM, Substrate): an Aptos transaction's BCS, a Tron
+    /// transaction's protobuf, an ICP transfer's CBOR.
     Hex(String),
     /// The transaction's bytes in standard base64.
     Base64(String),
-    /// A document the node takes whole: a Tron transaction, an Aptos signed
-    /// body, an ICP or Kaspa submission.
-    Json(String),
+    /// A signed Kaspa transaction, which kaspa-rest takes as JSON.
+    Kaspa(crate::api::kaspa_rest::KaspaTransaction),
     /// A Sui transaction's bytes and its signature, both base64.
     Sui {
         transaction: String,
@@ -84,7 +83,7 @@ impl SignedPayload {
 impl std::fmt::Display for SignedPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Hex(text) | Self::Base64(text) | Self::Json(text) => f.write_str(text),
+            Self::Hex(text) | Self::Base64(text) => f.write_str(text),
             // As `sui_executeTransactionBlock` names its two parts.
             Self::Sui {
                 transaction,
@@ -94,6 +93,7 @@ impl std::fmt::Display for SignedPayload {
                 "{}",
                 serde_json::json!({ "tx_bytes": transaction, "signatures": [signature] })
             ),
+            Self::Kaspa(transaction) => write!(f, "{}", transaction.request_body()),
             Self::IcpStaking(calls) => {
                 f.write_str(&serde_json::to_string(calls).map_err(|_| std::fmt::Error)?)
             }

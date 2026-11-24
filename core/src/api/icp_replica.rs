@@ -65,7 +65,7 @@ impl IcpReplicaClient {
     pub(crate) async fn health(&self) -> Result<(), ApiError> {
         race(&self.endpoints, |base| async move {
             let url = format!("{}/api/v2/status", base.trim_end_matches('/'));
-            let mut response = self
+            let response = self
                 .client
                 .reqwest_client()
                 .get(&url)
@@ -80,17 +80,9 @@ impl IcpReplicaClient {
                     body: "ICP replica status endpoint refused the diagnostic".into(),
                 });
             }
-            let mut bytes = Vec::new();
-            while let Some(chunk) = response
-                .chunk()
-                .await
-                .map_err(|error| ApiError::Transport(error.to_string()))?
-            {
-                if bytes.len().saturating_add(chunk.len()) > 64 * 1024 {
-                    return Err(ApiError::decode("ICP replica status exceeds size limit"));
-                }
-                bytes.extend_from_slice(&chunk);
-            }
+            let bytes = crate::api::http::read_limited(response, 64 * 1024)
+                .await?
+                .ok_or_else(|| ApiError::decode("ICP replica status exceeds size limit"))?;
             validate_health(&bytes)
         })
         .await

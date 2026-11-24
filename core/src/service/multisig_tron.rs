@@ -89,7 +89,7 @@ fn transaction_json(
     decoded: &tron::DecodedTronTransaction,
     session: &TronSession,
 ) -> Result<serde_json::Value, SpectraBridgeError> {
-    let mut body = decoded.prepared()?.body;
+    let mut body = decoded.prepared()?.1;
     body["signature"] = json!(session.signatures);
     Ok(body)
 }
@@ -478,10 +478,22 @@ impl WalletService {
                 "The signers' weights do not yet meet the permission's threshold.",
             ));
         }
+        let signatures = session
+            .signatures
+            .iter()
+            .map(|signature| {
+                hex::decode(signature)
+                    .ok()
+                    .and_then(|bytes| <[u8; 65]>::try_from(bytes).ok())
+                    .ok_or_else(|| SpectraBridgeError::invalid("A signature is not 65 bytes."))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let signed =
+            crate::send::tron::signed_transaction(&hex::decode(&session.raw)?, &signatures);
         let txid = self
             .broadcast_raw(
                 wallet.chain_id,
-                crate::send::payload::SignedPayload::Json(reviewed.data),
+                crate::send::payload::SignedPayload::Hex(hex::encode(signed)),
             )
             .await?;
         if !txid.eq_ignore_ascii_case(&reviewed.transaction_id) {

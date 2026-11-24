@@ -10,16 +10,13 @@ async fn imported(service: &WalletService, chain: Chain, method: WalletSetupMeth
         .import_wallets(fixture(chain, method))
         .await
         .unwrap();
-    outcome.wallets[0].to_wallet_state().unwrap()
+    outcome.wallets[0].clone()
 }
 
 /// `wallet` as if it had been imported at `path`.
 fn at_path(wallet: &WalletState, path: &str) -> WalletState {
     let mut wallet = wallet.clone();
     wallet.derivation_path = Some(path.into());
-    for address in &mut wallet.addresses {
-        address.derivation_path = Some(path.into());
-    }
     wallet
 }
 

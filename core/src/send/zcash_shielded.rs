@@ -301,9 +301,8 @@ pub(crate) struct SaplingParameters {
     pub output: Vec<u8>,
 }
 
-/// Where the published Sapling parameters are, and what each must hash to
+/// The published Sapling parameter files and what each must hash to
 /// (BLAKE2b-512), as zcash_proofs pins them.
-pub(crate) const SAPLING_PARAMETERS_URL: &str = "https://download.z.cash/downloads";
 pub(crate) const SAPLING_PARAMETER_FILES: [(&str, &str, usize); 2] = [
     (
         "sapling-spend.params",

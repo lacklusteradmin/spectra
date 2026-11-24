@@ -95,6 +95,61 @@ fn each_stage_has_one_next_step() {
     }
 }
 
+/// One status for every page: a settled record first, then the stage, then
+/// what the nodes said, an acceptance over an uncertain answer over a refusal.
+#[test]
+fn each_progress_has_one_status() {
+    use SubmissionOutcome::{Accepted, Rejected, Uncertain};
+    let status = |artifact, record| SendProgress::of(artifact, record).status;
+    let pending = || Some(record("send", "pending", true));
+    assert_eq!(
+        status(artifact(SendStage::Prepared, &[]), None),
+        SendStatus::AwaitingSignature
+    );
+    assert_eq!(
+        status(artifact(SendStage::Signed, &[]), None),
+        SendStatus::Signed
+    );
+    assert_eq!(
+        status(artifact(SendStage::Signed, &[Rejected]), pending()),
+        SendStatus::Rejected
+    );
+    assert_eq!(
+        status(
+            artifact(SendStage::Signed, &[Rejected, Uncertain]),
+            pending()
+        ),
+        SendStatus::Uncertain
+    );
+    assert_eq!(
+        status(
+            artifact(SendStage::Signed, &[Uncertain, Accepted]),
+            pending()
+        ),
+        SendStatus::AwaitingConfirmation
+    );
+    for (record_status, expected) in [
+        ("confirmed", SendStatus::Confirmed),
+        ("failed", SendStatus::Failed),
+    ] {
+        assert_eq!(
+            status(
+                artifact(SendStage::Signed, &[Uncertain]),
+                Some(record("send", record_status, true))
+            ),
+            expected
+        );
+    }
+    // A rebuilt staking action's record speaks for nothing it shows.
+    assert_eq!(
+        status(
+            artifact(SendStage::Prepared, &[]),
+            Some(record("send", "confirmed", true))
+        ),
+        SendStatus::AwaitingSignature
+    );
+}
+
 /// A record speaks only for a submitted artifact: a repaired staking action
 /// keeps its id, but is rebuilt and unsubmitted, whatever its record says.
 #[test]

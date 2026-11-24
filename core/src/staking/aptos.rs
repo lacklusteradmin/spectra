@@ -40,6 +40,7 @@ impl AptosStakingClient {
                         tags: vec![],
                         min_delegation_smallest_unit: crate::registry::Chain::Aptos
                             .aptos_delegation_minimum()
+                            .ok()
                             .map(|v| v.to_string()),
                         uptime_pct: None,
                         website: None,

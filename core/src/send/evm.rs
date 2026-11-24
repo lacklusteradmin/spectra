@@ -413,6 +413,56 @@ fn encode_uint256(bytes: &[u8; 32], out: &mut Vec<u8>) {
 
 // ── ERC-20 transfer ABI encoding (used by the send path)
 
+/// The call an EVM transfer makes: the network's coin as `value` to the
+/// recipient, or a token's ERC-20 `transfer` to its contract with no value.
+/// The preview prices, and the build signs, this one call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferCall {
+    pub to: String,
+    pub value: u128,
+    pub data: Vec<u8>,
+}
+
+/// The call a transfer of `amount`, a decimal as typed, to `recipient`
+/// makes on `chain`; `token` is the contract and its decimals when a token
+/// moves.
+pub fn transfer_call(
+    chain: crate::registry::Chain,
+    recipient: &str,
+    amount: &str,
+    token: Option<(&str, u32)>,
+) -> Result<TransferCall, crate::error::SpectraBridgeError> {
+    if !chain.is_evm() {
+        return Err(SendError::invalid("Not an EVM network").into());
+    }
+    let address = |text: &str| -> Result<String, SendError> {
+        let text = text.trim().to_ascii_lowercase();
+        match text.strip_prefix("0x").map(hex::decode) {
+            Some(Ok(bytes)) if bytes.len() == 20 => Ok(text),
+            _ => Err(SendError::invalid("Invalid EVM address")),
+        }
+    };
+    let recipient = address(recipient)?;
+    Ok(match token {
+        Some((contract, decimals)) => TransferCall {
+            to: address(contract)?,
+            value: 0,
+            data: encode_erc20_transfer(
+                &recipient,
+                crate::amount::input::parse_raw_amount(amount, decimals)?,
+            )?,
+        },
+        None => TransferCall {
+            to: recipient,
+            value: crate::amount::input::parse_raw_amount(
+                amount,
+                u32::from(chain.native_decimals()),
+            )?,
+            data: Vec::new(),
+        },
+    })
+}
+
 /// Encode a `transfer(address,uint256)` call.
 pub(crate) fn encode_erc20_transfer(to: &str, amount: u128) -> Result<Vec<u8>, SendError> {
     encode_address_amount(SEL_TRANSFER, to, amount)
@@ -490,6 +540,59 @@ fn encode_address_amount(selector: [u8; 4], to: &str, amount: u128) -> Result<Ve
     amount_bytes[16..].copy_from_slice(&amount.to_be_bytes());
     out.extend_from_slice(&amount_bytes);
     Ok(out)
+}
+
+#[cfg(test)]
+mod transfer_call_tests {
+    use super::*;
+    use crate::registry::Chain;
+
+    const TO: &str = "0x2222222222222222222222222222222222222222";
+    const USDC: &str = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+
+    fn wei(amount: &str) -> Result<u128, crate::error::SpectraBridgeError> {
+        transfer_call(Chain::Ethereum, TO, amount, None).map(|call| call.value)
+    }
+
+    /// A typed decimal becomes exactly its own integer, including the
+    /// amounts an `f64` rounds and eighteen significant decimals.
+    #[test]
+    fn a_typed_decimal_becomes_exactly_its_own_integer() {
+        for (typed, expected) in [
+            ("1.1", 1_100_000_000_000_000_000),
+            ("0.1", 100_000_000_000_000_000),
+            ("1234.5678", 1_234_567_800_000_000_000_000),
+            (" 2.25 ", 2_250_000_000_000_000_000),
+            (".25", 250_000_000_000_000_000),
+            ("1.234567890123456789", 1_234_567_890_123_456_789),
+            ("0.000000000000000001", 1),
+            ("0", 0),
+        ] {
+            assert_eq!(wei(typed).unwrap(), expected, "{typed}");
+        }
+        for refused in ["1e3", "1.1234567890123456789", "-1", "NaN", "", "1..0"] {
+            assert!(wei(refused).is_err(), "{refused}");
+        }
+    }
+
+    /// The coin moves as value to the recipient on every EVM mainnet; a token
+    /// moves as its contract's `transfer`, at the contract's precision, with
+    /// no value.
+    #[test]
+    fn the_coin_is_value_and_a_token_is_its_contract_call() {
+        for chain in Chain::all().filter(|c| c.is_evm() && !c.is_testnet()) {
+            let call = transfer_call(chain, TO, "1", None).unwrap();
+            assert_eq!((call.to.as_str(), call.data.len()), (TO, 0), "{chain:?}");
+        }
+        let call = transfer_call(Chain::Ethereum, TO, "100", Some((USDC, 6))).unwrap();
+        assert_eq!(call.to, USDC.to_ascii_lowercase());
+        assert_eq!(call.value, 0);
+        assert_eq!(call.data, encode_erc20_transfer(TO, 100_000_000).unwrap());
+        assert!(transfer_call(Chain::Ethereum, TO, "1.1234567", Some((USDC, 6))).is_err());
+        assert!(transfer_call(Chain::Ethereum, "alice.eth", "1", None).is_err());
+        assert!(transfer_call(Chain::Ethereum, TO, "1", Some(("not-a-contract", 6))).is_err());
+        assert!(transfer_call(Chain::Bitcoin, TO, "1", None).is_err());
+    }
 }
 
 #[cfg(test)]

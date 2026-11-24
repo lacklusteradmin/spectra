@@ -416,10 +416,13 @@ impl WalletService {
         let recipient = bitcoin::ScriptBuf::from(crate::send::account_utxo::recipient_script(
             chain, to_address,
         )?);
-        let amount = crate::amount::decimal::to_units(spend.amount.trim(), 8)
-            .and_then(|units| u64::try_from(units).ok())
-            .filter(|units| *units > 0)
-            .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
+        let amount = crate::amount::decimal::to_units(
+            spend.amount.trim(),
+            u32::from(chain.native_decimals()),
+        )
+        .and_then(|units| u64::try_from(units).ok())
+        .filter(|units| *units > 0)
+        .ok_or_else(|| SpectraBridgeError::invalid("Invalid amount"))?;
         if amount < dust(chain, recipient.as_bytes())? {
             return Err(SpectraBridgeError::invalid(
                 "The amount is below the network's dust threshold",

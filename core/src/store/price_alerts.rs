@@ -126,7 +126,7 @@ pub struct PriceAlertRule {
 }
 
 /// Live price lookup for one holding.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertEvaluationPrice {
     pub holding_key: String,
@@ -134,7 +134,7 @@ pub struct PriceAlertEvaluationPrice {
 }
 
 /// Alert `has_triggered` state changes produced by the evaluator.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertTriggerUpdate {
     pub id: String,
@@ -158,7 +158,7 @@ pub struct PriceAlertNotification {
     pub currency: state::FiatCurrency,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertEvaluation {
     pub updates: Vec<PriceAlertTriggerUpdate>,

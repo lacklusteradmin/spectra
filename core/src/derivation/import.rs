@@ -83,10 +83,9 @@ pub struct WalletImportCommit {
     /// A key that derives no address must not reach a sealed wallet, and that
     /// refusal belongs beside the derivation, not in each caller.
     pub private_key: Option<String>,
-    /// Where a Monero wallet's scan starts: a typed height, or for a created
-    /// wallet `monero_new_wallet_restore_height`. `None` reads a Polyseed's
-    /// birthday, or scans a 25-word seed from the start. Any other chain
-    /// refuses one.
+    /// Where a scanning wallet's scan starts: a typed height. `None` starts a
+    /// created wallet's at the current height, reads a Polyseed's birthday,
+    /// or scans from the chain's start. Any other chain refuses one.
     pub restore_height: Option<u64>,
     /// A NEAR named account (`alice.near`) the imported key controls. The
     /// wallet holds it instead of the key's implicit account once the import
@@ -102,6 +101,10 @@ pub struct WalletImportCommit {
     /// give that wallet its keys: a secret that holds another address is
     /// refused rather than added as a wallet of its own, and so is a watch.
     pub upgrade_wallet_id: Option<String>,
+    /// The phrase was generated for this wallet now, so nothing before now
+    /// can have paid it.
+    #[uniffi(default = false)]
+    pub created: bool,
 }
 
 impl WalletImportCommit {
@@ -209,7 +212,7 @@ pub fn derive_import_address(
 /// The committed wallets. SecretStore writes and rollback belong to core.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct WalletImportOutcome {
-    pub wallets: Vec<crate::store::wallet_domain::WalletView>,
+    pub wallets: Vec<crate::store::state::WalletState>,
     /// Addresses the import refused, in the form they were supplied.
     ///
     /// Refusals are reported rather than silent. Dropping them quietly means a
@@ -369,7 +372,7 @@ pub(crate) fn wallets_for_import(
     commit: &WalletImportCommit,
     addresses: Vec<ImportedAddress>,
     restore_height: Option<u64>,
-) -> Vec<crate::store::wallet_domain::WalletView> {
+) -> Vec<crate::store::state::WalletState> {
     let icp_principal = icp_principal_for(commit);
     let chain = commit.request.chain;
     let name = commit.request.wallet_name.trim();
@@ -378,7 +381,7 @@ pub(crate) fn wallets_for_import(
         .into_iter()
         .enumerate()
         .map(|(index, imported)| {
-            let (address, account_xpub, multisig_policy) = match imported {
+            let (address, xpub, multisig_policy) = match imported {
                 ImportedAddress::Address(address) => (Some(address), None, None),
                 ImportedAddress::AccountXpub(xpub) => (None, Some(xpub), None),
                 ImportedAddress::Multisig {
@@ -386,7 +389,7 @@ pub(crate) fn wallets_for_import(
                     descriptor,
                 } => (Some(address), None, Some(descriptor)),
             };
-            crate::store::wallet_domain::WalletView {
+            crate::store::state::WalletState {
                 id: crate::store::new_transaction_id(),
                 name: if count > 1 && !name.is_empty() {
                     format!("{name} {}", index + 1)
@@ -394,12 +397,10 @@ pub(crate) fn wallets_for_import(
                     name.to_string()
                 },
                 chain_id: chain,
-                addresses: address
-                    .map(|address| (chain.address_slot().to_string(), address))
-                    .into_iter()
-                    .collect(),
-                account_xpub,
+                address,
+                xpub,
                 derivation_path: commit.derivation_path.clone(),
+                derivation_profile: None,
                 derivation_flags: commit.derivation_overrides.flags(),
                 holdings: vec![chain.native_holding_template()],
                 include_in_portfolio_total: true,
@@ -445,6 +446,7 @@ mod tests {
             named_account: None,
             ton_wallet_version: None,
             upgrade_wallet_id: None,
+            created: false,
         };
         let key = commit(WalletImportKind::PrivateKey);
         assert_eq!(
@@ -506,6 +508,7 @@ mod tests {
             named_account: None,
             ton_wallet_version: None,
             upgrade_wallet_id: None,
+            created: false,
         }
     }
 
@@ -540,12 +543,8 @@ mod tests {
             );
             assert_eq!(wallets.len(), 1);
             assert_eq!(wallets[0].chain_id, chain);
-            assert_eq!(
-                wallets[0].addresses.get("ethereum").map(String::as_str),
-                Some("0xabc"),
-                "{chain}"
-            );
-            assert_eq!(wallets[0].addresses.len(), 1);
+            assert_eq!(wallets[0].address.as_deref(), Some("0xabc"), "{chain}");
+            assert!(wallets[0].address.is_some());
         }
     }
 
@@ -569,10 +568,7 @@ mod tests {
             ["Watch 1", "Watch 2"]
         );
         assert_ne!(wallets[0].id, wallets[1].id);
-        assert_eq!(
-            wallets[1].addresses.get("solana").map(String::as_str),
-            Some("addr2")
-        );
+        assert_eq!(wallets[1].address.as_deref(), Some("addr2"));
         assert!(
             wallets
                 .iter()
@@ -614,8 +610,8 @@ mod tests {
             None,
         );
         assert_eq!(wallets.len(), 1);
-        assert_eq!(wallets[0].account_xpub.as_deref(), Some("xpub123"));
-        assert!(wallets[0].addresses.is_empty());
+        assert_eq!(wallets[0].xpub.as_deref(), Some("xpub123"));
+        assert!(wallets[0].address.is_none());
     }
 
     #[test]

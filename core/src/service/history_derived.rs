@@ -4,7 +4,6 @@ use crate::error::SpectraBridgeError;
 use crate::service::WalletService;
 use crate::store::wallet_domain::{TransactionKind, TransactionStatus};
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// The pending sends a caller may replace by resubmitting their nonce,
     /// newest first. Every EVM chain replaces the way Ethereum does: the

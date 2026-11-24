@@ -25,7 +25,6 @@ pub(crate) fn resolve_derivation_path(
 
 /// A chain's derivation profiles, default first, each with the template its
 /// account index fills in. Empty where the chain derives without a path.
-#[uniffi::export]
 pub fn derivation_profiles(chain: Chain) -> Vec<DerivationProfileOption> {
     chain
         .derivation_profiles()
@@ -40,7 +39,7 @@ pub fn derivation_profiles(chain: Chain) -> Vec<DerivationProfileOption> {
 }
 
 /// One profile a chain offers, with its path at account 0.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DerivationProfileOption {
     pub profile: DerivationProfile,
@@ -69,9 +68,8 @@ pub fn derivation_profile_path(
 
 /// Which profile and account `path` is on `chain`, or `None` for a path no
 /// profile derives: a custom one.
-#[uniffi::export]
-pub fn derivation_profile_of_path(chain: Chain, path: String) -> Option<DerivationProfileChoice> {
-    let segments = parse_derivation_path_str(&path)?;
+pub fn derivation_profile_of_path(chain: Chain, path: &str) -> Option<DerivationProfileChoice> {
+    let segments = parse_derivation_path_str(path)?;
     chain.derivation_profiles().into_iter().find_map(|profile| {
         let (template, account_at) = profile_template(chain, profile)?;
         let matches =
@@ -299,13 +297,13 @@ mod tests {
                 for account in [0, 1, 7] {
                     let path = derivation_profile_path(chain, profile, account).unwrap();
                     assert_eq!(
-                        derivation_profile_of_path(chain, path.clone()),
+                        derivation_profile_of_path(chain, &path),
                         Some(DerivationProfileChoice { profile, account }),
                         "{chain} {path}"
                     );
                 }
             }
-            assert!(derivation_profile_of_path(chain, "m/1'/2'/3'".into()).is_none());
+            assert!(derivation_profile_of_path(chain, "m/1'/2'/3'").is_none());
         }
         assert_eq!(
             derivation_profile_path(Chain::Bitcoin, DerivationProfile::Taproot, 2).unwrap(),

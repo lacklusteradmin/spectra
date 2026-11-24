@@ -228,7 +228,6 @@ pub fn self_tests_run_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestR
     run_for_chain(chain)
 }
 
-#[uniffi::export]
 pub fn self_tests_run_all() -> HashMap<Chain, Vec<ChainSelfTestResult>> {
     Chain::all()
         .map(|chain| (chain, run_for_chain(chain)))

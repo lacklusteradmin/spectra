@@ -255,7 +255,7 @@ pub(crate) async fn probe(
         };
     }
     if endpoint.api == EndpointApi::AptosIndexer {
-        let Some(expected) = chain.aptos_chain_id() else {
+        let Ok(expected) = chain.aptos_chain_id() else {
             return (
                 false,
                 false,

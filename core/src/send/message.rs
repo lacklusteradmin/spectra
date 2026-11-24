@@ -377,8 +377,9 @@ pub fn verify_message(chain: Chain, address: String, message: String, signature:
                 )
         }
         MessageScheme::SubstrateBytes => {
-            // The prefix Spectra encodes the network's addresses with.
-            let prefix = if chain == Chain::Polkadot { 0 } else { 42 };
+            let Some(prefix) = chain.ss58_prefix() else {
+                return false;
+            };
             let Ok((_, public)) = crate::derivation::primitives::decode_ss58(address, Some(prefix))
             else {
                 return false;

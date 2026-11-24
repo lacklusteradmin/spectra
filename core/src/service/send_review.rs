@@ -13,7 +13,7 @@ pub struct SendReviewInput {
     #[uniffi(default = None)]
     pub memo: Option<crate::send::payment_memo::PaymentMemo>,
 }
-#[derive(Debug, Clone, serde::Serialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct OwnedSendReview {
     pub id: String,
     pub request: crate::send::SendExecutionRequest,
@@ -44,7 +44,6 @@ impl ReviewedSend {
         Ok(())
     }
 }
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     pub async fn review_owned_send(
         &self,

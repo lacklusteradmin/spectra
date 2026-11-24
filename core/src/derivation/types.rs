@@ -6,7 +6,7 @@
 /// site. Fields not requested come back as `None`. `account`, `branch`, and
 /// `index` are always populated — they are parsed from the derivation path at
 /// zero extra cost and are useful as display metadata or for signing bookkeeping.
-#[derive(Debug, uniffi::Record)]
+#[derive(Debug)]
 pub struct DerivationResult {
     pub address: Option<String>,
     pub public_key_hex: Option<String>,
@@ -23,7 +23,7 @@ pub struct DerivationResult {
 
 /// Address encoding format for UTXO chains. Fully independent of the
 /// derivation path — any path can be paired with any script type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BitcoinScriptType {
     /// Legacy P2PKH (pay-to-public-key-hash). Base58Check, prefix `1`.
     P2pkh,

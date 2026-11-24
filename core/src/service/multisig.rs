@@ -777,19 +777,6 @@ impl WalletService {
         .await
     }
 
-    pub async fn multisig_session(
-        &self,
-        session_id: String,
-    ) -> Result<MultisigSession, SpectraBridgeError> {
-        let this = self.clone();
-        crate::service::worker::run(async move {
-            let stored = this.multisig_load(&session_id).await?;
-            let (wallet, _) = this.multisig_wallet(&stored.wallet_id).await?;
-            this.multisig_view(&wallet, &stored).await
-        })
-        .await
-    }
-
     /// The account's sessions, oldest first.
     pub async fn multisig_sessions(
         &self,
@@ -803,46 +790,6 @@ impl WalletService {
                 sessions.push(this.multisig_view(&wallet, &stored).await?);
             }
             Ok(sessions)
-        })
-        .await
-    }
-
-    /// The finished transaction, as its network takes it, once enough
-    /// signers signed. Nothing is submitted.
-    pub async fn finalize_multisig(
-        &self,
-        session_id: String,
-    ) -> Result<String, SpectraBridgeError> {
-        let this = self.clone();
-        crate::service::worker::run(async move {
-            let stored = this.multisig_load(&session_id).await?;
-            let (wallet, _) = this.multisig_wallet(&stored.wallet_id).await?;
-            match &stored.body {
-                SessionBody::Psbt { psbt } => super::multisig_psbt::finalize(&wallet, psbt),
-                SessionBody::P2sh(spend) => super::multisig_psbt::finalize_p2sh(&wallet, spend),
-                SessionBody::Safe(session) => super::multisig_safe::finalize(&wallet, session),
-                SessionBody::Sui(session) => {
-                    let (transaction, signature) = Self::finalize_sui(&wallet, session)?;
-                    Ok(json!({ "txBytes": transaction, "signature": signature }).to_string())
-                }
-                SessionBody::Aptos(session) => {
-                    Ok(hex::encode(Self::finalize_aptos(&wallet, session)?))
-                }
-                SessionBody::Substrate(_) => Err(super::multisig_substrate::refuse_submission()),
-                SessionBody::Ton(_) => Err(super::multisig_ton::refuse_submission()),
-                SessionBody::Tron(_)
-                | SessionBody::Xrp(_)
-                | SessionBody::Stellar(_)
-                | SessionBody::Cardano(_) => {
-                    let reviewed = this.multisig_view(&wallet, &stored).await?;
-                    if !reviewed.complete {
-                        return Err(SpectraBridgeError::invalid(
-                            "The signers' weights do not yet meet the threshold.",
-                        ));
-                    }
-                    Ok(reviewed.data)
-                }
-            }
         })
         .await
     }
@@ -926,6 +873,61 @@ impl WalletService {
             .await
             .map_err(SpectraBridgeError::failure)??;
             Ok(())
+        })
+        .await
+    }
+}
+
+impl WalletService {
+    pub async fn multisig_session(
+        &self,
+        session_id: String,
+    ) -> Result<MultisigSession, SpectraBridgeError> {
+        let this = self.clone();
+        crate::service::worker::run(async move {
+            let stored = this.multisig_load(&session_id).await?;
+            let (wallet, _) = this.multisig_wallet(&stored.wallet_id).await?;
+            this.multisig_view(&wallet, &stored).await
+        })
+        .await
+    }
+
+    /// The finished transaction, as its network takes it, once enough
+    /// signers signed. Nothing is submitted.
+    pub async fn finalize_multisig(
+        &self,
+        session_id: String,
+    ) -> Result<String, SpectraBridgeError> {
+        let this = self.clone();
+        crate::service::worker::run(async move {
+            let stored = this.multisig_load(&session_id).await?;
+            let (wallet, _) = this.multisig_wallet(&stored.wallet_id).await?;
+            match &stored.body {
+                SessionBody::Psbt { psbt } => super::multisig_psbt::finalize(&wallet, psbt),
+                SessionBody::P2sh(spend) => super::multisig_psbt::finalize_p2sh(&wallet, spend),
+                SessionBody::Safe(session) => super::multisig_safe::finalize(&wallet, session),
+                SessionBody::Sui(session) => {
+                    let (transaction, signature) = Self::finalize_sui(&wallet, session)?;
+                    Ok(json!({ "txBytes": transaction, "signature": signature }).to_string())
+                }
+                SessionBody::Aptos(session) => {
+                    Ok(hex::encode(Self::finalize_aptos(&wallet, session)?))
+                }
+                SessionBody::Substrate(_) => Err(super::multisig_substrate::refuse_submission()),
+                SessionBody::Ton(_) => Err(super::multisig_ton::refuse_submission()),
+                SessionBody::Tron(_)
+                | SessionBody::Xrp(_)
+                | SessionBody::Stellar(_)
+                | SessionBody::Cardano(_) => {
+                    let reviewed = this.multisig_view(&wallet, &stored).await?;
+                    if !reviewed.complete {
+                        return Err(SpectraBridgeError::invalid(
+                            "The signers' weights do not yet meet the threshold.",
+                        ));
+                    }
+                    Ok(reviewed.data)
+                }
+            }
         })
         .await
     }

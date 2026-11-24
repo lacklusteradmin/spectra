@@ -78,7 +78,7 @@ pub struct DeviceConditions {
 }
 
 /// What to do this tick, and how long to wait for the next one.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MaintenancePlan {
     pub refresh_pending_transactions: bool,

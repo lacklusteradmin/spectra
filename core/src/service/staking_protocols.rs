@@ -32,12 +32,6 @@ fn staking_target(request: &StakingRequest) -> Result<&str, SpectraBridgeError> 
     target
         .ok_or_else(|| SpectraBridgeError::invalid("Select an owned staking position or validator"))
 }
-fn integer(body: &serde_json::Value, key: &str) -> Result<u64, SpectraBridgeError> {
-    body[key]
-        .as_str()
-        .and_then(|v| v.parse().ok())
-        .ok_or_else(|| SpectraBridgeError::invalid(format!("Missing staking {key}")))
-}
 fn require_balance(balance: u128, amount: u128, fee: u128) -> Result<(), SpectraBridgeError> {
     let required = amount
         .checked_add(fee)
@@ -120,12 +114,12 @@ impl WalletService {
                     let amount=u64::try_from(amount).map_err(SpectraBridgeError::invalid)?;
                     client.validate_staking_system(chain).await?;
                     let prepared=if request.action==StakingAction::Stake{
-                        if amount<chain.sui_staking_minimum().unwrap(){return Err(SpectraBridgeError::invalid("Sui stake is below the protocol minimum"));}
+                        if amount<chain.sui_staking_minimum()?{return Err(SpectraBridgeError::invalid("Sui stake is below the protocol minimum"));}
                         if !client.fetch_staking_validators().await?.active_validators.iter().any(|v|v.sui_address==target){return Err(SpectraBridgeError::invalid("Select an active Sui validator"));}
-                        crate::send::sui::prepare_staking(&client,owner,Some(target),amount,None,Chain::Sui.sui_staking_gas_budget().unwrap()).await?
+                        crate::send::sui::prepare_staking(&client,owner,Some(target),amount,None,Chain::Sui.sui_staking_gas_budget()?).await?
                     }else{
                         let object=validate_sui_position(&client,owner,target,amount).await?;
-                        crate::send::sui::prepare_staking(&client,owner,None,0,Some((target,&object)),Chain::Sui.sui_staking_gas_budget().unwrap()).await?
+                        crate::send::sui::prepare_staking(&client,owner,None,0,Some((target,&object)),Chain::Sui.sui_staking_gas_budget()?).await?
                     };
                     client.simulate_staking(&prepared.bytes).await?;
                     PreparedPayload::Sui(prepared)
@@ -135,16 +129,16 @@ impl WalletService {
                     let amount=u64::try_from(amount).map_err(SpectraBridgeError::invalid)?;
                     validate_aptos_position(&client,owner,target,request.action,amount).await?;
                     let price=client.fetch_gas_price().await?;
-                    let limit=chain.aptos_max_gas_amount().ok_or_else(||SpectraBridgeError::invalid("Missing Aptos gas limit"))?;
+                    let limit=chain.aptos_max_gas_amount()?;
                     let public:[u8;32]=hex::decode(public_key_hex.ok_or_else(||SpectraBridgeError::invalid("Missing Aptos staking public key"))?)?.try_into().map_err(|_|SpectraBridgeError::invalid("Invalid Aptos public key"))?;
-                    let sequence=client.fetch_account_info(owner).await?.0;let expiry=crate::store::now_unix() as u64+600;
-                    let initial=crate::send::aptos::prepare_delegation(owner,target,amount,sequence,price,limit,expiry,chain.aptos_chain_id().unwrap(),request.action)?;
-                    let (used,maximum)=client.simulate_staking(&initial.body,&public,true,amount).await?;
+                    let sequence=client.fetch_account_info(owner).await?.0;let expiry=crate::store::now_unix() as u64+chain.aptos_transaction_lifetime_secs()?;
+                    let initial=crate::send::aptos::prepare_delegation(owner,target,amount,sequence,price,limit,expiry,chain.aptos_chain_id()?,request.action)?;
+                    let function=crate::send::aptos::delegation_function(request.action)?;let (used,maximum)=client.simulate_staking(&initial.simulation(&public)?,function,true,amount).await?;
                     let gas=used.checked_mul(6).and_then(|v|v.checked_add(4)).map(|v|v/5).and_then(|v|v.checked_add(100)).ok_or_else(||SpectraBridgeError::invalid("Aptos simulated gas overflow"))?.min(maximum);
                     let fee=price.checked_mul(gas).ok_or_else(||SpectraBridgeError::invalid("Aptos gas overflow"))?;
                     require_balance(u128::from(client.fetch_balance(owner).await?.octas),if request.action==StakingAction::Stake{u128::from(amount)}else{0},u128::from(fee))?;
-                    let mut prepared=crate::send::aptos::prepare_delegation(owner,target,amount,sequence,price,gas,expiry,chain.aptos_chain_id().unwrap(),request.action)?;
-                    client.simulate_staking(&prepared.body,&public,false,amount).await?;
+                    let mut prepared=crate::send::aptos::prepare_delegation(owner,target,amount,sequence,price,gas,expiry,chain.aptos_chain_id()?,request.action)?;
+                    client.simulate_staking(&prepared.simulation(&public)?,function,false,amount).await?;
                     prepared.staking_public_key=Some(public);
                     PreparedPayload::Aptos(prepared)
                 }
@@ -156,10 +150,10 @@ impl WalletService {
                     let deposit=if request.action==StakingAction::Stake{amount}else{0};
                     let method=match request.action{StakingAction::Stake=>"deposit_and_stake",StakingAction::Unstake=>"unstake",_=>"withdraw"};
                     let args=serde_json::to_vec(&if request.action==StakingAction::Stake{serde_json::json!({})}else{serde_json::json!({"amount":amount.to_string()})})?;
-                    let fee=client.function_call_fee_budget(owner,target,method,args.len(),Chain::Near.near_staking_gas_limit().unwrap()).await?;
+                    let fee=client.function_call_fee_budget(owner,target,method,args.len(),Chain::Near.near_staking_gas_limit()?).await?;
                     require_balance(client.fetch_spendable_balance(owner).await?,deposit,fee)?;
                     let hash=crate::derivation::solana::decode_b58_32(&client.fetch_latest_block_hash().await?)?;
-                    let mut prepared=crate::send::near::PreparedNearFunctionCall::prepare(owner,public,nonce,target,method,args,Chain::Near.near_staking_gas_limit().unwrap(),deposit,hash);
+                    let mut prepared=crate::send::near::PreparedNearFunctionCall::prepare(owner,public,nonce,target,method,args,Chain::Near.near_staking_gas_limit()?,deposit,hash);
                     prepared.fee_budget=fee.to_string();
                     PreparedPayload::NearFunctionCall(prepared)
                 }
@@ -186,7 +180,7 @@ impl WalletService {
                 )
                 .await?;
             targets.extend(
-                AptosIndexerClient::new(Arc::new(urls), chain.aptos_chain_id().unwrap())
+                AptosIndexerClient::new(Arc::new(urls), chain.aptos_chain_id()?)
                     .fetch_delegation_pool_ids(&owner)
                     .await?,
             );
@@ -587,7 +581,7 @@ impl WalletService {
                                 "Sui validator is no longer active",
                             ));
                         }
-                        if amount < chain.sui_staking_minimum().unwrap() {
+                        if amount < chain.sui_staking_minimum()? {
                             return Err(SpectraBridgeError::invalid(
                                 "Sui stake is below the protocol minimum",
                             ));
@@ -632,12 +626,12 @@ impl WalletService {
                             0
                         },
                         object.as_ref().map(|o| (target, o)),
-                        Chain::Sui.sui_staking_gas_budget().unwrap(),
+                        Chain::Sui.sui_staking_gas_budget()?,
                         client.fetch_reference_gas_price().await?,
                         &gas,
                     )?;
                     if expected.bytes != prepared.bytes
-                        || prepared.gas_budget != Chain::Sui.sui_staking_gas_budget().unwrap()
+                        || prepared.gas_budget != Chain::Sui.sui_staking_gas_budget()?
                     {
                         return Err(SpectraBridgeError::invalid(
                             "Sui staking object, amount or gas changed; review again",
@@ -649,10 +643,12 @@ impl WalletService {
                     let client = AptosClient::new(endpoints);
                     let amount = u64::try_from(amount).map_err(SpectraBridgeError::invalid)?;
                     validate_aptos_position(&client, owner, target, request.action, amount).await?;
-                    let sequence = integer(&prepared.body, "sequence_number")?;
-                    let price = integer(&prepared.body, "gas_unit_price")?;
-                    let gas = integer(&prepared.body, "max_gas_amount")?;
-                    let expiry = integer(&prepared.body, "expiration_timestamp_secs")?;
+                    let (sequence, price, gas, expiry) = (
+                        prepared.sequence,
+                        prepared.gas_price,
+                        prepared.max_gas,
+                        prepared.expiration,
+                    );
                     if client.fetch_account_info(owner).await?.0 != sequence
                         || expiry <= crate::store::now_unix() as u64
                     {
@@ -668,20 +664,22 @@ impl WalletService {
                         price,
                         gas,
                         expiry,
-                        chain.aptos_chain_id().unwrap(),
+                        chain.aptos_chain_id()?,
                         request.action,
                     )?;
-                    if expected.message != prepared.message || expected.body != prepared.body {
+                    if expected.message != prepared.message {
                         return Err(SpectraBridgeError::invalid(
                             "Aptos staking data differs from reviewed intent",
                         ));
                     }
                     client
                         .simulate_staking(
-                            &prepared.body,
-                            prepared.staking_public_key.as_ref().ok_or_else(|| {
-                                SpectraBridgeError::invalid("Missing Aptos simulation key")
-                            })?,
+                            &prepared.simulation(
+                                prepared.staking_public_key.as_ref().ok_or_else(|| {
+                                    SpectraBridgeError::invalid("Missing Aptos simulation key")
+                                })?,
+                            )?,
+                            crate::send::aptos::delegation_function(request.action)?,
                             false,
                             amount,
                         )
@@ -731,7 +729,7 @@ impl WalletService {
                         target,
                         method,
                         args,
-                        Chain::Near.near_staking_gas_limit().unwrap(),
+                        Chain::Near.near_staking_gas_limit()?,
                         deposit,
                         prepared.block_hash,
                     );
@@ -826,7 +824,7 @@ async fn validate_aptos_position(
         .fetch_delegation(target, owner)
         .await?
         .ok_or_else(|| SpectraBridgeError::invalid("Aptos target is not a delegation pool"))?;
-    let minimum = Chain::Aptos.aptos_delegation_minimum().unwrap();
+    let minimum = Chain::Aptos.aptos_delegation_minimum()?;
     if action == StakingAction::Stake {
         let fee = client.fetch_add_stake_fee(target, amount).await?;
         if pool
@@ -972,14 +970,10 @@ mod tests {
             )
             .unwrap();
             assert_eq!(hex::encode(&prepared.message), vector["message"]);
-            let (body, hash) = prepared.clone().sign(&key()).unwrap();
-            let body: serde_json::Value = serde_json::from_str(&body).unwrap();
+            let (signed, hash) = prepared.clone().sign(&key()).unwrap();
             assert_eq!(
-                body["signature"]["signature"]
-                    .as_str()
-                    .unwrap()
-                    .trim_start_matches("0x"),
-                vector["signature"]
+                hex::encode(&signed[signed.len() - 64..]),
+                vector["signature"].as_str().unwrap()
             );
             assert_eq!(hash, vector["hash"]);
             assert!(

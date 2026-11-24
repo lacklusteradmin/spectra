@@ -117,7 +117,10 @@ fn cache_key(wallet_id: &str, scan: &[u8]) -> Zeroizing<Vec<u8>> {
 }
 
 fn decimal(litoshis: u64) -> String {
-    crate::amount::decimal::from_units(u128::from(litoshis), 8)
+    crate::amount::decimal::from_units(
+        u128::from(litoshis),
+        u32::from(Chain::Litecoin.native_decimals()),
+    )
 }
 
 /// Whether `wallet` can hold MWEB funds: a Litecoin wallet restored from a

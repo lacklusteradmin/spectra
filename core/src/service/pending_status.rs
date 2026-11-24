@@ -129,7 +129,6 @@ impl WalletService {
     }
 }
 
-#[uniffi::export(async_runtime = "tokio")]
 impl WalletService {
     /// Run maintenance for the exact networks of stored transactions, independent
     /// of a front end's visible chain catalog. Keep successful changes when a

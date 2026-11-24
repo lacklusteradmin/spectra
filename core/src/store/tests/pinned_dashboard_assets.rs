@@ -182,7 +182,7 @@ async fn pin_options_list_the_pinned_first_then_by_symbol_and_token_id() {
                 contract: "0x1111111111111111111111111111111111111111".into(),
                 coingecko_id: String::new(),
                 coinpaprika_id: String::new(),
-                decimals: 18,
+                decimals: Some(18),
             })
             .await
             .expect("token");

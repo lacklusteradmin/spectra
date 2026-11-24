@@ -222,7 +222,7 @@ async fn every_listed_action_is_performed_and_every_other_refused() {
                 .import_wallets(fixture(chain, option.method))
                 .await
                 .unwrap_or_else(|error| panic!("{chain} {:?}: {error}", option.method));
-            let wallet = outcome.wallets[0].to_wallet_state().unwrap();
+            let wallet = outcome.wallets[0].clone();
             let offered = service.wallet_actions(wallet.id.clone()).await.unwrap();
             assert_eq!(offered.chain, chain);
             assert_eq!(offered.summary.chain, chain);

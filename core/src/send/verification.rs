@@ -51,7 +51,7 @@ pub struct LastSentTransactionSnapshot {
     pub chain_id: crate::registry::Chain,
     pub transaction_hash: Option<String>,
     pub failure_reason: Option<crate::store::persistence_models::TransactionFailure>,
-    pub transaction_history_source: Option<String>,
+    pub history_source: Option<crate::store::persistence_models::HistorySource>,
     pub receipt_block_number: Option<i64>,
     pub confirmation_count: Option<i64>,
 }
@@ -64,7 +64,7 @@ impl From<&crate::store::persistence_models::TransactionRecord> for LastSentTran
             chain_id: record.chain_id,
             transaction_hash: record.transaction_hash.clone(),
             failure_reason: record.failure_reason.clone(),
-            transaction_history_source: record.transaction_history_source.clone(),
+            history_source: record.history_source.clone(),
             receipt_block_number: record.receipt_block_number,
             confirmation_count: record.confirmation_count,
         }
@@ -107,7 +107,7 @@ pub fn verification_notice_for_last_sent(
         );
     }
     let observed_on_network = tx.status == TransactionStatus::Confirmed
-        || tx.transaction_history_source.is_some()
+        || tx.history_source.is_some()
         || tx.receipt_block_number.is_some()
         || tx.confirmation_count.unwrap_or(0) > 0;
     if observed_on_network {
@@ -128,7 +128,7 @@ mod tests {
             chain_id: crate::registry::Chain::Bitcoin,
             transaction_hash: None,
             failure_reason: None,
-            transaction_history_source: None,
+            history_source: None,
             receipt_block_number: None,
             confirmation_count: None,
         }

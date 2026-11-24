@@ -65,10 +65,10 @@ Search both Rust names and generated camelCase names before deleting an export.
 implementations need no Swift caller. A dead Swift wrapper does not prove that
 the export behind it is unused.
 
-An export's callers are in the front ends, so the scan for unreachable exports
-is spectra-apple's `scripts/unreachable-exports.py`, which reads the app's Swift
-and this repository's CLI. Cross-check generated bindings when macros are
-involved.
+An export exists for the app: the CLI links core as Rust and calls a plain
+`pub fn`, so it never keeps an export alive. The scan for unreachable exports is
+spectra-apple's `scripts/unreachable-exports.py`, which reads the app's Swift.
+Cross-check generated bindings when macros are involved.
 
 `scripts/uncalled-core-fns.py` checks the layer below, here in `make lint`.
 A `pub fn` that no longer carries `#[uniffi::export]` is invisible to both

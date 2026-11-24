@@ -35,12 +35,30 @@ impl TransactionFailure {
     }
 }
 
+/// Where a history read found a transaction.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(rename_all = "camelCase")]
+pub enum HistorySource {
+    /// Spectra's own reader of the network's endpoints: not a third party
+    /// to name.
+    Internal,
+    /// A third-party indexer, by its proper name.
+    Indexer { name: String },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionRecord {
     /// Read-time projection; never persisted or trusted on writes.
     #[serde(skip)]
     pub actions: crate::service::TransactionActions,
+    /// Which way the amount moved. Read-time, like `actions`.
+    #[serde(skip)]
+    pub direction: crate::store::wallet_domain::TransactionDirection,
+    /// Whether the wallet submitted it: every kind but a receive. Read-time,
+    /// like `actions`.
+    #[serde(skip)]
+    pub submitted: bool,
     /// Known for local sends; provider history may omit protocol identity.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deployment_id: Option<String>,
@@ -93,7 +111,7 @@ pub struct TransactionRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<TransactionFailure>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub transaction_history_source: Option<String>,
+    pub history_source: Option<HistorySource>,
     /// Unix seconds (1970-01-01T00:00:00Z), including fractional seconds.
     pub created_at_unix: f64,
 }
@@ -122,6 +140,8 @@ mod tests {
     fn minimal_record() -> TransactionRecord {
         TransactionRecord {
             actions: Default::default(),
+            direction: Default::default(),
+            submitted: false,
             deployment_id: None,
             id: "11111111-2222-3333-4444-555555555555".to_string(),
             wallet_id: None,
@@ -148,7 +168,7 @@ mod tests {
             source_address: None,
             change_address: None,
             failure_reason: None,
-            transaction_history_source: None,
+            history_source: None,
             created_at_unix: 0.0,
         }
     }
@@ -172,7 +192,7 @@ mod tests {
             receipt_network_fee: Some("0.000535".into()),
             confirmation_count: Some(12),
             used_change_output: Some(true),
-            transaction_history_source: Some("rpc".to_string()),
+            history_source: Some(HistorySource::Internal),
             created_at_unix: 750000000.5,
             ..minimal_record()
         };
