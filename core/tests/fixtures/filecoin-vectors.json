@@ -1,0 +1,177 @@
+{
+  "provenance": "@zondax/filecoin-signing-tools 2.4.3, @glif/filecoin-address 4.0.0, tiny-secp256k1 2.2.4, @noble/hashes 1.8.0; mainnet message read from api.node.glif.io on 2026-11-24",
+  "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  "accounts": [
+    {
+      "account": 0,
+      "path": "m/44'/461'/0'/0/0",
+      "private_key": "e1808079c6734eff9a187c917455dc1b2c70385e13f1cd6cecc94978e57f7f76",
+      "public_key": "0476603a651392fb8ba01bbb90f6ffdd155ea7151c748bee36dc29ccbe627a5ca8c3d9b6da88bd8417c148c4fff9183e56837b24ca0b18234abfea4dd78f43a67d",
+      "address": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq"
+    },
+    {
+      "account": 1,
+      "path": "m/44'/461'/1'/0/0",
+      "private_key": "aff1e7a424e7d60ea05ba58f961cc14b66d0c0071c283b796cf1fe139674592c",
+      "public_key": "042c8696449c37d58394b7e0393a8542511f57785f2d6584227cd46d7fba19905c4b5d039e8c8deddb83b43cddfd657ffa061908ca1d47185c334bd00d8d8b7448",
+      "address": "f12oiips7bvuo3owfeietpqwhb6jf2zlcyoitbvra"
+    }
+  ],
+  "recipients": [
+    {
+      "protocol": "id",
+      "address": "f01234",
+      "bytes": "00d209"
+    },
+    {
+      "protocol": "id",
+      "address": "f09223372036854775807",
+      "bytes": "00ffffffffffffffff7f"
+    },
+    {
+      "protocol": "secp256k1",
+      "address": "f12oiips7bvuo3owfeietpqwhb6jf2zlcyoitbvra",
+      "bytes": "01d39087cbe1ad1db758a44126f858e1f24bacac58"
+    },
+    {
+      "protocol": "actor",
+      "address": "f2i4llai5x72clnz643iydyplvjmni74x4vyme7ny",
+      "bytes": "024716b023b7fe84b6e7dcda303c3d754b1a8ff2fc"
+    },
+    {
+      "protocol": "bls",
+      "address": "f3qkdqari4anmncqhccdewlupij3ifel2qhw5aqgqwvffymgg7bdqiitslgsporoewohph6ljdjz7xdgize47a",
+      "bytes": "03828700451c0358d140e210c965d1e84ed0522f503dba081a16a94b8618df08e0844e4b349ee8b89671de7f2d234e7f71"
+    },
+    {
+      "protocol": "delegated",
+      "address": "f410froq7cckvdpkdfabqcjsfvqjw3xle3otsxy5tvsy",
+      "ethereum": "0x8ba1f109551bd432803012645ac136ddd64dba72",
+      "bytes": "040a8ba1f109551bd432803012645ac136ddd64dba72"
+    }
+  ],
+  "messages": [
+    {
+      "message": {
+        "From": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq",
+        "Params": "",
+        "To": "f12oiips7bvuo3owfeietpqwhb6jf2zlcyoitbvra",
+        "Nonce": 0,
+        "Value": "1500000000000000000",
+        "GasLimit": 1526328,
+        "GasFeeCap": "101213",
+        "GasPremium": "100022",
+        "Method": 0
+      },
+      "cbor": "8a005501d39087cbe1ad1db758a44126f858e1f24bacac58550183864e7d04add77cabd9d5514754830058ddce1e00490014d1120d7b1600001a00174a384400018b5d44000186b60040",
+      "cid": "bafy2bzaceaui4hbkw7z4b3rs2ea3xdo2y55mw4yfej2nnbgyb2hgxvohwda7s",
+      "cid_bytes": "0171a0e40220288e1c2ab7f3c0ee32d101bb8ddac77acb73052274d684d80e8e6bd5c7b0c1f9",
+      "signing_digest": "27d847888d186276e5df2c60a2c7a49caceed550931cbb92ac44940dc26108c0",
+      "signature": "fda0d51cf517cd5199d225e236f5083f2a425337049d537c585c89d21ed9d51044ebb6788eb4e644286b7e5557efbf1318f83f6b242c83618479534a12f89e1800",
+      "signed_cid": "bafy2bzacecszxr6b62c2dfn43rgbobxdi4iojokydcpbnqsna7zobwnczpc7e",
+      "private_key": "e1808079c6734eff9a187c917455dc1b2c70385e13f1cd6cecc94978e57f7f76",
+      "sender": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq"
+    },
+    {
+      "message": {
+        "From": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq",
+        "Params": "",
+        "To": "f01234",
+        "Nonce": 7,
+        "Value": "1",
+        "GasLimit": 7169093,
+        "GasFeeCap": "102071",
+        "GasPremium": "0",
+        "Method": 0
+      },
+      "cbor": "8a004300d209550183864e7d04add77cabd9d5514754830058ddce1e074200011a006d64454400018eb7400040",
+      "cid": "bafy2bzaceaoc4tproe55z6thcm3wvf2llenbop5hn6chtzehqeijzi2dbrt7i",
+      "cid_bytes": "0171a0e402201c2e4df1713bdcfa6713376a974b591a173fa76f8479e48781109ca3430c67f4",
+      "signing_digest": "961fe2e9dc282e55891343d496c8dbb8fb3ceb61d612de3def06112548ec6477",
+      "signature": "82964f3e86bac456d8d80f88134fd34548cfc7093f5dfa1f370145c6f360d46e77f7d74b57454fbf6f1915664b7c6975a5b6cdaeaad66e74accea274b2c1287000",
+      "signed_cid": "bafy2bzacedlyyqh4fazf4lykjgg4ylizliureufc2ndghgcirmswii6addick",
+      "private_key": "e1808079c6734eff9a187c917455dc1b2c70385e13f1cd6cecc94978e57f7f76",
+      "sender": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq"
+    },
+    {
+      "message": {
+        "From": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq",
+        "Params": "",
+        "To": "f410froq7cckvdpkdfabqcjsfvqjw3xle3otsxy5tvsy",
+        "Nonce": 42,
+        "Value": "25000000000000000000",
+        "GasLimit": 2261790,
+        "GasFeeCap": "102071",
+        "GasPremium": "101017",
+        "Method": 3844450837
+      },
+      "cbor": "8a0056040a8ba1f109551bd432803012645ac136ddd64dba72550183864e7d04add77cabd9d5514754830058ddce1e182a4a00015af1d78b58c400001a0022831e4400018eb74400018a991ae525aa1540",
+      "cid": "bafy2bzacedok2q6t5kxhyuerdoo2p45dao72g57kbyytnzij7tesltcc6sfqg",
+      "cid_bytes": "0171a0e40220dcad43d3eaae7c50911b9da7f3a303bfa377ea0e3136e509fcc925cc42f48b03",
+      "signing_digest": "0e77f867ff72d6271e44b047bfa4aa162c94bdf416c3b7f4ae8c9f9dc4325b69",
+      "signature": "ee67b552f6e6109ab2dad75d7febf0a323584937505a16088ce0eb15acab85e50b80affa406d7d88b978ffc8208f6ff18caf312928ba95b958f77df82ab85baa01",
+      "signed_cid": "bafy2bzaceaqzy4tv2hhq6bxw3qihz75lq27ykunga5mwiuoodnsppqy7opy54",
+      "private_key": "e1808079c6734eff9a187c917455dc1b2c70385e13f1cd6cecc94978e57f7f76",
+      "sender": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq"
+    },
+    {
+      "message": {
+        "From": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq",
+        "Params": "",
+        "To": "f3qkdqari4anmncqhccdewlupij3ifel2qhw5aqgqwvffymgg7bdqiitslgsporoewohph6ljdjz7xdgize47a",
+        "Nonce": 9007199254740991,
+        "Value": "123456789000000000000000000",
+        "GasLimit": 10000000000,
+        "GasFeeCap": "100",
+        "GasPremium": "100",
+        "Method": 0
+      },
+      "cbor": "8a00583103828700451c0358d140e210c965d1e84ed0522f503dba081a16a94b8618df08e0844e4b349ee8b89671de7f2d234e7f71550183864e7d04add77cabd9d5514754830058ddce1e1b001fffffffffffff4c00661efdf12d1653cf3400001b00000002540be4004200644200640040",
+      "cid": "bafy2bzacebbldcklerybj3nhxujojebcygynnxziud34rs3rluidgjxxcybdy",
+      "cid_bytes": "0171a0e4022042b1894b247014eda7bd12e49022c1b0d6df28a0f7c8cb715d103326f716023c",
+      "signing_digest": "19b3d890e78e43c5ecdbf61ce4b8c788b69e6212c3dc6f751b8e3d21a83bd261",
+      "signature": "dc6440420331c5cbe05bcc7289b98b502b5dcab24b23630f5b8e9d14e6b5e54e6757e76f4db3bb6e7ebe991f14e4e46fac0f359347bd9f0ffa70f66b4ab3bf7701",
+      "signed_cid": "bafy2bzacebi7icj6wff55lilr7orljf2kpudxwirufwrebgsp6jntaldv4f7w",
+      "private_key": "e1808079c6734eff9a187c917455dc1b2c70385e13f1cd6cecc94978e57f7f76",
+      "sender": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq"
+    },
+    {
+      "message": {
+        "From": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq",
+        "Params": "",
+        "To": "f2i4llai5x72clnz643iydyplvjmni74x4vyme7ny",
+        "Nonce": 300,
+        "Value": "1000",
+        "GasLimit": 1526328,
+        "GasFeeCap": "101213",
+        "GasPremium": "100022",
+        "Method": 0
+      },
+      "cbor": "8a0055024716b023b7fe84b6e7dcda303c3d754b1a8ff2fc550183864e7d04add77cabd9d5514754830058ddce1e19012c430003e81a00174a384400018b5d44000186b60040",
+      "cid": "bafy2bzacecgdqeuir2lmw6jsjdcvdwjpjo4gk7s4s5lq36lfxnt4mzxkgnqnc",
+      "cid_bytes": "0171a0e402208c3812888e96cb793248c551d92f4bb8657e5c97570df965bb67c666ea3360d1",
+      "signing_digest": "f65e45fe13d62ee38bd63b3ea0034991373d540ad36ec753bb8f603bf3e1d396",
+      "signature": "d7172d8a8015d4ee759d0ec921663d7ce9ad8c052eb70d34b9d057a682f6843f396cac0e71f199b4eab2c545319f3ffc86ec0b9bb754af792bd33d10f43a5f1401",
+      "signed_cid": "bafy2bzaceaxgphefqqc3ykonbyb4dpvqka5os3lxjjyc62heu6q6rixsbm5pq",
+      "private_key": "e1808079c6734eff9a187c917455dc1b2c70385e13f1cd6cecc94978e57f7f76",
+      "sender": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq"
+    }
+  ],
+  "mainnet": {
+    "message": {
+      "To": "f12lj6ctbqroce5uzftmnuotmhb3e5d3lqcendm4i",
+      "From": "f1up5qywgfhygtqmxlvke3syvgldkqavicn5derri",
+      "Nonce": 6533,
+      "Value": "1000000000000",
+      "GasLimit": 10000000,
+      "GasFeeCap": "510000",
+      "GasPremium": "500000",
+      "Method": 0,
+      "Params": ""
+    },
+    "cbor": "8a005501d2d3e14c308b844ed3259b1b474d870ec9d1ed705501a3fb0c58c53e0d3832ebaa89b962a658d50055021919854600e8d4a510001a00989680440007c830440007a1200040",
+    "cid": "bafy2bzacechqqlkfsb2lu3cgjliyfsao2sprjk276vawiiji5f4jlhx5pvc7c",
+    "signature": "a5c880e8309cce7c42003c2f59116615727168d63613d73ebf0174785f65ad2215c7c4a3cdaa4c884d1d8cb76314bb1c6eef2abe578242d392c6696338b42adc00",
+    "signed_cid": "bafy2bzaceakqouboqyxtz6mp2up2bgd2qyd5qk6vjklcveik3v3fqf2taqq7g"
+  }
+}

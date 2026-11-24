@@ -84,7 +84,7 @@ fn extended_witness_matches_independent_emurgo_transaction() {
     );
     let hash = transaction.transaction_hash().unwrap();
     assert_eq!(hex::encode(hash), vector["hash"]);
-    let signature = sign_extended(&key, &public, &hash).unwrap();
+    let signature = crate::derivation::ed25519_extended::sign(&key, &public, &hash).unwrap();
     assert_eq!(hex::encode(signature), vector["signature"]);
     ed25519_dalek::VerifyingKey::from_bytes(&public)
         .unwrap()
@@ -94,10 +94,10 @@ fn extended_witness_matches_independent_emurgo_transaction() {
         transaction.sign(&key, &public).unwrap(),
         vector["transaction"]
     );
-    assert!(sign_extended(&key, &[0; 32], &hash).is_err());
+    assert!(crate::derivation::ed25519_extended::sign(&key, &[0; 32], &hash).is_err());
     let mut altered = key;
     altered[0] |= 1;
-    assert!(sign_extended(&altered, &public, &hash).is_err());
+    assert!(crate::derivation::ed25519_extended::sign(&altered, &public, &hash).is_err());
 }
 
 /// Bodies, signed transactions, each output's minimum ADA and the minimum

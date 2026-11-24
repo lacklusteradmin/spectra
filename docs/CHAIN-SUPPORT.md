@@ -1,6 +1,6 @@
 # Supported chain scope
 
-Spectra has 66 mainnets and 40 test networks. A chain entry identifies a network;
+Spectra has 91 mainnets and 40 test networks. A chain entry identifies a network;
 it does not promise every asset protocol or an address indexer. Chain facts live
 in `registry::Chain`, provider claims in `core/data/endpoints.toml`, and every
 operation refuses missing capabilities before signing or changing holdings.
@@ -18,8 +18,9 @@ extended key holds no stake key and keeps its enterprise address. A base
 address's network account shows the stake address its stake credential names
 (CIP-19 type 14, or 15 for a script's) with the registration, available rewards
 and pool and DRep delegation Koios reports for it; an enterprise address has
-none. Bittensor and Polkadot use verified genesis and
-live runtime metadata rather than hard-coded pallet indices. A Cardano transfer
+none. The Substrate networks (Polkadot, Kusama Asset Hub, Astar and Bittensor)
+use verified genesis and live runtime metadata rather than hard-coded pallet
+indices. A Cardano transfer
 spends any of the address's outputs, those holding native assets included, and
 its change returns every asset the inputs held that the transfer does not
 send: outputs of the sent asset first, then ADA alone, then other
@@ -36,7 +37,10 @@ birthday becomes the wallet's restore height, and an encrypted Polyseed is
 refused because Monero imports take no passphrase. TON reads and creates
 ton-crypto's 24-word mnemonic, including password-protected ones opened with
 the derivation passphrase. Neither reads BIP-39, which none of their wallets
-restore. A Monero wallet's restore height is fixed at import: typed, from a
+restore. Algorand reads and creates its 25-word mnemonic, one account's key,
+and also reads a BIP-39 phrase, whose accounts derive along ARC-52
+(`m/44'/283'/{account}'/0/0`, BIP32-Ed25519 as Pera's Universal Wallet and
+Lute derive it); a 25-word mnemonic takes no path or passphrase. A Monero wallet's restore height is fixed at import: typed, from a
 Polyseed's birthday, near now for a created wallet (from monthly checkpoints
 read off two public daemons), or the start of the chain. A Zcash wallet
 restored from a phrase has one too, where its scan for shielded funds starts:
@@ -48,14 +52,20 @@ A phrase wallet derives along one of its network's derivation profiles at an
 account index, or a custom path. Bitcoin and its test networks offer native
 SegWit (default), legacy, nested SegWit and Taproot; Litecoin legacy (default),
 native and nested SegWit; Peercoin all four; Bitcoin Cash its BIP-44 coin type
-and the older coin type 0; Solana `m/44'/501'/{account}'/0'` and the older
-`m/44'/501'/{account}'`; every other chain with a path its one standard
-profile. NEAR walks SLIP-10 along `m/44'/397'/{account}'` as near-seed-phrase
+and the older coin type 0; Fractal Bitcoin Bitcoin's four at coin type 0;
+DigiByte all four at its coin type 20; Qtum legacy, native and nested SegWit
+at coin type 88; eCash its coin type 1899 and the older 899; Hedera Ed25519
+SLIP-10 `m/44'/3030'/0'/0'/{account}'` (default), ECDSA
+`m/44'/3030'/0'/0/{account}` and EVM `m/44'/60'/0'/0/{account}`; Solana
+`m/44'/501'/{account}'/0'` and the older `m/44'/501'/{account}'`; every other
+chain with a path its one standard profile. A Starknet key is derived as
+Argent X derives it: the Ethereum key at `m/44'/60'/0'/0/0` seeds a second
+BIP-32 tree whose `m/44'/9004'/0'/0/{account}` key is ground into a Stark key. NEAR walks SLIP-10 along `m/44'/397'/{account}'` as near-seed-phrase
 does. The Internet Computer derives the BIP-32 secp256k1 key at
 `m/44'/223'/{account}'/0/0`, as quill, dfx and DFINITY's agent libraries do:
 its principal is the self-authenticating one of the key's DER encoding with
 the uncompressed point, and every ingress is signed with ECDSA over SHA-256. Monero and TON derive without a path and refuse one. Polkadot, its
-Westend testnet and Bittensor derive along a Substrate path of hard (`//`)
+Westend testnet, Kusama Asset Hub, Astar and Bittensor derive along a Substrate path of hard (`//`)
 and soft (`/`) junctions under the phrase's sr25519 root, as subkey and
 polkadot.js read a secret URI (none is the root key), checked against
 polkadot.js; its `///password` is the passphrase, entered as one. A junction
@@ -79,11 +89,14 @@ deposit address, an XRP payment or account deletion carries a destination
 tag, a Stellar payment or merge a text memo of up to 28 bytes or an ID
 memo, of XRP and issued assets alike, and a TON transfer or multisig order
 a text comment of up to 123 bytes, one cell; a jetton transfer forwards it
-to the recipient as its forward payload. It is reviewed with the transaction and
+to the recipient as its forward payload; a Cosmos transfer a text memo of up
+to the network's `max_memo_characters` bytes (512 on Cosmos Hub, Terra, Kava
+and BandChain, 256 elsewhere); and a Hedera transfer a memo of up to 100
+bytes, with no zero byte. It is reviewed with the transaction and
 bound into its review digest. A destination that asks for one — XRP's
 `lsfRequireDestTag`, Stellar's SEP-29 `config.memo_required` — is refused
 without one, read from a verified node at build and again before signing;
-TON has no such flag. A scanned code's tag or memo comes with its address
+TON, the Cosmos SDK and Hedera have no such flag. A scanned code's tag or memo comes with its address
 (XRP's `dt`, SEP-7's `memo`, a `ton://transfer` code's `text`); one Spectra
 cannot send, such as a TON code's `bin` message body, refuses the code.
 Destinations are classic `r…` and `G…` accounts; XRP X-addresses and Stellar
@@ -106,15 +119,117 @@ kept in the address book, and refused when the checksum fails; one written
 in a single case carries none. An XDC address is also read with the `xdc`
 prefix its wallets write, and stored and sent as `0x`.
 
-Raw private-key import covers 65 mainnets and their corresponding test networks.
+A Cosmos SDK network (Cosmos Hub, Celestia, dYdX Chain, Terra, Kava, Injective,
+Akash, Babylon Genesis, Osmosis, Dymension, Saga, Allora and BandChain) sends
+its own coin with one bank `MsgSend`, signed in `SIGN_MODE_DIRECT`. Its keys
+are BIP-32 secp256k1 along `m/44'/{coin}'/{account}'/0/0`, at coin type 118,
+Terra's 330, Kava's 459, BandChain's 494 and 60 on Injective and Dymension,
+whose Ethermint keys take the key's Ethereum address as the account and sign
+over Keccak-256 of the sign document; the others take RIPEMD-160 of SHA-256
+of the compressed key and sign over SHA-256. An address is classic bech32
+under the network's prefix, in one case, of 20 bytes or a module's 32; another
+network's prefix is refused. The gas a node's simulation of the transfer uses,
+with two fifths more, is priced at the network's gas price: chain-registry's
+`low` price, or a fee market's live price and a fifth more where that is
+higher (Skip's `x/feemarket` on Cosmos Hub and Allora, the `txfees` base fee
+on Osmosis and Injective). A transaction is valid for about ten minutes of
+blocks (its `timeout_height`), from an account the network has, at its next
+sequence, with the amount and fee in its spendable balance (vesting coins
+excluded); each is read again before signing. The sign document binds the
+chain id a verified node's `node_info` names. The public key in its
+`AuthInfo` is the signing key's, written at signing: a wallet stores none.
+Tokens (IBC denominations, CW-20s), staking and multisig are not offered.
+Evidence is in [the 2026-11-24 audit](audits/cosmos-2026-11-24/README.md).
+
+Kusama is its Asset Hub, where KSM balances now live, and Astar its own
+chain; each sends its coin with `Balances.transfer_keep_alive`, encoded from
+the runtime's metadata as on Polkadot. Every Substrate network reads an
+address only under its own SS58 prefix (0 on Polkadot, 2 on Kusama, 5 on
+Astar, 42 on Westend and Bittensor), so a generic `5…` address is refused on
+Polkadot. Kusama Asset Hub pays its fees through `ChargeAssetTxPayment` and
+Astar through `ChargeTransactionPayment`; metadata naming another fee
+extension is refused. Staking, multisig and Kusama's `Assets` pallet are not
+offered. Evidence is in [the 2026-11-24 audit](audits/substrate-mainnets-2026-11-24/README.md).
+
+An Algorand send is one `pay` transaction in canonical msgpack, signed with
+Ed25519 over `TX` and its bytes. Its fee is the network's minimum or its
+per-byte fee for the signed size, whichever is more, and it is valid for
+1,000 rounds from the node's last round; the genesis id and hash the node
+names beside that round are bound in. Refused before signing: a rekeyed
+sender, an amount and fee more than the balance above the account's minimum
+balance, a recipient left below 0.1 ALGO, the least an account holds, and
+assets or notes.
+
+A VeChainThor send moves VET, VTHO or a tracked VIP-180 token in one clause of
+a dynamic-fee transaction (type `0x51`), signed over BLAKE2b-256. Its fee is
+paid in VTHO, a VET transfer's too. The gas is the clause's intrinsic gas and
+what a node's simulation at the next block uses, a fifth more (at least
+15,000) when code runs; the max fee is twice the base fee plus the node's
+priority fee, and the VTHO balance must cover the gas at the base fee and that
+tip, as nodes require. A transaction refers to the best block and expires 60
+blocks later. A mixed-case address needs its EIP-55 checksum. Fee delegation
+(VIP-191), several clauses, contract calls and memos are not offered.
+
+A Filecoin wallet is an `f1` secp256k1 account at `m/44'/461'/{account}'/0/0`
+and pays `f0`, `f1`, `f2`, `f3` and `f410f` addresses: an `f410f` address, or
+an `f0` or `f2` actor a verified node resolves to one, with `InvokeEVM`,
+anything else with method 0. A `t…`, `0x…`, mixed-case or non-canonical
+address is refused. The message is DAG-CBOR, signed with recoverable
+secp256k1 over BLAKE2b-256 of its CID. Gas is the node's estimate, its gas
+limit times fee cap, the reviewed fee, at most 0.07 FIL; the nonce is the
+node's next, read again before signing and broadcasting. The node must name
+the mainnet and its genesis before a build, a signature, a status read or a
+broadcast.
+
+A Tezos wallet is a `tz1` Ed25519 account at SLIP-10
+`m/44'/1729'/{account}'/0'`, as Temple, Kukai and Umami derive it. A send is
+one transaction operation, with a reveal before it while the account's key is
+unrevealed, forged here for the current protocol (Ushuaia) and signed over
+BLAKE2b-256 of its watermarked bytes; the operation hash computed here must be
+the node's. It pays `tz1` to `tz4` and `KT1` addresses (`tz5` is refused).
+Gas and storage come from simulating the operation, its fee from the
+protocol's minimal-fee rule and 100 mutez more; the reviewed fee includes the
+most its storage can burn (0.06425 XTZ to an empty account). Before signing,
+the chain id, protocol, branch, counter and reveal state are read again and
+the exact batch is simulated with the signing key; a protocol switch at the
+next block refuses it. The balance is the spendable one: staked tez are not
+counted. FA1.2 and FA2 tokens, staking and memos are not offered. Evidence is
+in [the 2026-11-24 audit](audits/tezos-2026-11-24.md).
+
+A Starknet wallet is a Ready (Argent X) account of class 0.4.0 whose address
+is that class deployed with the wallet's Stark key. It sends STRK and ERC-20
+tokens (the catalog lists ETH) in v3 invoke transactions, hashed with Poseidon
+and signed with Stark ECDSA; an account not yet deployed deploys itself in the
+same review, at the next nonce before the transfer's. Resource bounds and
+prices carry half again the node's estimate and are paid in STRK. Another
+account class, a guardian, a changed owner key and memos are refused.
+Evidence is in [the 2026-11-24 audit](audits/starknet-2026-11-24.md).
+
+A Hedera wallet is an existing account `0.0.N`: a key alone has none. The
+account is found by its key on a verified mirror node, or named at import, and
+accepted only when that one key is all it holds (key lists and threshold keys
+are refused); no phrase is created for Hedera. A send is a `CryptoTransfer` of
+HBAR whose fee bound is ten times the $0.0001 base fee, in tinybars at the
+better of the current and next exchange rates. It is valid for 120 seconds
+from a start set at signing, signed for three nodes of the address book and
+sent over gRPC TLS pinned to each node's certificate hash. A deleted
+recipient, or one requiring its own signature, is refused. HTS tokens,
+staking, contracts and account creation are not offered.
+
+Raw private-key import covers every mainnet but Monero, 90 in all, and their
+corresponding test networks.
 Ed25519 chains accept 32-byte seeds, Substrate chains accept sr25519 seeds, and
 secp256k1 chains accept their validated scalar, each as 64 hex digits. Cardano
 accepts a validated 64-byte extended key. Each chain also reads the encoding
 its own wallets export: compressed WIF on the Bitcoin family (BTC, BCH, BSV,
-BTG, LTC, DOGE, DASH, ZEC and PPC) with the network's own version byte, a
-base58 or Solana-CLI JSON keypair on Solana, an `S…` secret seed on Stellar,
-`suiprivkey1…` (Ed25519) on Sui, AIP-80 `ed25519-priv-0x…` on Aptos and an
-`ed25519:…` key string on NEAR. A keypair whose public half is not its
+BTG, LTC, DOGE, DASH, ZEC, PPC, QTUM, FB, XEC and DGB) with the network's own
+version byte, a base58 or Solana-CLI JSON keypair on Solana, an `S…` secret
+seed on Stellar, `suiprivkey1…` (Ed25519) on Sui, AIP-80 `ed25519-priv-0x…`
+on Aptos, an `ed25519:…` key string on NEAR, an `edsk…` key on Tezos (the
+seed, or the 64-byte key whose public half is checked) and a DER key on
+Hedera, where a bare 64-hex key is tried as Ed25519 and as ECDSA against the
+network. Starknet takes only its Stark key, up to 64 hex digits below the
+curve order. A keypair whose public half is not its
 secret's, a WIF for another network and an uncompressed WIF are refused: an
 uncompressed key owns a different P2PKH address than the compressed key
 Spectra signs with. A Cardano phrase wallet exports only its phrase: its
@@ -145,7 +260,8 @@ so a fresh subaddress needs none.
 
 An account public key is watched on every
 account UTXO network below, in the encodings its wallets write
-(`Chain::account_key_versions`: `xpub`/`ypub`/`zpub` on Bitcoin and Peercoin, `Ltub`,
+(`Chain::account_key_versions`: `xpub`/`ypub`/`zpub` on Bitcoin, Fractal
+Bitcoin, Peercoin, Qtum and DigiByte, `Ltub`,
 `Mtub` and `zpub` on Litecoin, `dgub` on Dogecoin, `xpub` or `drkp` on Dash,
 `dpub` on Decred, `kpub` on Kaspa, `xpub` elsewhere, and each test
 network's own), only at an account's depth and only on its concrete
@@ -153,15 +269,16 @@ network: a testnet key is refused on mainnet, and testnet 3, testnet 4 and
 signet each read their own.
 
 On every UTXO network but Cardano and Monero — BTC, BCH, BSV, LTC, DOGE,
-PPC, ZEC (its transparent funds), BTG, DCR, KAS and DASH, and their test
-networks — a phrase wallet is a BIP-44 account. It stores the account's
+PPC, ZEC (its transparent funds), BTG, DCR, KAS, DASH, QTUM, FB, XEC and DGB,
+and their test networks — a phrase wallet is a BIP-44 account. It stores the account's
 public key, so a gap scan (twenty unused addresses past the last used one,
 on the receive and the change branch) and a fresh receive address need no
 password. The scan runs once on its own before a restored or watched
 account's balance or history is first read, and again on request; what it
 finds is stored. The balance and history sum every address the account is
 known to hold, each read from the network's own indexer (Esplora, Blockbook,
-Blockcypher, Whatsonchain, Insight, Bitcoin Cash's REST v2 or Kaspa's REST API). A send spends the
+Blockcypher, Whatsonchain, Insight, Bitcoin Cash's REST v2, Kaspa's REST API,
+eCash's Chronik or UniSat's Open API on Fractal Bitcoin). A send spends the
 largest confirmed outputs it needs (on Litecoin, every confirmed output),
 across addresses, each signed with its own address's key derived along its
 stored path, and returns change to the
@@ -175,19 +292,25 @@ indexer does not say when it matures. Zcash shields transparent funds at the
 addresses librustzcash's own gap window tracks; transparent sends spend
 every address the scan found.
 
-A custom Bitcoin or Litecoin indexer broadcasts only once it names its
-network's genesis block at height 0. Multisig accounts are
+A custom indexer on Bitcoin, Litecoin, Qtum, Fractal Bitcoin, eCash or DigiByte
+broadcasts only once it names its network's identity block: its genesis, or a
+later block where networks share one (block 1 on Bitcoin and Fractal Bitcoin,
+block 896,800 on eCash). Fractal Bitcoin's addresses and keys are Bitcoin's,
+so a Fractal send checks every indexer it read its inputs from for that block
+before it builds and again before it signs. Multisig accounts are
 [their own section](#multisig-accounts).
 
 Fees follow each network's rule for the transaction's size: Bitcoin's and
-Litecoin's sat/vB rate over the estimated virtual size, Peercoin's per
-kilobyte, the network's static fee for each started kilobyte on Bitcoin
-Cash, Bitcoin SV, Dogecoin, Dash and Bitcoin Gold, ZIP-317's 5,000 zatoshis
+Litecoin's sat/vB rate over the estimated virtual size, and Fractal
+Bitcoin's and DigiByte's at least 1 and 100 sat/vB, Qtum Core's 400 sat/vB
+(its indexer estimates none), Peercoin's per kilobyte, the network's static
+fee for each started kilobyte on Bitcoin Cash, Bitcoin SV, Dogecoin, Dash,
+Bitcoin Gold and eCash, ZIP-317's 5,000 zatoshis
 per logical action (at least two) on Zcash, at least dcrd's 10 atoms a byte
 on Decred and at least the transaction's mass on Kaspa, each never below the
 network's static fee. A recipient amount below the network's dust threshold
-is refused, and change below it joins the fee: 546 units, Decred's 6,030
-atoms, Kaspa's 1,000 sompi, and Dogecoin Core's dust limit of 0.01 DOGE, below
+is refused, and change below it joins the fee: 546 units, DigiByte's 5,460
+and Qtum's 72,800 satoshis, Decred's 6,030 atoms, Kaspa's 1,000 sompi, and Dogecoin Core's dust limit of 0.01 DOGE, below
 which an output pays that much again in fee and below a tenth of which it is
 not relayed. A Kaspa spend also keeps within the 100,000-gram standard limit
 on its KIP-9 storage mass, which charges an output small beside the coins it
@@ -200,6 +323,17 @@ network: a secp256k1 pubkey hash (`Ds…`, `Ts…`) or a script hash (`Dc…`,
 `Tc…`). Decred's pay-to-pubkey (`Dk…`), Ed25519 (`De…`) and Schnorr (`DS…`)
 pubkey-hash addresses, and every address of the other network, are refused
 before an input is read.
+
+Qtum, Fractal Bitcoin, eCash and DigiByte read their own address forms:
+Qtum's `Q…` and `M…` and version-0 `qc` SegWit (Taproot's activation there is
+unconfirmed); Fractal Bitcoin's, which are Bitcoin's, Taproot included;
+eCash's CashAddr under `ecash:` alone (a legacy or `bitcoincash:` address is
+refused), signed with Bitcoin Cash's digest at fork id 0; and DigiByte's `D…`,
+`S…` and older `3…`, and `dgb` SegWit and Taproot. A Qtum staking reward is
+spent after 2,000 confirmations and an eCash coinbase output after 100; Qtum's
+pay-to-pubkey coinstake outputs are not spent. Qtum's QRC-20 tokens, eCash's
+eTokens, Fractal's inscriptions and runes, and multisig on these four are not
+offered.
 
 Peercoin mainnet and testnet support BIP-44 legacy, BIP-49 nested SegWit,
 BIP-84 native SegWit and BIP-86 Taproot accounts, raw scalar and watch-only imports, account
@@ -287,6 +421,8 @@ threshold of one, cancelling a pending Substrate operation
 | Stellar | Credit assets on trustlines (`CODE:ISSUER`) |
 | Cardano | Native assets (`POLICY.NAME` in hex) |
 | Polkadot and Westend (Asset Hub) | `Assets` pallet assets (`Asset Hub Asset`, by asset ID) |
+| VeChainThor | VIP-180 (VTHO and tracked tokens), fees in VTHO |
+| Starknet | ERC-20 (STRK, the fee token, and ETH) |
 
 Token precision comes from validated metadata. TON master identity uses the raw
 account address, with friendly-address network flags checked first. Raw,
@@ -566,8 +702,22 @@ Chain, Kava EVM, Stable, Arc, Katana, peaq and 0G require a compatible custom
 address indexer for history and automatic token discovery. A Blockscout-compatible
 source can be configured on any EVM network. RPC-only access still supports
 native transfers, tracked ERC-20 balances/transfers and submitted receipts.
-Polkadot/Westend and Bittensor have no built-in keyless address-history indexer;
-their verified RPCs support balances, transfers and finality.
+Polkadot/Westend, Kusama Asset Hub, Astar, Bittensor and Starknet have no
+built-in keyless address-history indexer; their verified RPCs support balances,
+transfers and finality.
+Algorand's history is its indexer's payments and close-outs, inner
+transactions included; VeChainThor's the node's transfer logs for VET and
+`Transfer` events for VTHO and tracked tokens; Filecoin's Filfox's transfer
+list; Tezos's TzKT's transactions, one row per operation group; Hedera's the
+mirror node's crypto transfers net of the fee and staking rewards. Each leaves
+fees aside; Tezos lists a failed send at the amount it asked for, the others
+no failed transfer.
+A Cosmos network's history is its nodes' transaction search, newest first,
+over the transactions the address signed and the transfers it received
+(Kava's SDK 0.47 node takes the search as `events=`, the others as `query=`),
+each shown as what its messages moved in the network's coin, the fee aside.
+Nodes keep only recent blocks: days on Osmosis, BandChain and Injective,
+months to years elsewhere, and all of it at Kava Labs' and Numia's (Celestia).
 
 BCH, DOGE, ZEC (transparent), DCR and DASH test networks have no verified
 built-in keyless provider; Zcash testnet's shielded funds read a built-in

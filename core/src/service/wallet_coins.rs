@@ -4,9 +4,11 @@
 //! addresses it has handed out; this is that spread, read from the network:
 //! each owned address with its branch, whether it has been used and what it
 //! holds, the next receive address, and every unspent output with its
-//! confirmations. On Peercoin a minting reward still maturing is in the
-//! total and in no send, and says so. Read-only but for one step a refresh
-//! takes as well: a reserved receive address found used is moved past.
+//! confirmations. On Peercoin and Qtum a staking reward still maturing is in
+//! the total and in no send, and says so, as is a Qtum coinstake output
+//! paying the address's key rather than its address. Read-only but for one
+//! step a refresh takes as well: a reserved receive address found used is
+//! moved past.
 
 use super::*;
 
@@ -36,8 +38,9 @@ pub struct UnspentOutput {
     pub amount: String,
     /// Blocks since it was mined, counting its own; 0 while unconfirmed.
     pub confirmations: u64,
-    /// Whether a send can spend it: false for a Peercoin minting reward
-    /// still maturing.
+    /// Whether a send can spend it: false for a Peercoin or Qtum staking
+    /// reward still maturing, and for a Qtum output its signer does not
+    /// spend.
     pub spendable: bool,
 }
 
@@ -100,23 +103,26 @@ impl WalletService {
             let client = this.utxo_client(chain, &[EndpointCapability::Utxo]).await;
             let tip_height = client.fetch_tip_height().await?;
             let decimals = u32::from(chain.native_decimals());
-            let peercoin = chain.mainnet_counterpart() == Chain::Peercoin;
+            let verified = chain.verifies_spent_outputs();
             let reads = addresses.iter().map(|address| {
                 let client = &client;
                 async move {
-                    let outputs: Vec<(String, u32, u64, u64, bool)> = if peercoin {
+                    let outputs: Vec<(String, u32, u64, u64, bool)> = if verified {
+                        let own = crate::send::account_utxo::source_script(chain, address).ok();
                         client
-                            .fetch_peercoin_outputs(address)
+                            .fetch_verified_outputs(address)
                             .await?
                             .into_iter()
                             .map(|output| {
                                 let input = output.input;
+                                let signed = chain.mainnet_counterpart() == Chain::Peercoin
+                                    || own.as_ref() == Some(&input.script_pubkey);
                                 (
                                     input.txid.to_string(),
                                     input.vout,
                                     input.value,
                                     output.confirmations,
-                                    output.mature,
+                                    output.mature && signed,
                                 )
                             })
                             .collect()

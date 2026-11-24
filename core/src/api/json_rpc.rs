@@ -21,7 +21,8 @@ pub(crate) async fn call(
         EndpointApi::EvmJsonRpc
         | EndpointApi::SolanaJsonRpc
         | EndpointApi::SuiJsonRpc
-        | EndpointApi::SubstrateJsonRpc => {
+        | EndpointApi::SubstrateJsonRpc
+        | EndpointApi::LotusJsonRpc => {
             json!({"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
         }
         _ => {

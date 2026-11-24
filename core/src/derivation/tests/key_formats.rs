@@ -142,6 +142,9 @@ fn the_descriptor_lists_only_formats_this_reads() {
                         | WalletSecretFormat::SuiPrivateKey
                         | WalletSecretFormat::AptosPrivateKey
                         | WalletSecretFormat::NearSecretKey
+                        | WalletSecretFormat::TezosSecretKey
+                        | WalletSecretFormat::StarknetPrivateKey
+                        | WalletSecretFormat::HederaPrivateKey
                 ),
                 "{chain}: {format:?}"
             );
@@ -212,6 +215,12 @@ fn every_exported_key_reads_back_as_itself() {
             .private_key_hex
             .unwrap()
             .to_string()
+        } else if format == WalletSecretFormat::StarknetPrivateKey {
+            // A Stark key is below the curve order, about 2^251.
+            "04c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f36231".to_string()
+        } else if format == WalletSecretFormat::HederaPrivateKey {
+            // A Hedera key is stored in the DER that names its scheme.
+            "302e020100300506032b6570042204204c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318".to_string()
         } else {
             "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318".to_string()
         };
@@ -220,4 +229,58 @@ fn every_exported_key_reads_back_as_itself() {
         assert_eq!(*read, key, "{chain} {format:?}");
         assert_eq!(address(chain, &read), address(chain, &key), "{chain}");
     }
+}
+
+/// Taquito's `edsk…` keys, the seed and the 64-byte secret key alike, read
+/// as the seed; a key of another scheme or an encrypted one is refused by
+/// name (`tezos-vectors.json`, from tests/vectors/generate-tezos-vectors.cjs).
+#[test]
+fn tezos_edsk_keys_read_as_their_seed() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../tests/fixtures/tezos-vectors.json")).unwrap();
+    for account in fixture["accounts"].as_array().unwrap() {
+        let seed = text(account, "private_key");
+        for key in [
+            text(account, "edsk_seed"),
+            text(account, "edsk_secret_key"),
+            seed.clone(),
+        ] {
+            assert_eq!(
+                *parse_private_key(Chain::Tezos, &key).unwrap(),
+                seed,
+                "{key}"
+            );
+        }
+        assert_eq!(address(Chain::Tezos, &seed), text(account, "address"));
+        assert_eq!(
+            export_format(Chain::Tezos),
+            Some(WalletSecretFormat::TezosSecretKey)
+        );
+        let written =
+            encode_private_key(Chain::Tezos, WalletSecretFormat::TezosSecretKey, &seed).unwrap();
+        assert_eq!(*written, text(account, "edsk_seed"));
+    }
+    // A tz2 key, a BLS key and an encrypted edsk say what they are.
+    for (key, says) in [
+        (
+            "spsk1SXmzQjxQWFrq4fSQ4qrSKAz4Tw3Z6EBVgsmVNkqufVzWD8RzZ",
+            "tz1",
+        ),
+        (
+            "BLsk1hKAHyGqY9qRbgoSVnjiSmDZr4WZmpJLMxeptfFjbPSBTuSxQx",
+            "tz1",
+        ),
+        (
+            "edesk1GXwWmGjXiLHBKxGBxwmNvG21vKBh6FBxc4CyJ8adQQE2avP5vBB57ZUZ93Anm7i4k8RmsHaPzVAvpnHkFF",
+            "encrypted",
+        ),
+    ] {
+        let refused = parse_private_key(Chain::Tezos, key)
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains(says), "{key}: {refused}");
+    }
+    // An edsk is no key on another network.
+    let edsk = text(&fixture["accounts"][0], "edsk_seed");
+    assert!(parse_private_key(Chain::Solana, &edsk).is_err());
 }

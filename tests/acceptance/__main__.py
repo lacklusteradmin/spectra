@@ -53,6 +53,7 @@ SUITES = {
     'staking': 'staking signed, retried and recovered across processes',
     'icp_staking': 'ICP neuron staking reopened and refused on a forged certificate',
     'send_near': 'NEAR durable retries and final status recovery',
+    'send_cosmos': 'a Cosmos Hub memo send rejected, retried as signed and confirmed',
     'send': 'a password-protected owned send',
     'send_tokens': 'a TON jetton send with a comment, resolved from its trace across processes',
     'send_icp_zcash': 'ICP and transparent Zcash sends with an identical retry',

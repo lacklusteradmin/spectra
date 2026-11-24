@@ -291,6 +291,74 @@ chain_id = "0g"
 endpoint = "https://0g-rpc.publicnode.com"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
+# Tezos nodes from three operators, probed 2026-11-24 (docs/audits/tezos-2026-11-24.md):
+# chain id, protocols, a branch header, an account's balance, counter and
+# revealed key, and a simulation of a transfer. Injection was not exercised.
+[[endpoints]]
+id = "tezos.rpc.tzkt"
+api = "tezos-rpc"
+chain_id = "tezos"
+endpoint = "https://rpc.tzkt.io/mainnet"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "tezos.rpc.tzbeta"
+api = "tezos-rpc"
+chain_id = "tezos"
+endpoint = "https://rpc.tzbeta.net"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "tezos.rpc.smartpy"
+api = "tezos-rpc"
+chain_id = "tezos"
+endpoint = "https://mainnet.smartpy.io"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+# Keyless: an account's transactions and an operation's status.
+[[endpoints]]
+id = "tezos.history.tzkt"
+api = "tzkt"
+chain_id = "tezos"
+endpoint = "https://api.tzkt.io"
+capabilities = ["history", "verification"]
+
+# Starknet's JSON-RPC (spec 0.10.3 at PublicNode, 0.9.0 at ZAN, both read
+# 2026-11-24): chain id, nonces, classes, `balanceOf` calls, fee estimates
+# and transaction status. No keyless service answers an address's history
+# (docs/audits/starknet-2026-11-24.md).
+[[endpoints]]
+id = "starknet.rpc.publicnode"
+api = "starknet-json-rpc"
+chain_id = "starknet"
+endpoint = "https://starknet-rpc.publicnode.com"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+[[endpoints]]
+id = "starknet.rpc.zan"
+api = "starknet-json-rpc"
+chain_id = "starknet"
+endpoint = "https://api.zan.top/public/starknet-mainnet"
+capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+# Hedera's public mirror node, verified 2026-11-24: its block 0 is mainnet's
+# first record file, and account keys and balances, CRYPTOTRANSFER history,
+# transaction results and the exchange rate answer keylessly.
+[[endpoints]]
+id = "hedera.mirror.public"
+api = "hedera-mirror"
+chain_id = "hedera"
+endpoint = "https://mainnet-public.mirrornode.hedera.com"
+capabilities = ["balance", "history", "fee", "verification"]
+
+# The address book of the same mirror node: transactions go to the consensus
+# nodes it names, over gRPC with TLS pinned to each node's certificate hash.
+[[endpoints]]
+id = "hedera.hapi.address-book"
+api = "hedera-hapi"
+chain_id = "hedera"
+endpoint = "https://mainnet-public.mirrornode.hedera.com/api/v1/network/nodes"
+capabilities = ["broadcast"]
+
 [[endpoints]]
 id = "bitcoin.mainnet.blockstream"
 api = "esplora"
@@ -535,6 +603,76 @@ chain_id = "dash"
 endpoint = "https://dash.atomicwallet.io"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 
+# Qtum's Blockbook names Qtum's genesis block at height 0; its fee estimate
+# is zero, so a Qtum send pays Qtum Core's minimum relay rate instead.
+[[endpoints]]
+id = "qtum.mainnet.atomicwallet"
+api = "blockbook"
+chain_id = "qtum"
+endpoint = "https://qtum.atomicwallet.io"
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
+
+# Fractal Bitcoin's own mempool instance answers balances, fee rates and
+# blocks by height, but lists neither an address's unspent outputs nor more
+# than its newest transactions; UniSat's indexer lists both. Each names
+# Fractal's block 1, which Bitcoin's chain does not share.
+[[endpoints]]
+id = "fractal-bitcoin.mainnet.mempool"
+api = "esplora"
+chain_id = "fractal-bitcoin"
+endpoint = "https://mempool.fractalbitcoin.io/api"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "fractal-bitcoin.mainnet.unisat"
+api = "unisat-open-api"
+chain_id = "fractal-bitcoin"
+endpoint = "https://open-api-fractal.unisat.io"
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
+
+# Chronik, the eCash node's own indexer, answers in protobuf.
+[[endpoints]]
+id = "ecash.mainnet.chronik"
+api = "chronik"
+chain_id = "ecash"
+endpoint = "https://chronik.e.cash"
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
+
+[[endpoints]]
+id = "ecash.mainnet.chronik-native1"
+api = "chronik"
+chain_id = "ecash"
+endpoint = "https://chronik-native1.fabien.cash"
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
+
+[[endpoints]]
+id = "ecash.mainnet.chronik-native2"
+api = "chronik"
+chain_id = "ecash"
+endpoint = "https://chronik-native2.fabien.cash"
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
+
+[[endpoints]]
+id = "digibyte.mainnet.digiexplorer"
+api = "esplora"
+chain_id = "digibyte"
+endpoint = "https://digiexplorer.info/api"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "digibyte.mainnet.atomicwallet"
+api = "blockbook"
+chain_id = "digibyte"
+endpoint = "https://digibyte.atomicwallet.io"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "digibyte.mainnet.zelcore"
+api = "blockbook"
+chain_id = "digibyte"
+endpoint = "https://blockbook.dgb.zelcore.io"
+capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
 [[endpoints]]
 id = "tron.trongrid.accounts.io"
 api = "trongrid-v1"
@@ -667,6 +805,24 @@ api = "aptos-rest"
 chain_id = "aptos-testnet"
 endpoint = "https://api.testnet.aptoslabs.com/v1"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+
+# Nodely's keyless algod (AlgoNode, which became Nodely, still answers on its
+# old host). Verified 2026-11-24: genesis id and hash from
+# /v2/transactions/params and /versions, an account's amount and min-balance,
+# pending-transaction lookup, and a malformed submission refused with 400.
+[[endpoints]]
+id = "algorand.algod.nodely"
+api = "algod"
+chain_id = "algorand"
+endpoint = "https://mainnet-api.4160.nodely.dev"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "algorand.algod.algonode"
+api = "algod"
+chain_id = "algorand"
+endpoint = "https://mainnet-api.algonode.cloud"
+capabilities = ["balance", "fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "ton.api.v2"
@@ -814,6 +970,45 @@ api = "substrate-json-rpc"
 chain_id = "polkadot-westend"
 endpoint = "https://westend-asset-hub-rpc.polkadot.io"
 capabilities = ["balance", "fee", "broadcast", "verification", "token-balance"]
+
+# Kusama Asset Hub and Astar, verified 2026-11-24: genesis, runtime version
+# and identical runtime metadata at one block, System.Account, nonce,
+# payment_queryInfo for a signed transfer, finalized heads, and
+# author_submitExtrinsic among each node's methods (not called).
+[[endpoints]]
+id = "kusama.asset-hub.rpc.official"
+api = "substrate-json-rpc"
+chain_id = "kusama"
+endpoint = "https://kusama-asset-hub-rpc.polkadot.io"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "kusama.asset-hub.rpc.dwellir"
+api = "substrate-json-rpc"
+chain_id = "kusama"
+endpoint = "https://asset-hub-kusama-rpc.n.dwellir.com"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "kusama.asset-hub.rpc.stakeworld"
+api = "substrate-json-rpc"
+chain_id = "kusama"
+endpoint = "https://ksm-rpc.stakeworld.io/assethub"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "astar.rpc.official"
+api = "substrate-json-rpc"
+chain_id = "astar"
+endpoint = "https://rpc.astar.network"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "astar.rpc.onfinality"
+api = "substrate-json-rpc"
+chain_id = "astar"
+endpoint = "https://astar.api.onfinality.io/public"
+capabilities = ["balance", "fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "stellar.horizon.primary"
@@ -1343,6 +1538,46 @@ chain_id = "kaspa-testnet"
 endpoint = "https://api-tn10.kaspa.org"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
 
+# VeChainThor nodes, verified 2026-11-24 (thor 2.5.1): genesis id at
+# /blocks/0, accounts, `POST /accounts/*` calls and simulation, /fees/priority,
+# /logs/transfer and /logs/event with pagination, receipts. A malformed
+# submission was refused by the node itself (HTTP 400) on every endpoint that
+# claims `broadcast`; VeChain Energy's proxy answered it with HTTP 500.
+[[endpoints]]
+id = "vechain.thor.official"
+api = "thor-rest"
+chain_id = "vechain"
+endpoint = "https://mainnet.vechain.org"
+capabilities = ["balance", "history", "token-history", "token-balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "vechain.thor.vecha-in"
+api = "thor-rest"
+chain_id = "vechain"
+endpoint = "https://mainnet.vecha.in"
+capabilities = ["balance", "history", "token-history", "token-balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "vechain.thor.safetech-1"
+api = "thor-rest"
+chain_id = "vechain"
+endpoint = "https://mainnetc1.vechain.network"
+capabilities = ["balance", "history", "token-history", "token-balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "vechain.thor.safetech-2"
+api = "thor-rest"
+chain_id = "vechain"
+endpoint = "https://mainnetc2.vechain.network"
+capabilities = ["balance", "history", "token-history", "token-balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "vechain.thor.vechain-energy"
+api = "thor-rest"
+chain_id = "vechain"
+endpoint = "https://node-mainnet.vechain.energy"
+capabilities = ["balance", "history", "token-history", "token-balance", "fee", "verification"]
+
 [[endpoints]]
 id = "sei.mainnet.evm"
 api = "evm-json-rpc"
@@ -1690,7 +1925,269 @@ chain_id = "aptos-testnet"
 endpoint = "https://api.testnet.aptoslabs.com/v1/graphql"
 capabilities = ["history", "token-history", "token-discovery"]
 
+# Nodely's keyless indexer. Verified 2026-11-24: mainnet's genesis id and
+# hash in block 0, an address's transactions newest first with a next token,
+# and a transaction by id.
+[[endpoints]]
+id = "algorand.indexer.nodely"
+api = "algorand-indexer"
+chain_id = "algorand"
+endpoint = "https://mainnet-idx.4160.nodely.dev"
+capabilities = ["history"]
+
+[[endpoints]]
+id = "algorand.indexer.algonode"
+api = "algorand-indexer"
+chain_id = "algorand"
+endpoint = "https://mainnet-idx.algonode.cloud"
+capabilities = ["history"]
+
 # Verified 2026-10-04: status, address/history, UTXO, fee and malformed broadcast rejection.
+[[endpoints]]
+id = "cosmos-hub.rest.publicnode"
+api = "cosmos-rest"
+chain_id = "cosmos-hub"
+endpoint = "https://cosmos-rest.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "cosmos-hub.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "cosmos-hub"
+endpoint = "https://cosmos-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "celestia.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "celestia"
+endpoint = "https://celestia-api.polkachu.com"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "celestia.rest.numia"
+api = "cosmos-rest"
+chain_id = "celestia"
+endpoint = "https://public-celestia-lcd.numia.xyz"
+capabilities = ["balance", "history"]
+
+[[endpoints]]
+id = "dydx.rest.publicnode"
+api = "cosmos-rest"
+chain_id = "dydx"
+endpoint = "https://dydx-rest.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "dydx.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "dydx"
+endpoint = "https://dydx-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "dydx.rest.kingnodes"
+api = "cosmos-rest"
+chain_id = "dydx"
+endpoint = "https://dydx-rest.kingnodes.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "terra.rest.publicnode"
+api = "cosmos-rest"
+chain_id = "terra"
+endpoint = "https://terra-rest.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "terra.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "terra"
+endpoint = "https://terra-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "kava.rest.official"
+api = "cosmos-rest"
+chain_id = "kava"
+endpoint = "https://api.data.kava.io"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "kava.rest.publicnode"
+api = "cosmos-rest"
+chain_id = "kava"
+endpoint = "https://kava-rest.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "kava.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "kava"
+endpoint = "https://kava-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "injective.rest.publicnode"
+api = "cosmos-rest"
+chain_id = "injective"
+endpoint = "https://injective-rest.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "injective.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "injective"
+endpoint = "https://injective-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "injective.rest.official"
+api = "cosmos-rest"
+chain_id = "injective"
+endpoint = "https://sentry.lcd.injective.network"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "akash.rest.publicnode"
+api = "cosmos-rest"
+chain_id = "akash"
+endpoint = "https://akash-rest.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "akash.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "akash"
+endpoint = "https://akash-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "akash.rest.official"
+api = "cosmos-rest"
+chain_id = "akash"
+endpoint = "https://api.akashnet.net"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "akash.rest.ecostake"
+api = "cosmos-rest"
+chain_id = "akash"
+endpoint = "https://rest-akash.ecostake.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "babylon.rest.publicnode"
+api = "cosmos-rest"
+chain_id = "babylon"
+endpoint = "https://babylon-rest.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "babylon.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "babylon"
+endpoint = "https://babylon-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "babylon.rest.validatus"
+api = "cosmos-rest"
+chain_id = "babylon"
+endpoint = "https://api.babylon.validatus.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "osmosis.rest.official"
+api = "cosmos-rest"
+chain_id = "osmosis"
+endpoint = "https://lcd.osmosis.zone"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "osmosis.rest.publicnode"
+api = "cosmos-rest"
+chain_id = "osmosis"
+endpoint = "https://osmosis-rest.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "osmosis.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "osmosis"
+endpoint = "https://osmosis-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "dymension.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "dymension"
+endpoint = "https://dymension-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "dymension.rest.nodestake"
+api = "cosmos-rest"
+chain_id = "dymension"
+endpoint = "https://api.dymension.nodestake.org"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "dymension.rest.crouton"
+api = "cosmos-rest"
+chain_id = "dymension"
+endpoint = "https://dymension-mainnet-api.crouton.digital"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "saga.rest.publicnode"
+api = "cosmos-rest"
+chain_id = "saga"
+endpoint = "https://saga-rest.publicnode.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "saga.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "saga"
+endpoint = "https://saga-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "saga.rest.nodestake"
+api = "cosmos-rest"
+chain_id = "saga"
+endpoint = "https://api.saga.nodestake.org"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "allora.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "allora"
+endpoint = "https://allora-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "allora.rest.official"
+api = "cosmos-rest"
+chain_id = "allora"
+endpoint = "https://allora-api.mainnet.allora.network"
+capabilities = ["balance", "history", "broadcast", "verification"]
+
+[[endpoints]]
+id = "band.rest.polkachu"
+api = "cosmos-rest"
+chain_id = "band"
+endpoint = "https://band-api.polkachu.com"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "band.rest.official"
+api = "cosmos-rest"
+chain_id = "band"
+endpoint = "https://laozi1.bandchain.org/api"
+capabilities = ["balance", "history", "fee", "broadcast", "verification"]
+
 [[endpoints]]
 id = "peercoin.mainnet.blockbook"
 api = "blockbook"
@@ -1704,3 +2201,40 @@ api = "blockbook"
 chain_id = "peercoin-testnet"
 endpoint = "https://tblockbook.peercoin.net"
 capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+
+# Filecoin: Lotus nodes and Filfox's address index, probed read-only
+# 2026-11-24. Each node answered `StateNetworkName` "mainnet", the mainnet
+# genesis CID from `ChainGetGenesis`, `WalletBalance`, `MpoolGetNonce`,
+# `GasEstimateMessageGas`, `StateSearchMsg` for a mined message and
+# `StateGetActor`, and exposes `MpoolPush` (it refused a call carrying no
+# message). Ankr's public node is left out: its `StateSearchMsg` answered
+# null for a mined message, which reads as still pending.
+[[endpoints]]
+id = "filecoin.rpc.glif"
+api = "lotus-json-rpc"
+chain_id = "filecoin"
+endpoint = "https://api.node.glif.io/rpc/v1"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "filecoin.rpc.filfox"
+api = "lotus-json-rpc"
+chain_id = "filecoin"
+endpoint = "https://filfox.info/rpc/v1"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+[[endpoints]]
+id = "filecoin.rpc.drpc"
+api = "lotus-json-rpc"
+chain_id = "filecoin"
+endpoint = "https://filecoin.drpc.org"
+capabilities = ["balance", "fee", "broadcast", "verification"]
+
+# An address's transfers, sends and receipts of FIL alike, internal ones
+# included; keyless.
+[[endpoints]]
+id = "filecoin.history.filfox"
+api = "filfox"
+chain_id = "filecoin"
+endpoint = "https://filfox.info/api/v1"
+capabilities = ["history"]

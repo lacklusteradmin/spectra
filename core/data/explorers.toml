@@ -397,6 +397,54 @@ name = "0G Chainscan"
 tx_url = "https://chainscan.0g.ai/tx/{hash}"
 address_url = "https://chainscan.0g.ai/address/{address}"
 
+[[explorers]]
+chain_id = "kusama"
+name = "Subscan"
+tx_url = "https://assethub-kusama.subscan.io/extrinsic/{hash}"
+address_url = "https://assethub-kusama.subscan.io/account/{address}"
+
+[[explorers]]
+chain_id = "astar"
+name = "Subscan"
+tx_url = "https://astar.subscan.io/extrinsic/{hash}"
+address_url = "https://astar.subscan.io/account/{address}"
+
+[[explorers]]
+chain_id = "algorand"
+name = "Allo"
+tx_url = "https://allo.info/tx/{hash}"
+address_url = "https://allo.info/account/{address}"
+
+[[explorers]]
+chain_id = "vechain"
+name = "VeChain Explorer"
+tx_url = "https://explore.vechain.org/transactions/{hash}"
+address_url = "https://explore.vechain.org/address/{address}"
+
+[[explorers]]
+chain_id = "filecoin"
+name = "Filfox"
+tx_url = "https://filfox.info/en/message/{hash}"
+address_url = "https://filfox.info/en/address/{address}"
+
+[[explorers]]
+chain_id = "tezos"
+name = "TzKT"
+tx_url = "https://tzkt.io/{hash}"
+address_url = "https://tzkt.io/{address}"
+
+[[explorers]]
+chain_id = "starknet"
+name = "Voyager"
+tx_url = "https://voyager.online/tx/{hash}"
+address_url = "https://voyager.online/contract/{address}"
+
+[[explorers]]
+chain_id = "hedera"
+name = "HashScan"
+tx_url = "https://hashscan.io/mainnet/transaction/{hash}"
+address_url = "https://hashscan.io/mainnet/account/{address}"
+
 # Testnets
 
 [[explorers]]
@@ -633,7 +681,109 @@ tx_url = "https://blockbook.peercoin.net/tx/{hash}"
 address_url = "https://blockbook.peercoin.net/address/{address}"
 
 [[explorers]]
+chain_id = "cosmos-hub"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/cosmos/tx/{hash}"
+address_url = "https://www.mintscan.io/cosmos/address/{address}"
+
+[[explorers]]
+chain_id = "celestia"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/celestia/tx/{hash}"
+address_url = "https://www.mintscan.io/celestia/address/{address}"
+
+[[explorers]]
+chain_id = "dydx"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/dydx/tx/{hash}"
+address_url = "https://www.mintscan.io/dydx/address/{address}"
+
+[[explorers]]
+chain_id = "terra"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/terra/tx/{hash}"
+address_url = "https://www.mintscan.io/terra/address/{address}"
+
+[[explorers]]
+chain_id = "kava"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/kava/tx/{hash}"
+address_url = "https://www.mintscan.io/kava/address/{address}"
+
+[[explorers]]
+chain_id = "injective"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/injective/tx/{hash}"
+address_url = "https://www.mintscan.io/injective/address/{address}"
+
+[[explorers]]
+chain_id = "akash"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/akash/tx/{hash}"
+address_url = "https://www.mintscan.io/akash/address/{address}"
+
+[[explorers]]
+chain_id = "babylon"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/babylon/tx/{hash}"
+address_url = "https://www.mintscan.io/babylon/address/{address}"
+
+[[explorers]]
+chain_id = "osmosis"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/osmosis/tx/{hash}"
+address_url = "https://www.mintscan.io/osmosis/address/{address}"
+
+[[explorers]]
+chain_id = "dymension"
+name = "ezstaking.app"
+tx_url = "https://ezstaking.app/dymension/txs/{hash}"
+address_url = "https://ezstaking.app/dymension/account/{address}"
+
+[[explorers]]
+chain_id = "saga"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/saga/tx/{hash}"
+address_url = "https://www.mintscan.io/saga/address/{address}"
+
+[[explorers]]
+chain_id = "allora"
+name = "Allora Explorer"
+tx_url = "https://explorer.allora.network/explorer/transactions/{hash}"
+address_url = "https://explorer.allora.network/profile/{address}"
+
+[[explorers]]
+chain_id = "band"
+name = "Mintscan"
+tx_url = "https://www.mintscan.io/band/tx/{hash}"
+address_url = "https://www.mintscan.io/band/address/{address}"
+
+[[explorers]]
 chain_id = "peercoin-testnet"
 name = "Peercoin Testnet Blockbook"
 tx_url = "https://tblockbook.peercoin.net/tx/{hash}"
 address_url = "https://tblockbook.peercoin.net/address/{address}"
+
+[[explorers]]
+chain_id = "qtum"
+name = "Qtum.info"
+tx_url = "https://qtum.info/tx/{hash}"
+address_url = "https://qtum.info/address/{address}"
+
+[[explorers]]
+chain_id = "fractal-bitcoin"
+name = "Fractal Mempool"
+tx_url = "https://mempool.fractalbitcoin.io/tx/{hash}"
+address_url = "https://mempool.fractalbitcoin.io/address/{address}"
+
+[[explorers]]
+chain_id = "ecash"
+name = "eCash Explorer"
+tx_url = "https://explorer.e.cash/tx/{hash}"
+address_url = "https://explorer.e.cash/address/{address}"
+
+[[explorers]]
+chain_id = "digibyte"
+name = "DigiExplorer"
+tx_url = "https://digiexplorer.info/tx/{hash}"
+address_url = "https://digiexplorer.info/address/{address}"

@@ -362,7 +362,24 @@ impl WalletService {
         chain: Chain,
         required: &[EndpointCapability],
     ) -> Result<(EndpointApi, Arc<Vec<String>>), SpectraBridgeError> {
-        let [api] = chain.endpoint_apis() else {
+        // A chain of one API reads through it; one of several, through the
+        // one API that serves `required` (Hedera's mirror node, not the
+        // consensus nodes it submits to).
+        let apis = chain.endpoint_apis();
+        let serving: Vec<EndpointApi> = if let [api] = apis {
+            vec![*api]
+        } else {
+            apis.iter()
+                .copied()
+                .filter(|api| {
+                    let options = crate::api::endpoint::endpoint_capability_options(chain, *api);
+                    required
+                        .iter()
+                        .all(|capability| options.contains(capability))
+                })
+                .collect()
+        };
+        let [api] = serving.as_slice() else {
             return Err(SpectraBridgeError::failure(format!(
                 "{} has no single fetch API",
                 chain.str_id()

@@ -219,7 +219,8 @@ and `send/litecoin_mweb/` hold one large protocol's parts. `lib.rs` declares the
 domains and `error.rs` holds `SpectraBridgeError` and `LocalizableMessage`, and
 nothing else sits at the root. `registry/` is `Chain` with one `impl Chain` sibling per topic
 (`keys`, `address`, `endpoints`, `tokens`, `send`, `staking`, `utxo`,
-`networks`, `evm`), and the asset identities a token is named by
+`networks`, `evm`, and one per protocol family: `substrate`, `cosmos`,
+`algorand`, `vechain`, `tezos`, `starknet`, `hedera`), and the asset identities a token is named by
 (`NftStandard` in `tokens`, `xrpl_amount`, `stellar_asset`,
 `cardano_asset`), which `catalog/`, `api/` and `send/` share; `catalog/` parses the embedded `core/data/` files (chains
 with their wiki and staking copy, tokens and test-network tokens, endpoints,

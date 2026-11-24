@@ -67,10 +67,10 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// Bitcoin's fee rate, in sat/vB.
+    /// A Bitcoin-format network's fee rate, in sat/vB, as its indexers
+    /// estimate it.
     ///
-    /// `chain` is the Bitcoin network to quote for: a testnet's fees are its
-    /// own.
+    /// `chain` is the network to quote for: a testnet's fees are its own.
     pub(crate) async fn bitcoin_fee_rate(
         &self,
         chain: Chain,
@@ -422,9 +422,23 @@ impl WalletService {
         }
         let decimals = u32::from(chain.native_decimals());
         let units = |amount: u128| crate::amount::decimal::from_units(amount, decimals);
+        if chain.is_cosmos() {
+            return self.preview_cosmos_send(chain, &address).await;
+        }
         match chain.mainnet_counterpart() {
             Chain::Near => return self.preview_near_send(chain, &address, "", 0, None).await,
-            Chain::Polkadot | Chain::Bittensor => {
+            Chain::Algorand => return self.preview_algorand_send(chain, &address).await,
+            Chain::Filecoin => return self.preview_filecoin_send(chain, &address).await,
+            // A smallest unit of VET to the address itself prices the clause.
+            Chain::Vechain => {
+                return self
+                    .preview_vechain_send(chain, &address, &address, None, 1)
+                    .await;
+            }
+            Chain::Tezos => return self.preview_tezos_send(chain, &address, None).await,
+            Chain::Starknet => return self.preview_starknet_send(chain, &address).await,
+            Chain::Hedera => return self.preview_hedera_send(chain, &address).await,
+            _ if chain.is_substrate() => {
                 let endpoints = self
                     .endpoints_for(
                         chain,

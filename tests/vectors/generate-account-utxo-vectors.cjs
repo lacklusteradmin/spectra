@@ -6,6 +6,11 @@
 // bitcoinjs-lib computes every Bitcoin-format sighash: legacy (Dogecoin,
 // Dash), BIP143 (SegWit v0 and, with SIGHASH_FORKID in the hash type, Bitcoin
 // Cash, Bitcoin SV and Bitcoin Gold's fork id 79) and BIP341 (Taproot).
+// Per network, a spend between the network's own addresses: bitcoinjs-lib
+// with Qtum's, Fractal Bitcoin's and DigiByte's address parameters, and
+// ecash-lib's own builder and BIP143 preimage (SIGHASH_ALL|FORKID, fork id
+// 0) with eCash's CashAddr. ecash-lib's P2PKH signatory signs Schnorr; the
+// one here signs the same preimage ECDSA, as Spectra does.
 // ECDSA signatures are RFC 6979 and low-S on both sides, so those
 // transactions are compared byte for byte. A Schnorr signature carries
 // auxiliary randomness, so a Taproot vector gives its unsigned transaction and
@@ -17,6 +22,7 @@ const bitcoin = require('bitcoinjs-lib');
 const ecc = require('tiny-secp256k1');
 const { ECPairFactory } = require('ecpair');
 const kaspa = require('kaspa-wasm');
+const ecash = require('ecash-lib');
 
 bitcoin.initEccLib(ecc);
 const ECPair = ECPairFactory(ecc);
@@ -98,6 +104,69 @@ for (const [name, forkId] of [['legacy', null], ['forkid-0', 0], ['forkid-79', 7
   legacyVectors.push(vector(name, inputs, outputs, { fork_id: forkId, raw: tx.toHex(), txid: tx.getId() }));
 }
 
+// The networks that sign Bitcoin's own hashes, between their addresses:
+// version 2, every input signalling replace-by-fee, as Bitcoin's spends.
+const NETWORK_PARAMS = {
+  qtum: { messagePrefix: '', bech32: 'qc', bip32: { public: 0x0488b21e, private: 0x0488ade4 }, pubKeyHash: 0x3a, scriptHash: 0x32, wif: 0x80 },
+  'fractal-bitcoin': bitcoin.networks.bitcoin,
+  digibyte: { messagePrefix: '', bech32: 'dgb', bip32: { public: 0x0488b21e, private: 0x0488ade4 }, pubKeyHash: 0x1e, scriptHash: 0x3f, wif: 0x80 },
+};
+const networkVectors = [];
+for (const [chain, network] of Object.entries(NETWORK_PARAMS)) {
+  for (const kind of ['p2pkh', 'p2wpkh']) {
+    const payment = (pair) => bitcoin.payments[kind]({ pubkey: Buffer.from(pair.publicKey), network });
+    const { inputs, outputs, tx } = spend((pair) => payment(pair).output, 2, 0xfffffffd);
+    inputs.forEach((input, index) => {
+      const pair = keys[input.owner];
+      if (kind === 'p2pkh') {
+        const digest = tx.hashForSignature(index, Buffer.from(input.script, 'hex'), 0x01);
+        tx.setInputScript(index, bitcoin.script.compile([signature(pair, digest, 0x01), pair.publicKey]));
+      } else {
+        const digest = tx.hashForWitnessV0(index, p2pkh(pair), BigInt(input.value), 0x01);
+        tx.setWitness(index, [signature(pair, digest, 0x01), Buffer.from(pair.publicKey)]);
+      }
+    });
+    const addressed = vector(`${chain}-${kind}`, inputs, outputs, { raw: tx.toHex(), txid: tx.getId() });
+    addressed.chain = chain;
+    addressed.inputs.forEach((input, index) => { input.address = payment(keys[inputs[index].owner]).address; });
+    addressed.outputs = outputs.map((output, index) => ({ ...output, address: payment(keys[index === 0 ? 2 : 0]).address }));
+    networkVectors.push(addressed);
+  }
+}
+// eCash: ecash-lib builds and signs a version-1 spend of P2PKH inputs.
+{
+  const ecc = new ecash.Ecc();
+  // ecash-lib's preimage, signed RFC 6979 with tiny-secp256k1 like the rest.
+  const ecdsaP2pkh = (pair) => (_signer, input) => {
+    const sighash = ecash.sha256d(input.sigHashPreimage(ecash.ALL_BIP143).bytes);
+    return ecash.Script.p2pkhSpend(pair.publicKey, signature(pair, Buffer.from(sighash), 0x41));
+  };
+  const cashaddr = (pair) => ecash.Address.p2pkh(ecash.shaRmd160(pair.publicKey)).toString();
+  const inputs = [0, 1, 0].map((owner, index) => ({
+    txid: txid(index), vout: index, value: 100_000 + 10_000 * index, owner,
+    script: hex(ecash.Script.fromAddress(cashaddr(keys[owner])).bytecode), address: cashaddr(keys[owner]),
+  }));
+  const outputs = [
+    { address: cashaddr(keys[2]), value: 150_000 },
+    { address: cashaddr(keys[0]), value: 177_000 },
+  ].map((output) => ({ ...output, script: hex(ecash.Script.fromAddress(output.address).bytecode) }));
+  const tx = new ecash.TxBuilder({
+    version: 1,
+    inputs: inputs.map((input) => ({
+      input: {
+        prevOut: { txid: input.txid, outIdx: input.vout },
+        signData: { sats: BigInt(input.value), outputScript: ecash.Script.fromAddress(input.address) },
+        sequence: 0xffffffff,
+      },
+      signatory: ecdsaP2pkh(keys[input.owner]),
+    })),
+    outputs: outputs.map((output) => ({ sats: BigInt(output.value), script: ecash.Script.fromAddress(output.address) })),
+  }).sign({ ecc });
+  const signed = vector('ecash-p2pkh', inputs, outputs, { raw: tx.toHex(), txid: tx.txid() });
+  signed.chain = 'ecash';
+  networkVectors.push(signed);
+}
+
 // Kaspa: Schnorr P2PK scripts (`<x-only key> OP_CHECKSIG`), version 0.
 function kaspaScript(pair) { return '20' + hex(internal(pair)) + 'ac'; }
 const kaspaInputs = [0, 1, 0].map((owner, index) => ({
@@ -125,8 +194,9 @@ const signable = new kaspa.SignableTransaction(kaspaTx, entries);
 const kaspaSighashes = signable.getScriptHashes().map((hash) => String(hash));
 
 fs.writeFileSync(process.argv[2], JSON.stringify({
-  provenance: 'bitcoinjs-lib 7.0.2, ecpair 3.0.1, tiny-secp256k1 2.2.4, kaspa-wasm 0.13.0 (tests/vectors/generate-account-utxo-vectors.cjs)',
+  provenance: 'bitcoinjs-lib 7.0.2, ecpair 3.0.1, tiny-secp256k1 2.2.4, kaspa-wasm 0.13.0, ecash-lib 4.12.0 (tests/vectors/generate-account-utxo-vectors.cjs)',
   bitcoin: bitcoinVectors,
   legacy: legacyVectors,
+  networks: networkVectors,
   kaspa: vector('kaspa', kaspaInputs, kaspaOutputs, { sighashes: kaspaSighashes }),
 }, null, 2) + '\n');

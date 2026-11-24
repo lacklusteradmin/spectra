@@ -1,0 +1,290 @@
+{
+ "provenance": "Read-only answers from https://open-api-fractal.unisat.io/v1/indexer, 2026-11-24, for bc1p26tlrfhgd84p7rxrtmt8gxxe06v4e92e2t3m7hnx36vhnzq8qs8qw9uykg: /height/1/block, /address/{a}/balance, /address/{a}/history?cursor=0&size=20, /tx/{txid}/ins and /outs of its two transactions, /tx/{txid}; and two of bc1qtx7rzkcs43xyg8r6wglqn2xsv3j5rhe0enwya7 available outputs.",
+ "block1": {
+  "code": 0,
+  "msg": "ok",
+  "data": {
+   "height": 1,
+   "version": 667148304,
+   "auxpow": false,
+   "id": "00000000000000005a5c13fe33f6717c7ad81fc8837ae75e4693c16acbdd0f66",
+   "prev": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+   "next": "ab92f4fc0ebf37fe128e63c42bd12c8f277afa3674340c7ed6bb0fb4db1e25ea",
+   "merkle": "1a27db82b5ab9a931b1cd030563de4125aa894eccd25184c5b9c6cb588f1f549",
+   "ntx": 1,
+   "inSatoshi": 0,
+   "outSatoshi": 0,
+   "coinbaseOut": 10500000000000000,
+   "timestamp": 1725840017,
+   "bits": 419483647,
+   "size": 318
+  }
+ },
+ "balance": {
+  "code": 0,
+  "msg": "ok",
+  "data": {
+   "address": "bc1p26tlrfhgd84p7rxrtmt8gxxe06v4e92e2t3m7hnx36vhnzq8qs8qw9uykg",
+   "satoshi": 0,
+   "pendingSatoshi": 0,
+   "utxoCount": 0,
+   "btcSatoshi": 0,
+   "btcPendingSatoshi": 0,
+   "btcUtxoCount": 0,
+   "inscriptionSatoshi": 0,
+   "inscriptionPendingSatoshi": 0,
+   "inscriptionUtxoCount": 0
+  }
+ },
+ "history": {
+  "code": 0,
+  "msg": "ok",
+  "data": {
+   "total": 2,
+   "start": 0,
+   "detail": [
+    {
+     "txid": "12dd8923baaefa934db1484477fa1487890c603d85c647ff191f69c5f9af85ab",
+     "nIn": 1,
+     "nOut": 2,
+     "size": 407,
+     "witOffset": 118,
+     "locktime": 0,
+     "inSatoshi": 3625,
+     "outSatoshi": 547,
+     "nNewInscription": 1,
+     "nInInscription": 0,
+     "nOutInscription": 1,
+     "nLostInscription": 0,
+     "timestamp": 1795521995,
+     "height": 2322887,
+     "blkid": "abf03a2d410947c8cba3c8fb3a7f19d8dede7e0166ab7a3564109986a0dfd169",
+     "idx": 4,
+     "confirmations": 39
+    },
+    {
+     "txid": "9fbd6d8880e0a9c0e88abc21a8bbcd04b894841a10bc9ff95737640bdcac8557",
+     "nIn": 1,
+     "nOut": 2,
+     "size": 205,
+     "witOffset": 135,
+     "locktime": 0,
+     "inSatoshi": 11051643,
+     "outSatoshi": 11049318,
+     "nNewInscription": 0,
+     "nInInscription": 0,
+     "nOutInscription": 0,
+     "nLostInscription": 0,
+     "timestamp": 1795521995,
+     "height": 2322887,
+     "blkid": "abf03a2d410947c8cba3c8fb3a7f19d8dede7e0166ab7a3564109986a0dfd169",
+     "idx": 3,
+     "confirmations": 39
+    }
+   ]
+  }
+ },
+ "tx": {
+  "code": 0,
+  "msg": "ok",
+  "data": {
+   "txid": "12dd8923baaefa934db1484477fa1487890c603d85c647ff191f69c5f9af85ab",
+   "nIn": 1,
+   "nOut": 2,
+   "size": 407,
+   "witOffset": 118,
+   "locktime": 0,
+   "inSatoshi": 3625,
+   "outSatoshi": 547,
+   "nNewInscription": 1,
+   "nInInscription": 0,
+   "nOutInscription": 1,
+   "nLostInscription": 0,
+   "timestamp": 1795521995,
+   "height": 2322887,
+   "blkid": "abf03a2d410947c8cba3c8fb3a7f19d8dede7e0166ab7a3564109986a0dfd169",
+   "idx": 4,
+   "confirmations": 40
+  }
+ },
+ "utxo": {
+  "code": 0,
+  "msg": "ok",
+  "data": {
+   "cursor": 0,
+   "total": 500,
+   "utxo": [
+    {
+     "confirmations": 291311,
+     "txid": "b53a069c3345ec557aff4cf94114253eb3b76849348221d195405e30ed81a84b",
+     "vout": 1,
+     "satoshi": 546,
+     "scriptType": "0014",
+     "scriptPk": "001459bc315b10ac4c441c7a723e09a8d0646541df2f",
+     "codeType": 7,
+     "address": "bc1qtx7rzkcs43xyg8r6wglqn2xsv3j5rhe0enwya7",
+     "height": 2031615,
+     "idx": 2,
+     "isOpInRBF": false,
+     "isSpent": false,
+     "isSpending": false,
+     "inscriptionsCount": 0,
+     "inscriptions": []
+    },
+    {
+     "confirmations": 422639,
+     "txid": "85e0db5b327cc0b5a0f0259be7fe72970806415c6d4545532faf2bbea2c53f3d",
+     "vout": 1,
+     "satoshi": 546,
+     "scriptType": "0014",
+     "scriptPk": "001459bc315b10ac4c441c7a723e09a8d0646541df2f",
+     "codeType": 7,
+     "address": "bc1qtx7rzkcs43xyg8r6wglqn2xsv3j5rhe0enwya7",
+     "height": 1900287,
+     "idx": 2,
+     "isOpInRBF": false,
+     "isSpent": false,
+     "isSpending": false,
+     "inscriptionsCount": 0,
+     "inscriptions": []
+    }
+   ]
+  }
+ },
+ "ins-12dd8923baaefa934db1484477fa1487890c603d85c647ff191f69c5f9af85ab": {
+  "code": 0,
+  "msg": "ok",
+  "data": [
+   {
+    "height": 2322887,
+    "txid": "12dd8923baaefa934db1484477fa1487890c603d85c647ff191f69c5f9af85ab",
+    "idx": 0,
+    "scriptSig": "",
+    "scriptWits": "",
+    "sequence": 4294967295,
+    "heightTxo": 2322887,
+    "utxid": "9fbd6d8880e0a9c0e88abc21a8bbcd04b894841a10bc9ff95737640bdcac8557",
+    "vout": 0,
+    "address": "bc1p26tlrfhgd84p7rxrtmt8gxxe06v4e92e2t3m7hnx36vhnzq8qs8qw9uykg",
+    "codeType": 9,
+    "satoshi": 3625,
+    "scriptType": "5120",
+    "scriptPk": "51205697f1a6e869ea1f0cc35ed67418d97e995c955952e3bf5e668e99798807040e",
+    "nftCount": 0,
+    "inscriptions": []
+   }
+  ]
+ },
+ "ins-9fbd6d8880e0a9c0e88abc21a8bbcd04b894841a10bc9ff95737640bdcac8557": {
+  "code": 0,
+  "msg": "ok",
+  "data": [
+   {
+    "height": 2322887,
+    "txid": "9fbd6d8880e0a9c0e88abc21a8bbcd04b894841a10bc9ff95737640bdcac8557",
+    "idx": 0,
+    "scriptSig": "",
+    "scriptWits": "",
+    "sequence": 4294967295,
+    "heightTxo": 2322611,
+    "utxid": "5c67273c48316b406c24aebcc00b049c4d9765efe937778a360c9ff0b64aa264",
+    "vout": 1,
+    "address": "bc1pepqnwn6nxsxf9ewmax00gv3832skck2wzhj77zj0ht4730chmetsta5mdr",
+    "codeType": 9,
+    "satoshi": 11051643,
+    "scriptType": "5120",
+    "scriptPk": "5120c841374f53340c92e5dbe99ef432278aa16c594e15e5ef0a4fbaebe8bf17de57",
+    "nftCount": 0,
+    "inscriptions": []
+   }
+  ]
+ },
+ "outs-12dd8923baaefa934db1484477fa1487890c603d85c647ff191f69c5f9af85ab": {
+  "code": 0,
+  "msg": "ok",
+  "data": [
+   {
+    "txid": "12dd8923baaefa934db1484477fa1487890c603d85c647ff191f69c5f9af85ab",
+    "vout": 0,
+    "address": "",
+    "codeType": 0,
+    "satoshi": 1,
+    "scriptType": "6a1b",
+    "scriptPk": "6a1b4649502d3130313a7375626d69745f70726f6f663a72657665616c",
+    "height": 2322887,
+    "idx": 4,
+    "nftCount": 1,
+    "inscriptions": [
+     {
+      "inscriptionNumber": 4310673811,
+      "inscriptionId": "12dd8923baaefa934db1484477fa1487890c603d85c647ff191f69c5f9af85abi0",
+      "offset": 0,
+      "isStrip": false,
+      "moved": false,
+      "sequence": 0,
+      "isCursed": false,
+      "isVindicate": true,
+      "isBRC20Tran": false,
+      "isBRC20Mint": false,
+      "isBRC20Ext": false,
+      "isBRC20": false,
+      "contentType": ""
+     }
+    ],
+    "txidSpent": "0000000000000000000000000000000000000000000000000000000000000000",
+    "heightSpent": 0
+   },
+   {
+    "txid": "12dd8923baaefa934db1484477fa1487890c603d85c647ff191f69c5f9af85ab",
+    "vout": 1,
+    "address": "bc1qtx7rzkcs43xyg8r6wglqn2xsv3j5rhe0enwya7",
+    "codeType": 7,
+    "satoshi": 546,
+    "scriptType": "0014",
+    "scriptPk": "001459bc315b10ac4c441c7a723e09a8d0646541df2f",
+    "height": 2322887,
+    "idx": 4,
+    "nftCount": 0,
+    "inscriptions": [],
+    "txidSpent": "0000000000000000000000000000000000000000000000000000000000000000",
+    "heightSpent": 0
+   }
+  ]
+ },
+ "outs-9fbd6d8880e0a9c0e88abc21a8bbcd04b894841a10bc9ff95737640bdcac8557": {
+  "code": 0,
+  "msg": "ok",
+  "data": [
+   {
+    "txid": "9fbd6d8880e0a9c0e88abc21a8bbcd04b894841a10bc9ff95737640bdcac8557",
+    "vout": 0,
+    "address": "bc1p26tlrfhgd84p7rxrtmt8gxxe06v4e92e2t3m7hnx36vhnzq8qs8qw9uykg",
+    "codeType": 9,
+    "satoshi": 3625,
+    "scriptType": "5120",
+    "scriptPk": "51205697f1a6e869ea1f0cc35ed67418d97e995c955952e3bf5e668e99798807040e",
+    "height": 2322887,
+    "idx": 3,
+    "nftCount": 0,
+    "inscriptions": [],
+    "txidSpent": "12dd8923baaefa934db1484477fa1487890c603d85c647ff191f69c5f9af85ab",
+    "heightSpent": 2322887
+   },
+   {
+    "txid": "9fbd6d8880e0a9c0e88abc21a8bbcd04b894841a10bc9ff95737640bdcac8557",
+    "vout": 1,
+    "address": "bc1pepqnwn6nxsxf9ewmax00gv3832skck2wzhj77zj0ht4730chmetsta5mdr",
+    "codeType": 9,
+    "satoshi": 11045693,
+    "scriptType": "5120",
+    "scriptPk": "5120c841374f53340c92e5dbe99ef432278aa16c594e15e5ef0a4fbaebe8bf17de57",
+    "height": 2322887,
+    "idx": 3,
+    "nftCount": 0,
+    "inscriptions": [],
+    "txidSpent": "0000000000000000000000000000000000000000000000000000000000000000",
+    "heightSpent": 0
+   }
+  ]
+ }
+}

@@ -136,7 +136,12 @@ impl WalletService {
                     .then_some(wallet.derivation_path.as_deref())
                     .flatten()
                     .unwrap_or_default();
-                let path = crate::derivation::path::resolve_derivation_path(id, path.into())?;
+                // A phrase that is one account's key walks no path.
+                let path = if crate::derivation::phrase::is_single_key(id, &mnemonic.phrase) {
+                    String::new()
+                } else {
+                    crate::derivation::path::resolve_derivation_path(id, path.into())?
+                };
                 mnemonic.overrides.0.validate_for_chain(chain)?;
                 let script = crate::derivation::dispatch::script_type_for_path(&path);
                 let mut derived = crate::derivation::dispatch::derive_for_chain(

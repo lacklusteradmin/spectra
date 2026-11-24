@@ -114,6 +114,30 @@
       "key": "35292d2e20030d94dd71c912d161e3a78d7557f0426d3a36c535743e601859a1",
       "compressed": "cPN3EihQvshChQ4B7zi7aVAqhQLAA6kfbpUJo1pTZKDycnVZszfE",
       "uncompressed": "91zL5vQCmNucGx4tgeYX39eaEgix6EYC1e37JDsdNpdUL4sj9ym"
+    },
+    {
+      "chain": "qtum",
+      "key": "f9b1f04ff46971a8485051d92f15883c8f11145e3e1c628e5c4248039a2c16e1",
+      "compressed": "L5b5unoAEF9tRnZdQizS6TVJ19VZCFb9EJs7eB7VRkQS9qPmof9S",
+      "uncompressed": "5KiFhxguqmSaQHff9zzsYbYnYJLA7B6vXCkXWGS2ujTc9opkSaF"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "key": "84d0c3a7066e14a2ac9580c5a262f04fa598c0e282c2beee593f13327e5bcce1",
+      "compressed": "L1ftPYhwiDxH86MtWtH7R6KfHh6bVZgBNj5rLxZJY4mk7cgLHEgz",
+      "uncompressed": "5JpnB6NWcd1k5KtQTFnnrs9JjkXGX2y15vVHcnfaszViVKvSksi"
+    },
+    {
+      "chain": "ecash",
+      "key": "20d275c84bcf2d40f88dc938b2be6223b89af168a1031bae3d7652064ce2442f",
+      "compressed": "KxKWhDvxtc3aHKQU3AJrn9P3KT1ToaJ2ZKLbGtpqCyhg1iWhLZyJ",
+      "uncompressed": "5J4jyh5yci236xpuoFoBpqa64Grx1app2RzudE6rSNTS9qx8WKA"
+    },
+    {
+      "chain": "digibyte",
+      "key": "8c611af10c9192a06ea60e430c74be0ce7661c8b613b95a64618db51db551bfd",
+      "compressed": "L1vbAn86ZL8vNZ6Nkfg8seNU2cceKYBsCpQ4XTcdfeaGz9VWJnGh",
+      "uncompressed": "5Jt7P9s6LZRuRNKSKW9sGZ2h7FsDXwC58D6gKEHEHuvJfqZCQ81"
     }
   ],
   "solana": {

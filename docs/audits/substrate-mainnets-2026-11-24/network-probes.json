@@ -1,0 +1,209 @@
+{
+  "read": "2026-11-24",
+  "methods": "chain_getBlockHash(0), system_chain, system_name, system_version, system_properties, chain_getFinalizedHead, state_getRuntimeVersion (apis omitted), and whether rpc_methods lists the methods Spectra calls",
+  "endpoints": {
+    "https://kusama-asset-hub-rpc.polkadot.io": {
+      "network": "kusama",
+      "chain_getBlockHash": "0x48239ef607d7928874027a43a67689209727dfb3d3dc5e5b03a39bdc2eda771a",
+      "system_chain": "Kusama Asset Hub",
+      "system_name": "polkadot-parachain",
+      "system_version": "1.25.2-9448fe4f252",
+      "system_properties": {
+        "ss58Format": 2,
+        "tokenDecimals": 12,
+        "tokenSymbol": "KSM"
+      },
+      "chain_getFinalizedHead": "0x77f8c14943334cdf42dc0532d64dfa0fa7527b1c721b69a11b6c2eb977118bdb",
+      "state_getRuntimeVersion": {
+        "specName": "statemine",
+        "implName": "statemine",
+        "authoringVersion": 1,
+        "specVersion": 2005003,
+        "implVersion": 0,
+        "transactionVersion": 15,
+        "systemVersion": 1,
+        "stateVersion": 1
+      },
+      "has_payment_queryInfo": true,
+      "has_state_call": true,
+      "has_author_submitExtrinsic": true,
+      "has_system_accountNextIndex": true,
+      "has_state_getMetadata": true,
+      "has_chain_getBlock": true
+    },
+    "https://asset-hub-kusama-rpc.n.dwellir.com": {
+      "network": "kusama",
+      "chain_getBlockHash": "0x48239ef607d7928874027a43a67689209727dfb3d3dc5e5b03a39bdc2eda771a",
+      "system_chain": "Kusama Asset Hub",
+      "system_name": "polkadot-parachain",
+      "system_version": "1.25.2-9448fe4f252",
+      "system_properties": {
+        "ss58Format": 2,
+        "tokenDecimals": 12,
+        "tokenSymbol": "KSM"
+      },
+      "chain_getFinalizedHead": "0x77f8c14943334cdf42dc0532d64dfa0fa7527b1c721b69a11b6c2eb977118bdb",
+      "state_getRuntimeVersion": {
+        "specName": "statemine",
+        "implName": "statemine",
+        "authoringVersion": 1,
+        "specVersion": 2005003,
+        "implVersion": 0,
+        "transactionVersion": 15,
+        "systemVersion": 1,
+        "stateVersion": 1
+      },
+      "has_payment_queryInfo": true,
+      "has_state_call": true,
+      "has_author_submitExtrinsic": true,
+      "has_system_accountNextIndex": true,
+      "has_state_getMetadata": true,
+      "has_chain_getBlock": true
+    },
+    "https://ksm-rpc.stakeworld.io/assethub": {
+      "network": "kusama",
+      "chain_getBlockHash": "0x48239ef607d7928874027a43a67689209727dfb3d3dc5e5b03a39bdc2eda771a",
+      "system_chain": "Kusama Asset Hub",
+      "system_name": "polkadot-parachain",
+      "system_version": "1.25.2-9448fe4f252",
+      "system_properties": {
+        "ss58Format": 2,
+        "tokenDecimals": 12,
+        "tokenSymbol": "KSM"
+      },
+      "chain_getFinalizedHead": "0x77f8c14943334cdf42dc0532d64dfa0fa7527b1c721b69a11b6c2eb977118bdb",
+      "state_getRuntimeVersion": {
+        "specName": "statemine",
+        "implName": "statemine",
+        "authoringVersion": 1,
+        "specVersion": 2005003,
+        "implVersion": 0,
+        "transactionVersion": 15,
+        "systemVersion": 1,
+        "stateVersion": 1
+      },
+      "has_payment_queryInfo": true,
+      "has_state_call": true,
+      "has_author_submitExtrinsic": true,
+      "has_system_accountNextIndex": true,
+      "has_state_getMetadata": true,
+      "has_chain_getBlock": true
+    },
+    "https://rpc.astar.network": {
+      "network": "astar",
+      "chain_getBlockHash": "0x9eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c6",
+      "system_chain": "Astar",
+      "system_name": "Astar Collator",
+      "system_version": "5.51.2-334157e4015",
+      "system_properties": {
+        "ss58Format": 5,
+        "tokenDecimals": 18,
+        "tokenSymbol": "ASTR"
+      },
+      "chain_getFinalizedHead": "0xddeca109aad72679c4d88cad4b7e36ce7952526bf7e9d9e4e05571d68865b655",
+      "state_getRuntimeVersion": {
+        "specName": "astar",
+        "implName": "astar",
+        "authoringVersion": 1,
+        "specVersion": 2500,
+        "implVersion": 0,
+        "transactionVersion": 3,
+        "systemVersion": 1,
+        "stateVersion": 1
+      },
+      "has_payment_queryInfo": true,
+      "has_state_call": true,
+      "has_author_submitExtrinsic": true,
+      "has_system_accountNextIndex": true,
+      "has_state_getMetadata": true,
+      "has_chain_getBlock": true
+    },
+    "https://astar-rpc.n.dwellir.com": {
+      "network": "astar",
+      "chain_getBlockHash": "0x9eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c6",
+      "system_chain": "Astar",
+      "system_name": "Astar Collator",
+      "system_version": "5.51.2-334157e4015",
+      "system_properties": {
+        "ss58Format": 5,
+        "tokenDecimals": 18,
+        "tokenSymbol": "ASTR"
+      },
+      "chain_getFinalizedHead": "0xddeca109aad72679c4d88cad4b7e36ce7952526bf7e9d9e4e05571d68865b655",
+      "state_getRuntimeVersion": {
+        "specName": "astar",
+        "implName": "astar",
+        "authoringVersion": 1,
+        "specVersion": 2500,
+        "implVersion": 0,
+        "transactionVersion": 3,
+        "systemVersion": 1,
+        "stateVersion": 1
+      },
+      "has_payment_queryInfo": true,
+      "has_state_call": true,
+      "has_author_submitExtrinsic": true,
+      "has_system_accountNextIndex": true,
+      "has_state_getMetadata": true,
+      "has_chain_getBlock": true
+    },
+    "https://astar.api.onfinality.io/public": {
+      "network": "astar",
+      "chain_getBlockHash": "0x9eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c6",
+      "system_chain": "Astar",
+      "system_name": "Astar Collator",
+      "system_version": "5.50.0-f826a2c7e7c",
+      "system_properties": {
+        "ss58Format": 5,
+        "tokenDecimals": 18,
+        "tokenSymbol": "ASTR"
+      },
+      "chain_getFinalizedHead": "0xddeca109aad72679c4d88cad4b7e36ce7952526bf7e9d9e4e05571d68865b655",
+      "state_getRuntimeVersion": {
+        "specName": "astar",
+        "implName": "astar",
+        "authoringVersion": 1,
+        "specVersion": 2500,
+        "implVersion": 0,
+        "transactionVersion": 3,
+        "systemVersion": 1,
+        "stateVersion": 1
+      },
+      "has_payment_queryInfo": true,
+      "has_state_call": true,
+      "has_author_submitExtrinsic": true,
+      "has_system_accountNextIndex": true,
+      "has_state_getMetadata": true,
+      "has_chain_getBlock": true
+    },
+    "https://1rpc.io/astr": {
+      "network": "astar",
+      "chain_getBlockHash": "0x9eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c6",
+      "system_chain": "Astar",
+      "system_name": "Astar Collator",
+      "system_version": "ERROR HTTP Error 522: <none>",
+      "system_properties": {
+        "ss58Format": 5,
+        "tokenDecimals": 18,
+        "tokenSymbol": "ASTR"
+      },
+      "chain_getFinalizedHead": "ERROR HTTP Error 522: <none>",
+      "state_getRuntimeVersion": {
+        "specName": "astar",
+        "implName": "astar",
+        "authoringVersion": 1,
+        "specVersion": 2500,
+        "implVersion": 0,
+        "transactionVersion": 3,
+        "systemVersion": 1,
+        "stateVersion": 1
+      },
+      "has_payment_queryInfo": true,
+      "has_state_call": true,
+      "has_author_submitExtrinsic": true,
+      "has_system_accountNextIndex": true,
+      "has_state_getMetadata": true,
+      "has_chain_getBlock": true
+    }
+  }
+}

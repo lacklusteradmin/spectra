@@ -240,7 +240,11 @@ impl HttpClient {
                 }
                 Ok(resp) => {
                     let status = resp.status();
-                    if status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+                    let answered = profile == RetryProfile::GatewayRead
+                        && status == StatusCode::INTERNAL_SERVER_ERROR;
+                    if status == StatusCode::TOO_MANY_REQUESTS
+                        || (status.is_server_error() && !answered)
+                    {
                         last_err = format!("HTTP {status}");
                         rate_limited = status == StatusCode::TOO_MANY_REQUESTS;
                         continue;
@@ -414,12 +418,17 @@ pub enum RetryProfile {
     ChainWrite,
     /// Health probe / diagnostics. 2 attempts with shorter delays.
     Diagnostics,
+    /// A Cosmos SDK node's gRPC gateway: a chain read, except that an HTTP
+    /// 500 is how the gateway writes an error the application returned (an
+    /// unknown account, a failed simulation, a pruned height). That is an
+    /// answer, with its reason in the body, not an outage to retry.
+    GatewayRead,
 }
 
 impl RetryProfile {
     pub fn max_attempts(self) -> usize {
         match self {
-            Self::ChainRead => 3,
+            Self::ChainRead | Self::GatewayRead => 3,
             Self::ChainWrite => 2,
             Self::Diagnostics => 2,
         }
@@ -433,7 +442,7 @@ impl RetryProfile {
     /// together from retrying together.
     pub fn delay_for_attempt(self, attempt: usize, rate_limited: bool) -> Duration {
         let (base_ms, max_ms) = match self {
-            Self::ChainRead => (350, 2000),
+            Self::ChainRead | Self::GatewayRead => (350, 2000),
             Self::ChainWrite => (250, 1000),
             Self::Diagnostics => (200, 800),
         };

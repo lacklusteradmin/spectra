@@ -429,9 +429,21 @@ impl WalletService {
                 .fetch_token_decimals(contract)
                 .await
                 .or_decode("token decimals unavailable")?,
+            Chain::Starknet => {
+                crate::api::starknet_json_rpc::StarknetClient::new(endpoints)
+                    .fetch_decimals(&crate::derivation::starknet::decode_address(
+                        chain, contract,
+                    )?)
+                    .await?
+            }
             Chain::Polkadot => {
                 SubstrateClient::new(endpoints)
                     .fetch_asset_decimals(chain, asset_id(contract)?)
+                    .await?
+            }
+            Chain::Vechain => {
+                crate::api::thor_rest::ThorClient::new(endpoints)
+                    .fetch_token_decimals(contract)
                     .await?
             }
             Chain::Ton => crate::api::toncenter_v3::ToncenterV3Client::new(Arc::new(
@@ -749,10 +761,41 @@ impl WalletService {
                 })
                 .await
             }
+            // A contract call reads the balance and the token's own
+            // `decimals()` together, one token at a time.
+            Chain::Vechain => {
+                let client = crate::api::thor_rest::ThorClient::new(endpoints);
+                let (client, holder) = (&client, address.as_str());
+                let reads = tokens.iter().map(|token| async move {
+                    let (raw, decimals) =
+                        client.fetch_token_balance(&token.contract, holder).await?;
+                    Ok::<_, ApiError>(TokenBalanceResult::known(
+                        chain,
+                        token,
+                        token.contract.clone(),
+                        raw,
+                        decimals,
+                    ))
+                });
+                readable_tokens(futures::future::join_all(reads).await)
+            }
+            // Every token an ERC-20 contract the holder's balance is read
+            // from, its decimals from the same contract.
+            Chain::Starknet => {
+                let client = crate::api::starknet_json_rpc::StarknetClient::new(endpoints);
+                let holder = crate::derivation::starknet::decode_address(chain, &address)?;
+                let (client, holder) = (&client, &holder);
+                self.own_decimals_balances(chain, &tokens, move |contract| async move {
+                    let token = crate::derivation::starknet::decode_address(chain, &contract)
+                        .map_err(|error| ApiError::invalid(error.to_string()))?;
+                    client.fetch_token_balance(&token, holder).await
+                })
+                .await
+            }
             // Every asset from one pinned state; the asset's own metadata
             // states its decimals.
             Chain::Polkadot => {
-                let holder = crate::derivation::polkadot::decode_ss58(&address)?;
+                let holder = crate::derivation::polkadot::decode_ss58(chain, &address)?;
                 let ids = tokens
                     .iter()
                     .map(|token| asset_id(&token.contract))

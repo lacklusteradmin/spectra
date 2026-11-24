@@ -1,5 +1,6 @@
 //! The UTXO family's client: one set of answers over every indexer API a
-//! chain speaks — Esplora, Blockbook, BlockCypher, WhatsOnChain and BCH REST.
+//! chain speaks — Esplora, Blockbook, BlockCypher, WhatsOnChain, BCH REST,
+//! Chronik and UniSat's Open API.
 //!
 //! Every request goes to every endpoint at once, whatever its API, and the
 //! first success answers. For that to be the same answer whichever endpoint
@@ -16,7 +17,8 @@ use crate::api::endpoint::{Endpoint, EndpointApi};
 use crate::api::http::{HttpClient, first_success};
 use crate::api::{
     bch_rest_v2::BchRestClient, blockbook::BlockbookClient, blockcypher::BlockcypherClient,
-    esplora::EsploraClient, whatsonchain::WhatsonchainClient,
+    chronik::ChronikClient, esplora::EsploraClient, unisat_open_api::UnisatOpenApiClient,
+    whatsonchain::WhatsonchainClient,
 };
 use crate::registry::Chain;
 
@@ -187,6 +189,8 @@ enum Adapter {
     Blockcypher(BlockcypherClient),
     Whatsonchain(WhatsonchainClient),
     BchRest(BchRestClient),
+    Chronik(ChronikClient),
+    Unisat(UnisatOpenApiClient),
 }
 
 impl UtxoClient {
@@ -202,6 +206,10 @@ impl UtxoClient {
             EndpointApi::Blockcypher => Adapter::Blockcypher(BlockcypherClient::new(url)),
             EndpointApi::Whatsonchain => Adapter::Whatsonchain(WhatsonchainClient::new(url)),
             EndpointApi::BchRestV2 => Adapter::BchRest(BchRestClient::new(url)),
+            EndpointApi::Chronik => Adapter::Chronik(ChronikClient::new(url, self.chain)),
+            EndpointApi::UnisatOpenApi => {
+                Adapter::Unisat(UnisatOpenApiClient::new(url, self.chain))
+            }
             api => {
                 return Err(ApiError::InvalidInput(format!(
                     "{} is not a UTXO indexer",
@@ -234,6 +242,8 @@ impl UtxoClient {
                 Adapter::Blockcypher(c) => c.has_activity(address).await,
                 Adapter::Whatsonchain(c) => c.has_activity(address).await,
                 Adapter::BchRest(c) => c.has_activity(address).await,
+                Adapter::Chronik(c) => c.has_activity(address).await,
+                Adapter::Unisat(c) => c.has_activity(address).await,
             }
         })
         .await
@@ -247,6 +257,8 @@ impl UtxoClient {
                 Adapter::Blockcypher(c) => c.fetch_balance(address).await,
                 Adapter::Whatsonchain(c) => c.fetch_balance(address).await,
                 Adapter::BchRest(c) => c.fetch_balance(address).await,
+                Adapter::Chronik(c) => c.fetch_balance(address).await,
+                Adapter::Unisat(c) => c.fetch_balance(address).await,
             }
         })
         .await
@@ -261,14 +273,16 @@ impl UtxoClient {
                 Adapter::Blockcypher(c) => c.fetch_tip_height().await,
                 Adapter::Whatsonchain(c) => c.fetch_tip_height().await,
                 Adapter::BchRest(c) => c.fetch_tip_height().await,
+                Adapter::Chronik(c) => c.fetch_tip_height().await,
+                Adapter::Unisat(c) => c.fetch_tip_height().await,
             }
         })
         .await
     }
 
     /// The hash of the block at `height`, in lowercase hex as explorers
-    /// write it. Only the Litecoin family's indexers are asked: MWEB anchors
-    /// its light client to it.
+    /// write it: what a network's identity is checked by, and what MWEB
+    /// anchors its light client to.
     pub(crate) async fn fetch_block_hash(&self, height: u64) -> Result<String, ApiError> {
         let hash = self
             .race(|adapter| async move {
@@ -276,6 +290,8 @@ impl UtxoClient {
                     Adapter::Esplora(c) => c.fetch_block_hash(height).await,
                     Adapter::Blockbook(c) => c.fetch_block_hash(height).await,
                     Adapter::Blockcypher(c) => c.fetch_block_hash(height).await,
+                    Adapter::Chronik(c) => c.fetch_block_hash(height).await,
+                    Adapter::Unisat(c) => c.fetch_block_hash(height).await,
                     Adapter::Whatsonchain(_) | Adapter::BchRest(_) => Err(ApiError::invalid(
                         "This indexer does not name blocks by height",
                     )),
@@ -289,6 +305,27 @@ impl UtxoClient {
         Ok(hash)
     }
 
+    /// Refuse unless every endpoint names the network's
+    /// [`Chain::identity_block`]: the indexers a send read its inputs from
+    /// are the network it signs for.
+    pub(crate) async fn verify_every_endpoint(&self) -> Result<(), ApiError> {
+        let (height, expected) = self.chain.identity_block()?;
+        if self.endpoints.is_empty() {
+            return Err(ApiError::NoEndpoint);
+        }
+        for endpoint in &self.endpoints {
+            let single = UtxoClient::new(self.chain, vec![endpoint.clone()]);
+            if single.fetch_block_hash(height).await? != expected {
+                return Err(ApiError::invalid(format!(
+                    "{} is not on the {} network",
+                    endpoint.url,
+                    self.chain.chain_display_name()
+                )));
+            }
+        }
+        Ok(())
+    }
+
     pub async fn fetch_utxos(&self, address: &str) -> Result<Vec<Utxo>, ApiError> {
         self.race(|adapter| async move {
             match adapter {
@@ -297,20 +334,25 @@ impl UtxoClient {
                 Adapter::Blockcypher(c) => c.fetch_utxos(address).await,
                 Adapter::Whatsonchain(c) => c.fetch_utxos(address).await,
                 Adapter::BchRest(c) => c.fetch_utxos(address).await,
+                Adapter::Chronik(c) => c.fetch_utxos(address).await,
+                Adapter::Unisat(c) => c.fetch_utxos(address).await,
             }
         })
         .await
     }
 
-    pub(crate) async fn fetch_peercoin_outputs(
+    /// An address's outputs on a proof-of-stake network, each read from its
+    /// hash-verified transaction: its script, and whether a reward has
+    /// matured. Only Blockbook serves the transactions.
+    pub(crate) async fn fetch_verified_outputs(
         &self,
         address: &str,
-    ) -> Result<Vec<super::blockbook::PeercoinOutput>, ApiError> {
+    ) -> Result<Vec<super::blockbook::VerifiedOutput>, ApiError> {
         self.race(|adapter| async move {
             match adapter {
-                Adapter::Blockbook(client) => client.fetch_peercoin_outputs(address).await,
+                Adapter::Blockbook(client) => client.fetch_verified_outputs(address).await,
                 _ => Err(ApiError::InvalidInput(
-                    "Peercoin reads require a Blockbook indexer".into(),
+                    "Verified outputs require a Blockbook indexer".into(),
                 )),
             }
         })
@@ -383,6 +425,12 @@ impl UtxoClient {
                             Adapter::BchRest(client) => {
                                 client.fetch_history_page(address, after).await?
                             }
+                            Adapter::Chronik(client) => {
+                                client.fetch_history_page(address, after).await?
+                            }
+                            Adapter::Unisat(client) => {
+                                client.fetch_history_page(address, after).await?
+                            }
                         };
                         page.items.sort_by_key(|row| {
                             std::cmp::Reverse(if row.confirmed {
@@ -408,8 +456,8 @@ impl UtxoClient {
         .await
     }
 
-    /// The fee rate for a `confirmation_target` in blocks. WhatsOnChain and
-    /// BCH REST report none.
+    /// The fee rate for a `confirmation_target` in blocks. WhatsOnChain, BCH
+    /// REST, Chronik and UniSat's indexer report none.
     pub async fn fetch_fee_rate(&self, confirmation_target: u32) -> Result<FeeRate, ApiError> {
         self.race(|adapter| async move {
             match adapter {
@@ -419,9 +467,9 @@ impl UtxoClient {
                 Adapter::Whatsonchain(_) => Err(ApiError::InvalidInput(
                     "WhatsOnChain reports no fee rate".into(),
                 )),
-                Adapter::BchRest(_) => Err(ApiError::InvalidInput(
-                    "BCH REST reports no fee rate".into(),
-                )),
+                Adapter::BchRest(_) | Adapter::Chronik(_) | Adapter::Unisat(_) => Err(
+                    ApiError::InvalidInput("This indexer reports no fee rate".into()),
+                ),
             }
         })
         .await
@@ -435,6 +483,8 @@ impl UtxoClient {
                 Adapter::Blockcypher(c) => c.fetch_tx_status(txid).await,
                 Adapter::Whatsonchain(c) => c.fetch_tx_status(txid).await,
                 Adapter::BchRest(c) => c.fetch_tx_status(txid).await,
+                Adapter::Chronik(c) => c.fetch_tx_status(txid).await,
+                Adapter::Unisat(c) => c.fetch_tx_status(txid).await,
             }
         })
         .await
@@ -453,6 +503,8 @@ impl UtxoClient {
                     Adapter::Blockcypher(c) => c.broadcast_raw_tx(raw_tx_hex).await,
                     Adapter::Whatsonchain(c) => c.broadcast_raw_tx(raw_tx_hex).await,
                     Adapter::BchRest(c) => c.broadcast_raw_tx(raw_tx_hex).await,
+                    Adapter::Chronik(c) => c.broadcast_raw_tx(raw_tx_hex).await,
+                    Adapter::Unisat(c) => c.broadcast_raw_tx(raw_tx_hex).await,
                 }
             }
         });

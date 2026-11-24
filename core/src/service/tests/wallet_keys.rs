@@ -239,20 +239,24 @@ async fn an_export_needs_the_wallets_password() {
     std::fs::remove_dir_all(directory).unwrap();
 }
 
-/// A Polkadot or Bittensor phrase imports along a Substrate junction path
-/// to polkadot.js's account for it (`substrate-paths.json`): the preview,
-/// the stored path, the signing identity and a message signature are all
-/// that account's. A hard path exports a seed that imports back as the same
-/// wallet; a soft junction's key has no seed, so it offers none.
+/// A phrase on any Substrate network imports along a junction path to
+/// polkadot.js's account for it (`substrate-paths.json`), at the network's
+/// own SS58 prefix: the preview, the stored path, the signing identity and a
+/// message signature are all that account's. A hard path exports a seed that
+/// imports back as the same wallet; a soft junction's key has no seed, so it
+/// offers none.
 #[tokio::test]
 async fn a_substrate_phrase_derives_along_its_junction_path() {
     let fixtures: serde_json::Value =
         serde_json::from_str(include_str!("../../../tests/fixtures/substrate-paths.json")).unwrap();
     for chain in Chain::all().filter(|chain| chain.derives_along_junctions()) {
-        let field = if chain == Chain::Polkadot {
-            "polkadot"
-        } else {
-            "substrate"
+        // The vector's address at this network's prefix.
+        let field = match chain.ss58_prefix() {
+            Some(0) => "polkadot",
+            Some(2) => "kusama",
+            Some(5) => "astar",
+            Some(42) => "substrate",
+            other => panic!("{chain}: no vectors at prefix {other:?}"),
         };
         for vector in fixtures["vectors"].as_array().unwrap() {
             let path = vector["path"].as_str().unwrap();

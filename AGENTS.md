@@ -103,6 +103,12 @@ change, or process. Add what the diff has and the entries lack. Numbers match
 the code, and no claim goes beyond what was done. Then rename the heading to
 the commit's title, such as `## Beta Commit 252`.
 
+A commit spans the three repositories under one title, so tidying covers all
+three: spectra-apple's and spectra-android's `## Uncommitted`, each checked
+against its own `git diff` and written by its own `AGENTS.md`, in the same
+pass as this one's (both apps' sections once went into Beta Commit 257
+untidied).
+
 How to write it:
 
 - **Voice.** An objective record. Do not address the reader, and write no

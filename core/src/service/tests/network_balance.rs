@@ -53,6 +53,31 @@ async fn reopened_account_holding(
     Mock::given(any())
         .respond_with(move |request: &Request| {
             let path = request.url.path();
+            // Chronik answers in protobuf, for the script an address pays;
+            // a balance beyond its signed amounts is split over outputs.
+            if chain.default_api() == Some(EndpointApi::Chronik) {
+                let (address, value) = values
+                    .iter()
+                    .find(|(address, _)| {
+                        let script = crate::send::account_utxo::source_script(chain, address)
+                            .unwrap();
+                        path.contains(&hex::encode(&script[3..23]))
+                    })
+                    .expect("only wallet-owned scripts are read");
+                let mut left: u64 = value.parse().unwrap();
+                let mut outputs = Vec::new();
+                while left > 0 {
+                    let part = left.min(i64::MAX as u64);
+                    outputs.push((format!("{:064x}", outputs.len() + 1), 0, part as i64, 1));
+                    left -= part;
+                }
+                return ResponseTemplate::new(200).set_body_bytes(
+                    crate::api::chronik::script_utxos_answer(
+                        crate::send::account_utxo::source_script(chain, address).unwrap(),
+                        &outputs,
+                    ),
+                );
+            }
             let response = if path == "/api/v2" {
                 let coin = if chain.is_testnet() { "Peercoin Testnet" } else { "Peercoin" };
                 let network = if chain.is_testnet() { "testnet" } else { "livenet" };

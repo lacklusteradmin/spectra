@@ -441,6 +441,51 @@ async fn fetch_history_page(
         .fetch_history_page(address, cursor, &AptosClient::new(nodes))
         .await?);
     }
+    if chain.mainnet_counterpart() == Chain::Algorand {
+        let endpoints = service
+            .api_endpoints(chain, Api::AlgorandIndexer, requirements)
+            .await?;
+        return Ok(
+            crate::api::algorand_indexer::AlgorandIndexerClient::new(Arc::new(endpoints))
+                .fetch_history_page(chain, address, cursor)
+                .await?,
+        );
+    }
+    // VET transfers from the node's transfer log, and the tracked VIP-180
+    // tokens' (VTHO's among them) from their `Transfer` events.
+    if chain.is_vechain() {
+        let tokens: Vec<String> = service
+            .app_state()
+            .await
+            .token_preferences
+            .iter()
+            .filter(|entry| {
+                entry.token.chain_id == chain
+                    && entry.token.token_standard == Some(crate::registry::TokenStandard::Vip180)
+            })
+            .map(|entry| entry.token.contract.clone())
+            .collect();
+        let endpoints = service
+            .endpoints_for(
+                chain,
+                &[
+                    EndpointCapability::History,
+                    EndpointCapability::TokenHistory,
+                ],
+            )
+            .await;
+        return Ok(crate::api::thor_rest::ThorClient::new(endpoints)
+            .fetch_history_page(address, &tokens, cursor)
+            .await?);
+    }
+    if chain.mainnet_counterpart() == Chain::Tezos {
+        let endpoints = service
+            .api_endpoints(chain, Api::Tzkt, requirements)
+            .await?;
+        return Ok(crate::api::tzkt::TzktClient::new(Arc::new(endpoints))
+            .fetch_history_page(address, cursor)
+            .await?);
+    }
     if chain.mainnet_counterpart() == Chain::Tron {
         let node_endpoints = service
             .endpoints_for(
@@ -571,10 +616,30 @@ async fn fetch_history_page(
             .fetch_history_page(address, cursor)
             .await?
             .filter_map(crate::api::insight::DcrHistoryEntry::history_entry)),
+        Api::CosmosRest => Ok(crate::api::cosmos_rest::CosmosClient::new(endpoints)
+            .fetch_history_page(chain, address, cursor)
+            .await?),
         Api::KaspaRest => Ok(KaspaClient::new(endpoints)
             .fetch_history_page(address, cursor)
             .await?
             .filter_map(crate::api::kaspa_rest::KasHistoryEntry::history_entry)),
+        // No Lotus node indexes an address's messages; Filfox does.
+        Api::LotusJsonRpc => {
+            let indexers = service
+                .api_endpoints(chain, Api::Filfox, requirements)
+                .await?;
+            Ok(crate::api::filfox::FilfoxClient::new(Arc::new(indexers))
+                .fetch_history_page(address, cursor)
+                .await?)
+        }
+        Api::HederaMirror => Ok(
+            crate::api::hedera_mirror::HederaMirrorClient::new(endpoints)
+                .fetch_history_page(
+                    crate::derivation::hedera::HederaAccountId::parse(chain, address)?,
+                    cursor,
+                )
+                .await?,
+        ),
         c => Err(SpectraBridgeError::failure(format!(
             "unsupported history API: {c:?}"
         ))),

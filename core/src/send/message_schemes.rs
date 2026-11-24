@@ -95,7 +95,7 @@ pub(super) mod cardano {
     ) -> Result<String, SendError> {
         let address = crate::derivation::cardano::decode_cardano_addr_bytes(address)
             .map_err(|e| SendError::Invalid(e.to_string().into()))?;
-        let public = crate::derivation::cardano::public_from_extended_key(key)
+        let public = crate::derivation::ed25519_extended::public_key(key)
             .map_err(|e| SendError::Invalid(e.to_string().into()))?;
         if payment_key_hash(&address) != Some(key_hash(&public).as_slice()) {
             return Err(SendError::Invalid(
@@ -103,7 +103,7 @@ pub(super) mod cardano {
             ));
         }
         let protected = protected(&address);
-        let signature = crate::send::cardano::sign_extended(
+        let signature = crate::derivation::ed25519_extended::sign(
             key,
             &public,
             &sig_structure(&protected, message.as_bytes()),

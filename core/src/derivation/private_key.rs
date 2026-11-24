@@ -8,6 +8,15 @@ pub(super) fn derive(
     want_address: bool,
     want_public_key: bool,
 ) -> Result<DerivationResult, SpectraBridgeError> {
+    // A Hedera key is stored in the DER that names its scheme.
+    if chain.is_hedera() {
+        let wants = super::types::Wants {
+            address: want_address,
+            public_key: want_public_key,
+            private_key: false,
+        };
+        return Ok(super::hedera::derive_from_private_key(key_hex, wants)?);
+    }
     let bytes = zeroize::Zeroizing::new(hex::decode(key_hex)?);
     if chain.mainnet_counterpart() == Chain::Cardano {
         let key: &[u8; 64] = bytes.as_slice().try_into().map_err(|_| {
@@ -15,7 +24,7 @@ pub(super) fn derive(
                 "Cardano requires a 64-byte extended private key (kL || kR)",
             )
         })?;
-        let public = super::cardano::public_from_extended_key(key)?;
+        let public = super::ed25519_extended::public_key(key)?;
         return Ok(DerivationResult {
             address: if want_address {
                 Some(super::cardano::derive_cardano_shelley_enterprise_address(
@@ -29,26 +38,46 @@ pub(super) fn derive(
             private_key_hex: None,
         });
     }
+    if chain.is_starknet() {
+        let private = super::starknet::private_key(&bytes)?;
+        let public = super::starknet::public_key(&private);
+        return Ok(DerivationResult {
+            address: if want_address {
+                Some(super::starknet::felt_hex(
+                    &super::starknet::account_address(chain, &public)?,
+                ))
+            } else {
+                None
+            },
+            public_key_hex: want_public_key.then(|| hex::encode(public.to_bytes_be())),
+            private_key_hex: None,
+        });
+    }
     let seed: &[u8; 32] = bytes
         .as_slice()
         .try_into()
         .map_err(|_| SpectraBridgeError::invalid("Private key must be exactly 32 bytes"))?;
     let family = chain.mainnet_counterpart();
     let public = match family {
-        Chain::Polkadot | Chain::Bittensor => Some(
+        _ if chain.is_substrate() => Some(
             schnorrkel::MiniSecretKey::from_bytes(seed)
                 .map_err(SpectraBridgeError::failure)?
                 .expand_to_keypair(schnorrkel::ExpansionMode::Ed25519)
                 .public
                 .to_bytes(),
         ),
-        Chain::Solana | Chain::Stellar | Chain::Sui | Chain::Aptos | Chain::Ton | Chain::Near => {
-            Some(
-                ed25519_dalek::SigningKey::from_bytes(seed)
-                    .verifying_key()
-                    .to_bytes(),
-            )
-        }
+        Chain::Solana
+        | Chain::Stellar
+        | Chain::Sui
+        | Chain::Aptos
+        | Chain::Ton
+        | Chain::Near
+        | Chain::Algorand
+        | Chain::Tezos => Some(
+            ed25519_dalek::SigningKey::from_bytes(seed)
+                .verifying_key()
+                .to_bytes(),
+        ),
         _ => None,
     };
     if let Some(public) = public {
@@ -60,7 +89,9 @@ pub(super) fn derive(
                 Chain::Aptos => super::aptos::address_from_public_key(&public),
                 Chain::Ton => super::ton::TonWalletVersion::default().address(&public, chain)?,
                 Chain::Near => hex::encode(public),
-                Chain::Polkadot | Chain::Bittensor => super::primitives::encode_ss58(
+                Chain::Algorand => super::algorand::address_from_public_key(&public),
+                Chain::Tezos => super::tezos::address_from_public_key(&public),
+                _ if chain.is_substrate() => super::primitives::encode_ss58(
                     &public,
                     chain.ss58_prefix().expect("a Substrate network"),
                 ),
@@ -84,6 +115,8 @@ pub(super) fn derive(
                 &key,
             ))),
             Chain::Xrp => super::xrp::address_from_public_key(&key)?,
+            _ if chain.is_cosmos() => super::cosmos::address_from_public_key(chain, &key)?,
+            Chain::Filecoin => super::filecoin::address_from_public_key(chain, &key)?,
             _ => {
                 let path = super::path::default_path_from_catalog(chain)?;
                 chain
@@ -95,7 +128,12 @@ pub(super) fn derive(
     };
     Ok(DerivationResult {
         address,
-        public_key_hex: want_public_key.then(|| hex::encode(key.serialize())),
+        // A Filecoin key is written as the uncompressed point its address
+        // hashes.
+        public_key_hex: want_public_key.then(|| match chain.mainnet_counterpart() {
+            Chain::Filecoin => hex::encode(key.serialize_uncompressed()),
+            _ => hex::encode(key.serialize()),
+        }),
         private_key_hex: None,
     })
 }

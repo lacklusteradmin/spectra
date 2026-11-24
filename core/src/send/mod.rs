@@ -18,6 +18,7 @@ pub mod verification;
 // Per-chain write-path: build / sign / broadcast transaction methods.
 pub(crate) mod account_utxo;
 pub(crate) mod accounting;
+pub(crate) mod algorand;
 pub mod aptos;
 pub(crate) mod aptos_multikey;
 mod bcs;
@@ -25,8 +26,11 @@ pub mod bitcoin;
 pub(crate) mod bitcoin_wire;
 pub mod cardano;
 pub(crate) mod cardano_multisig;
+pub(crate) mod cosmos;
 pub mod decred;
 pub mod evm;
+pub(crate) mod filecoin;
+pub(crate) mod hedera;
 pub(crate) mod icp_stages;
 pub(crate) mod icp_staking;
 pub mod kaspa;
@@ -46,6 +50,7 @@ pub(crate) mod reservation;
 pub(crate) mod safe;
 pub mod solana;
 pub(crate) mod solana_token;
+pub(crate) mod starknet;
 pub mod stellar;
 pub(crate) mod stellar_issued;
 pub(crate) mod stellar_multisig;
@@ -53,10 +58,12 @@ pub mod substrate;
 pub(crate) mod substrate_multisig;
 pub mod sui;
 pub(crate) mod sui_multisig;
+pub(crate) mod tezos;
 pub mod ton;
 pub(crate) mod ton_multisig;
 pub mod tron;
 pub(crate) mod tron_multisig;
+pub(crate) mod vechain;
 pub mod xrp;
 pub(crate) mod xrp_issued;
 pub(crate) mod xrp_multisig;
@@ -149,16 +156,18 @@ pub enum SendAffordability {
     Unavailable,
     /// Amount and fee both fit.
     Affordable,
-    /// A native send: amount plus fee is more than the wallet holds.
+    /// A send of the asset fees are paid in: amount plus fee is more than
+    /// the wallet holds.
     AmountPlusFeeExceedsBalance {
         symbol: String,
         required: String,
     },
-    /// A token send: the amount alone is more than the token balance.
+    /// A send of another asset: the amount alone is more than its balance.
     AmountExceedsBalance {
         symbol: String,
     },
-    /// A token send whose amount fits, with too little gas asset for the fee.
+    /// A send of another asset whose amount fits, with too little gas asset
+    /// for the fee.
     FeeExceedsGasBalance {
         gas_symbol: String,
         fee: String,
@@ -166,12 +175,13 @@ pub enum SendAffordability {
     },
 }
 
-/// What the caller knows. Everything else — whether this is the chain's own
-/// asset, what that asset is called, how many decimals a fee is quoted to —
-/// is read from the registry here.
+/// What the caller knows. Everything else — what the gas asset is called,
+/// how many decimals a fee is quoted to — is read from the registry here.
 #[derive(Debug, Clone)]
 pub struct SendAffordabilityInput {
-    pub is_native: bool,
+    /// The asset sent is the one the network's fees are paid in
+    /// (`Chain::pays_own_fee`): the network's coin, or VeChainThor's VTHO.
+    pub pays_own_fee: bool,
     pub chain_id: crate::registry::Chain,
     /// The asset being sent.
     pub symbol: String,
@@ -180,29 +190,29 @@ pub struct SendAffordabilityInput {
     pub network_fee: String,
     /// What the wallet holds of the asset being sent.
     pub holding_balance: String,
-    /// What it holds of the chain's gas asset. Ignored for a native send,
-    /// where that is `holding_balance`.
+    /// What it holds of the chain's gas asset. Ignored when that is the
+    /// asset sent, whose balance is `holding_balance`.
     pub gas_balance: Option<String>,
 }
 
 /// Can this send land?
 ///
-/// Naming the chain is enough: whether the asset is native, its symbol and
-/// the fee are registry facts.
+/// Naming the chain is enough: which asset pays its fees, and what that is
+/// called, are registry facts.
 ///
 /// The verdict is an enum, not a sentence: the wording is localized in the
 /// front end's own bundle.
 pub fn send_affordability(input: SendAffordabilityInput) -> SendAffordability {
-    if !input.is_native && input.gas_balance.is_none() {
+    if !input.pays_own_fee && input.gas_balance.is_none() {
         return SendAffordability::Unavailable;
     }
-    let gas_symbol = input.chain_id.coin_symbol().to_string();
+    let gas_symbol = input.chain_id.fee_holding_template().symbol;
     use crate::amount::decimal::{add, compare};
     use std::cmp::Ordering::Greater;
     // An amount that is not a decimal cannot be judged, and is not sent.
     let exceeds = |a: &str, b: &str| compare(a, b).is_none_or(|o| o == Greater);
 
-    if input.is_native {
+    if input.pays_own_fee {
         let Some(total) = add(&input.amount, &input.network_fee) else {
             return SendAffordability::Unavailable;
         };

@@ -57,8 +57,13 @@ impl WalletService {
     ) -> Result<Arc<FundsScan>, SpectraBridgeError> {
         let candidates = match chain_id {
             Some(chain) => {
-                // One account per phrase has nothing to find among.
-                if chain.derivation_profiles().is_empty() && !chain.has_wallet_versions() {
+                // One account per phrase has nothing to find among: a
+                // chain that walks no path, or a phrase that is one
+                // account's key.
+                if (chain.derivation_profiles().is_empty()
+                    || crate::derivation::phrase::is_single_key(chain, &request.seed_phrase))
+                    && !chain.has_wallet_versions()
+                {
                     return Err(crate::derivation::error::DerivationError::refused(
                         "%@ derives one account from a phrase; there are no others to find.",
                         [chain.chain_display_name()],

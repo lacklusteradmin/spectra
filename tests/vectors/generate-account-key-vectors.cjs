@@ -9,8 +9,11 @@
 // testnet keys, Dogecoin's dgub, Dash's drkp, Decred's dpub and testnet tpub,
 // and the xpub of Bitcoin Cash, Bitcoin Gold, Peercoin and Zcash), Dash
 // Core's and Dogecoin Core's chainparams (Dash's xpub, Dogecoin's testnet
-// tpub), ElectrumSV's xpub on Bitcoin SV, and rusty-kaspa's
-// wallet/bip32/src/prefix.rs (kpub, ktub). Each key's first receive address
+// tpub), ElectrumSV's xpub on Bitcoin SV, rusty-kaspa's
+// wallet/bip32/src/prefix.rs (kpub, ktub), Qtum Electrum's XPUB_HEADERS
+// (electrum/constants.py: xpub, ypub, zpub), Trezor's DigiByte and eCash
+// definitions (xpub, ypub, zpub; xpub) and UniSat's Bitcoin versions on
+// Fractal Bitcoin. Each key's first receive address
 // is core/tests/fixtures/derivation-profiles.json's address for the same
 // network, profile and account 0.
 const bip39 = require('bip39');
@@ -47,6 +50,10 @@ const NETWORKS = {
   decred: [42, [['standard', 44, 0x02fda926, 'dpub']]],
   'decred-testnet': [1, [['standard', 44, 0x043587d1, 'tpub']]],
   kaspa: [111111, [['standard', 44, 0x038f332e, 'kpub']]],
+  qtum: [88, [['legacy', 44, XPUB, 'xpub'], ['nestedSegWit', 49, YPUB, 'ypub'], ['nativeSegWit', 84, ZPUB, 'zpub']]],
+  'fractal-bitcoin': [0, [['legacy', 44, XPUB, 'xpub'], ['nestedSegWit', 49, YPUB, 'ypub'], ['nativeSegWit', 84, ZPUB, 'zpub']]],
+  ecash: [1899, [['standard', 44, XPUB, 'xpub']]],
+  digibyte: [20, [['legacy', 44, XPUB, 'xpub'], ['nestedSegWit', 49, YPUB, 'ypub'], ['nativeSegWit', 84, ZPUB, 'zpub']]],
   'kaspa-testnet': [111111, [['standard', 44, 0x0390a241, 'ktub']]],
 };
 

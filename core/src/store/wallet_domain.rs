@@ -550,6 +550,12 @@ pub struct WalletState {
     /// account. `None` elsewhere, and for an implicit account, whose address
     /// is its key.
     pub near_account_key: Option<String>,
+    /// A Starknet wallet's Stark public key, as `0x` and 64 hex digits,
+    /// recorded at import from the key: what its account's deployment
+    /// names, since the address is a hash of it. `None` on every other
+    /// chain and on a watched Starknet account.
+    #[uniffi(default = None)]
+    pub starknet_public_key: Option<String>,
     /// A multisig account's descriptor (`derivation::multisig`), canonical
     /// with its checksum: the policy every address and signature follows.
     /// `None` for every single-key wallet.
@@ -624,6 +630,7 @@ impl WalletState {
             hidden_holdings: Vec::new(),
             icp_principal: None,
             near_account_key: None,
+            starknet_public_key: None,
             multisig_policy: None,
             balances_read_at: None,
         }
@@ -776,6 +783,7 @@ impl WalletState {
             hidden_holdings: Vec::new(),
             icp_principal: None,
             near_account_key: None,
+            starknet_public_key: None,
             multisig_policy: None,
             balances_read_at: None,
         }

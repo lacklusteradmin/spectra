@@ -34,6 +34,10 @@ impl AddressOutput {
 /// The indexer an account UTXO network's outputs are read from.
 enum OutputReader {
     Utxo(crate::api::utxo::UtxoClient),
+    /// Each output read from its hash-verified transaction, on a
+    /// proof-of-stake network whose staking rewards mature and may pay a key
+    /// rather than an address (Qtum).
+    Verified(crate::api::utxo::UtxoClient),
     Insight(InsightClient),
     Kaspa(KaspaClient),
 }
@@ -44,6 +48,11 @@ impl OutputReader {
         match chain.mainnet_counterpart() {
             Chain::Decred => Self::Insight(InsightClient::new(endpoints().await)),
             Chain::Kaspa => Self::Kaspa(KaspaClient::new(endpoints().await)),
+            _ if chain.verifies_spent_outputs() => Self::Verified(
+                service
+                    .utxo_client(chain, &[EndpointCapability::Utxo])
+                    .await,
+            ),
             _ => Self::Utxo(
                 service
                     .utxo_client(chain, &[EndpointCapability::Utxo])
@@ -52,10 +61,25 @@ impl OutputReader {
         }
     }
 
+    /// Before signing, that every indexer outputs are read from names the
+    /// network's identity block, where the network asks for it.
+    async fn verify_network(&self, chain: Chain) -> Result<(), SpectraBridgeError> {
+        match self {
+            Self::Utxo(client) | Self::Verified(client)
+                if chain.verifies_indexer_before_signing() =>
+            {
+                Ok(client.verify_every_endpoint().await?)
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// The confirmed outputs paying `source`. An unconfirmed output is not
-    /// spent; nor is a Kaspa coinbase output, whose maturity the indexer
-    /// does not say. An output the indexer reports with another script than
-    /// the address pays is refused rather than signed for.
+    /// spent; nor is a coinbase or coinstake output short of its maturity,
+    /// nor a Kaspa coinbase output, whose maturity the indexer does not say.
+    /// An output the indexer reports with another script than the address
+    /// pays is refused rather than signed for, but for a Qtum staking output
+    /// paying the address's key, which is passed over.
     async fn confirmed(
         &self,
         source: &UtxoSendSource,
@@ -68,6 +92,21 @@ impl OutputReader {
                 .filter(|utxo| utxo.status.confirmed)
                 .map(|utxo| AddressOutput::read(&utxo.txid, utxo.vout, utxo.value))
                 .collect::<Result<_, _>>()?,
+            Self::Verified(client) => client
+                .fetch_verified_outputs(&source.address)
+                .await?
+                .into_iter()
+                .filter(|output| {
+                    output.confirmations > 0
+                        && output.mature
+                        && output.input.script_pubkey == source.script_pubkey
+                })
+                .map(|output| AddressOutput {
+                    txid: output.input.txid,
+                    vout: output.input.vout,
+                    value: output.input.value,
+                })
+                .collect(),
             Self::Insight(client) => client
                 .fetch_utxos(&source.address)
                 .await?
@@ -103,8 +142,8 @@ impl OutputReader {
 /// How an account transfer's fee follows from its inputs and outputs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum FeePolicy {
-    /// Bitcoin: the signed virtual size at a sat/vB rate (an exact decimal),
-    /// rounded up once.
+    /// The Bitcoin-format networks: the signed virtual size at a sat/vB rate
+    /// (an exact decimal), rounded up once.
     Rate(String),
     /// The network's static fee per started kilobyte of the signed size:
     /// the legacy-format networks.
@@ -212,12 +251,7 @@ impl FeePolicy {
 /// refused, and change below it joins the fee rather than standing as an
 /// output.
 pub(super) fn change_dust(chain: Chain) -> Result<u64, SpectraBridgeError> {
-    Ok(match chain.mainnet_counterpart() {
-        Chain::Bitcoin | Chain::Zcash => 546,
-        Chain::Decred => 6_030,
-        Chain::Kaspa => 1_000,
-        _ => chain.legacy_change_dust()?,
-    })
+    Ok(chain.relay_dust_threshold()?)
 }
 
 /// The selected inputs, the fee and the change of a spend of `amount`.
@@ -327,6 +361,7 @@ impl WalletService {
         sources: Vec<UtxoSendSource>,
     ) -> Result<Vec<UtxoPreparedInput>, SpectraBridgeError> {
         let reader = OutputReader::new(self, chain).await;
+        reader.verify_network(chain).await?;
         let mut inputs = Vec::new();
         let mut outpoints = BTreeSet::new();
         for source in sources {
@@ -348,28 +383,37 @@ impl WalletService {
         Ok(inputs)
     }
 
-    /// The fee rule a spend on `chain` follows: Bitcoin's reviewed rate or
-    /// the network's current one, else the network's own.
+    /// The fee rule a spend on `chain` follows: on the Bitcoin-format
+    /// networks the reviewed rate or the network's current one, never below
+    /// the network's minimum; else the network's own.
     async fn account_fee_policy(
         &self,
         chain: Chain,
         rate: Option<&str>,
     ) -> Result<FeePolicy, SpectraBridgeError> {
         let static_fee = || fee_or_static(chain, None);
+        let floor = chain.min_fee_rate().unwrap_or(0);
         Ok(match chain.mainnet_counterpart() {
-            Chain::Bitcoin => FeePolicy::Rate(match rate {
-                Some(rate) => crate::amount::decimal::canonical(rate)
-                    .filter(|rate| rate != "0" && !rate.starts_with('-'))
-                    .ok_or_else(|| SpectraBridgeError::invalid("Invalid fee rate"))?,
-                None => {
-                    let rate = self.bitcoin_fee_rate(chain).await?.sats_per_vbyte;
-                    if !rate.is_finite() || rate <= 0.0 {
-                        return Err(SpectraBridgeError::failure("Invalid Bitcoin fee rate"));
+            Chain::Bitcoin | Chain::Qtum | Chain::FractalBitcoin | Chain::Digibyte => {
+                FeePolicy::Rate(match rate {
+                    Some(rate) => crate::amount::decimal::canonical(rate)
+                        .filter(|rate| {
+                            rate != "0"
+                                && !rate.starts_with('-')
+                                && crate::amount::decimal::to_f64(rate) >= floor as f64
+                        })
+                        .ok_or_else(|| SpectraBridgeError::invalid("Invalid fee rate"))?,
+                    None if !chain.indexers_estimate_fee_rate() => floor.to_string(),
+                    None => {
+                        let rate = self.bitcoin_fee_rate(chain).await?.sats_per_vbyte;
+                        if !rate.is_finite() || rate <= 0.0 {
+                            return Err(SpectraBridgeError::failure("Invalid fee rate"));
+                        }
+                        // Whole sat/vB, rounded up: the rate the review states.
+                        (rate.ceil() as u64).max(floor).to_string()
                     }
-                    // Whole sat/vB, rounded up: the rate the review states.
-                    (rate.ceil() as u64).to_string()
-                }
-            }),
+                })
+            }
             Chain::Zcash => FeePolicy::Zip317,
             Chain::Decred => FeePolicy::Decred(static_fee()?),
             Chain::Kaspa => FeePolicy::Kaspa(static_fee()?),
@@ -509,6 +553,7 @@ impl WalletService {
             .map(|key| (key.source.address.as_str(), key))
             .collect();
         let reader = OutputReader::new(self, chain).await;
+        reader.verify_network(chain).await?;
         let mut current: BTreeMap<String, Vec<AddressOutput>> = BTreeMap::new();
         let mut keys = Vec::with_capacity(prepared.inputs.len());
         for input in &prepared.inputs {

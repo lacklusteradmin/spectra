@@ -1,5 +1,304 @@
 # Changelog
 
+## Beta Commit 257
+
+- **Thirteen Cosmos SDK mainnets join the registry** (new
+  `registry/cosmos.rs`, `derivation/cosmos.rs`, `send/cosmos.rs`,
+  `api/cosmos_rest.rs`, `service/send_stage_cosmos.rs`; `core/data/chains.toml`,
+  `tokens.toml`, `endpoints.toml`, `explorers.toml`, `chain-wiki.toml`,
+  `crypto-wiki.toml`; `icons/crypto/`)
+  - Cosmos Hub, Celestia, dYdX Chain, Terra, Kava, Injective, Akash, Babylon
+    Genesis, Osmosis, Dymension, Saga, Allora and BandChain: receive, balance,
+    history, a native `MsgSend` with a memo (build, sign, broadcast, status),
+    raw-key and watch-only import.
+  - Keys along `m/44'/{coin}'/{account}'/0/0` (coin type 118; Terra 330, Kava
+    459, BandChain 494, Injective and Dymension 60); Injective and Dymension
+    take Ethermint `eth_secp256k1` addresses and sign over Keccak-256.
+  - The fee is a simulation's gas with two fifths more at chain-registry's
+    `low` gas price, or a fee market's live price and a fifth more where
+    higher (Cosmos Hub, Allora, Osmosis, Injective); a transaction carries a
+    `timeout_height` about ten minutes ahead and expires there.
+  - Balances count vesting coins; a send and its quote use the spendable
+    balance.
+  - Refused: a token send, a sender with no account on the chain, a zero
+    amount, a memo over the network's limit, an address of another prefix,
+    case or length, and at signing a changed sequence or a passed timeout
+    height.
+  - New tokens ATOM, TIA, DYDX, LUNA, INJ, AKT, BABY, OSMO, DYM, SAGA, ALLO and
+    BAND; KAVA gains its Cosmos-side deployment (6 decimals).
+  - 35 keyless `cosmos-rest` endpoints from two to four operators per network,
+    with Mintscan, ezstaking.app (Dymension) and Allora explorers.
+  - Twelve icons: seven from web3icons (MIT), and Babylon's, Dymension's,
+    Saga's, Allora's and BandChain's own marks from cosmos/chain-registry.
+- **Kusama and Astar join the Substrate networks** (new
+  `registry/substrate.rs`; `derivation/polkadot.rs`,
+  `api/substrate_json_rpc/metadata.rs`, `send/polkadot.rs`, `send/message.rs`;
+  `core/data/`; `icons/crypto/`)
+  - Kusama on its Asset Hub, and Astar: receive, balance, a native
+    `Balances.transfer_keep_alive` (build, sign, broadcast, finality), sr25519
+    message signing, raw-key and watch-only import; no address history,
+    staking, multisig or `Assets` tokens.
+  - A network's SS58 prefix, genesis, balance width, fee extension and inert
+    extensions live on `SubstrateNetwork` (before: per-chain matches and
+    `Chain::Bittensor` checks); metadata naming another fee extension than the
+    network's is refused.
+  - An address must carry its own network's SS58 prefix (before: Polkadot and
+    Westend accepted any).
+  - Bittensor's derivation moved into `derivation/polkadot.rs`
+    (`derivation/bittensor.rs` removed) and its unread `static_fee_units`
+    removed; its health check reads genesis and metadata as Polkadot's does.
+  - New tokens KSM (12 decimals) and ASTR (18); five `substrate-json-rpc`
+    endpoints (three Kusama Asset Hub, two Astar) and Subscan explorers.
+- **Qtum, Fractal Bitcoin, eCash and DigiByte join the account UTXO
+  networks** (`registry/utxo.rs`, `registry/keys.rs`,
+  `derivation/utxo_address.rs`, `send/account_utxo.rs`,
+  `service/send_stage_utxo.rs`, `api/utxo.rs`, new `api/chronik.rs`,
+  `api/unisat_open_api.rs`; `core/data/`; `icons/crypto/`)
+  - Each: gap-scanned receive and change, balance and history over the
+    account, sends through its indexers, phrase, WIF, hex, xpub and
+    watch-only import.
+  - Profiles: Qtum legacy, native and nested SegWit at coin type 88; Fractal
+    Bitcoin's four at coin type 0; DigiByte's four at coin type 20, which also
+    reads its old `3…` P2SH addresses; eCash coin type 1899 and the older 899.
+  - eCash reads and pays only CashAddr addresses (the `ecash:` prefix
+    optional), signs with fork id 0 and reads Chronik (protobuf); Fractal
+    Bitcoin reads UniSat's Open API and an Esplora.
+  - A fee rate never goes below the network's minimum, and a reviewed rate
+    under it is refused: Qtum Core's 400 sat/vB, which a Qtum send pays (its
+    indexers estimate none), DigiByte Core's 100 and Fractal Bitcoin's 1, and
+    1,000 satoshis per started kB on eCash; dust 72,800 (Qtum), 5,460
+    (DigiByte) and 546 satoshis.
+  - Qtum staking rewards wait 2,000 confirmations and eCash coinbase outputs
+    100; Qtum's P2PK coinstake outputs are not spent.
+  - Outputs carrying an eToken, and those UniSat leaves out of its available
+    list (inscriptions, runes), count in the balance and are never spent.
+  - An indexer proves its network by an identity block: block 1 on Bitcoin
+    and Fractal Bitcoin, 896,800 on eCash, the genesis elsewhere (before:
+    Bitcoin's genesis); a Fractal send checks every indexer it read inputs
+    from before building and again before signing.
+  - An Esplora endpoint whose `/fee-estimates` fails is asked mempool's
+    `/v1/fees/recommended` instead, on every Esplora network
+    (`api/esplora.rs`).
+  - A scanned code with another network's BIP-21 scheme is refused on every
+    network.
+  - `legacy_change_dust` is `Chain::relay_dust_threshold`, which also holds
+    the change dust `service/send_stage_utxo.rs` kept for Bitcoin, Zcash,
+    Decred and Kaspa; `peercoin_generated_output_maturity` is
+    `generated_output_maturity`, and `fetch_peercoin_outputs` is
+    `fetch_verified_outputs` on Blockbook and `UtxoClient`.
+  - New tokens QTUM, FB, XEC (2 decimals) and DGB; nine endpoints (Blockbook,
+    Esplora, Chronik, UniSat) and an explorer each.
+- **Algorand joins the registry** (new `registry/algorand.rs`,
+  `derivation/algorand.rs`, `derivation/ed25519_extended.rs`,
+  `send/algorand.rs`, `api/algod.rs`, `api/algorand_indexer.rs`,
+  `service/send_stage_algorand.rs`)
+  - Receive, balance, history, an ALGO `pay` (build, sign, broadcast,
+    status) valid for 1,000 rounds, the 25-word mnemonic (new
+    `WalletSecretFormat::AlgorandMnemonic`, also a created wallet's, with no
+    path or passphrase), BIP-39 along ARC-52, raw-key and watch-only import.
+  - Refused before signing: a rekeyed sender, an amount and fee above the
+    sender's balance over its minimum balance, a recipient left under its
+    minimum balance (0.1 ALGO for an empty account), another genesis, assets
+    and notes.
+  - Cardano's BIP32-Ed25519 child step, extended public key and extended-key
+    signing moved to `derivation/ed25519_extended.rs`; a child scalar of
+    2^255 or more is refused at the step that reaches it (before: summed
+    mod 2^256 unchecked).
+  - New token ALGO (6 decimals); two `algod` and two `algorand-indexer`
+    endpoints; Allo explorer.
+- **VeChainThor joins the registry** (new `registry/vechain.rs`,
+  `send/vechain.rs`, `api/thor_rest.rs`, `service/send_stage_vechain.rs`)
+  - Receive at `m/44'/818'/0'/0/{account}`, balances of VET, VTHO and tracked
+    VIP-180 tokens (new `TokenStandard::Vip180`), history, one-clause
+    dynamic-fee (type `0x51`) sends of each (build, sign, broadcast, receipt
+    status, 60-block expiry), raw-key and watch-only import.
+  - Fees are paid in VTHO (`Chain::fee_token_contract`, `pays_own_fee`,
+    `fee_holding_template`); `SendAffordabilityInput.is_native` is
+    `pays_own_fee`.
+  - A path matches a derivation profile when its account segment is hardened
+    as the template's is (before: only a hardened account segment matched).
+  - A memo and a mixed-case address without its EIP-55 checksum are refused;
+    fee delegation, several clauses and contract calls are not offered.
+  - New tokens VET and VTHO; five `thor-rest` endpoints (one without
+    broadcast); VeChain Explorer.
+- **Filecoin joins the registry** (new `derivation/filecoin.rs`,
+  `send/filecoin.rs`, `api/lotus_json_rpc.rs`, `api/filfox.rs`,
+  `service/send_stage_filecoin.rs`)
+  - `f1` accounts at `m/44'/461'/{account}'/0/0`: receive, balance, history,
+    FIL sends (build, sign, broadcast, status) to `f0`, `f1`, `f2`, `f3` and
+    `f410f` addresses, through `InvokeEVM` to an `f410f` address or an
+    `f0`/`f2` actor that has one; raw-key and watch-only import.
+  - Gas is the node's estimate under a 0.07 FIL cap; the network name and
+    genesis are checked before a build, a signature, a status read and a
+    broadcast.
+  - The nonce is read again before signing and before broadcasting, and a
+    signed message whose nonce the sender has used is expired; an `f0` or
+    `f2` recipient must exist.
+  - New token FIL (18 decimals); three `lotus-json-rpc` endpoints and Filfox
+    for history; Filfox explorer.
+- **Tezos joins the registry** (new `registry/tezos.rs`,
+  `derivation/tezos.rs`, `send/tezos.rs`, `api/tezos_rpc.rs`, `api/tzkt.rs`,
+  `service/send_stage_tezos.rs`)
+  - `tz1` accounts at SLIP-10 `m/44'/1729'/{account}'/0'`: receive, spendable
+    balance, history, XTZ sends forged locally for protocol Ushuaia with a
+    reveal while the key is unrevealed; `edsk` and hex keys (new
+    `WalletSecretFormat::TezosSecretKey`); watch-only `tz1` to `tz4` and
+    `KT1`.
+  - Gas and storage come from simulation, the fee from the minimal-fee rule
+    and 100 mutez more; the reviewed fee includes the most storage can burn.
+    An unrevealed account's first transfer is bounded by the protocol's reveal
+    and transfer costs, simulated at signing, and pays only a `tz` address.
+  - Refused: a node on an unlisted protocol or about to switch protocol, and
+    FA1.2 and FA2 tokens.
+  - A batch reserves each of its counters (`send/reservation.rs`).
+  - New token XTZ (6 decimals); three `tezos-rpc` endpoints and TzKT for
+    history and status; TzKT explorer.
+- **Starknet joins the registry** (new `registry/starknet.rs`,
+  `derivation/starknet.rs`, `send/starknet.rs`, `api/starknet_json_rpc.rs`,
+  `service/send_stage_starknet.rs`)
+  - Ready (Argent X) accounts of class 0.4.0, derived as Argent derives them
+    or from a Stark key (new `WalletSecretFormat::StarknetPrivateKey`,
+    `KeyScheme::Stark`, `AddressNormalization::HexFelt`): balances of STRK and
+    ERC-20 tokens (ETH listed), v3 sends with an undeployed account's
+    deployment in the same review, watch-only import; no history.
+  - Resource bounds are the estimate with half again on each amount and
+    price; a deployment reserves nonce 0.
+  - Refused: a deployed account of another class, with a guardian or a
+    changed owner, and memos.
+  - The Stark public key is recorded at import (`WalletState.starknet_public_key`);
+    an undeployed wallet without it cannot send.
+  - New token STRK (18 decimals); two `starknet-json-rpc` endpoints; Voyager
+    explorer.
+  - `tags_agree_with_the_registry` no longer requires a layer 2 to be EVM
+    (`catalog/chains.rs`).
+- **Hedera joins the registry** (new `registry/hedera.rs`,
+  `derivation/hedera.rs`, `send/hedera.rs`, `api/hedera_mirror.rs`,
+  `api/hedera_hapi.rs`, `service/send_stage_hedera.rs`; `api/grpc.rs`
+  `pinned_channel`)
+  - An existing `0.0.N` account holding one key, found by that key on a
+    verified mirror or named at import (CLI `--named-account` takes `0.0.N`;
+    a key several accounts hold needs one named); any other account is
+    refused, and no phrase is created.
+  - Ed25519, ECDSA and EVM profiles (new `DerivationProfile::Ecdsa`,
+    `DerivationProfile::Evm`); DER or bare hex keys (new
+    `WalletSecretFormat::HederaPrivateKey`), a bare key tried as Ed25519 and
+    secp256k1 and stored as the DER of the scheme the account holds;
+    watch-only `0.0.N` with an optional HIP-15 checksum.
+  - HBAR `CryptoTransfer` with a memo of up to 100 bytes and a $0.001 fee
+    bound, signed for three nodes and sent over gRPC TLS pinned to each
+    node's certificate hash; status and history from the mirror.
+  - Refused: a recipient that is missing, deleted or needs its own
+    signature; a send carries HBAR only.
+  - An import preview reads the network for Hedera; the funds finder leaves
+    Hedera out.
+  - New token HBAR (8 decimals); a mirror endpoint and a `hedera-hapi`
+    address-book endpoint; HashScan explorer.
+- **The 25 networks take popular ranks 67 to 91** (`core/data/chains.toml`),
+  with 24 new icons from each project's own marks and web3icons (Kava shares
+  Kava EVM's) and VTHO's.
+- **A health check proves each new API's network** (`api/health.rs`):
+  algod's and Thor's genesis, Lotus's network name and genesis, and a Cosmos
+  gateway's `node_info` where it claims verification, with its latest block.
+- **A text memo is a network's own length** (`PaymentMemoKind::MemoText`,
+  `PaymentMemo::text`, `Chain::memo_text_limit`; `send/payment_memo.rs`):
+  Stellar's 28 bytes, a Cosmos network's `max_memo_characters` (512 on Cosmos
+  Hub, Terra, Kava and BandChain, 256 elsewhere) and Hedera's 100 bytes, with
+  no zero byte on Hedera (before: Stellar's 28 alone). CLI `--memo-text`
+  takes any of them.
+- **A gRPC gateway's HTTP 500 is an answer** (`RetryProfile::GatewayRead`,
+  `api/http.rs`): the Cosmos client's reads and simulation and the Tezos
+  simulation read it with its body instead of retrying it as an outage; a
+  Cosmos simulation's 500 is a rejection carrying the node's message, and a
+  Tezos node's a refusal naming its error ids. Cosmos broadcasts still retry
+  as chain writes.
+- **A chain entry names its coin's and its fees' symbols**
+  (`ChainEntry.coin_symbol`, `ChainEntry.fee_symbol`; `catalog/chains.rs`):
+  `gas_token_symbol` is `coin_symbol`, and `fee_symbol` is VTHO on
+  VeChainThor and the coin's elsewhere.
+- **The foreign interfaces' comments name both apps** (`secrets/store.rs`,
+  `service/refresh_engine.rs` `RefreshObserver`) (before: Swift and a "future
+  Android").
+- **Tidying the CHANGELOG covers all three repositories** (`AGENTS.md`
+  "CHANGELOG"): spectra-apple's and spectra-android's sections are tidied in
+  the same pass as this one's.
+- Measured: 2026-11-24, Cosmos endpoints
+  ([cosmos-2026-11-24](audits/cosmos-2026-11-24/README.md)): all 35
+  catalogued gateways through `CosmosClient`; each network's chain id,
+  accounts, balances and fee market answered; a 1-unit self-send with a memo
+  simulated on all thirteen (Cosmos Hub, Akash and Babylon from a funded
+  address in a second run), 50,001 to 125,924 gas; Celestia's Polkachu and
+  Saga's NodeStake gateways failed history searches, Numia's served no
+  `node_info` and Allora's own answered 401 on the fee market, so the catalog
+  claims none of those; Allora's explorer address page redirected to a 502
+  page.
+- Measured: 2026-11-24, Kusama Asset Hub and Astar endpoints
+  ([substrate-mainnets-2026-11-24](audits/substrate-mainnets-2026-11-24/README.md)):
+  genesis and metadata (statemine spec 2005003, Astar spec 2500) answered by
+  every catalogued endpoint; Dwellir's Astar node served other metadata and
+  is not catalogued; a transfer quoted about 0.000059 KSM and 0.0397 ASTR.
+- Measured: 2026-11-24, Tezos mainnet nodes ([tezos-2026-11-24](audits/tezos-2026-11-24.md)):
+  three nodes on protocol Ushuaia; three included operations forged again by
+  Taquito 25.1.1 to their chain hashes.
+- Measured: 2026-11-24, Starknet nodes ([starknet-2026-11-24](audits/starknet-2026-11-24.md)):
+  two keyless nodes (spec 0.10.3 and 0.9.0) on `SN_MAIN`; no keyless history
+  source.
+- Tests: 194 new
+  - Cosmos 16: addresses or signed `MsgSend`s diverging from CosmJS and
+    ethers.js; a gateway answer misread (coins, accounts, gas prices, history
+    entries, not-found answers); a refusal missed before signing.
+  - Substrate 8: Kusama or Astar transfers diverging from polkadot.js on
+    their own metadata; account records or extrinsic outcomes misread;
+    metadata naming another network's fee extension accepted; an address
+    under another network's prefix accepted; the two networks' wallet rules
+    drifting; a refusal missed before building or signing.
+  - Account UTXO networks 23: Chronik and UniSat answers misread; signed
+    spends diverging from bitcoinjs-lib and ecash-lib; another network's
+    indexer or address accepted; a new network failing to build, sign and
+    broadcast; immature Qtum outputs spent; another network's BIP-21 scheme
+    accepted; a network's node parameters drifting.
+  - Algorand 26: keys, addresses or signed `pay` transactions diverging from
+    algosdk and xhd-wallet-api; a node or indexer answer misread; an endpoint
+    on another genesis passing its health check; a refusal (rekeyed sender,
+    minimum balance, another genesis) missed before signing.
+  - VeChainThor 21: accounts or transactions diverging from
+    @vechain/sdk-core; a node answer misread; fees priced in VET instead of
+    VTHO; a refusal missed before signing.
+  - Filecoin 24: addresses or signed messages diverging from Zondax and
+    Glif; a Lotus or Filfox answer misread; an `f410f` recipient paid
+    without `InvokeEVM`; a used nonce sent again.
+  - Tezos 29: keys or forged operations diverging from Taquito; an `edsk` key
+    read as other than its seed; a node or TzKT answer misread; a node's
+    refusal hidden; an unrevealed account's first transfer sent without its
+    reveal.
+  - Starknet 21: keys, addresses or transactions diverging from Argent's
+    derivation and starknet.js; a node answer misread; an undeployed account
+    sending before its deployment.
+  - Hedera 26: keys, checksums or transfers diverging from @hashgraph/sdk; a
+    mirror answer or node certificate misread; an account holding other keys
+    imported; a refusing node treated as accepting.
+  - CLI acceptance: a Cosmos Hub memo send across processes, a node's
+    refusal kept uncertain and retried with the same bytes
+    (`send_cosmos.py`); a custom Bitcoin indexer proving itself by block 1
+    (`multisig_psbt.py`).
+- Docs: `CHAIN-SUPPORT.md` (counts; wallets and transfers: Substrate
+  networks, phrase formats, profiles, memos, a paragraph per new protocol,
+  raw keys, account keys, UTXO networks and indexers, identity blocks, fees
+  and dust, the new UTXO address forms; fungible assets: VeChainThor and
+  Starknet; history); `OPEN-ITEMS.md` (Substrate history); `tests/README.md`
+  (`send_cosmos.py`, the new generators); `ARCHITECTURE.md` ("Core module
+  boundaries": the registry's protocol-family modules); `AGENTS.md`
+  ("CHANGELOG"); new records
+  `docs/audits/cosmos-2026-11-24/`,
+  `docs/audits/substrate-mainnets-2026-11-24/`,
+  `docs/audits/tezos-2026-11-24.md` and `docs/audits/starknet-2026-11-24.md`.
+- Total: 179 .rs files changed (75 new, 1 deleted), +24497 −826 lines; data
+  and config files: `core/data/` (6), `core/tests/fixtures/` (19, 14 new),
+  `tests/vectors/` (15, 8 new, with `package.json` and `package-lock.json`),
+  `tests/acceptance/` (3, 1 new), `icons/crypto/` (25 new); dependencies:
+  added `starknet-crypto` 0.8.1, and `hyper` 1 for tests; `#[test]`
+  functions 1489 → 1682 (one removed with `derivation/bittensor.rs`),
+  `cargo test` 1682 passing.
+
 ## Beta Commit 256
 
 - **Core builds as the package spectra-android links**

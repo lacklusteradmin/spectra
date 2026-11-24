@@ -58,6 +58,34 @@ pub struct EsploraFeeEstimates {
     pub targets: std::collections::HashMap<String, f64>,
 }
 
+/// The rates a mempool.space backend recommends, in sat/vB: what one
+/// without Esplora's `/fee-estimates` (Fractal Bitcoin's) answers instead.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MempoolRecommendedFees {
+    fastest_fee: f64,
+    half_hour_fee: f64,
+    hour_fee: f64,
+    economy_fee: f64,
+}
+
+impl MempoolRecommendedFees {
+    /// As Esplora's estimates: the next block, three blocks, six, and a day.
+    fn estimates(self) -> EsploraFeeEstimates {
+        EsploraFeeEstimates {
+            targets: [
+                ("1", self.fastest_fee),
+                ("3", self.half_hour_fee),
+                ("6", self.hour_fee),
+                ("144", self.economy_fee),
+            ]
+            .into_iter()
+            .map(|(target, rate)| (target.to_string(), rate))
+            .collect(),
+        }
+    }
+}
+
 /// One or more Esplora base URLs.
 pub struct EsploraClient {
     pub(crate) http: Arc<HttpClient>,
@@ -225,7 +253,16 @@ impl EsploraClient {
             let http = http.clone();
             async move {
                 let url = format!("{base}/fee-estimates");
-                http.get_json(&url, RetryProfile::ChainRead).await
+                match http.get_json(&url, RetryProfile::ChainRead).await {
+                    Ok(estimates) => Ok(estimates),
+                    Err(error) => {
+                        let url = format!("{base}/v1/fees/recommended");
+                        http.get_json::<MempoolRecommendedFees>(&url, RetryProfile::ChainRead)
+                            .await
+                            .map(MempoolRecommendedFees::estimates)
+                            .map_err(|_| error)
+                    }
+                }
             }
         })
         .await?;

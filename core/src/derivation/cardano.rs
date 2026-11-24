@@ -54,11 +54,15 @@ fn derive_icarus_child_key(
 ) -> Result<([u8; 64], [u8; 32]), DerivationError> {
     let mut xprv: Zeroizing<[u8; 96]> = Zeroizing::new(*root);
     for index in segments {
-        xprv = cardano_icarus_derive_child(&xprv, *index)?;
+        xprv = crate::derivation::ed25519_extended::derive_child(
+            &xprv,
+            *index,
+            crate::derivation::ed25519_extended::KHOVRATOVICH_BITS,
+        )?;
     }
     let mut private_key = [0u8; 64];
     private_key.copy_from_slice(&xprv[0..64]);
-    let public_key = public_from_extended_key(&private_key)?;
+    let public_key = crate::derivation::ed25519_extended::public_key(&private_key)?;
     Ok((private_key, public_key))
 }
 
@@ -97,18 +101,6 @@ pub(crate) fn derive_cardano_base_keys(
     Ok((private_key, payment_public, stake_public))
 }
 
-/// Public key of a validated Cardano extended signing scalar and nonce prefix.
-pub(crate) fn public_from_extended_key(key: &[u8; 64]) -> Result<[u8; 32], DerivationError> {
-    use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT, scalar::Scalar};
-    let scalar_bytes =
-        Zeroizing::new(<[u8; 32]>::try_from(&key[..32]).expect("fixed extended key"));
-    if scalar_bytes[0] & 7 != 0 || scalar_bytes[31] & 0xc0 != 0x40 {
-        return Err(DerivationError::invalid("Invalid Cardano extended scalar"));
-    }
-    let scalar = Zeroizing::new(Scalar::from_bytes_mod_order(*scalar_bytes));
-    Ok((*scalar * ED25519_BASEPOINT_POINT).compress().to_bytes())
-}
-
 // CIP-3 Icarus root xprv: PBKDF2-HMAC-SHA512(passphrase, entropy, 4096, 96) then Khovratovich-Law clamp.
 pub(crate) fn derive_cardano_icarus_xprv_root(
     mnemonic: &str,
@@ -139,85 +131,6 @@ pub(crate) fn derive_cardano_icarus_xprv_root(
     xprv[31] &= 0b0001_1111;
     xprv[31] |= 0b0100_0000;
     Ok(xprv)
-}
-
-// BIP-32-Ed25519 (Khovratovich-Law) one-step child key derivation from a 96-byte xprv.
-fn cardano_icarus_derive_child(
-    xprv: &[u8; 96],
-    index: u32,
-) -> Result<Zeroizing<[u8; 96]>, DerivationError> {
-    // BIP-32-Ed25519 (Khovratovich-Law) child key derivation.
-    //   xprv = kL (32) || kR (32) || chain_code (32)
-    //   hardened (i >= 2^31):
-    //     Z  = HMAC-SHA512(chain_code, 0x00 || kL || kR || i_LE)
-    //     cc = HMAC-SHA512(chain_code, 0x01 || kL || kR || i_LE)[32..64]
-    //   soft:
-    //     A  = compressed(kL * G)   // ed25519 public point
-    //     Z  = HMAC-SHA512(chain_code, 0x02 || A || i_LE)
-    //     cc = HMAC-SHA512(chain_code, 0x03 || A || i_LE)[32..64]
-    //   child_kL = parent_kL + 8 * ZL_28  (256-bit LE, overflow discarded)
-    //   child_kR = parent_kR + ZR          (256-bit LE, overflow discarded)
-    use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
-    use curve25519_dalek::scalar::Scalar as DalekScalar;
-
-    let kl = &xprv[0..32];
-    let kr = &xprv[32..64];
-    let cc = &xprv[64..96];
-    let hardened = index >= 0x8000_0000;
-    let i_le = index.to_le_bytes();
-
-    let (z_tag, cc_tag): (u8, u8) = if hardened { (0x00, 0x01) } else { (0x02, 0x03) };
-
-    let a_compressed = if hardened {
-        [0u8; 32]
-    } else {
-        let mut scalar_bytes = [0u8; 32];
-        scalar_bytes.copy_from_slice(kl);
-        let scalar = DalekScalar::from_bytes_mod_order(scalar_bytes);
-        (scalar * ED25519_BASEPOINT_POINT).compress().to_bytes()
-    };
-
-    let z = if hardened {
-        hmac_sha512(cc, &[&[z_tag], kl, kr, &i_le])?
-    } else {
-        hmac_sha512(cc, &[&[z_tag], &a_compressed, &i_le])?
-    };
-    let child_cc_full = if hardened {
-        hmac_sha512(cc, &[&[cc_tag], kl, kr, &i_le])?
-    } else {
-        hmac_sha512(cc, &[&[cc_tag], &a_compressed, &i_le])?
-    };
-
-    let zl_28 = &z[0..28];
-    let zr = &z[32..64];
-
-    // 8 * ZL_28 as a 32-byte little-endian integer.
-    let mut eight_zl = [0u8; 32];
-    let mut carry: u16 = 0;
-    for (dst, &src) in eight_zl.iter_mut().zip(zl_28.iter()) {
-        let v = (src as u16) * 8 + carry;
-        *dst = (v & 0xff) as u8;
-        carry = v >> 8;
-    }
-    if carry > 0 {
-        eight_zl[28] = carry as u8;
-    }
-
-    let mut child_xprv = Zeroizing::new([0u8; 96]);
-    let mut carry: u16 = 0;
-    for i in 0..32 {
-        let v = (kl[i] as u16) + (eight_zl[i] as u16) + carry;
-        child_xprv[i] = (v & 0xff) as u8;
-        carry = v >> 8;
-    }
-    let mut carry: u16 = 0;
-    for i in 0..32 {
-        let v = (kr[i] as u16) + (zr[i] as u16) + carry;
-        child_xprv[32 + i] = (v & 0xff) as u8;
-        carry = v >> 8;
-    }
-    child_xprv[64..96].copy_from_slice(&child_cc_full[32..64]);
-    Ok(child_xprv)
 }
 
 /// The cosigner keys a phrase holds for shared (multisig) wallets, per
@@ -351,6 +264,5 @@ pub(crate) fn derive_from_seed_phrase(
     })
 }
 
-use crate::derivation::primitives::hmac_sha512;
 use crate::derivation::types::{DerivationResult, Wants};
 use crate::registry::Chain;

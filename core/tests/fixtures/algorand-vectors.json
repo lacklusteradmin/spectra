@@ -1,0 +1,201 @@
+{
+  "provenance": "algosdk 3.9.0, @algorandfoundation/xhd-wallet-api 2.0.0-canary.1, bip39 3.1.0",
+  "genesis_id": "mainnet-v1.0",
+  "genesis_hash": "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+  "mnemonics": [
+    {
+      "seed": "0000000000000000000000000000000000000000000000000000000000000000",
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon invest",
+      "public_key": "3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
+      "address": "HNVCPPGOW2SC2YVDVDICU3YNONSTEFLXDXREHJR2YBEKDC2Z3IUZSC6YGI"
+    },
+    {
+      "seed": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo abstract adapt",
+      "public_key": "76a1592044a6e4f511265bca73a604d90b0529d1df602be30a19a9257660d1f5",
+      "address": "O2QVSICEU3SPKEJGLPFHHJQE3EFQKKOR35QCXYYKDGUSK5TA2H2Q3YZHOY"
+    },
+    {
+      "seed": "358ddcc29817454b29ed5cd303320efd30fe10e5b68f42dee12e9bd18a69ceb6",
+      "mnemonic": "pluck impulse gesture kangaroo mechanic fan harsh friend kidney siege mandate average wise during rescue moral sign manual number boost between omit reopen absent series",
+      "public_key": "4834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65",
+      "address": "JA2PBBITKPRF6J3DPSOS65GLXRZTOMYVJ6DK3GSDYWYRQJKIZVSRESQ5WY"
+    },
+    {
+      "seed": "4ced3b781502c49c4347104b298ce45c2b665581f7b9350326d3da7496916c3f",
+      "mnemonic": "praise use rose candy marine transfer deliver aware city cost inch remind slush fetch rose rigid grit object hat ethics coconut caught window ability web",
+      "public_key": "09f1203ebfb70b27b14eacb91ae04088500696038184e993656eb9339191279c",
+      "address": "BHYSAPV7W4FSPMKOVS4RVYCARBIANFQDQGCOTE3FN24THEMRE6OFLCUCYE"
+    }
+  ],
+  "refused_mnemonics": [
+    {
+      "mnemonic": "pluck impulse gesture kangaroo mechanic fan harsh friend kidney siege mandate average wise during rescue moral sign manual number boost between omit reopen absent service",
+      "why": "wrong checksum word",
+      "algosdk_error": "failed to decode mnemonic"
+    },
+    {
+      "mnemonic": "pluck impulse gesture kangaroo mechanic fancy harsh friend kidney siege mandate average wise during rescue moral sign manual number boost between omit reopen absent series",
+      "why": "a changed key word",
+      "algosdk_error": "failed to decode mnemonic"
+    },
+    {
+      "mnemonic": "pluck impulse gesture kangaroo mechanic fan harsh friend kidney siege mandate average wise during rescue moral sign manual number boost between omit reopen absent",
+      "why": "24 words",
+      "algosdk_error": "failed to decode mnemonic"
+    },
+    {
+      "mnemonic": "pluck impulse gesture kangaroo mechanic fan harsh friend kidney siege mandate average wise during rescue moral sign manual number boost between omit reopen level series",
+      "why": "bits past the key set",
+      "algosdk_error": "failed to decode mnemonic"
+    }
+  ],
+  "bip39_accounts": [
+    {
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "",
+      "account": 0,
+      "path": "m/44'/283'/0'/0/0",
+      "extended_key": "30eea1ebcfa10444b5ec00acb81f229ae7ae7bb639099f0e393203334c68b5619240cf3c596ba3e78723c6005f245e88e28ac68de9c84103031ef838613fcb91",
+      "public_key": "009234d99f3598a4962ecbf5595b217f4ab9498c616ebeb1ebcc22f81411a295",
+      "address": "ACJDJWM7GWMKJFROZP2VSWZBP5FLSSMMMFXL5MPLZQRPQFARUKKRLAZ53E"
+    },
+    {
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "",
+      "account": 1,
+      "path": "m/44'/283'/1'/0/0",
+      "extended_key": "e0401e41f53a5e36f28a4f0488a0cc52208d7e810a398dc4af70e19076c88b657548bfa2c0fb52c444189110fb2be0cce932566a9904559f9b74cc8997d6c378",
+      "public_key": "8f1f842f3ccdfc08f740ca58f836ed77df4da91bd54de6dd1e8d323dd94258a5",
+      "address": "R4PYILZ4ZX6AR52AZJMPQNXNO7PU3KI32VG6NXI6RUZD3WKCLCS5E2ADHQ"
+    },
+    {
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "",
+      "account": 2,
+      "path": "m/44'/283'/2'/0/0",
+      "extended_key": "40ffc440575dbab1daf813b9f809f0db77e8c83589f8eb499670ea303ecf8b6306a353213ffe28266a8f1d6df02021a1d8160d28daa3ef66751c212211107f38",
+      "public_key": "b879e79263a43c91921b1bb7cc315b5aa12a39c620ac296dbdc748ad3187297c",
+      "address": "XB46PETDUQ6JDEQ3DO34YMK3LKQSUOOGECWCS3N5Y5EK2MMHFF6BAZWY6M"
+    },
+    {
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "TREZOR",
+      "account": 0,
+      "path": "m/44'/283'/0'/0/0",
+      "extended_key": "20533b53556a1315af10957abad666247fece7c6a836009fef8f638c2c366b5bdd3d11128846f201bc3bb5a4b765b46a420a69cbb45acb8a0e2aedfd9d960aac",
+      "public_key": "f59ce23d9f5dc07cec60b55b21f669c222c85d61e4e55b2cc06ddd76dce25716",
+      "address": "6WOOEPM7LXAHZ3DAWVNSD5TJYIRMQXLB4TSVWLGANXOXNXHCK4LPF34F5Q"
+    },
+    {
+      "phrase": "salon zoo engage submit smile frost later decide wing sight chaos renew lizard rely canal coral scene hobby scare step bus leaf tobacco slice",
+      "passphrase": "",
+      "account": 0,
+      "path": "m/44'/283'/0'/0/0",
+      "extended_key": "00cc7480c8edf9f64a680957e05cd0908f3b682a9ffdbafa2a61c43b6df6705095a7d0d2f9afd1f472e855a0f6fe967ccb12f497cf3c8d3213c156e72c0de37a",
+      "public_key": "7bda7ac12627b2c259f1df6875d30c10b35f55b33ad2cc8ea2736eaa3ebcfab9",
+      "address": "PPNHVQJGE6ZMEWPR35UHLUYMCCZV6VNTHLJMZDVCONXKUPV47K4WGQJWGI"
+    },
+    {
+      "phrase": "salon zoo engage submit smile frost later decide wing sight chaos renew lizard rely canal coral scene hobby scare step bus leaf tobacco slice",
+      "passphrase": "",
+      "account": 1,
+      "path": "m/44'/283'/1'/0/0",
+      "extended_key": "e0aa644b2c36661db958c909ab8b93d0d6a0b6eb9d0bbe485941760e7462464cd5e022ec5ea44b1a7d1a27d609b487acf42b44a363692a5326866ea0648855b4",
+      "public_key": "358d8c4382992849a764438e02b1c45c2ca4e86bbcfe10fd5b963f3610012bc9",
+      "address": "GWGYYQ4CTEUETJ3EIOHAFMOELQWKJ2DLXT7BB7K3SY7TMEABFPEZRZUOB4"
+    }
+  ],
+  "transfers": [
+    {
+      "kind": "mnemonic",
+      "mnemonic": "pluck impulse gesture kangaroo mechanic fan harsh friend kidney siege mandate average wise during rescue moral sign manual number boost between omit reopen absent series",
+      "sender": "JA2PBBITKPRF6J3DPSOS65GLXRZTOMYVJ6DK3GSDYWYRQJKIZVSRESQ5WY",
+      "receiver": "BHYSAPV7W4FSPMKOVS4RVYCARBIANFQDQGCOTE3FN24THEMRE6OFLCUCYE",
+      "amount": "1234567",
+      "fee": "1000",
+      "first_valid": "67257603",
+      "last_valid": "67258603",
+      "genesis_id": "mainnet-v1.0",
+      "genesis_hash": "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+      "transaction": "89a3616d74ce0012d687a3666565cd03e8a26676ce04024503a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ce040248eba3726376c42009f1203ebfb70b27b14eacb91ae04088500696038184e993656eb9339191279ca3736e64c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a474797065a3706179",
+      "bytes_to_sign": "545889a3616d74ce0012d687a3666565cd03e8a26676ce04024503a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ce040248eba3726376c42009f1203ebfb70b27b14eacb91ae04088500696038184e993656eb9339191279ca3736e64c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a474797065a3706179",
+      "txid": "3FNRQYXJAHHCK5ZUUV7CDFBJVBNALZBXE3I5BUD42MLWW5EVZ43Q",
+      "signed": "82a3736967c440bf670c7e2b17362f50a238800f6973f640c9591fa47431a559d791d4ef8d13d9583c172b107e801ce6ce4d42f91166df993e1b2ee5ed7914ec0bf9d69f21300ca374786e89a3616d74ce0012d687a3666565cd03e8a26676ce04024503a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ce040248eba3726376c42009f1203ebfb70b27b14eacb91ae04088500696038184e993656eb9339191279ca3736e64c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a474797065a3706179"
+    },
+    {
+      "kind": "mnemonic",
+      "mnemonic": "praise use rose candy marine transfer deliver aware city cost inch remind slush fetch rose rigid grit object hat ethics coconut caught window ability web",
+      "fee_per_byte": "25",
+      "min_fee": "1000",
+      "sender": "BHYSAPV7W4FSPMKOVS4RVYCARBIANFQDQGCOTE3FN24THEMRE6OFLCUCYE",
+      "receiver": "JA2PBBITKPRF6J3DPSOS65GLXRZTOMYVJ6DK3GSDYWYRQJKIZVSRESQ5WY",
+      "amount": "9000000000000000000",
+      "fee": "6225",
+      "first_valid": "4000000000",
+      "last_valid": "4000001000",
+      "genesis_id": "mainnet-v1.0",
+      "genesis_hash": "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+      "transaction": "89a3616d74cf7ce66c50e2840000a3666565cd1851a26676ceee6b2800a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ceee6b2be8a3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c42009f1203ebfb70b27b14eacb91ae04088500696038184e993656eb9339191279ca474797065a3706179",
+      "bytes_to_sign": "545889a3616d74cf7ce66c50e2840000a3666565cd1851a26676ceee6b2800a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ceee6b2be8a3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c42009f1203ebfb70b27b14eacb91ae04088500696038184e993656eb9339191279ca474797065a3706179",
+      "txid": "YL3ABR5CHQT5P7EYI27XJQIYFSEXPU6PK7H4KLNUV2RXNHJZSN2A",
+      "signed": "82a3736967c440b78996181dbac3694a7c0e4b170f8dd7c760f864f6d0f7f2fbff6bc8b0173fd0de90cced4e895bd0cc18b337c502e87268099c37a41d893ada14e5a52ddf8605a374786e89a3616d74cf7ce66c50e2840000a3666565cd1851a26676ceee6b2800a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ceee6b2be8a3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c42009f1203ebfb70b27b14eacb91ae04088500696038184e993656eb9339191279ca474797065a3706179"
+    },
+    {
+      "kind": "mnemonic",
+      "mnemonic": "pluck impulse gesture kangaroo mechanic fan harsh friend kidney siege mandate average wise during rescue moral sign manual number boost between omit reopen absent series",
+      "fee_per_byte": "0",
+      "min_fee": "1000",
+      "sender": "JA2PBBITKPRF6J3DPSOS65GLXRZTOMYVJ6DK3GSDYWYRQJKIZVSRESQ5WY",
+      "receiver": "JA2PBBITKPRF6J3DPSOS65GLXRZTOMYVJ6DK3GSDYWYRQJKIZVSRESQ5WY",
+      "amount": "1",
+      "fee": "1000",
+      "first_valid": "100",
+      "last_valid": "1100",
+      "genesis_id": "mainnet-v1.0",
+      "genesis_hash": "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+      "transaction": "89a3616d7401a3666565cd03e8a2667664a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76cd044ca3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a474797065a3706179",
+      "bytes_to_sign": "545889a3616d7401a3666565cd03e8a2667664a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76cd044ca3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a474797065a3706179",
+      "txid": "SUFEJIEES3WIKB26EU2OHT4QJUBWMCBXOGBIG654DSPAI2S66GYQ",
+      "signed": "82a3736967c4401cd440f703cfc788b3a8e1e54607eeaa20fb7b9fd5941a447f16ebc0438f5b88c33fceb5d1dae51f5005ccb11c574e68a6ab989dc07ec804f202deca8db47509a374786e89a3616d7401a3666565cd03e8a2667664a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76cd044ca3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a474797065a3706179"
+    },
+    {
+      "kind": "bip39",
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "account": 0,
+      "path": "m/44'/283'/0'/0/0",
+      "extended_key": "30eea1ebcfa10444b5ec00acb81f229ae7ae7bb639099f0e393203334c68b5619240cf3c596ba3e78723c6005f245e88e28ac68de9c84103031ef838613fcb91",
+      "sender": "ACJDJWM7GWMKJFROZP2VSWZBP5FLSSMMMFXL5MPLZQRPQFARUKKRLAZ53E",
+      "receiver": "JA2PBBITKPRF6J3DPSOS65GLXRZTOMYVJ6DK3GSDYWYRQJKIZVSRESQ5WY",
+      "amount": "100000",
+      "fee": "1000",
+      "first_valid": "67257603",
+      "last_valid": "67258603",
+      "genesis_id": "mainnet-v1.0",
+      "genesis_hash": "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+      "transaction": "89a3616d74ce000186a0a3666565cd03e8a26676ce04024503a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ce040248eba3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c420009234d99f3598a4962ecbf5595b217f4ab9498c616ebeb1ebcc22f81411a295a474797065a3706179",
+      "bytes_to_sign": "545889a3616d74ce000186a0a3666565cd03e8a26676ce04024503a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ce040248eba3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c420009234d99f3598a4962ecbf5595b217f4ab9498c616ebeb1ebcc22f81411a295a474797065a3706179",
+      "txid": "NPZYRVEJ7M2GGMJU4BEUIO3QK77SDMNY3E7LJKVOR3WFVWTGZ5QQ",
+      "signed": "82a3736967c440bf79f50ccb87a1630314d4dd8053870f552b62def25c5e3cae00d713e2a6714724683cb6604cc53dab6b17097a60cc3834547bdab08a4aa4925466c630700903a374786e89a3616d74ce000186a0a3666565cd03e8a26676ce04024503a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ce040248eba3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c420009234d99f3598a4962ecbf5595b217f4ab9498c616ebeb1ebcc22f81411a295a474797065a3706179"
+    },
+    {
+      "kind": "bip39",
+      "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "account": 1,
+      "path": "m/44'/283'/1'/0/0",
+      "extended_key": "e0401e41f53a5e36f28a4f0488a0cc52208d7e810a398dc4af70e19076c88b657548bfa2c0fb52c444189110fb2be0cce932566a9904559f9b74cc8997d6c378",
+      "sender": "R4PYILZ4ZX6AR52AZJMPQNXNO7PU3KI32VG6NXI6RUZD3WKCLCS5E2ADHQ",
+      "receiver": "JA2PBBITKPRF6J3DPSOS65GLXRZTOMYVJ6DK3GSDYWYRQJKIZVSRESQ5WY",
+      "amount": "100001",
+      "fee": "1000",
+      "first_valid": "67257604",
+      "last_valid": "67258604",
+      "genesis_id": "mainnet-v1.0",
+      "genesis_hash": "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+      "transaction": "89a3616d74ce000186a1a3666565cd03e8a26676ce04024504a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ce040248eca3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c4208f1f842f3ccdfc08f740ca58f836ed77df4da91bd54de6dd1e8d323dd94258a5a474797065a3706179",
+      "bytes_to_sign": "545889a3616d74ce000186a1a3666565cd03e8a26676ce04024504a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ce040248eca3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c4208f1f842f3ccdfc08f740ca58f836ed77df4da91bd54de6dd1e8d323dd94258a5a474797065a3706179",
+      "txid": "WS53CMG3MCREW2MLU22YPYDCJFYI22LS5OS2NZ2ER52VBUPJ3LUA",
+      "signed": "82a3736967c44069def06f6bc226c4c8c067694bbb5dca707332eef07a1be6ff6577522dd248989113a178e60f4471be28db2477201acdf74cb66e4d3b2e0dd79ec93fe9d6c50fa374786e89a3616d74ce000186a1a3666565cd03e8a26676ce04024504a367656eac6d61696e6e65742d76312e30a26768c420c061c4d8fc1dbdded2d7604be4568e3f6d041987ac37bde4b620b5ab39248adfa26c76ce040248eca3726376c4204834f0851353e25f27637c9d2f74cbbc733733154f86ad9a43c5b1182548cd65a3736e64c4208f1f842f3ccdfc08f740ca58f836ed77df4da91bd54de6dd1e8d323dd94258a5a474797065a3706179"
+    }
+  ]
+}

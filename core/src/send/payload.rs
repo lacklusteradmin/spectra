@@ -57,6 +57,8 @@ pub(crate) enum SignedPayload {
     Base64(String),
     /// A signed Kaspa transaction, which kaspa-rest takes as JSON.
     Kaspa(crate::api::kaspa_rest::KaspaTransaction),
+    /// A signed Filecoin message, which a Lotus node takes as JSON.
+    Filecoin(crate::api::lotus_json_rpc::FilecoinSignedMessage),
     /// A Sui transaction's bytes and its signature, both base64.
     Sui {
         transaction: String,
@@ -64,6 +66,9 @@ pub(crate) enum SignedPayload {
     },
     /// ICP staking's signed ingress calls, submitted in turn.
     IcpStaking(Vec<super::icp_staking::SignedIcpStakingCall>),
+    /// A Starknet transfer, behind its account's deployment when it has
+    /// none, submitted in turn.
+    Starknet(Box<crate::api::starknet_json_rpc::StarknetSignedTransfer>),
 }
 
 impl SignedPayload {
@@ -94,9 +99,13 @@ impl std::fmt::Display for SignedPayload {
                 serde_json::json!({ "tx_bytes": transaction, "signatures": [signature] })
             ),
             Self::Kaspa(transaction) => write!(f, "{}", transaction.request_body()),
+            // What `Filecoin.MpoolPush` takes.
+            Self::Filecoin(message) => write!(f, "{}", message.lotus_json()),
             Self::IcpStaking(calls) => {
                 f.write_str(&serde_json::to_string(calls).map_err(|_| std::fmt::Error)?)
             }
+            // As the submissions' parameters name each transaction.
+            Self::Starknet(transfer) => write!(f, "{}", transfer.request_bodies()),
         }
     }
 }

@@ -90,7 +90,9 @@ pub struct WalletImportCommit {
     /// A NEAR named account (`alice.near`) the imported key controls. The
     /// wallet holds it instead of the key's implicit account once the import
     /// has confirmed on the network that the key is one of its full-access
-    /// keys. Any other chain or kind refuses one.
+    /// keys. On Hedera, the account (`0.0.N`, its checksum checked) the key
+    /// holds alone, which the import confirms; without one the import finds
+    /// it by the key. Any other chain or kind refuses one.
     pub named_account: Option<String>,
     /// The wallet contract a TON key import holds its account under. `None`
     /// takes the default (W5); a watch import, and any other chain, refuses
@@ -320,6 +322,9 @@ pub(crate) enum ImportedAddress {
         address: String,
         descriptor: String,
     },
+    /// The account a Hedera key holds, which the import finds on the network
+    /// before the wallet is placed.
+    KeyAccount,
 }
 
 /// Build the imported wallets without storing them, minting an id for each.
@@ -364,12 +369,49 @@ fn icp_principal_for(commit: &WalletImportCommit) -> Option<String> {
     Some(candid::Principal::from_slice(&crate::derivation::icp::principal(&public)).to_text())
 }
 
+/// A Starknet signing import's public key, from its key: what the
+/// account's deployment names. `None` for every other import.
+fn starknet_public_key_for(commit: &WalletImportCommit) -> Option<String> {
+    let chain = commit.request.chain;
+    if !chain.is_starknet() {
+        return None;
+    }
+    let public_hex = match commit.request.kind {
+        WalletImportKind::PrivateKey => {
+            crate::derivation::dispatch::derive_from_private_key(
+                chain,
+                commit.private_key.clone()?,
+                false,
+                true,
+            )
+            .ok()??
+            .public_key_hex
+        }
+        WalletImportKind::Phrase => {
+            crate::derivation::dispatch::derive_for_chain(
+                chain,
+                commit.seed_phrase.as_deref()?,
+                commit.derivation_path.as_deref().unwrap_or_default(),
+                commit.derivation_overrides.passphrase.as_deref(),
+                commit.derivation_overrides.hmac_key.as_deref(),
+                None,
+                crate::derivation::types::Wants::PUBLIC_KEY,
+            )
+            .ok()?
+            .public_key_hex
+        }
+        _ => None,
+    }?;
+    Some(format!("0x{public_hex}"))
+}
+
 pub(crate) fn wallets_for_import(
     commit: &WalletImportCommit,
     addresses: Vec<ImportedAddress>,
     restore_height: Option<u64>,
 ) -> Vec<crate::store::state::WalletState> {
     let icp_principal = icp_principal_for(commit);
+    let starknet_public_key = starknet_public_key_for(commit);
     let chain = commit.request.chain;
     let name = commit.request.wallet_name.trim();
     let count = addresses.len();
@@ -384,6 +426,7 @@ pub(crate) fn wallets_for_import(
                     address,
                     descriptor,
                 } => (Some(address), None, Some(descriptor)),
+                ImportedAddress::KeyAccount => (None, None, None),
             };
             crate::store::state::WalletState {
                 id: crate::store::new_id(),
@@ -407,6 +450,7 @@ pub(crate) fn wallets_for_import(
                 // A named NEAR account's key is set where the import
                 // confirmed it.
                 near_account_key: None,
+                starknet_public_key: starknet_public_key.clone(),
                 multisig_policy,
                 balances_read_at: None,
             }

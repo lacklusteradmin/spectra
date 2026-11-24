@@ -483,3 +483,178 @@ comment = "An EVM layer 1 built for AI workloads, with CometBFT consensus and a 
 family = "EVM layer 1"
 consensus = "CometBFT Proof of Stake"
 state_model = "EVM account state"
+
+[[chains]]
+chain = "cosmos-hub"
+comment = "The first chain built with the Cosmos SDK. It routes IBC transfers between Cosmos networks and lends its validators to consumer chains through Interchain Security."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "celestia"
+comment = "A data-availability layer: rollups publish their transaction data to its blocks, and TIA pays for that space as well as for transfers."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "dydx"
+comment = "The application chain of the dYdX perpetuals exchange. Its validators keep the order book in memory and settle matched trades on chain."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "terra"
+comment = "The Terra chain relaunched in May 2022 after the original chain, now Terra Classic, collapsed with its algorithmic stablecoin."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "kava"
+comment = "The Cosmos SDK side of Kava, whose Ethereum-compatible co-chain is Kava EVM; KAVA moves between the two. A transfer here signs a Cosmos transaction."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "injective"
+comment = "A Cosmos SDK chain for on-chain finance with an order-book exchange module. Its accounts use Ethereum-style keys and addresses, written under the `inj` prefix."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "akash"
+comment = "A marketplace for cloud compute, where tenants lease servers from independent providers and pay for them on chain."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "babylon"
+comment = "Babylon Genesis, the chain of the Babylon protocol, which lets bitcoin be staked from Bitcoin itself to secure proof-of-stake networks."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "osmosis"
+comment = "The main decentralized exchange of the Cosmos ecosystem, trading assets that arrive from other chains over IBC."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "dymension"
+comment = "A settlement layer for RollApps, application rollups that post their state to it. Its accounts use Ethereum-style keys and addresses, written under the `dym` prefix."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "saga"
+comment = "A chain that launches dedicated application chains, Chainlets, for games and apps, secured by Saga's own validators."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "allora"
+comment = "A network of machine-learning models whose predictions are combined and scored on chain, and paid for by the requests they answer."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "band"
+comment = "BandChain, the oracle network of Band Protocol, which gathers data off chain and delivers it to other chains."
+family = "Cosmos SDK layer 1"
+consensus = "CometBFT Proof of Stake"
+state_model = "Account state (Cosmos SDK modules)"
+
+[[chains]]
+chain = "kusama"
+comment = "Polkadot's canary network, which runs new runtime features before Polkadot does. KSM balances and transfers use Kusama Asset Hub, which the relay chain secures. Keys come from the phrase's sr25519 root and an optional Substrate path, as polkadot.js reads them."
+family = "Kusama Asset Hub (system parachain)"
+consensus = "Nominated Proof of Stake"
+state_model = "Account state + runtime pallets"
+
+[[chains]]
+chain = "astar"
+comment = "A Polkadot parachain with a Substrate side and an EVM side. Spectra holds its Substrate accounts, whose SS58 addresses keep ASTR apart from the EVM side's `0x` accounts. Keys come from the phrase's sr25519 root and an optional Substrate path, as polkadot.js reads them."
+family = "Polkadot parachain (Substrate)"
+consensus = "Aura block production, finalized by the Polkadot relay chain"
+state_model = "Account state + runtime pallets"
+
+[[chains]]
+chain = "algorand"
+comment = "A layer 1 whose block proposers and certifying committees are drawn by lot in proportion to online stake. Blocks do not fork, so a transaction is final once its block is, and an account must hold 0.1 ALGO to exist."
+family = "Account-based smart contract network"
+consensus = "Pure Proof of Stake"
+state_model = "Account state"
+
+[[chains]]
+chain = "qtum"
+comment = "Launched in 2017, Qtum runs Ethereum-style contracts on a Bitcoin-derived UTXO ledger. Spectra supports ordinary QTUM transfers; staking and contract calls require a separate wallet."
+family = "UTXO smart-contract network"
+consensus = "Proof of Stake"
+state_model = "UTXO set with EVM contract state"
+
+[[chains]]
+chain = "fractal-bitcoin"
+comment = "A separate chain launched in 2024 on Bitcoin Core's code, with 30-second blocks. It shares Bitcoin's genesis block and address formats, so the same address holds FB here and BTC on Bitcoin."
+family = "Bitcoin-protocol network"
+consensus = "Proof of Work (SHA-256), partly merge-mined with Bitcoin"
+state_model = "UTXO set"
+
+[[chains]]
+chain = "ecash"
+comment = "The chain Bitcoin ABC kept at the November 2020 split from Bitcoin Cash, renamed eCash in 2021. Avalanche voting finalizes its blocks and transactions."
+family = "UTXO payments network"
+consensus = "Proof of Work (SHA-256) with Avalanche finalization"
+state_model = "UTXO set"
+
+[[chains]]
+chain = "digibyte"
+comment = "Launched in 2014, DigiByte produces a block every 15 seconds, mined with five proof-of-work algorithms in turn."
+family = "UTXO payments network"
+consensus = "Proof of Work (five algorithms)"
+state_model = "UTXO set"
+
+[[chains]]
+chain = "vechain"
+comment = "VeChainThor, a layer 1 for supply-chain and sustainability applications that runs two tokens: VET, which is held and staked, and VTHO, which pays gas. A VET transfer therefore needs VTHO for its fee."
+family = "Layer 1 with an EVM"
+consensus = "Delegated Proof of Stake"
+state_model = "EVM account state"
+
+[[chains]]
+chain = "filecoin"
+comment = "A storage network: providers seal clients' data into sectors and keep proving on chain that they still hold it. Its FVM also runs EVM contracts, and an Ethereum-style account there is written `f410f…`."
+family = "Account-based storage network"
+consensus = "Expected Consensus (storage-power-weighted Proof of Spacetime)"
+state_model = "Account state + FVM actors"
+
+[[chains]]
+chain = "tezos"
+comment = "A proof-of-stake layer 1 that upgrades its own protocol by on-chain vote. A transfer's sender pays a fee to the baker and burns XTZ for the storage it adds, which includes creating an empty recipient's account."
+family = "Account-based layer 1"
+consensus = "Tenderbake Proof of Stake"
+state_model = "Implicit accounts and Michelson contracts"
+
+[[chains]]
+chain = "starknet"
+comment = "A validity rollup on Ethereum whose programs are written in Cairo. Every account is a contract, so an address exists before its account is deployed; Spectra's accounts are Ready's, and the first send from one deploys it. STRK pays fees."
+family = "Ethereum L2 (Cairo validity rollup)"
+consensus = "Sequencer with STARK proofs posted to Ethereum"
+state_model = "Contract accounts (Cairo)"
+
+[[chains]]
+chain = "hedera"
+comment = "A public ledger run by a council of organizations. An account is an entity numbered `0.0.N` that a transaction creates and that holds a key on chain, so a key alone names no account."
+family = "Hashgraph public ledger"
+consensus = "Hashgraph (asynchronous Byzantine fault tolerant), Proof of Stake"
+state_model = "Account state (numbered entities)"

@@ -54,16 +54,18 @@ impl WalletService {
     }
 
     /// What `import_wallets` would store for `commit`, without sealing or
-    /// storing anything and without touching the network: the planning the
-    /// import runs, so the two cannot disagree. The password is the import's
-    /// to judge, not the preview's.
+    /// storing anything: the planning the import runs, so the two cannot
+    /// disagree. Only a Hedera key's account is read from the network, since
+    /// no key alone names one. The password is the import's to judge, not
+    /// the preview's.
     pub async fn preview_wallet_import(
         &self,
         commit: crate::derivation::import::WalletImportCommit,
     ) -> Result<crate::derivation::import::WalletImportPreview, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let plan = plan_import(commit)?;
+            let mut plan = plan_import(commit)?;
+            this.resolve_key_account(&mut plan).await?;
             let stored = this.wallet_state.read().await.wallets.clone();
             let placed = place_import(plan, &stored)?;
             Ok(crate::derivation::import::WalletImportPreview {
@@ -111,7 +113,9 @@ impl WalletService {
                     .into(),
                 );
             }
-            let plan = plan_import(commit)?;
+            let mut plan = plan_import(commit)?;
+            // A Hedera key's account is the one the network holds for it.
+            this.resolve_key_account(&mut plan).await?;
             // A named account is held only once the network confirms it.
             if let Some((account, public_key)) = &plan.named_account_key {
                 this.confirm_named_account(plan.commit.request.chain, account, public_key)
@@ -260,6 +264,17 @@ pub(super) struct ImportPlan {
     named_account_key: Option<(String, String)>,
     /// A Monero wallet's private view key, hex, stored outside the password.
     scan_key: Option<Zeroizing<String>>,
+    /// A Hedera signing import's account, still to be found on the network
+    /// by its key or confirmed where it was named.
+    key_account: Option<KeyAccountClaim>,
+}
+
+/// What a Hedera signing import claims before the network is asked: the
+/// account it names, if any, and the keys its secret may be.
+pub(super) struct KeyAccountClaim {
+    named: Option<crate::derivation::hedera::HederaAccountId>,
+    /// One key, or a bare 32-byte key's Ed25519 and secp256k1 readings.
+    keys: Vec<crate::derivation::hedera::HederaPrivateKey>,
 }
 
 pub(super) fn plan_import(
@@ -270,6 +285,15 @@ pub(super) fn plan_import(
     // storage.
     commit.request.check_shape()?;
     let chain = commit.request.chain;
+    // A phrase generated now holds no account where accounts are created by
+    // a transaction (the setup descriptor offers no creation there).
+    if commit.created && chain.finds_accounts_by_key() {
+        return Err(crate::derivation::error::DerivationError::refused(
+            "%@ accounts are created by a transaction: import the phrase or key of one.",
+            [chain.chain_display_name()],
+        )
+        .into());
+    }
     // Canonicalize before both derivation and storage, regardless of caller.
     commit.seed_phrase = commit.seed_phrase.map(|phrase| {
         phrase
@@ -329,6 +353,29 @@ pub(super) fn plan_import(
         ));
     }
     commit.derivation_overrides.validate_for_chain(chain)?;
+    // A Hedera account is the network's, not the key's: a signing import
+    // names it or finds it by the key, and either way the network confirms
+    // it after planning.
+    let hedera_named = if chain.finds_accounts_by_key() {
+        match commit
+            .named_account
+            .take()
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty())
+        {
+            None => None,
+            Some(_) if commit.request.kind.is_watch_only() => {
+                return Err(SpectraBridgeError::invalid(
+                    "Only a key import takes a named account.",
+                ));
+            }
+            Some(name) => Some(crate::derivation::hedera::HederaAccountId::parse(
+                chain, &name,
+            )?),
+        }
+    } else {
+        None
+    };
     // A named account is a NEAR key holder's, by name; read before deriving
     // so a malformed one is refused before any key work.
     let named_account = match commit
@@ -394,17 +441,60 @@ pub(super) fn plan_import(
     }
     // The wallet's one path, resolved before deriving so the path
     // stored is the one the address came from. Only a phrase walks
-    // one.
-    commit.derivation_path = if commit.request.kind == WalletImportKind::Phrase {
-        crate::derivation::path::import_derivation_path(chain, commit.derivation_path.as_deref())?
-    } else {
-        None
+    // one, and not a phrase that is one account's key (Algorand's
+    // 25-word mnemonic), which refuses one rather than ignoring it.
+    commit.derivation_path = match commit
+        .seed_phrase
+        .as_deref()
+        .filter(|_| commit.request.kind == WalletImportKind::Phrase)
+    {
+        Some(seed) if crate::derivation::phrase::is_single_key(chain, seed) => {
+            if commit
+                .derivation_path
+                .as_deref()
+                .is_some_and(|path| !path.trim().is_empty())
+            {
+                return Err(crate::derivation::error::DerivationError::refused(
+                    "This %@ phrase is one account's key and derives without a derivation path.",
+                    [chain.chain_display_name()],
+                )
+                .into());
+            }
+            None
+        }
+        Some(_) => crate::derivation::path::import_derivation_path(
+            chain,
+            commit.derivation_path.as_deref(),
+        )?,
+        None => None,
     };
     // A derived address is judged by the network it was derived for;
     // a typed one by the chain it was typed for. Typed addresses that
     // do not parse are reported, and the rest imported.
     let mut rejected_addresses = Vec::new();
+    let mut key_account = None;
     let imported = match &commit.request.kind {
+        WalletImportKind::Phrase | WalletImportKind::PrivateKey
+            if chain.finds_accounts_by_key() =>
+        {
+            let keys = if commit.request.kind == WalletImportKind::PrivateKey {
+                crate::derivation::hedera::import_key_candidates(
+                    commit.private_key.as_deref().unwrap_or_default(),
+                )?
+            } else {
+                vec![crate::derivation::hedera::phrase_key(
+                    chain,
+                    commit.seed_phrase.as_deref().unwrap_or_default(),
+                    commit.derivation_path.as_deref().unwrap_or_default(),
+                    commit.derivation_overrides.passphrase.as_deref(),
+                )?]
+            };
+            key_account = Some(KeyAccountClaim {
+                named: hedera_named,
+                keys,
+            });
+            vec![ImportedAddress::KeyAccount]
+        }
         WalletImportKind::Phrase | WalletImportKind::PrivateKey => {
             // The secret was matched to its kind above.
             let derived = if let Some(version) = ton_wallet {
@@ -567,6 +657,7 @@ pub(super) fn plan_import(
         rejected_addresses,
         named_account_key,
         scan_key,
+        key_account,
     })
 }
 
@@ -832,6 +923,88 @@ fn place_import(
 }
 
 impl WalletService {
+    /// Give a Hedera signing import its account: the one it named, once a
+    /// verified mirror node shows that account holding one of the import's
+    /// keys alone, or else the one account the network finds holding it.
+    /// A raw key is then sealed in the DER of the scheme the account holds.
+    async fn resolve_key_account(&self, plan: &mut ImportPlan) -> Result<(), SpectraBridgeError> {
+        use crate::api::hedera_mirror::{HederaAccountKey, HederaMirrorClient};
+        use crate::derivation::error::DerivationError;
+        let Some(claim) = plan.key_account.take() else {
+            return Ok(());
+        };
+        let chain = plan.commit.request.chain;
+        let publics: Vec<_> = claim.keys.iter().map(|key| key.public_key()).collect();
+        let endpoints = self
+            .endpoints_for(chain, &[EndpointCapability::Verification])
+            .await;
+        let (account, held) = crate::api::http::race(&endpoints, |endpoint| {
+            let publics = &publics;
+            let named = claim.named;
+            async move {
+                let client = HederaMirrorClient::new(std::sync::Arc::new(vec![endpoint]));
+                client.verify_network(chain).await?;
+                if let Some(id) = named {
+                    let account = client
+                        .fetch_account(id)
+                        .await?
+                        .filter(|account| !account.deleted)
+                        .ok_or_else(|| {
+                            DerivationError::refused(
+                                "%@ has no account %@.",
+                                [chain.chain_display_name().to_string(), id.to_string()],
+                            )
+                        })?;
+                    let held = match &account.key {
+                        HederaAccountKey::Single(key) => publics.iter().position(|p| p == key),
+                        HederaAccountKey::Other => None,
+                    };
+                    let held = held.ok_or_else(|| {
+                        DerivationError::refused(
+                            "%@ is not held by this key alone.",
+                            [id.to_string()],
+                        )
+                    })?;
+                    return Ok::<_, SpectraBridgeError>((id, held));
+                }
+                let mut found = Vec::new();
+                for (index, public) in publics.iter().enumerate() {
+                    for id in client.accounts_holding_key(public).await? {
+                        found.push((id, index));
+                    }
+                }
+                match found.as_slice() {
+                    [one] => Ok(*one),
+                    [] => Err(DerivationError::refused(
+                        "No %@ account holds this key. A %@ account is created by a transaction: have an exchange or a funded wallet create one for this key first, or choose the derivation profile your wallet uses.",
+                        [chain.chain_display_name(), chain.chain_display_name()],
+                    )
+                    .into()),
+                    several => Err(DerivationError::refused(
+                        "Several %@ accounts hold this key (%@): name the one to import.",
+                        [
+                            chain.chain_display_name().to_string(),
+                            several
+                                .iter()
+                                .map(|(id, _)| id.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", "),
+                        ],
+                    )
+                    .into()),
+                }
+            }
+        })
+        .await?;
+        for wallet in &mut plan.wallets {
+            wallet.address = Some(account.to_string());
+        }
+        if plan.commit.request.kind == WalletImportKind::PrivateKey {
+            plan.commit.private_key = Some(claim.keys[held].der_hex().to_string());
+        }
+        Ok(())
+    }
+
     /// Confirm on the network that `account` lists `public_key_hex` among
     /// its full-access keys, the key a send from it will sign with.
     async fn confirm_named_account(

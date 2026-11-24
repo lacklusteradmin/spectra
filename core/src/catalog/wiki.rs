@@ -65,7 +65,7 @@ fn build() -> Vec<AssetWikiEntry> {
     // names and colours it — the ten chains ETH runs on all say "Ethereum",
     // but Ethereum is the one that gets asked.
     for chain in chains::catalog() {
-        if chain.native_coingecko_id.is_empty() || chain.gas_token_symbol.is_empty() {
+        if chain.native_coingecko_id.is_empty() || chain.coin_symbol.is_empty() {
             continue;
         }
         let token_id = tokens::deployment(&chain.native_deployment_id)
@@ -102,7 +102,7 @@ fn entry_from_chain(chain: &ChainEntry) -> AssetWikiEntry {
     let token = tokens::deployment(&chain.native_deployment_id).unwrap();
     AssetWikiEntry {
         token_id: token.token_id.clone(),
-        symbol: chain.gas_token_symbol.clone(),
+        symbol: chain.coin_symbol.clone(),
         name: chain.native_asset_display_name.clone(),
         coingecko_id: chain.native_coingecko_id.clone(),
         color: token.color,

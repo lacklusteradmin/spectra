@@ -1,0 +1,144 @@
+{
+  "read": "2026-11-24",
+  "method": "Balances.transfer_keep_alive of 10^12 units to 0x09 x 32 from 0x07 x 32, immortal, nonce 0, no tip, signed v4 with a fixed signature (core/tests/fixtures/substrate-transfers.json, case 0), asked payment_queryInfo and state_call TransactionPaymentApi_query_info at the finalized head; also best and finalized heights and system_accountNextIndex",
+  "answers": [
+    {
+      "url": "https://kusama-asset-hub-rpc.polkadot.io",
+      "genesis": "0x48239ef607d7928874027a43a67689209727dfb3d3dc5e5b03a39bdc2eda771a",
+      "finalized": 24215469,
+      "best": 24215486,
+      "queryInfo": {
+        "weight": {
+          "ref_time": 367401000,
+          "proof_size": 13382
+        },
+        "class": "normal",
+        "partialFee": "59163625"
+      },
+      "stateCall": {
+        "weight": {
+          "refTime": 367401000,
+          "proofSize": 13382
+        },
+        "class": "Normal",
+        "partialFee": 59163625
+      },
+      "nonce": 0
+    },
+    {
+      "url": "https://asset-hub-kusama-rpc.n.dwellir.com",
+      "genesis": "0x48239ef607d7928874027a43a67689209727dfb3d3dc5e5b03a39bdc2eda771a",
+      "finalized": 24215469,
+      "best": 24215486,
+      "queryInfo": {
+        "weight": {
+          "ref_time": 367401000,
+          "proof_size": 13382
+        },
+        "class": "normal",
+        "partialFee": "59163625"
+      },
+      "stateCall": {
+        "weight": {
+          "refTime": 367401000,
+          "proofSize": 13382
+        },
+        "class": "Normal",
+        "partialFee": 59163625
+      },
+      "nonce": 0
+    },
+    {
+      "url": "https://ksm-rpc.stakeworld.io/assethub",
+      "genesis": "0x48239ef607d7928874027a43a67689209727dfb3d3dc5e5b03a39bdc2eda771a",
+      "finalized": 24215469,
+      "best": 24215487,
+      "queryInfo": {
+        "weight": {
+          "ref_time": 367401000,
+          "proof_size": 13382
+        },
+        "class": "normal",
+        "partialFee": "59163625"
+      },
+      "stateCall": {
+        "weight": {
+          "refTime": 367401000,
+          "proofSize": 13382
+        },
+        "class": "Normal",
+        "partialFee": 59163625
+      },
+      "nonce": 0
+    },
+    {
+      "url": "https://rpc.astar.network",
+      "genesis": "0x9eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c6",
+      "finalized": 15627223,
+      "best": 15627229,
+      "queryInfo": {
+        "weight": {
+          "ref_time": 164051000,
+          "proof_size": 3593
+        },
+        "class": "normal",
+        "partialFee": "39656489331791367"
+      },
+      "stateCall": {
+        "weight": {
+          "refTime": 164051000,
+          "proofSize": 3593
+        },
+        "class": "Normal",
+        "partialFee": "0x0000000000000000008ce35defa91607"
+      },
+      "nonce": 0
+    },
+    {
+      "url": "https://astar.api.onfinality.io/public",
+      "genesis": "0x9eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c6",
+      "finalized": 15627223,
+      "best": 15627229,
+      "queryInfo": {
+        "weight": {
+          "ref_time": 164051000,
+          "proof_size": 3593
+        },
+        "class": "normal",
+        "partialFee": "39656489331791367"
+      },
+      "stateCall": {
+        "weight": {
+          "refTime": 164051000,
+          "proofSize": 3593
+        },
+        "class": "Normal",
+        "partialFee": "0x0000000000000000008ce35defa91607"
+      },
+      "nonce": 0
+    },
+    {
+      "url": "https://astar-rpc.n.dwellir.com",
+      "genesis": "0x9eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c6",
+      "finalized": 15627224,
+      "best": 15627230,
+      "queryInfo": {
+        "weight": {
+          "ref_time": 164051000,
+          "proof_size": 3593
+        },
+        "class": "normal",
+        "partialFee": "39656489331791367"
+      },
+      "stateCall": {
+        "weight": {
+          "refTime": 164051000,
+          "proofSize": 3593
+        },
+        "class": "Normal",
+        "partialFee": "0x0000000000000000008ce35defa91607"
+      },
+      "nonce": 0
+    }
+  ]
+}

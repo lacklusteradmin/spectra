@@ -13,9 +13,12 @@ impl Chain {
         )
     }
 
-    /// Named accounts authorize keys on chain instead of encoding the key in their address.
+    /// Named accounts authorize keys on chain instead of encoding the key in
+    /// their address: a key import may name the account it controls. NEAR's
+    /// key also has an implicit account; a Hedera key has none
+    /// ([`Chain::finds_accounts_by_key`]).
     pub fn supports_named_sender_accounts(self) -> bool {
-        matches!(self, Self::Near | Self::NearTestnet)
+        matches!(self, Self::Near | Self::NearTestnet) || self.finds_accounts_by_key()
     }
 
     /// Key under which this chain's address is stored during wallet import.
@@ -41,15 +44,23 @@ impl Chain {
     /// the same key as the same secret; across schemes the same bytes are a
     /// different key, which a wallet's key must not become.
     pub fn key_scheme(self) -> Option<KeyScheme> {
-        if !self.derives_from_private_key() {
+        // A Hedera key is one of two schemes, which its stored DER form
+        // names; no other network reads that form.
+        if !self.derives_from_private_key() || self.finds_accounts_by_key() {
             return None;
         }
         Some(match self.mainnet_counterpart() {
             Self::Cardano => KeyScheme::Ed25519Extended,
-            Self::Polkadot | Self::Bittensor => KeyScheme::Sr25519,
-            Self::Solana | Self::Stellar | Self::Sui | Self::Aptos | Self::Ton | Self::Near => {
-                KeyScheme::Ed25519
-            }
+            substrate if substrate.is_substrate() => KeyScheme::Sr25519,
+            Self::Solana
+            | Self::Stellar
+            | Self::Sui
+            | Self::Aptos
+            | Self::Ton
+            | Self::Near
+            | Self::Algorand
+            | Self::Tezos => KeyScheme::Ed25519,
+            Self::Starknet => KeyScheme::Stark,
             _ => KeyScheme::Secp256k1,
         })
     }
@@ -70,12 +81,16 @@ impl Chain {
         }
         let native = match self.mainnet_counterpart() {
             Self::Cardano => return vec![F::CardanoExtendedKey],
+            // A felt, which wallets write without its leading zeros.
+            Self::Starknet => return vec![F::StarknetPrivateKey],
             _ if self.wif_version().is_some() => Some(F::Wif),
             Self::Solana => Some(F::SolanaKeypair),
             Self::Stellar => Some(F::StellarSecretSeed),
             Self::Sui => Some(F::SuiPrivateKey),
             Self::Aptos => Some(F::AptosPrivateKey),
             Self::Near => Some(F::NearSecretKey),
+            Self::Tezos => Some(F::TezosSecretKey),
+            Self::Hedera => Some(F::HederaPrivateKey),
             _ => None,
         };
         std::iter::once(F::HexSecret32).chain(native).collect()
@@ -90,7 +105,11 @@ impl Chain {
             | Self::BitcoinCash
             | Self::BitcoinSV
             | Self::BitcoinGold
-            | Self::Zcash => 0x80,
+            | Self::Zcash
+            | Self::Qtum
+            | Self::FractalBitcoin
+            | Self::Ecash
+            | Self::Digibyte => 0x80,
             Self::Litecoin => 0xb0,
             Self::Dogecoin => 0x9e,
             Self::Dash => 0xcc,
@@ -106,23 +125,29 @@ impl Chain {
 
     /// The phrase encodings an import on this chain restores from: the ones
     /// its own wallets write. Monero and TON wallets do not read BIP-39.
+    /// Algorand's write its 25-word mnemonic, one account's key, and Pera's
+    /// Universal Wallet a BIP-39 phrase whose accounts derive along ARC-52.
     pub fn phrase_formats(self) -> Vec<crate::derivation::setup::WalletSecretFormat> {
         use crate::derivation::setup::WalletSecretFormat as F;
         match self.mainnet_counterpart() {
             Self::Monero => vec![F::MoneroPhrase, F::Polyseed],
             Self::Ton => vec![F::TonMnemonic],
+            Self::Algorand => vec![F::AlgorandMnemonic, F::Bip39Phrase],
             _ => vec![F::Bip39Phrase],
         }
     }
 
     /// The phrase encoding a wallet created on this chain is generated in:
     /// one every wallet for the chain restores. For Monero that is the
-    /// 25-word seed, which older wallets read and Polyseed's do not replace.
+    /// 25-word seed, which older wallets read and Polyseed's do not replace;
+    /// for Algorand the 25-word mnemonic, which every Algorand wallet
+    /// imports and only some BIP-39 phrases.
     pub fn created_phrase_format(self) -> crate::derivation::setup::WalletSecretFormat {
         use crate::derivation::setup::WalletSecretFormat as F;
         match self.mainnet_counterpart() {
             Self::Monero => F::MoneroPhrase,
             Self::Ton => F::TonMnemonic,
+            Self::Algorand => F::AlgorandMnemonic,
             _ => F::Bip39Phrase,
         }
     }
@@ -132,7 +157,7 @@ impl Chain {
     /// Read from the catalog rather than restated: `derivation_path = []` is
     /// how a row says its keys do not come from a BIP-32 path. Monero's spend
     /// and view keys come from the seed directly, TON's from its mnemonic,
-    /// and Polkadot's and Bittensor's from Substrate junctions instead
+    /// and the Substrate networks' from Substrate junctions instead
     /// (`derives_along_junctions`).
     ///
     /// For those "no path" is the answer, not an error. See
@@ -151,7 +176,7 @@ impl Chain {
 
     /// The derivation profiles a phrase wallet on this chain can use, the
     /// default first. Empty where the chain derives without a path (Monero,
-    /// TON, Polkadot, Bittensor), which also means it has no account index.
+    /// TON, the Substrate networks), which also means it has no account index.
     pub fn derivation_profiles(self) -> Vec<crate::catalog::chains::DerivationProfile> {
         let entries = &self.entry().derivation_path;
         entries
@@ -239,12 +264,13 @@ impl Chain {
     /// one its own wallets export first. Each names the script the account's
     /// addresses pay. From SLIP-132 (Bitcoin, Litecoin), Trezor's coin
     /// definitions (Litecoin's zpub, Dogecoin's dgub, Dash's drkp, Decred's
-    /// dpub and its own tpub, and the xpub of Bitcoin Cash, Bitcoin Gold,
-    /// Peercoin and Zcash), the nodes' own chain parameters (Dash Core's
-    /// xpub, Dogecoin Core's testnet tpub), ElectrumSV's xpub on Bitcoin SV
-    /// and rusty-kaspa's kpub and ktub. A Taproot account has no version of
-    /// its own, nor do the SegWit accounts of a network Spectra signs only
-    /// P2PKH on.
+    /// dpub and its own tpub, the xpub of Bitcoin Cash, Bitcoin Gold,
+    /// Peercoin, Zcash and eCash, and DigiByte's xpub, ypub and zpub), the
+    /// nodes' own chain parameters (Dash Core's xpub, Dogecoin Core's testnet
+    /// tpub), Qtum Electrum's xpub, ypub and zpub, UniSat's Bitcoin versions
+    /// on Fractal, ElectrumSV's xpub on Bitcoin SV and rusty-kaspa's kpub
+    /// and ktub. A Taproot account has no version of its own, nor do the
+    /// SegWit accounts of a network Spectra signs only P2PKH on.
     pub(crate) fn account_key_versions(self) -> &'static [AccountKeyVersion] {
         use crate::derivation::types::BitcoinScriptType::{P2pkh, P2shP2wpkh, P2wpkh};
         const fn v(
@@ -274,14 +300,18 @@ impl Chain {
         const KPUB: AccountKeyVersion = v(0x038f_332e, "kpub", P2pkh);
         const KTUB: AccountKeyVersion = v(0x0390_a241, "ktub", P2pkh);
         match self {
-            Self::Bitcoin | Self::Peercoin => &[XPUB, YPUB, ZPUB],
+            Self::Bitcoin | Self::Peercoin | Self::Qtum | Self::FractalBitcoin | Self::Digibyte => {
+                &[XPUB, YPUB, ZPUB]
+            }
             Self::BitcoinTestnet
             | Self::BitcoinTestnet4
             | Self::BitcoinSignet
             | Self::PeercoinTestnet => &[TPUB, UPUB, VPUB],
             Self::Litecoin => &[LTUB, MTUB, ZPUB],
             Self::LitecoinTestnet => &[TPUB, UPUB, VPUB, TTUB],
-            Self::BitcoinCash | Self::BitcoinSV | Self::BitcoinGold | Self::Zcash => &[XPUB],
+            Self::BitcoinCash | Self::BitcoinSV | Self::BitcoinGold | Self::Zcash | Self::Ecash => {
+                &[XPUB]
+            }
             Self::Dash => &[XPUB, DRKP],
             Self::Dogecoin => &[DGUB],
             Self::Decred => &[DPUB],
@@ -310,7 +340,7 @@ impl Chain {
     /// private view key, which an address does not carry. Addresses are
     /// validated and stored against their concrete mainnet or testnet.
     pub fn supports_watch_only_import(self) -> bool {
-        if self.is_evm() {
+        if self.is_evm() || self.is_cosmos() || self.is_substrate() || self.is_starknet() {
             return true;
         }
         matches!(
@@ -330,14 +360,21 @@ impl Chain {
                 | Chain::Ton
                 | Chain::Icp
                 | Chain::Near
-                | Chain::Polkadot
                 | Chain::Zcash
                 | Chain::BitcoinGold
                 | Chain::Decred
                 | Chain::Kaspa
                 | Chain::Dash
                 | Chain::Peercoin
-                | Chain::Bittensor
+                | Chain::Algorand
+                | Chain::Qtum
+                | Chain::FractalBitcoin
+                | Chain::Ecash
+                | Chain::Digibyte
+                | Chain::Vechain
+                | Chain::Filecoin
+                | Chain::Tezos
+                | Chain::Hedera
         )
     }
 }

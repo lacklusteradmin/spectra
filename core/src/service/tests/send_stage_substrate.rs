@@ -117,8 +117,9 @@ async fn wallet() -> (Wallet, wiremock::MockServer, Arc<Mutex<Runtime>>) {
     }));
     let server = asset_hub(live.clone()).await;
     let wallet = Wallet::import(Chain::Polkadot, &server.uri(), Secret::Phrase(PHRASE)).await;
-    live.lock().unwrap().sender =
-        hex::encode(crate::derivation::polkadot::decode_ss58(&wallet.address).unwrap());
+    live.lock().unwrap().sender = hex::encode(
+        crate::derivation::polkadot::decode_ss58(Chain::Polkadot, &wallet.address).unwrap(),
+    );
     (wallet, server, live)
 }
 
@@ -321,4 +322,229 @@ async fn an_asset_transfer_the_runtime_would_reject_or_lose_is_refused() {
         .build(wallet.token_request(&recipient, "123.456789", USDT, 6))
         .await
         .unwrap();
+}
+
+/// A native-coin node for `chain`: its genesis, its runtime's metadata and
+/// version as the fixtures hold them, the sender holding `free` and everyone
+/// else `others_free`, and every extrinsic submitted answered with its hash.
+struct Native {
+    genesis: String,
+    spec: u32,
+    nonce: u32,
+    fee: u128,
+    free: u128,
+    others_free: u128,
+    sender: String,
+    submitted: Vec<String>,
+}
+
+async fn native_node(chain: Chain, live: Arc<Mutex<Native>>) -> wiremock::MockServer {
+    let metadata = format!(
+        "0x{}",
+        hex::encode(crate::api::substrate_json_rpc::tests::fixture(chain))
+    );
+    let transaction_version =
+        crate::api::substrate_json_rpc::tests::runtime_fixture(chain).transaction_version;
+    node(move |_, body| {
+        let mut live = live.lock().unwrap();
+        let block = format!("0x{}", "11".repeat(32));
+        let result = match body["method"].as_str().unwrap() {
+            "chain_getBlockHash" if body["params"][0] == 0 => json!(live.genesis),
+            "chain_getBlockHash" | "chain_getFinalizedHead" => json!(block),
+            "chain_getHeader" => json!({"number": "0x64"}),
+            "state_getRuntimeVersion" => {
+                json!({"specVersion": live.spec, "transactionVersion": transaction_version})
+            }
+            "state_getMetadata" => json!(metadata),
+            "system_accountNextIndex" => json!(live.nonce),
+            "payment_queryInfo" => json!({"partialFee": live.fee.to_string()}),
+            "state_getStorage" => {
+                let key = body["params"][0].as_str().unwrap();
+                let free = if key.ends_with(&live.sender) {
+                    live.free
+                } else {
+                    live.others_free
+                };
+                // AccountInfo: four counters, then free, reserved, frozen
+                // and flags, each a u128.
+                let mut record = vec![0; 16];
+                record.extend(free.to_le_bytes());
+                record.extend([0; 48]);
+                json!(format!("0x{}", hex::encode(record)))
+            }
+            "author_submitExtrinsic" => {
+                let extrinsic = body["params"][0].as_str().unwrap().to_string();
+                let bytes = hex::decode(extrinsic.trim_start_matches("0x")).unwrap();
+                live.submitted.push(extrinsic);
+                json!(format!(
+                    "0x{}",
+                    blake2b_simd::Params::new()
+                        .hash_length(32)
+                        .hash(&bytes)
+                        .to_hex()
+                ))
+            }
+            other => panic!("unexpected Substrate request {other}"),
+        };
+        Some(json!({"jsonrpc": "2.0", "id": body["id"], "result": result}))
+    })
+    .await
+}
+
+/// Kusama Asset Hub and Astar: each with one coin in its own units, the
+/// fee its nodes quoted for a transfer on 2026-11-24, and the
+/// `Balances.transfer_keep_alive` index its runtime gives.
+const NATIVE: [(Chain, u128, u128, [u8; 2]); 2] = [
+    (Chain::Kusama, 1_000_000_000_000, 59_163_625, [10, 3]),
+    (
+        Chain::Astar,
+        1_000_000_000_000_000_000,
+        39_656_489_331_791_367,
+        [31, 3],
+    ),
+];
+
+async fn native_wallet(
+    chain: Chain,
+    coin: u128,
+    fee: u128,
+) -> (Wallet, wiremock::MockServer, Arc<Mutex<Native>>) {
+    let live = Arc::new(Mutex::new(Native {
+        genesis: chain.substrate_genesis_hash().unwrap().into(),
+        spec: crate::api::substrate_json_rpc::tests::runtime_fixture(chain).spec_version,
+        nonce: 7,
+        fee,
+        free: 10 * coin,
+        others_free: 10 * coin,
+        sender: String::new(),
+        submitted: Vec::new(),
+    }));
+    let server = native_node(chain, live.clone()).await;
+    let wallet = Wallet::import(chain, &server.uri(), Secret::Phrase(PHRASE)).await;
+    live.lock().unwrap().sender =
+        hex::encode(crate::derivation::polkadot::decode_ss58(chain, &wallet.address).unwrap());
+    (wallet, server, live)
+}
+
+/// The recipient `0x09` × 32 at `chain`'s prefix.
+fn recipient_on(chain: Chain) -> String {
+    crate::derivation::primitives::encode_ss58(&[9; 32], chain.ss58_prefix().unwrap())
+}
+
+/// A KSM or ASTR transfer is quoted keeping the runtime's existential
+/// deposit, built as `Balances.transfer_keep_alive` at the runtime's own
+/// indices, signed, and submitted under the hash the network names it by.
+#[tokio::test]
+async fn kusama_and_astar_transfers_build_sign_and_broadcast() {
+    for (chain, coin, fee, call) in NATIVE {
+        let (wallet, _server, live) = native_wallet(chain, coin, fee).await;
+        let deposit =
+            crate::api::substrate_json_rpc::tests::runtime_fixture(chain).existential_deposit;
+        let units = |amount: u128| {
+            crate::amount::decimal::from_units(amount, u32::from(chain.native_decimals()))
+        };
+        let preview = wallet
+            .service
+            .fetch_shared_send_preview(chain, wallet.address.clone())
+            .await
+            .unwrap();
+        assert_eq!(preview.estimated_network_fee, units(fee), "{chain}");
+        assert_eq!(
+            preview.spendable_balance,
+            units(10 * coin - deposit),
+            "{chain}"
+        );
+        assert_eq!(
+            preview.max_sendable,
+            units(10 * coin - deposit - fee),
+            "{chain}"
+        );
+        let built = wallet
+            .build(wallet.request(&recipient_on(chain), "1"))
+            .await
+            .unwrap();
+        let mut expected = call.to_vec();
+        expected.push(0); // MultiAddress::Id
+        expected.extend([9; 32]);
+        assert!(
+            built
+                .signing_payload_hex
+                .starts_with(&hex::encode(&expected)),
+            "{chain}: {}",
+            built.signing_payload_hex
+        );
+        let signed = wallet.sign(&built).await.unwrap();
+        assert_eq!(signed.stage, SendStage::Signed);
+        let extrinsic = signed.signed_payload.clone().unwrap();
+        let bytes = hex::decode(extrinsic.trim_start_matches("0x")).unwrap();
+        let hash = blake2b_simd::Params::new().hash_length(32).hash(&bytes);
+        assert_eq!(
+            signed.transaction_hash.as_deref(),
+            Some(format!("0x{}", hash.to_hex()).as_str()),
+            "{chain}"
+        );
+        let submitted = wallet.broadcast(&signed).await.unwrap();
+        assert_eq!(live.lock().unwrap().submitted, [extrinsic], "{chain}");
+        assert_eq!(submitted.transaction_hash, signed.transaction_hash);
+    }
+}
+
+/// Refused before anything is built: a recipient written for another
+/// network, funds that would leave the sender below the existential
+/// deposit, a first transfer below it, and a node on another network; and
+/// before signing, a fee or runtime that changed since the review.
+#[tokio::test]
+async fn kusama_and_astar_refuse_before_building_or_signing() {
+    for (chain, coin, fee, _) in NATIVE {
+        let (wallet, _server, live) = native_wallet(chain, coin, fee).await;
+        let polkadot = crate::derivation::primitives::encode_ss58(&[9; 32], 0);
+        assert!(wallet.build(wallet.request(&polkadot, "1")).await.is_err());
+        let error = refusal(
+            wallet
+                .build(wallet.request(&recipient_on(chain), "10"))
+                .await,
+        );
+        assert!(
+            error.contains("Insufficient Substrate funds"),
+            "{chain}: {error}"
+        );
+        live.lock().unwrap().others_free = 0;
+        let below = crate::amount::decimal::from_units(
+            crate::api::substrate_json_rpc::tests::runtime_fixture(chain).existential_deposit - 1,
+            u32::from(chain.native_decimals()),
+        );
+        let error = refusal(
+            wallet
+                .build(wallet.request(&recipient_on(chain), &below))
+                .await,
+        );
+        assert!(error.contains("existential deposit"), "{chain}: {error}");
+        live.lock().unwrap().others_free = 10 * coin;
+        live.lock().unwrap().genesis = Chain::Polkadot.substrate_genesis_hash().unwrap().into();
+        let error = refusal(
+            wallet
+                .build(wallet.request(&recipient_on(chain), "1"))
+                .await,
+        );
+        assert!(error.contains("wrong Substrate"), "{chain}: {error}");
+        assert!(wallet.built_nothing().await, "{chain}");
+        live.lock().unwrap().genesis = chain.substrate_genesis_hash().unwrap().into();
+        let built = wallet
+            .build(wallet.request(&recipient_on(chain), "1"))
+            .await
+            .unwrap();
+        live.lock().unwrap().fee += 1;
+        let error = refusal(wallet.sign(&built).await);
+        assert!(error.contains("fee increased"), "{chain}: {error}");
+        live.lock().unwrap().fee -= 1;
+        live.lock().unwrap().spec += 1;
+        let error = refusal(wallet.sign(&built).await);
+        assert!(
+            error.contains("runtime, network or nonce changed"),
+            "{chain}: {error}"
+        );
+        assert_eq!(wallet.stored(&built).await.stage, SendStage::Prepared);
+        live.lock().unwrap().spec -= 1;
+        assert_eq!(wallet.sign(&built).await.unwrap().stage, SendStage::Signed);
+    }
 }

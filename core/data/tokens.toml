@@ -112,6 +112,13 @@ token_id = "ethereum"
 chain_id = "megaeth"
 decimals = 18
 
+[[deployments]]
+token_id = "ethereum"
+chain_id = "starknet"
+standard = "ERC-20"
+contract = "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7"
+decimals = 18
+
 [[tokens]]
 id = "solana"
 symbol = "SOL"
@@ -3313,6 +3320,11 @@ token_id = "kava"
 chain_id = "kava-evm"
 decimals = 18
 
+[[deployments]]
+token_id = "kava"
+chain_id = "kava"
+decimals = 6
+
 [[tokens]]
 id = "chiliz"
 symbol = "CHZ"
@@ -3487,3 +3499,380 @@ chain_id = "stable"
 standard = "ERC-20"
 contract = "0x0000000000000000000000000000000000001003"
 decimals = 18
+
+[[tokens]]
+id = "cosmos"
+symbol = "ATOM"
+name = "Cosmos Hub"
+coingecko_id = "cosmos"
+coinpaprika_id = "atom-cosmos"
+color = "indigo"
+artwork_name = "cosmos"
+tags = []
+
+[[deployments]]
+token_id = "cosmos"
+chain_id = "cosmos-hub"
+decimals = 6
+
+[[tokens]]
+id = "celestia"
+symbol = "TIA"
+name = "Celestia"
+coingecko_id = "celestia"
+coinpaprika_id = "tia-celestia"
+color = "purple"
+artwork_name = "celestia"
+tags = []
+
+[[deployments]]
+token_id = "celestia"
+chain_id = "celestia"
+decimals = 6
+
+[[tokens]]
+id = "dydx-chain"
+symbol = "DYDX"
+name = "dYdX"
+coingecko_id = "dydx-chain"
+coinpaprika_id = "dydx-dydx-chain"
+color = "purple"
+artwork_name = "dydx"
+tags = []
+
+[[deployments]]
+token_id = "dydx-chain"
+chain_id = "dydx"
+decimals = 18
+
+[[tokens]]
+id = "terra-luna-2"
+symbol = "LUNA"
+name = "Terra"
+coingecko_id = "terra-luna-2"
+coinpaprika_id = "luna-terra-v2"
+color = "yellow"
+artwork_name = "terra"
+tags = []
+
+[[deployments]]
+token_id = "terra-luna-2"
+chain_id = "terra"
+decimals = 6
+
+[[tokens]]
+id = "injective-protocol"
+symbol = "INJ"
+name = "Injective"
+coingecko_id = "injective-protocol"
+coinpaprika_id = "inj-injective-protocol"
+color = "cyan"
+artwork_name = "injective"
+tags = []
+
+[[deployments]]
+token_id = "injective-protocol"
+chain_id = "injective"
+decimals = 18
+
+[[tokens]]
+id = "akash-network"
+symbol = "AKT"
+name = "Akash Network"
+coingecko_id = "akash-network"
+coinpaprika_id = "akt-akash-network"
+color = "red"
+artwork_name = "akash"
+tags = []
+
+[[deployments]]
+token_id = "akash-network"
+chain_id = "akash"
+decimals = 6
+
+[[tokens]]
+id = "babylon"
+symbol = "BABY"
+name = "Babylon"
+coingecko_id = "babylon"
+coinpaprika_id = "baby-babylon"
+color = "orange"
+artwork_name = "babylon"
+tags = []
+
+[[deployments]]
+token_id = "babylon"
+chain_id = "babylon"
+decimals = 6
+
+[[tokens]]
+id = "osmosis"
+symbol = "OSMO"
+name = "Osmosis"
+coingecko_id = "osmosis"
+coinpaprika_id = "osmo-osmosis"
+color = "purple"
+artwork_name = "osmosis"
+tags = []
+
+[[deployments]]
+token_id = "osmosis"
+chain_id = "osmosis"
+decimals = 6
+
+[[tokens]]
+id = "dymension"
+symbol = "DYM"
+name = "Dymension"
+coingecko_id = "dymension"
+coinpaprika_id = "dym-dymension"
+color = "gray"
+artwork_name = "dymension"
+tags = []
+
+[[deployments]]
+token_id = "dymension"
+chain_id = "dymension"
+decimals = 18
+
+[[tokens]]
+id = "saga-2"
+symbol = "SAGA"
+name = "Saga"
+coingecko_id = "saga-2"
+coinpaprika_id = "saga-saga"
+color = "gray"
+artwork_name = "saga"
+tags = []
+
+[[deployments]]
+token_id = "saga-2"
+chain_id = "saga"
+decimals = 6
+
+[[tokens]]
+id = "allora"
+symbol = "ALLO"
+name = "Allora"
+coingecko_id = "allora"
+coinpaprika_id = "allo-allora"
+color = "indigo"
+artwork_name = "allora"
+tags = []
+
+[[deployments]]
+token_id = "allora"
+chain_id = "allora"
+decimals = 18
+
+[[tokens]]
+id = "band-protocol"
+symbol = "BAND"
+name = "Band"
+coingecko_id = "band-protocol"
+coinpaprika_id = "band-band-protocol"
+color = "blue"
+artwork_name = "band"
+tags = []
+
+[[deployments]]
+token_id = "band-protocol"
+chain_id = "band"
+decimals = 6
+
+[[tokens]]
+id = "kusama"
+symbol = "KSM"
+name = "Kusama"
+coingecko_id = "kusama"
+coinpaprika_id = "ksm-kusama"
+color = "gray"
+artwork_name = "kusama"
+tags = []
+
+[[deployments]]
+token_id = "kusama"
+chain_id = "kusama"
+decimals = 12
+
+[[tokens]]
+id = "astar"
+symbol = "ASTR"
+name = "Astar"
+coingecko_id = "astar"
+coinpaprika_id = "astr-astar"
+color = "blue"
+artwork_name = "astar"
+tags = []
+
+[[deployments]]
+token_id = "astar"
+chain_id = "astar"
+decimals = 18
+
+[[tokens]]
+id = "algorand"
+symbol = "ALGO"
+name = "Algorand"
+coingecko_id = "algorand"
+coinpaprika_id = "algo-algorand"
+color = "gray"
+artwork_name = "algorand"
+tags = []
+
+[[deployments]]
+token_id = "algorand"
+chain_id = "algorand"
+decimals = 6
+
+[[tokens]]
+id = "qtum"
+symbol = "QTUM"
+name = "Qtum"
+coingecko_id = "qtum"
+coinpaprika_id = "qtum-qtum"
+color = "blue"
+artwork_name = "qtum"
+tags = []
+
+[[deployments]]
+token_id = "qtum"
+chain_id = "qtum"
+decimals = 8
+
+[[tokens]]
+id = "fractal-bitcoin"
+symbol = "FB"
+name = "Fractal Bitcoin"
+coingecko_id = "fractal-bitcoin"
+coinpaprika_id = "fb-fractal-bitcoin"
+color = "gray"
+artwork_name = "fractalbitcoin"
+tags = []
+
+[[deployments]]
+token_id = "fractal-bitcoin"
+chain_id = "fractal-bitcoin"
+decimals = 8
+
+[[tokens]]
+id = "ecash"
+symbol = "XEC"
+name = "eCash"
+coingecko_id = "ecash"
+coinpaprika_id = "xec-ecash"
+color = "blue"
+artwork_name = "ecash"
+tags = []
+
+[[deployments]]
+token_id = "ecash"
+chain_id = "ecash"
+decimals = 2
+
+[[tokens]]
+id = "digibyte"
+symbol = "DGB"
+name = "DigiByte"
+coingecko_id = "digibyte"
+coinpaprika_id = "dgb-digibyte"
+color = "blue"
+artwork_name = "digibyte"
+tags = []
+
+[[deployments]]
+token_id = "digibyte"
+chain_id = "digibyte"
+decimals = 8
+
+[[tokens]]
+id = "vechain"
+symbol = "VET"
+name = "VeChain"
+coingecko_id = "vechain"
+coinpaprika_id = "vet-vechain"
+color = "blue"
+artwork_name = "vechain"
+tags = []
+
+[[deployments]]
+token_id = "vechain"
+chain_id = "vechain"
+decimals = 18
+
+[[tokens]]
+id = "vethor-token"
+symbol = "VTHO"
+name = "VeThor"
+coingecko_id = "vethor-token"
+coinpaprika_id = "vtho-vethor-token"
+color = "teal"
+artwork_name = "vtho"
+tags = []
+
+[[deployments]]
+token_id = "vethor-token"
+chain_id = "vechain"
+standard = "VIP-180"
+contract = "0x0000000000000000000000000000456e65726779"
+decimals = 18
+
+[[tokens]]
+id = "filecoin"
+symbol = "FIL"
+name = "Filecoin"
+coingecko_id = "filecoin"
+coinpaprika_id = "fil-filecoin"
+color = "blue"
+artwork_name = "filecoin"
+tags = []
+
+[[deployments]]
+token_id = "filecoin"
+chain_id = "filecoin"
+decimals = 18
+
+[[tokens]]
+id = "tezos"
+symbol = "XTZ"
+name = "Tezos"
+coingecko_id = "tezos"
+coinpaprika_id = "xtz-tezos"
+color = "blue"
+artwork_name = "tezos"
+tags = []
+
+[[deployments]]
+token_id = "tezos"
+chain_id = "tezos"
+decimals = 6
+
+[[tokens]]
+id = "starknet"
+symbol = "STRK"
+name = "Starknet"
+coingecko_id = "starknet"
+coinpaprika_id = "strk-starknet"
+color = "indigo"
+artwork_name = "starknet"
+tags = []
+
+[[deployments]]
+token_id = "starknet"
+chain_id = "starknet"
+decimals = 18
+
+[[tokens]]
+id = "hedera-hashgraph"
+symbol = "HBAR"
+name = "Hedera"
+coingecko_id = "hedera-hashgraph"
+coinpaprika_id = "hbar-hedera-hashgraph"
+color = "gray"
+artwork_name = "hedera"
+tags = []
+
+[[deployments]]
+token_id = "hedera-hashgraph"
+chain_id = "hedera"
+decimals = 8

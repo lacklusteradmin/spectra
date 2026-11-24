@@ -1,0 +1,259 @@
+{
+  "provenance": "@taquito/local-forging 25.1.1, @taquito/signer 25.1.1, @taquito/utils 25.1.1, ed25519-hd-key 2.0.0, bip39 3.1.0",
+  "protocol": "PsUshuai9QapM5TGj1JpuVGkdxz5GykdnEvS6Rh8SUVrARvZLCY",
+  "chain_id": "NetXdQprcVkpaWU",
+  "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  "accounts": [
+    {
+      "account": 0,
+      "path": "m/44'/1729'/0'/0'",
+      "private_key": "c62dc125754854b804d4d40b3559bc239e5bacf0da85e2f25e9970b0be1f8705",
+      "public_key": "edpku4US3ZykcZifjzSGFCmFr3zRgCKndE82estE4irj4d5oqDNDvf",
+      "public_key_hex": "370ffb098088e67f8284ca4938f8f1eac02c3e2ab150f29adc8a7075a5ce7e63",
+      "address": "tz1VQA4RP4fLjEEMW2FR4pE9kAg5abb5h5GL",
+      "edsk_seed": "edsk4BBVKnpwdnJrx9PB4hLkXZHtceSdSZVTfKBXArhmZ3Jg87Lcxi",
+      "edsk_secret_key": "edskS3wZrW6P38vvgnrHqjuLLz76vy5dv9QduxAQ2yG7WL5WjEubiJQUcwS49tFfwym1MBioLATPzQFckaYgGhWBUS7nmikuME"
+    },
+    {
+      "account": 1,
+      "path": "m/44'/1729'/1'/0'",
+      "private_key": "dc294bd87b566517ab9829bd625c6995386d4ac95774dc419aff9737ecad77ea",
+      "public_key": "edpku4J2bq38SAaNrP6kLV34ZzTBWu9FwLmmeFaXV3XzozUckyEvb6",
+      "public_key_hex": "36a7b5870a35e0c0b2b22b6faa1b8c096f2f00678d2ee5fa93e223aa51ec6ab3",
+      "address": "tz1gvekQVEwFFdxT2KrcY6kZgFK1qMN3mmWF",
+      "edsk_seed": "edsk4Ls1EP7EECRvQPKoaiWaWHSpzcZz5TCR9buhPL9iNLtLg9fWnV",
+      "edsk_secret_key": "edskS6pNYUKhc78sLdoLaoSzHrUAU2PQaZfX4C12KpBgnwqGUvW6XffATPw2z8sJqRpDoFVVz9h4KZG8TcGDwseKvjc1vaMLfb"
+    },
+    {
+      "account": 2,
+      "path": "m/44'/1729'/2'/0'",
+      "private_key": "fee4db3a027d27a13d54941d11ccf7edf8168aaccb324aadb3121794fbdfc2d7",
+      "public_key": "edpku882vSAHsYVVQpfHRsAr6BETm8XJWj6XPCG3RqqLJyDxFHfXBu",
+      "public_key_hex": "3f58a945a24aa456f6bc31113bc9396dbc451d9420bed024fcbbfb5b1d564578",
+      "address": "tz1gud9W8wmESYFsjbyqUcD8ZPC3GHQy3zhD",
+      "edsk_seed": "edsk4cACn97TT2pPrg2v8rxZTN4bQaJgKCdpo72vY8PwsT59j6vJL6",
+      "edsk_secret_key": "edskSBMvdNk3743zvCdPhJPBLkQuEN6vjfXs8pY5GaDBkz7or4jaQ8oSYAwz9zjkLfearsoRB8ShgpiyEMXBVMEK8p7yfbKPXH"
+    }
+  ],
+  "recipients": {
+    "tz2": "tz2V8sWp1WJGnFuWmCpcLVuGknMNWXE95bf4",
+    "tz3": "tz3Z2ieN3G57rFR8G24pnL2u4FPisJhHxVrt",
+    "tz4": "tz4BsmHRmR9BPaC5XVYNdXvtanf7FhocbPuX",
+    "kt1": "KT1H5b7LxEExkFd2Tng77TfuWbM5aPvHstPr"
+  },
+  "operations": [
+    {
+      "name": "transfer",
+      "branch": "BLXuuBECtE1bYReydLQTSD1FgYwmgg6VbEBSRf6nHwxrhdNvff5",
+      "contents": [
+        {
+          "kind": "transaction",
+          "source": "tz1VQA4RP4fLjEEMW2FR4pE9kAg5abb5h5GL",
+          "fee": "580",
+          "counter": "7",
+          "gas_limit": "2269",
+          "storage_limit": "0",
+          "amount": "1500000",
+          "destination": "tz1gvekQVEwFFdxT2KrcY6kZgFK1qMN3mmWF"
+        }
+      ],
+      "forged": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7c40407dd1100e0c65b0000e97f653b4db57e52d2d22b716cd559eacee9fc7200",
+      "signature": "edsigu2D1h8sXPVBpvDC4BVAtejGf1LwCZsq4o152zMPny494o53NCkJiTc5oouJ6AtuGnZCAHwpW4LxFYjUDnWjzydpXjYG9Wa",
+      "signature_hex": "d915b24253e8cee8d1253e83abe6acccc229ece0332e6bc602f55c26ed0bf5cc5bf617ac9e9342e996dfb0754e30efd7899e4c6049fc197519bc6bc23d760809",
+      "signed": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7c40407dd1100e0c65b0000e97f653b4db57e52d2d22b716cd559eacee9fc7200d915b24253e8cee8d1253e83abe6acccc229ece0332e6bc602f55c26ed0bf5cc5bf617ac9e9342e996dfb0754e30efd7899e4c6049fc197519bc6bc23d760809",
+      "hash": "opac2pJnnSfuYU69ou5P7neHjD5oy2CbqmGeo6ae5MwxddBoAbF"
+    },
+    {
+      "name": "reveal and transfer to an empty account",
+      "branch": "BLXuuBECtE1bYReydLQTSD1FgYwmgg6VbEBSRf6nHwxrhdNvff5",
+      "contents": [
+        {
+          "kind": "reveal",
+          "source": "tz1gud9W8wmESYFsjbyqUcD8ZPC3GHQy3zhD",
+          "fee": "274",
+          "counter": "246598708",
+          "gas_limit": "271",
+          "storage_limit": "0",
+          "public_key": "edpku882vSAHsYVVQpfHRsAr6BETm8XJWj6XPCG3RqqLJyDxFHfXBu"
+        },
+        {
+          "kind": "transaction",
+          "source": "tz1gud9W8wmESYFsjbyqUcD8ZPC3GHQy3zhD",
+          "fee": "529",
+          "counter": "246598709",
+          "gas_limit": "2201",
+          "storage_limit": "257",
+          "amount": "123456789",
+          "destination": "tz1VQA4RP4fLjEEMW2FR4pE9kAg5abb5h5GL"
+        }
+      ],
+      "forged": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6b00e94da4735ae89f3681490af70408b78bcc9f341b9202b498cb758f0200003f58a945a24aa456f6bc31113bc9396dbc451d9420bed024fcbbfb5b1d564578006c00e94da4735ae89f3681490af70408b78bcc9f341b9104b598cb7599118102959aef3a00006b1195925ca88aafe7b7e6a0adf20b97ec20edb700",
+      "signature": "edsigtiYBQWHZtkyvESQNZJngmcHDUWD7A3rBehTFTwENiFPWr13P1GhvbfZ1AnennCkfGLkHM2UMK75XNCWjc42gqNv5yx2xR4",
+      "signature_hex": "5206a9c23e6517c14f3b6871bbd000b57b379325e16a6f4a11927609250ddf82cd073878a2c6da9902da9616d68cab6826f6edaa2809bcf60dca2f102d894e01",
+      "signed": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6b00e94da4735ae89f3681490af70408b78bcc9f341b9202b498cb758f0200003f58a945a24aa456f6bc31113bc9396dbc451d9420bed024fcbbfb5b1d564578006c00e94da4735ae89f3681490af70408b78bcc9f341b9104b598cb7599118102959aef3a00006b1195925ca88aafe7b7e6a0adf20b97ec20edb7005206a9c23e6517c14f3b6871bbd000b57b379325e16a6f4a11927609250ddf82cd073878a2c6da9902da9616d68cab6826f6edaa2809bcf60dca2f102d894e01",
+      "hash": "ooZtjq98SVEsn7yrEuJZoCchE4nUYLb3foYsK8ksEqLV9gDNNbA"
+    },
+    {
+      "name": "transfer to tz2",
+      "branch": "BLXuuBECtE1bYReydLQTSD1FgYwmgg6VbEBSRf6nHwxrhdNvff5",
+      "contents": [
+        {
+          "kind": "transaction",
+          "source": "tz1VQA4RP4fLjEEMW2FR4pE9kAg5abb5h5GL",
+          "fee": "1000",
+          "counter": "127",
+          "gas_limit": "128",
+          "storage_limit": "16383",
+          "amount": "16384",
+          "destination": "tz2V8sWp1WJGnFuWmCpcLVuGknMNWXE95bf4"
+        }
+      ],
+      "forged": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7e8077f8001ff7f8080010001e464d4485002929464614bec942a0ebd30ff3b4400",
+      "signature": "edsigtbsjRszVbACAFMNapndns8NyN8RD3VXZhYaYMaKwPg776qcCqNcaZuBRgumNdtSeP9itnnUGtAvA9pgkULeYjz91GxYi1C",
+      "signature_hex": "1f18f95d35851f92e0234bb69fc731566b3c5757a08328999c88eedff5c3b293c80e8ba1c7f15461521e6177516ccd71719456508a58d160e6213aae81e2f905",
+      "signed": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7e8077f8001ff7f8080010001e464d4485002929464614bec942a0ebd30ff3b44001f18f95d35851f92e0234bb69fc731566b3c5757a08328999c88eedff5c3b293c80e8ba1c7f15461521e6177516ccd71719456508a58d160e6213aae81e2f905",
+      "hash": "oofZCyjL6EpC4khqwm7D66QC9jrVuWgUrH2KVzVdRP8QpPT3ryD"
+    },
+    {
+      "name": "transfer to tz3",
+      "branch": "BLXuuBECtE1bYReydLQTSD1FgYwmgg6VbEBSRf6nHwxrhdNvff5",
+      "contents": [
+        {
+          "kind": "transaction",
+          "source": "tz1VQA4RP4fLjEEMW2FR4pE9kAg5abb5h5GL",
+          "fee": "9223372036854775807",
+          "counter": "18446744073709551615",
+          "gas_limit": "1040000",
+          "storage_limit": "60000",
+          "amount": "9223372036854775807",
+          "destination": "tz3Z2ieN3G57rFR8G24pnL2u4FPisJhHxVrt"
+        }
+      ],
+      "forged": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7ffffffffffffffff7fffffffffffffffffff0180bd3fe0d403ffffffffffffffff7f00028b52ba594afe1ad0fb9addb34ecca3073ab4e54100",
+      "signature": "edsigtcXWWmFHptGTye1ya5amcVduzjxZj3rat5MWpayP1MbEHu5proAZ4jTjwashQTRaZKLbmwfxxBanm42gcwNEUrcRckF2aU",
+      "signature_hex": "24137a1192597a9694d8091c89c5c10061125141da18bf86a120969907a3bbea483e77f40effa63fff27a05c074d26beb70bad4edca8f6e8d00d909f07042508",
+      "signed": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7ffffffffffffffff7fffffffffffffffffff0180bd3fe0d403ffffffffffffffff7f00028b52ba594afe1ad0fb9addb34ecca3073ab4e5410024137a1192597a9694d8091c89c5c10061125141da18bf86a120969907a3bbea483e77f40effa63fff27a05c074d26beb70bad4edca8f6e8d00d909f07042508",
+      "hash": "op6tmraviuAAvP4H2V7CNzCympQanGpGwLC7oLMuemAEu2JzEo4"
+    },
+    {
+      "name": "transfer to tz4",
+      "branch": "BLXuuBECtE1bYReydLQTSD1FgYwmgg6VbEBSRf6nHwxrhdNvff5",
+      "contents": [
+        {
+          "kind": "transaction",
+          "source": "tz1VQA4RP4fLjEEMW2FR4pE9kAg5abb5h5GL",
+          "fee": "600",
+          "counter": "1",
+          "gas_limit": "2101",
+          "storage_limit": "0",
+          "amount": "1",
+          "destination": "tz4BsmHRmR9BPaC5XVYNdXvtanf7FhocbPuX"
+        }
+      ],
+      "forged": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7d80401b510000100031f7dd75aadc1fee1925360a8150c837fe0f19da900",
+      "signature": "edsigtvgxiebtGpGZh11UVczAxBkkotmWBSb7MLsKvJ5ekUH4BUddpZqhpYFQRqxw5Cn3gStNZSSq3FbYXjfYWj9xT2GiTAna84",
+      "signature_hex": "aee80bbd818203156d8fe0a8acbd0f555367fe00621c6e460a866953d37fa568215fff5486ad7b29dff42387a643da4f415c2f911f6acd626b3e5b0aafd03705",
+      "signed": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7d80401b510000100031f7dd75aadc1fee1925360a8150c837fe0f19da900aee80bbd818203156d8fe0a8acbd0f555367fe00621c6e460a866953d37fa568215fff5486ad7b29dff42387a643da4f415c2f911f6acd626b3e5b0aafd03705",
+      "hash": "ooqdqr1TNcdygUm2dNghySqehXBvg3H1KZr7rweKEz6Qo8PMq15"
+    },
+    {
+      "name": "transfer to a contract",
+      "branch": "BLXuuBECtE1bYReydLQTSD1FgYwmgg6VbEBSRf6nHwxrhdNvff5",
+      "contents": [
+        {
+          "kind": "transaction",
+          "source": "tz1VQA4RP4fLjEEMW2FR4pE9kAg5abb5h5GL",
+          "fee": "2500",
+          "counter": "42",
+          "gas_limit": "12000",
+          "storage_limit": "120",
+          "amount": "5000000",
+          "destination": "KT1H5b7LxEExkFd2Tng77TfuWbM5aPvHstPr"
+        }
+      ],
+      "forged": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7c4132ae05d78c096b102015d3457613be02737706699883bf10f8f079be7040000",
+      "signature": "edsigu4GDv4mtdrSHcUmtpgZL9qH99EzaKiSvHiPww9uuozQ7cN9EVpJqybgK9HmdWiA5fZn5cT2XGxhdMLw9dspQyeRsFQAksR",
+      "signature_hex": "e8cb8a01a3687a7a61c4467c5f239b493601013bcc00d47eb0515b14bb215656627f707da35747134fc8a067a5692c592667d94f7e0038ca5324d3aeb1b9140e",
+      "signed": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6c006b1195925ca88aafe7b7e6a0adf20b97ec20edb7c4132ae05d78c096b102015d3457613be02737706699883bf10f8f079be7040000e8cb8a01a3687a7a61c4467c5f239b493601013bcc00d47eb0515b14bb215656627f707da35747134fc8a067a5692c592667d94f7e0038ca5324d3aeb1b9140e",
+      "hash": "oognuKhhiznm42TZNWELjmUJYfZ3mXnaoWvfuaJx3Q9n21xKpJd"
+    }
+  ],
+  "onchain": [
+    {
+      "hash": "ootbVsgxdptx4MrpHNkRjLSkRTR5PbDeAH9XVVR9xc8N69UHFsm",
+      "level": 15953142,
+      "branch": "BLXuuBECtE1bYReydLQTSD1FgYwmgg6VbEBSRf6nHwxrhdNvff5",
+      "contents": [
+        {
+          "kind": "reveal",
+          "source": "tz1LHQgG3wJPBtxqUDJSbN4FX2WNPiuurj2M",
+          "fee": "291",
+          "counter": "240753239",
+          "gas_limit": "270",
+          "storage_limit": "0",
+          "public_key": "edpkuc4t4nhvBkMHa3bDUAKL8hpzT6jQGUFfzwVa12nGKZDrykjonK"
+        },
+        {
+          "kind": "transaction",
+          "source": "tz1LHQgG3wJPBtxqUDJSbN4FX2WNPiuurj2M",
+          "fee": "578",
+          "counter": "240753240",
+          "gas_limit": "2201",
+          "storage_limit": "0",
+          "amount": "28419350",
+          "destination": "tz1cvjyVyd2T5Wozmx7CTNBH8yofzyLyJpi7"
+        }
+      ],
+      "signature": "siggWQwhgoDKshc5cYNrepcshE59iL9wYYykJCHrueMDpcmD14RfuP9uiywCGrVoFVXGx3CtzCDRgFBA28rEeGLTwYFFHGRs",
+      "public_key": "edpkuc4t4nhvBkMHa3bDUAKL8hpzT6jQGUFfzwVa12nGKZDrykjonK",
+      "protocol": "PsUshuai9QapM5TGj1JpuVGkdxz5GykdnEvS6Rh8SUVrARvZLCY",
+      "forged": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6b000711be2eb1be72bc77d12084dd9810ee5d53b30ca302d7b4e6728e0200007ecce2bb709daf63b0ed83c868b6653a36f606fa18454de19e109be1c7562a6b006c000711be2eb1be72bc77d12084dd9810ee5d53b30cc204d8b4e67299110096cac60d0000bda3412a720e64a99a60d6895eb940fc5468c66800",
+      "signature_hex": "8d8dd07db573d3bf2119cf193c5d423c73beae7eef59d9c75a975180f4975e19773937f61c4ddc9a5d6c297f2c3853fd129d6079f19fc55c56adbc384bf0bf0c",
+      "signed": "6c26951a60e70f266bc4eac36a61d77a1e933086d8279ff114510ad077229b2d6b000711be2eb1be72bc77d12084dd9810ee5d53b30ca302d7b4e6728e0200007ecce2bb709daf63b0ed83c868b6653a36f606fa18454de19e109be1c7562a6b006c000711be2eb1be72bc77d12084dd9810ee5d53b30cc204d8b4e67299110096cac60d0000bda3412a720e64a99a60d6895eb940fc5468c668008d8dd07db573d3bf2119cf193c5d423c73beae7eef59d9c75a975180f4975e19773937f61c4ddc9a5d6c297f2c3853fd129d6079f19fc55c56adbc384bf0bf0c"
+    },
+    {
+      "hash": "ooUdbpEtBjmifpzxPxkT8BSotG9Wsej3n7JeqMbSNJ8cRfXfAJq",
+      "level": 15953458,
+      "branch": "BKzRoytPVjax2ZFUJesNnMcfvJHq879X4QugapKxXV7szoRAAQx",
+      "contents": [
+        {
+          "kind": "transaction",
+          "source": "tz1UKmZhi8dhUX5a5QTfCrsH9pK4dt1dVfJo",
+          "fee": "2000",
+          "counter": "226364333",
+          "gas_limit": "10600",
+          "storage_limit": "600",
+          "amount": "990457",
+          "destination": "tz1YTqCkRmoB43A4KSe65Z8bjRt16KMqFcMK"
+        }
+      ],
+      "signature": "sigTmsXkm31Gq7EW3GbZSwgKthHTWZkipdAW4DWVnNcCDxNibXyt5FqVemfDRGXUJGTx9hfmvQzKp2B9Xg5CqK5WSRQPVsz8",
+      "protocol": "PsUshuai9QapM5TGj1JpuVGkdxz5GykdnEvS6Rh8SUVrARvZLCY",
+      "forged": "24a96882437a8d704fadd1d16b1e81bf8a06711b0cf4561ae731efde12b0a9e26c005f450441f41ee11eee78a31d1e1e55627c783bd6d00fad97f86be852d804f9b93c00008cabe28a95b0f9e46c017b2f94410d6ecb0103e300",
+      "signature_hex": "2c39734c61a720c799293d11053174f0451918ff2f399a646702e32597edf5d5d2c7c798d56315f257cbc377554a023728bdd7a4c7858d27db92c3bb12732308",
+      "signed": "24a96882437a8d704fadd1d16b1e81bf8a06711b0cf4561ae731efde12b0a9e26c005f450441f41ee11eee78a31d1e1e55627c783bd6d00fad97f86be852d804f9b93c00008cabe28a95b0f9e46c017b2f94410d6ecb0103e3002c39734c61a720c799293d11053174f0451918ff2f399a646702e32597edf5d5d2c7c798d56315f257cbc377554a023728bdd7a4c7858d27db92c3bb12732308"
+    },
+    {
+      "hash": "oo4tJTxKbT4qJ9apJbCWLKX7EGTtKy7UJhPqmsvw3Sp1zWjfMXn",
+      "level": 15953458,
+      "branch": "BLghfuRzu1zRtwNvfMrcbSBQeXEbYrc55K9FTdW4htq8Cbsy39i",
+      "contents": [
+        {
+          "kind": "transaction",
+          "source": "tz2FFbevyoF259M2KjEB4LcSJzUa8bgWryEy",
+          "fee": "515",
+          "counter": "244942662",
+          "gas_limit": "2155",
+          "storage_limit": "257",
+          "amount": "25531312",
+          "destination": "tz2PUxDFm8Mz7aCPoxzoRA3dv9GBiakWVxiN"
+        }
+      ],
+      "signature": "sigjFgwvfzq7guFEmc5FBW3JrAMNhQd1rYYJHnrXSUvksLthqnaqz25Bs4tAMoUcwseuPgW8bWcRSaWMw8qnqjgT9gftJZkE",
+      "protocol": "PsUshuai9QapM5TGj1JpuVGkdxz5GykdnEvS6Rh8SUVrARvZLCY",
+      "forged": "801b89c8a7fdfb7f0559f4569ca6aedbe6e3e1737e948eac0ef38f3fee5f3a246c014c18bda070dd23cc2c97ef1e285767ea9b14ed428304c68ee674eb108102b0a7960c0001a660509be4e755e7f3d0e1fda48b985abd53489d00",
+      "signature_hex": "a28b58b6f41d4bcfd7cfd4d938f5dbc5ea601e113faafce34bbde8591290e9ec2233cc97e68220f394e7b5109e1584f946eca79fbad5339327105acdb83c4965",
+      "signed": "801b89c8a7fdfb7f0559f4569ca6aedbe6e3e1737e948eac0ef38f3fee5f3a246c014c18bda070dd23cc2c97ef1e285767ea9b14ed428304c68ee674eb108102b0a7960c0001a660509be4e755e7f3d0e1fda48b985abd53489d00a28b58b6f41d4bcfd7cfd4d938f5dbc5ea601e113faafce34bbde8591290e9ec2233cc97e68220f394e7b5109e1584f946eca79fbad5339327105acdb83c4965"
+    }
+  ]
+}

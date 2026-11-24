@@ -1407,3 +1407,50 @@ fn decred_and_kaspa_independent_mnemonic_vectors() {
         Some("kaspatest:qrc2959g0pqda53glnfd238cdnmk24zxzkj8n5x83rkktx4h73dkc4ave6wyg")
     );
 }
+
+/// VeChainThor accounts along VeWorld's path, `m/44'/818'/0'/0/{index}`, are
+/// the keys and checksummed addresses @vechain/sdk-core derives
+/// (`vechain-vectors.json`), and a raw key holds the account its phrase does.
+#[test]
+fn vechain_accounts_match_the_vechain_sdk() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../tests/fixtures/vechain-vectors.json")).unwrap();
+    let phrase = fixture["mnemonic"].as_str().unwrap();
+    for account in fixture["accounts"].as_array().unwrap() {
+        let path = account["path"].as_str().unwrap();
+        let derived =
+            derive_for_chain(Chain::Vechain, phrase, path, None, None, None, Wants::ALL).unwrap();
+        assert_eq!(
+            derived.address.as_deref(),
+            account["address"].as_str(),
+            "{path}"
+        );
+        assert_eq!(
+            derived.public_key_hex.as_deref(),
+            account["public_key"].as_str(),
+            "{path}"
+        );
+        assert_eq!(
+            derived.private_key_hex.as_ref().map(|key| key.as_str()),
+            account["private_key"].as_str(),
+            "{path}"
+        );
+        let imported = crate::derivation::dispatch::derive_from_private_key(
+            Chain::Vechain,
+            account["private_key"].as_str().unwrap().into(),
+            true,
+            true,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(imported.address, derived.address, "{path}");
+        let index = account["index"].as_u64().unwrap() as u32;
+        let profile = Chain::Vechain.derivation_profiles()[0];
+        assert_eq!(
+            Chain::Vechain
+                .derivation_profile_path(profile, index)
+                .as_deref(),
+            Some(path)
+        );
+    }
+}

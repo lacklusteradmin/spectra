@@ -68,7 +68,7 @@ pub fn scheme_for(chain: Chain, address: &str) -> Option<MessageScheme> {
         Chain::Tron => Some(MessageScheme::TronSignedMessage),
         Chain::Solana => Some(MessageScheme::SolanaMessage),
         Chain::Sui => Some(MessageScheme::SuiPersonalMessage),
-        Chain::Polkadot | Chain::Bittensor => Some(MessageScheme::SubstrateBytes),
+        _ if chain.is_substrate() => Some(MessageScheme::SubstrateBytes),
         Chain::Stellar => Some(MessageScheme::StellarSignedMessage),
         Chain::Cardano => {
             schemes::cardano::signs(address).then_some(MessageScheme::CardanoDataSignature)
@@ -238,9 +238,8 @@ pub(crate) fn sign_message(
     // sr25519 signs with the account's own keypair, whichever expansion or
     // junction gave it.
     if scheme == MessageScheme::SubstrateBytes {
-        let public = crate::derivation::primitives::decode_ss58(address, None)
-            .map_err(|e| SendError::Invalid(format!("sr25519 address: {e}").into()))?
-            .1;
+        let public = crate::derivation::polkadot::decode_ss58(chain, address)
+            .map_err(|e| SendError::Invalid(format!("sr25519 address: {e}").into()))?;
         let pair = crate::derivation::substrate_path::signing_keypair(&key, &public)
             .map_err(|e| SendError::Invalid(e.to_string().into()))?;
         let signature =

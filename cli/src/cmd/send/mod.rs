@@ -24,15 +24,17 @@ use crate::ctx::Ctx;
 use crate::error::CliResult;
 use crate::out::{self, Out, Report};
 
-/// The XRP destination tag, Stellar memo or TON comment a payment carries to
-/// a recipient that shares its account. Core checks it against the network.
+/// The XRP destination tag, Stellar, Cosmos or Hedera memo or TON comment a
+/// payment carries to a recipient that shares its account. Core checks it
+/// against the network.
 #[derive(Args, Clone)]
 #[group(multiple = false)]
 pub struct MemoArgs {
     /// XRP Ledger destination tag, a whole number.
     #[arg(long, value_name = "TAG")]
     destination_tag: Option<String>,
-    /// Stellar text memo, up to 28 bytes.
+    /// Text memo: Stellar's, up to 28 bytes, a Cosmos network's, up to its
+    /// own limit (256 or 512 bytes), or Hedera's, up to 100 bytes.
     #[arg(long, value_name = "TEXT")]
     memo_text: Option<String>,
     /// Stellar ID memo, a whole number.

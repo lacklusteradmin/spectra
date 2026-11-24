@@ -3,8 +3,9 @@
 //! Most networks read BIP-39. Monero reads its own 25-word seed and Polyseed,
 //! and TON its own 24-word mnemonic: a phrase in another format restores no
 //! wallet those networks' own apps would, so it is refused rather than read
-//! another way. The setup verdict, the import and creation all ask here, so
-//! the three cannot disagree about what a phrase on a network is.
+//! another way. Algorand reads its 25-word mnemonic, one account's key, and
+//! BIP-39. The setup verdict, the import and creation all ask here, so the
+//! three cannot disagree about what a phrase on a network is.
 
 use zeroize::Zeroizing;
 
@@ -21,6 +22,7 @@ pub(crate) fn word_counts(format: WalletSecretFormat) -> &'static [u32] {
         WalletSecretFormat::MoneroPhrase => &[25],
         WalletSecretFormat::Polyseed => &[16],
         WalletSecretFormat::TonMnemonic => &[24],
+        WalletSecretFormat::AlgorandMnemonic => &[25],
         _ => &[],
     }
 }
@@ -34,6 +36,8 @@ pub(crate) fn entropy_bits(format: WalletSecretFormat, word_count: u32) -> u32 {
         WalletSecretFormat::Polyseed => 150,
         // 264 bits of words, less the 8 the TON check spends.
         WalletSecretFormat::TonMnemonic => 256,
+        // The key's 256 bits; the 25th word is its checksum.
+        WalletSecretFormat::AlgorandMnemonic => 256,
         _ => 0,
     }
 }
@@ -90,7 +94,9 @@ pub(crate) fn wordlists(format: WalletSecretFormat) -> Vec<PhraseWordlist> {
             .iter()
             .map(PhraseWordlist::Polyseed)
             .collect(),
-        WalletSecretFormat::TonMnemonic => vec![PhraseWordlist::Bip39(bip39::Language::English)],
+        WalletSecretFormat::TonMnemonic | WalletSecretFormat::AlgorandMnemonic => {
+            vec![PhraseWordlist::Bip39(bip39::Language::English)]
+        }
         _ => Vec::new(),
     }
 }
@@ -142,14 +148,37 @@ pub(crate) fn reads(
                 _ => Err(PhraseProblem::InvalidChecksum),
             }
         }
+        (WalletSecretFormat::AlgorandMnemonic, PhraseWordlist::Bip39(_)) => {
+            crate::derivation::algorand::seed_from_mnemonic(&words.join(" "))
+                .map(|_| ())
+                .map_err(|_| PhraseProblem::InvalidChecksum)
+        }
         _ => Err(PhraseProblem::InvalidChecksum),
     }
+}
+
+/// The format a phrase of `phrase`'s length is read in on `chain`, if any
+/// of its formats has that length. No two of a chain's formats share one.
+fn format_of(chain: Chain, phrase: &str) -> Option<WalletSecretFormat> {
+    let count = phrase.split_whitespace().count() as u32;
+    chain
+        .phrase_formats()
+        .into_iter()
+        .find(|format| word_counts(*format).contains(&count))
+}
+
+/// Whether `phrase` on `chain` is one account's key rather than a seed
+/// accounts derive from: Algorand's 25-word mnemonic, on a chain that walks
+/// a path for its other format. Such a phrase stores no derivation path and
+/// refuses one.
+pub(crate) fn is_single_key(chain: Chain, phrase: &str) -> bool {
+    format_of(chain, phrase) == Some(WalletSecretFormat::AlgorandMnemonic)
 }
 
 /// The format `phrase` is on `chain`, refusing a phrase none of the chain's
 /// formats reads. `password` is the derivation passphrase: TON's mnemonic
 /// password, which must open a password-protected mnemonic and must be absent
-/// for any other.
+/// for any other; Algorand's mnemonic takes none.
 pub(crate) fn check_phrase(
     chain: Chain,
     phrase: &str,
@@ -157,10 +186,7 @@ pub(crate) fn check_phrase(
 ) -> Result<WalletSecretFormat, DerivationError> {
     let count = phrase.split_whitespace().count() as u32;
     let formats = chain.phrase_formats();
-    let Some(&format) = formats
-        .iter()
-        .find(|format| word_counts(**format).contains(&count))
-    else {
+    let Some(format) = format_of(chain, phrase) else {
         let mut counts: Vec<u32> = formats
             .iter()
             .flat_map(|format| word_counts(*format).iter().copied())
@@ -188,6 +214,15 @@ pub(crate) fn check_phrase(
         }
         WalletSecretFormat::TonMnemonic => {
             crate::derivation::ton::check_ton_mnemonic(phrase, password.unwrap_or(""))?;
+        }
+        WalletSecretFormat::AlgorandMnemonic => {
+            crate::derivation::algorand::seed_from_mnemonic(phrase)?;
+            if password.is_some_and(|password| !password.is_empty()) {
+                return Err(DerivationError::refused(
+                    "An %@ 25-word mnemonic takes no passphrase.",
+                    [chain.chain_display_name()],
+                ));
+            }
         }
         _ => return Err(DerivationError::invalid("Not a phrase format.")),
     }
@@ -226,6 +261,9 @@ pub(crate) fn generate_phrase(
     match format {
         WalletSecretFormat::MoneroPhrase => Ok(crate::derivation::monero_words::generate()),
         WalletSecretFormat::TonMnemonic => Ok(crate::derivation::ton::generate_ton_mnemonic()?),
+        WalletSecretFormat::AlgorandMnemonic => {
+            Ok(crate::derivation::algorand::generate_mnemonic())
+        }
         _ => {
             use rand::RngCore;
             let mut entropy =
@@ -240,8 +278,8 @@ pub(crate) fn generate_phrase(
 
 /// Generate a new phrase for a wallet on `chain`, in the format the chain's
 /// own wallets restore: BIP-39 for most, Monero's 25-word seed, TON's 24-word
-/// mnemonic. `word_count` is one of `created_phrase_lengths`; `None` takes
-/// the shortest.
+/// mnemonic, Algorand's 25-word mnemonic. `word_count` is one of
+/// `created_phrase_lengths`; `None` takes the shortest.
 ///
 /// Refuses a length the chain's created format does not have rather than
 /// substituting one.

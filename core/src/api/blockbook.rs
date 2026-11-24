@@ -23,8 +23,9 @@ struct BlockbookUtxo {
     height: Option<u64>,
 }
 
-/// A Peercoin unspent output, verified against its transaction.
-pub(crate) struct PeercoinOutput {
+/// An unspent output on a proof-of-stake network, verified against its
+/// transaction.
+pub(crate) struct VerifiedOutput {
     pub(crate) input: UtxoInput,
     pub(crate) confirmations: u64,
     /// Whether a minting or coinstake reward is old enough to spend; any
@@ -249,14 +250,14 @@ impl BlockbookClient {
             .collect::<Result<_, ApiError>>()
     }
 
-    /// The spendable outputs among [`Self::fetch_peercoin_outputs`]: the
+    /// The spendable outputs among [`Self::fetch_verified_outputs`]: the
     /// mature ones.
     pub(crate) async fn fetch_peercoin_inputs(
         &self,
         address: &str,
     ) -> Result<Vec<UtxoInput>, ApiError> {
         Ok(self
-            .fetch_peercoin_outputs(address)
+            .fetch_verified_outputs(address)
             .await?
             .into_iter()
             .filter(|output| output.mature)
@@ -264,18 +265,19 @@ impl BlockbookClient {
             .collect())
     }
 
-    /// Peercoin reward outputs need maturity checks, and coinstake commonly
-    /// pays P2PK rather than the P2PKH script represented by its address.
-    /// Derive each output's value and script from the hash-verified
-    /// transaction, and say whether a reward has matured enough to spend.
-    pub(crate) async fn fetch_peercoin_outputs(
+    /// Peercoin's and Qtum's reward outputs need maturity checks, and a
+    /// coinstake commonly pays P2PK rather than the P2PKH script represented
+    /// by its address. Derive each output's value and script from the
+    /// hash-verified transaction, and say whether a reward has matured
+    /// enough to spend.
+    pub(crate) async fn fetch_verified_outputs(
         &self,
         address: &str,
-    ) -> Result<Vec<PeercoinOutput>, ApiError> {
+    ) -> Result<Vec<VerifiedOutput>, ApiError> {
         use futures::{StreamExt, TryStreamExt};
         let maturity = self
             .chain
-            .peercoin_generated_output_maturity()
+            .generated_output_maturity()
             .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
         let address = self.normalize_address(address);
         let outputs: Vec<BlockbookUtxo> = self.get(&format!("/api/v2/utxo/{address}")).await?;
@@ -285,7 +287,7 @@ impl BlockbookClient {
                 let txid: Txid = output
                     .txid
                     .parse()
-                    .map_err(|e| ApiError::Decode(format!("Invalid Peercoin outpoint: {e}")))?;
+                    .map_err(|e| ApiError::Decode(format!("Invalid outpoint: {e}")))?;
                 Ok((txid, output))
             })
             .collect::<Result<Vec<_>, ApiError>>()?;
@@ -297,16 +299,19 @@ impl BlockbookClient {
                 let raw = response
                     .hex
                     .as_deref()
-                    .or_decode("Peercoin transaction has no raw bytes")?;
-                let tx = decode_peercoin_transaction(raw, &id)?;
+                    .or_decode("Blockbook transaction has no raw bytes")?;
+                let tx = match self.chain.mainnet_counterpart() {
+                    crate::registry::Chain::Peercoin => decode_peercoin_transaction(raw, &id)?,
+                    _ => decode_transaction(raw, &id)?,
+                };
                 if response.txid != id {
                     return Err(ApiError::Decode(
-                        "Peercoin transaction identity changed".into(),
+                        "Blockbook transaction identity changed".into(),
                     ));
                 }
                 let confirmations = response
                     .confirmations
-                    .or_decode("Peercoin transaction has no confirmation count")?;
+                    .or_decode("Blockbook transaction has no confirmation count")?;
                 Ok((id, (tx, confirmations)))
             })
             .buffer_unordered(8)
@@ -316,16 +321,16 @@ impl BlockbookClient {
         let mut seen = std::collections::BTreeSet::new();
         for (txid, output) in outputs {
             if !seen.insert((txid, output.vout)) {
-                return Err(ApiError::Decode("Duplicate Peercoin unspent output".into()));
+                return Err(ApiError::Decode("Duplicate unspent output".into()));
             }
             let (tx, confirmations) = &transactions[&txid.to_string()];
             let txout = tx
                 .output
                 .get(output.vout as usize)
-                .or_decode("Peercoin output index is invalid")?;
+                .or_decode("Output index is invalid")?;
             if txout.value.to_sat() != parse_units(&output.value)? {
                 return Err(ApiError::Decode(
-                    "Peercoin output amount does not match transaction".into(),
+                    "Output amount does not match transaction".into(),
                 ));
             }
             // Historical Peercoin blocks contain zero-valued outputs that
@@ -337,7 +342,7 @@ impl BlockbookClient {
                 && tx.output.len() >= 2
                 && tx.output[0].value.to_sat() == 0
                 && tx.output[0].script_pubkey.is_empty();
-            inputs.push(PeercoinOutput {
+            inputs.push(VerifiedOutput {
                 input: UtxoInput {
                     txid,
                     vout: output.vout,
@@ -561,6 +566,20 @@ fn parse_units(value: &str) -> Result<u64, ApiError> {
     value
         .parse()
         .map_err(|_| ApiError::Decode("Blockbook amount exceeds u64".into()))
+}
+
+/// A transaction in Bitcoin's layout, refused unless it hashes to
+/// `expected_id`.
+fn decode_transaction(raw: &str, expected_id: &str) -> Result<bitcoin::Transaction, ApiError> {
+    let bytes = hex::decode(raw).map_err(|e| ApiError::Decode(e.to_string()))?;
+    let tx: bitcoin::Transaction = bitcoin::consensus::deserialize(&bytes)
+        .map_err(|e| ApiError::Decode(format!("Invalid transaction: {e}")))?;
+    if tx.compute_txid().to_string() != expected_id {
+        return Err(ApiError::Decode(
+            "Transaction hash does not match its bytes".into(),
+        ));
+    }
+    Ok(tx)
 }
 
 /// Versions 1/2 serialize a timestamp after the version. Version 3 uses

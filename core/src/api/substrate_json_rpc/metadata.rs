@@ -1,8 +1,11 @@
 //! Decode the node's SCALE contract before interpreting storage or signing.
-//! V14 is what both Asset Hub public RPC deployments expose through
-//! `state_getMetadata`. Unknown versions and extensions are refused.
+//! V14 is what every supported network's public RPC nodes expose through
+//! `state_getMetadata`. Unknown versions and extensions are refused; which
+//! fee extension a network takes, and the inert ones of its own, are its
+//! registry facts (`Chain::substrate`).
 
 use super::*;
+use crate::registry::SubstrateFeePayment;
 mod assets;
 pub use assets::AssetTransferCall;
 mod multisig;
@@ -201,9 +204,10 @@ impl Metadata {
         &self,
         chain: Chain,
     ) -> Result<(u8, u8, u128, Vec<PolkadotExtension>), ApiError> {
-        let balance_type = match chain.substrate_balance_bytes() {
-            Some(8) => TypeDefPrimitive::U64,
-            Some(16) => TypeDefPrimitive::U128,
+        let network = chain.substrate().ok_or_else(unsupported)?;
+        let balance_type = match network.balance_bytes {
+            8 => TypeDefPrimitive::U64,
+            16 => TypeDefPrimitive::U128,
             _ => return Err(unsupported()),
         };
         self.validate_account(balance_type.clone())?;
@@ -265,7 +269,7 @@ impl Metadata {
         if !self.primitive(deposit.ty.id, balance_type.clone()) {
             return Err(unsupported());
         }
-        let balance_bytes = chain.substrate_balance_bytes().ok_or_else(unsupported)?;
+        let balance_bytes = network.balance_bytes;
         if deposit.value.len() != balance_bytes {
             return Err(unsupported());
         }
@@ -292,11 +296,9 @@ impl Metadata {
                 {
                     PolkadotExtension::Unit
                 }
-                "SudoTransactionExtension"
-                | "CheckShieldedTxValidity"
-                | "SubtensorTransactionExtension"
-                | "DrandPriority"
-                    if chain == Chain::Bittensor && self.unit(ty) && unit_additional =>
+                own if network.inert_extensions.contains(&own)
+                    && self.unit(ty)
+                    && unit_additional =>
                 {
                     PolkadotExtension::Unit
                 }
@@ -324,7 +326,9 @@ impl Metadata {
                 "CheckNonce" if self.compact(ty, TypeDefPrimitive::U32) && unit_additional => {
                     PolkadotExtension::Nonce
                 }
-                "ChargeAssetTxPayment" if unit_additional => {
+                "ChargeAssetTxPayment"
+                    if network.fee_payment == SubstrateFeePayment::Asset && unit_additional =>
+                {
                     let TypeDef::Composite(fields) = &self.ty(ty)?.type_def else {
                         return Err(unsupported());
                     };
@@ -339,7 +343,7 @@ impl Metadata {
                     PolkadotExtension::AssetPayment
                 }
                 "ChargeTransactionPayment"
-                    if chain == Chain::Bittensor
+                    if network.fee_payment == SubstrateFeePayment::Native
                         && self.compact(ty, balance_type.clone())
                         && unit_additional =>
                 {
@@ -368,10 +372,9 @@ impl Metadata {
             "CheckGenesis",
             "CheckMortality",
             "CheckNonce",
-            if chain == Chain::Bittensor {
-                "ChargeTransactionPayment"
-            } else {
-                "ChargeAssetTxPayment"
+            match network.fee_payment {
+                SubstrateFeePayment::Native => "ChargeTransactionPayment",
+                SubstrateFeePayment::Asset => "ChargeAssetTxPayment",
             },
             "CheckMetadataHash",
         ] {
@@ -634,9 +637,15 @@ mod tests {
     }
 
     fn event(index: u32, succeeded: bool) -> Vec<u8> {
+        event_at(0, index, succeeded)
+    }
+
+    /// `System.ExtrinsicSuccess` or `ExtrinsicFailed` for extrinsic `index`,
+    /// with `System` at pallet index `system`.
+    fn event_at(system: u8, index: u32, succeeded: bool) -> Vec<u8> {
         let mut bytes = vec![0]; // ApplyExtrinsic
         bytes.extend(index.encode());
-        bytes.push(0); // System
+        bytes.push(system);
         bytes.push(u8::from(!succeeded));
         if !succeeded {
             bytes.push(2);
@@ -657,12 +666,51 @@ mod tests {
         assert!(metadata.dispatch_outcome(&bytes, 2).is_err());
         bytes.pop();
         assert!(metadata.dispatch_outcome(&bytes, 1).is_err());
-        for chain in [Chain::Polkadot, Chain::PolkadotWestend, Chain::Bittensor] {
+        for chain in Chain::all().filter(|chain| chain.is_substrate()) {
             let metadata =
                 Metadata::decode(crate::api::substrate_json_rpc::tests::fixture(chain)).unwrap();
+            let system = metadata.pallet("System").unwrap().index;
             let mut success = Compact(1u32).encode();
-            success.extend(event(3, true));
-            assert!(metadata.dispatch_outcome(&success, 3).unwrap());
+            success.extend(event_at(system, 3, true));
+            assert!(metadata.dispatch_outcome(&success, 3).unwrap(), "{chain}");
+        }
+    }
+
+    /// A finalized block's own `System.Events`, read from Kusama Asset Hub
+    /// and Astar (`substrate-blocks.json`), resolves every extrinsic as
+    /// @polkadot/types decodes its events (`substrate-transfers.json`),
+    /// skipping every other event by the runtime's types.
+    #[test]
+    fn live_events_resolve_as_polkadot_js_reads_them() {
+        let blocks: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/substrate-blocks.json"
+        ))
+        .unwrap();
+        let vectors: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/substrate-transfers.json"
+        ))
+        .unwrap();
+        for chain in [Chain::Kusama, Chain::Astar] {
+            let block = &blocks[chain.str_id()];
+            let metadata =
+                Metadata::decode(crate::api::substrate_json_rpc::tests::fixture(chain)).unwrap();
+            let events = decode_hex(block["events"].as_str().unwrap()).unwrap();
+            let outcomes = vectors[chain.str_id()]["block"]["outcomes"]
+                .as_object()
+                .unwrap();
+            let count = block["extrinsicCount"].as_u64().unwrap();
+            assert_eq!(outcomes.len() as u64, count, "{chain}");
+            for (index, succeeded) in outcomes {
+                assert_eq!(
+                    metadata
+                        .dispatch_outcome(&events, index.parse().unwrap())
+                        .unwrap(),
+                    succeeded.as_bool().unwrap(),
+                    "{chain} extrinsic {index}"
+                );
+            }
+            let past = u32::try_from(count).unwrap();
+            assert!(metadata.dispatch_outcome(&events, past).is_err(), "{chain}");
         }
     }
 
@@ -677,5 +725,55 @@ mod tests {
         assert!(extensions.contains(&PolkadotExtension::NativePayment));
         assert!(extensions.contains(&PolkadotExtension::MetadataHash));
         assert!(metadata.contract(Chain::Polkadot).is_err());
+    }
+
+    /// Each network's transfer call, existential deposit and extensions are
+    /// read from its runtime as @polkadot/types reads them
+    /// (`substrate-transfers.json`), and a runtime paying fees through the
+    /// other extension is refused: Kusama Asset Hub's `ChargeAssetTxPayment`
+    /// is not Astar's `ChargeTransactionPayment`.
+    #[test]
+    fn each_networks_contract_matches_polkadot_js() {
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/substrate-transfers.json"
+        ))
+        .unwrap();
+        for chain in Chain::all().filter(|c| c.is_substrate() && !c.is_testnet()) {
+            let vectors = &fixture[chain.str_id()];
+            let metadata =
+                Metadata::decode(crate::api::substrate_json_rpc::tests::fixture(chain)).unwrap();
+            let (pallet, call, deposit, extensions) = metadata.contract(chain).unwrap();
+            assert_eq!(
+                (u64::from(pallet), u64::from(call)),
+                (
+                    vectors["transfer"]["pallet"].as_u64().unwrap(),
+                    vectors["transfer"]["call"].as_u64().unwrap()
+                ),
+                "{chain}"
+            );
+            assert_eq!(
+                deposit.to_string(),
+                vectors["existentialDeposit"].as_str().unwrap(),
+                "{chain}"
+            );
+            assert_eq!(
+                extensions.len(),
+                vectors["extensions"].as_array().unwrap().len(),
+                "{chain}"
+            );
+        }
+        let kusama = Metadata::decode(crate::api::substrate_json_rpc::tests::fixture(
+            Chain::Kusama,
+        ))
+        .unwrap();
+        let astar =
+            Metadata::decode(crate::api::substrate_json_rpc::tests::fixture(Chain::Astar)).unwrap();
+        assert!(kusama.contract(Chain::Astar).is_err());
+        assert!(astar.contract(Chain::Kusama).is_err());
+        let (_, _, _, extensions) = astar.contract(Chain::Astar).unwrap();
+        assert!(extensions.contains(&PolkadotExtension::NativePayment));
+        assert!(!extensions.contains(&PolkadotExtension::AssetPayment));
+        let (_, _, _, extensions) = kusama.contract(Chain::Kusama).unwrap();
+        assert!(extensions.contains(&PolkadotExtension::AssetPayment));
     }
 }

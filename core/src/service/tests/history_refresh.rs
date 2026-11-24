@@ -21,6 +21,7 @@ fn wallet(id: &str, chain: Chain, address: Option<&str>) -> WalletState {
         hidden_holdings: Vec::new(),
         icp_principal: None,
         near_account_key: None,
+        starknet_public_key: None,
         multisig_policy: None,
         balances_read_at: None,
     }

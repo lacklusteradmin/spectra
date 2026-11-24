@@ -440,9 +440,15 @@ pub fn validate_protocol_identifier(
             );
         }
         // A contract, mint or account: an address on the token's own network.
-        S::Erc20 | S::Bep20 | S::Arc20 | S::Spl | S::Trc20 | S::Tep74 | S::Nep141 | S::Aip21 => {
-            crate::validation::address::validate_address(chain, &identifier)
-        }
+        S::Erc20
+        | S::Bep20
+        | S::Arc20
+        | S::Spl
+        | S::Trc20
+        | S::Tep74
+        | S::Nep141
+        | S::Aip21
+        | S::Vip180 => crate::validation::address::validate_address(chain, &identifier),
         S::Trc10 => {
             let id = identifier
                 .parse::<i64>()
@@ -597,6 +603,14 @@ pub fn normalize_token_identifier(
         Chain::Solana | Chain::SolanaDevnet | Chain::Tron | Chain::TronNile => {
             Some(trimmed.to_string())
         }
+        // A contract address is one felt, however many leading zeros it
+        // was written with.
+        Chain::Starknet => Some(
+            crate::derivation::starknet::parse_felt(trimmed).map_or_else(
+                || trimmed.to_lowercase(),
+                |felt| crate::derivation::starknet::felt_hex(&felt),
+            ),
+        ),
         // Currency and asset codes are case-sensitive, and so is an XRP
         // issuer's base58; each has one canonical spelling when it parses.
         Chain::Xrp | Chain::XrpTestnet => Some(

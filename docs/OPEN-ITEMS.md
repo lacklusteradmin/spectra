@@ -94,9 +94,10 @@ cosigners as data, as PSBTs do. What remains:
   challenge, and 0G's `chainscan.0g.ai/open/api` speaks a variant of the
   Etherscan API (`timestamp`, hex `gas` and `gasUsed`, `addresstokenbalance`)
   that the Blockscout adapter does not read (docs/audits/evm-mainnets-2026-11-24).
-- [ ] **Implement Polkadot/Westend and Bittensor address-history adapters.**
-  Their current Substrate RPC path supports balances, transfers and submitted
-  finality, but no complete address history. A custom RPC cannot fill the gap:
+- [ ] **Implement Substrate address-history adapters** for Polkadot/Westend,
+  Kusama Asset Hub, Astar and Bittensor. Their current Substrate RPC path
+  supports balances, transfers and submitted finality, but no complete
+  address history (Subscan needs an API key). A custom RPC cannot fill the gap:
   add an independently verified indexer API, registry capabilities, pagination
   and durable merge/continuation handling. Prove received and externally
   submitted transactions through CLI fixtures, not only local submissions.

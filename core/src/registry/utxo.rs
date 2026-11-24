@@ -21,16 +21,23 @@ impl Chain {
             Self::BitcoinGold => Ok((0x26, &[0x17])),
             Self::Peercoin => Ok((0x37, &[0x75])),
             Self::PeercoinTestnet => Ok((0x6f, &[0xc4])),
+            // Qtum Core chainparams: `Q…` and `M…`.
+            Self::Qtum => Ok((0x3a, &[0x32])),
+            // Fractal's chainparams keep Bitcoin's versions.
+            Self::FractalBitcoin => Ok((0x00, &[0x05])),
+            // DigiByte Core: `D…`, `S…`, and the `3…` P2SH its nodes still
+            // decode as SCRIPT_ADDRESS_OLD.
+            Self::Digibyte => Ok((0x1e, &[0x3f, 0x05])),
             _ => Err(self.not_in("Base58 UTXO")),
         }
     }
 
     /// The fork id a network's SIGHASH_FORKID signatures carry: Bitcoin
-    /// Gold's 79, and 0 on Bitcoin Cash and Bitcoin SV, whose replay
+    /// Gold's 79, and 0 on Bitcoin Cash, Bitcoin SV and eCash, whose replay
     /// protection is the flag alone.
     pub(crate) fn sighash_fork_id(self) -> Result<u32, RegistryError> {
         match self.mainnet_counterpart() {
-            Self::BitcoinCash | Self::BitcoinSV => Ok(0),
+            Self::BitcoinCash | Self::BitcoinSV | Self::Ecash => Ok(0),
             Self::BitcoinGold => Ok(79),
             _ => Err(self.not_in("SIGHASH_FORKID")),
         }
@@ -67,6 +74,10 @@ impl Chain {
                 | Self::Decred
                 | Self::Kaspa
                 | Self::Dash
+                | Self::Qtum
+                | Self::FractalBitcoin
+                | Self::Ecash
+                | Self::Digibyte
         )
     }
 
@@ -101,20 +112,30 @@ impl Chain {
         }
     }
 
-    /// Both proof-of-work coinbase and proof-of-stake coinstake outputs mature.
-    pub(crate) fn peercoin_generated_output_maturity(self) -> Result<u32, RegistryError> {
+    /// The confirmations a coinbase or coinstake output needs before it can
+    /// be spent, where an indexer lists immature ones among an address's
+    /// spendable outputs: Peercoin's, Qtum's 2,000 (Qtum Core's
+    /// `nRBTCoinbaseMaturity` since its block time was cut to 32 seconds at
+    /// height 845,000) and eCash's 100 (Bitcoin ABC's `COINBASE_MATURITY`).
+    pub(crate) fn generated_output_maturity(self) -> Result<u32, RegistryError> {
         match self {
             Self::Peercoin => Ok(500),
             Self::PeercoinTestnet => Ok(60),
-            _ => Err(self.not_in("Peercoin")),
+            Self::Qtum => Ok(2_000),
+            Self::Ecash => Ok(100),
+            _ => Err(self.not_in("maturing-reward UTXO")),
         }
     }
 
-    /// The network's genesis block, as explorers write its hash: what an
-    /// indexer on it names at height 0.
+    /// Whether a send reads each output from its hash-verified transaction:
+    /// on Peercoin and Qtum, whose staking rewards mature and may pay a key
+    /// rather than an address.
+    pub(crate) fn verifies_spent_outputs(self) -> bool {
+        matches!(self.mainnet_counterpart(), Self::Peercoin | Self::Qtum)
+    }
+
     /// The hash of the network's genesis block, as an indexer names the
-    /// block at height 0: what a custom Bitcoin or Litecoin indexer is
-    /// checked against before it broadcasts.
+    /// block at height 0.
     pub(crate) fn genesis_block_hash(self) -> Result<String, RegistryError> {
         match self {
             Self::Litecoin => {
@@ -122,6 +143,13 @@ impl Chain {
             }
             Self::LitecoinTestnet => {
                 Ok("4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0".into())
+            }
+            // Qtum Core's and DigiByte Core's chainparams.
+            Self::Qtum => {
+                Ok("000075aef83cf2853580f8ae8ce6f8c3096cfa21d98334d6e3f95e5582ed986c".into())
+            }
+            Self::Digibyte => {
+                Ok("7497ea1b465eb39f1c8f507bc877078fe016d6fcb6dfad3a64c98dcc6e1e8496".into())
             }
             _ => self
                 .bitcoin_network()
@@ -132,6 +160,64 @@ impl Chain {
                 })
                 .ok_or_else(|| self.not_in("Bitcoin or Litecoin")),
         }
+    }
+
+    /// The block whose hash tells this network apart from every other an
+    /// indexer of its API could serve, as `(height, hash)`: what a UTXO
+    /// indexer is checked against before core broadcasts through it, and
+    /// before a send on a network that shares another's addresses signs.
+    ///
+    /// Usually the genesis block. Fractal Bitcoin and eCash start from
+    /// Bitcoin's genesis block, so theirs is a later one: Fractal's block 1
+    /// (its chainparams' `BIP34Hash`) and eCash's block 896,800 (Bitcoin
+    /// ABC's assumeutxo snapshot, after its 2020 split from Bitcoin Cash).
+    /// Bitcoin's own is its block 1, so a Fractal indexer, which names
+    /// Bitcoin's genesis block, is not taken for a Bitcoin one.
+    pub(crate) fn identity_block(self) -> Result<(u64, String), RegistryError> {
+        Ok(match self {
+            Self::Bitcoin => (
+                1,
+                "00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048".into(),
+            ),
+            Self::FractalBitcoin => (
+                1,
+                "00000000000000005a5c13fe33f6717c7ad81fc8837ae75e4693c16acbdd0f66".into(),
+            ),
+            Self::Ecash => (
+                896_800,
+                "0000000000000000297efb200794348b44bff4bfb31716cf64dc45bac0a251ea".into(),
+            ),
+            _ => (0, self.genesis_block_hash()?),
+        })
+    }
+
+    /// Whether a send on this network checks, before it signs, that the
+    /// indexers it read its inputs from name the network's
+    /// [`Chain::identity_block`]: Fractal Bitcoin's addresses are Bitcoin's
+    /// and its keys the same, so a Bitcoin indexer configured for it would
+    /// hand over Bitcoin outputs the wallet's keys also spend.
+    pub(crate) fn verifies_indexer_before_signing(self) -> bool {
+        self.mainnet_counterpart() == Self::FractalBitcoin
+    }
+
+    /// The lowest fee rate, in sat/vB, a send on the network pays, whatever
+    /// an indexer estimates: Qtum Core's and DigiByte Core's
+    /// `DEFAULT_MIN_RELAY_TX_FEE` (400,000 and 100,000 per virtual kilobyte),
+    /// and 1 on Fractal, the least its mempool recommends.
+    pub(crate) fn min_fee_rate(self) -> Option<u64> {
+        match self.mainnet_counterpart() {
+            Self::Qtum => Some(400),
+            Self::Digibyte => Some(100),
+            Self::FractalBitcoin => Some(1),
+            _ => None,
+        }
+    }
+
+    /// Whether the network's indexers estimate a fee rate. Qtum's Blockbook
+    /// answers zero, so a Qtum send pays [`Chain::min_fee_rate`], the rate
+    /// Qtum Core's own wallet pays at least.
+    pub(crate) fn indexers_estimate_fee_rate(self) -> bool {
+        self.mainnet_counterpart() != Self::Qtum
     }
 
     pub(crate) fn litecoin_max_money(self) -> Result<u64, RegistryError> {
@@ -158,6 +244,9 @@ impl Chain {
             Self::BitcoinGold => Some("btg"),
             Self::Peercoin => Some("pc"),
             Self::PeercoinTestnet => Some("tpc"),
+            Self::Qtum => Some("qc"),
+            Self::FractalBitcoin => Some("bc"),
+            Self::Digibyte => Some("dgb"),
             _ => None,
         }
     }
@@ -185,6 +274,7 @@ impl Chain {
         match self {
             Self::BitcoinCash => Some("bitcoincash"),
             Self::BitcoinCashTestnet => Some("bchtest"),
+            Self::Ecash => Some("ecash"),
             _ => None,
         }
     }
@@ -203,22 +293,44 @@ impl Chain {
                 (version == 0 && matches!(program_length, 20 | 32))
                     || (version == 1 && program_length == 32)
             }
-            // BTG's Taproot deployment is not an established active consensus rule.
-            Self::BitcoinGold => version == 0 && matches!(program_length, 20 | 32),
+            // Fractal enforces Taproot from its block 1; DigiByte buried its
+            // activation at height 21,168,000.
+            Self::FractalBitcoin | Self::Digibyte => {
+                (version == 0 && matches!(program_length, 20 | 32))
+                    || (version == 1 && program_length == 32)
+            }
+            // BTG's Taproot deployment is not an established active consensus
+            // rule, nor has Qtum's BIP9 deployment been seen active.
+            Self::BitcoinGold | Self::Qtum => version == 0 && matches!(program_length, 20 | 32),
             _ => false,
         }
     }
 
-    /// The smallest output the legacy-format P2PKH networks relay: 546
-    /// units at Bitcoin Core's dust relay rate, and Dogecoin Core's dust
-    /// limit of 0.01 DOGE (policy.h `DEFAULT_DUST_LIMIT`), below which an
-    /// output pays that much again in fee and, below a tenth of it, is not
-    /// relayed at all.
-    pub(crate) fn legacy_change_dust(self) -> Result<u64, RegistryError> {
+    /// The smallest output an account UTXO network relays, in its smallest
+    /// unit: a recipient amount below it is refused, and change below it
+    /// joins the fee. Where the node's dust rule is a relay rate, the
+    /// threshold of a P2PKH output, which takes 182 bytes to create and
+    /// spend: 546 at Bitcoin Core's 3 sat/vB (kept by Bitcoin ABC and
+    /// Fractal), 5,460 at DigiByte Core's 30 and 72,800 at Qtum Core's 400.
+    /// Dogecoin Core's is its dust limit of 0.01 DOGE (policy.h
+    /// `DEFAULT_DUST_LIMIT`), below which an output pays that much again in
+    /// fee and, below a tenth of it, is not relayed at all.
+    pub(crate) fn relay_dust_threshold(self) -> Result<u64, RegistryError> {
         match self.mainnet_counterpart() {
-            Self::BitcoinCash | Self::BitcoinSV | Self::BitcoinGold | Self::Dash => Ok(546),
+            Self::Bitcoin
+            | Self::Zcash
+            | Self::BitcoinCash
+            | Self::BitcoinSV
+            | Self::BitcoinGold
+            | Self::Dash
+            | Self::Ecash
+            | Self::FractalBitcoin => Ok(546),
+            Self::Digibyte => Ok(5_460),
+            Self::Qtum => Ok(72_800),
             Self::Dogecoin => Ok(1_000_000),
-            _ => Err(self.not_in("fixed-fee P2PKH")),
+            Self::Decred => Ok(6_030),
+            Self::Kaspa => Ok(1_000),
+            _ => Err(self.not_in("account UTXO")),
         }
     }
 
@@ -286,6 +398,15 @@ impl Chain {
             Self::Peercoin | Self::PeercoinTestnet => {
                 return crate::derivation::peercoin::encode_peercoin_address(self, script, key);
             }
+            Self::Qtum | Self::FractalBitcoin | Self::Digibyte => {
+                return btc::encode_address_inner(self.segwit_network_params()?, script, key);
+            }
+            Self::Ecash => crate::derivation::utxo_address::encode_cashaddr(
+                self,
+                &crate::derivation::utxo_address::ParsedUtxoAddress::P2pkh(btc::hash160(
+                    &key.serialize(),
+                )),
+            )?,
             Self::Zcash | Self::ZcashTestnet => crate::derivation::zcash::zcash_p2pkh_addr(
                 self.zcash_transparent_p2pkh_version()?,
                 key,
@@ -307,6 +428,32 @@ impl Chain {
                 ));
             }
         })
+    }
+
+    /// The Base58 versions and SegWit prefix of a network that kept
+    /// Bitcoin's address formats.
+    pub(crate) fn segwit_network_params(
+        self,
+    ) -> Result<crate::derivation::bitcoin::BitcoinNetworkParams, RegistryError> {
+        let (p2pkh_version, p2sh_versions) = self.fixed_utxo_address_versions()?;
+        Ok(crate::derivation::bitcoin::BitcoinNetworkParams {
+            p2pkh_version,
+            p2sh_version: p2sh_versions[0],
+            bech32_hrp: self
+                .fixed_utxo_segwit_hrp()
+                .ok_or_else(|| self.not_in("SegWit UTXO"))?,
+        })
+    }
+
+    /// Whether a wallet account on this network spends from its addresses
+    /// of witness `version`: native and nested P2WPKH for 0, a Taproot key
+    /// path for 1. Its account signer signs them, and the network has them.
+    pub(crate) fn account_spends_witness(self, version: u8) -> bool {
+        match self.mainnet_counterpart() {
+            Self::Bitcoin | Self::Peercoin | Self::FractalBitcoin | Self::Digibyte => version <= 1,
+            Self::Litecoin | Self::Qtum => version == 0,
+            _ => false,
+        }
     }
 
     /// The rust-bitcoin network a Bitcoin chain is; `None` off Bitcoin.

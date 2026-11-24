@@ -1,19 +1,10 @@
 //! Each account network's identity: genesis hashes, network names and ids, and
-//! the protocol constants a transaction on it carries.
+//! the protocol constants a transaction on it carries. The Substrate
+//! networks' are in `substrate`.
 
 use super::*;
 
 impl Chain {
-    /// The byte width of a Substrate chain's `Balance` type, which sizes its
-    /// `System.Account` record: Polkadot's is `u128`, subtensor's `u64`.
-    pub fn substrate_balance_bytes(self) -> Option<usize> {
-        match self.mainnet_counterpart() {
-            Chain::Polkadot => Some(16),
-            Chain::Bittensor => Some(8),
-            _ => None,
-        }
-    }
-
     pub(crate) fn monero_network_name(self) -> Result<&'static str, RegistryError> {
         match self {
             Self::Monero => Ok("mainnet"),
@@ -78,6 +69,34 @@ impl Chain {
             Self::Cardano => Ok(764_824_073),
             Self::CardanoPreprod => Ok(1),
             _ => Err(self.not_in("Cardano")),
+        }
+    }
+
+    /// The name a Lotus node's `StateNetworkName` answers on this Filecoin
+    /// network.
+    pub(crate) fn filecoin_network_name(self) -> Result<&'static str, RegistryError> {
+        match self {
+            Self::Filecoin => Ok("mainnet"),
+            _ => Err(self.not_in("Filecoin")),
+        }
+    }
+
+    /// The CID of this Filecoin network's genesis block, which a Lotus
+    /// node's `ChainGetGenesis` names. A message binds no network, so a node
+    /// is proven to be on this one before anything is signed through it.
+    pub(crate) fn filecoin_genesis_cid(self) -> Result<&'static str, RegistryError> {
+        match self {
+            Self::Filecoin => Ok("bafy2bzacecnamqgqmifpluoeldx7zzglxcljo6oja4vrmtj7432rphldpdmm2"),
+            _ => Err(self.not_in("Filecoin")),
+        }
+    }
+
+    /// The letter this Filecoin network's addresses start with: `f` on
+    /// mainnet, as `t` is on the test networks.
+    pub(crate) fn filecoin_address_network(self) -> Result<char, RegistryError> {
+        match self {
+            Self::Filecoin => Ok('f'),
+            _ => Err(self.not_in("Filecoin")),
         }
     }
 
@@ -210,34 +229,6 @@ impl Chain {
                 "HBZqdwFA3MSjq0O8ntk6gX1Sibnw7cbWwEjKZt3JJpQ=",
                 "eocxdO1VHjKnalajy5t+bM/X7A+rdMMX3Lj2VRRNtFs=",
             )),
-            _ => None,
-        }
-    }
-
-    /// The SS58 prefix a Substrate network's addresses carry: Polkadot's
-    /// 0, and the generic 42 on Westend and Bittensor.
-    pub fn ss58_prefix(self) -> Option<u16> {
-        match self {
-            Self::Polkadot => Some(0),
-            Self::PolkadotWestend | Self::Bittensor => Some(42),
-            _ => None,
-        }
-    }
-
-    /// Expected genesis for a Substrate deployment. DOT balances and
-    /// transfers live on Asset Hub, rather than the relay chain.
-    pub fn substrate_genesis_hash(self) -> Option<&'static str> {
-        match self {
-            Self::Polkadot => {
-                Some("0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f")
-            }
-            Self::PolkadotWestend => {
-                Some("0x67f9723393ef76214df0118c34bbbd3dbebc8ed46a10973a8c969d48fe7598c9")
-            }
-            // Cross-checked on both official Finney RPCs on 2026-10-04.
-            Self::Bittensor => {
-                Some("0x2f0555cc76fc2840a25a6ea3b9637146806f1f44b090c175ffde2a7e5ab36c03")
-            }
             _ => None,
         }
     }

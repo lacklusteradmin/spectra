@@ -220,8 +220,8 @@ pub async fn prepare_transfer(
             "Substrate transfer amount must be positive",
         ));
     }
-    let sender_key = decode_ss58(sender)?;
-    let recipient_key = decode_ss58(recipient)?;
+    let sender_key = decode_ss58(chain, sender)?;
+    let recipient_key = decode_ss58(chain, recipient)?;
     let context = client.polkadot_context(chain).await?;
     let mut prepared = PreparedPolkadotTransaction {
         call_data: native_transfer_call(&context.runtime, &recipient_key, amount),
@@ -263,7 +263,7 @@ pub async fn preview_transfer(
     address: &str,
 ) -> Result<(u128, u128, usize), SendError> {
     let context = client.polkadot_context(chain).await?;
-    let sender = decode_ss58(address)?;
+    let sender = decode_ss58(chain, address)?;
     let prepared = PreparedPolkadotTransaction {
         call_data: native_transfer_call(
             &context.runtime,
@@ -330,7 +330,7 @@ pub async fn prepare_call(
     if call_data.len() < 2 {
         return Err(SendError::invalid("Invalid Substrate call"));
     }
-    let sender_key = decode_ss58(sender)?;
+    let sender_key = decode_ss58(chain, sender)?;
     let mut prepared = PreparedPolkadotTransaction {
         runtime: context.runtime,
         sender: sender_key,
@@ -443,8 +443,8 @@ pub async fn prepare_asset_transfer(
             "Substrate transfer amount must be positive",
         ));
     }
-    let sender_key = decode_ss58(sender)?;
-    let recipient_key = decode_ss58(recipient)?;
+    let sender_key = decode_ss58(chain, sender)?;
+    let recipient_key = decode_ss58(chain, recipient)?;
     let state = client
         .asset_transfer_state(chain, id, &sender_key, &recipient_key)
         .await?;
@@ -479,7 +479,7 @@ pub async fn preview_asset_transfer(
     address: &str,
     id: u32,
 ) -> Result<(u128, u128, usize), SendError> {
-    let sender = decode_ss58(address)?;
+    let sender = decode_ss58(chain, address)?;
     let state = client
         .asset_transfer_state(chain, id, &sender, &sender)
         .await?;
@@ -509,6 +509,10 @@ pub async fn preview_asset_transfer(
         extrinsic.len(),
     ))
 }
+
+#[cfg(test)]
+#[path = "tests/polkadot.rs"]
+mod tests;
 
 #[cfg(test)]
 mod asset_tests {

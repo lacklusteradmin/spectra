@@ -164,7 +164,13 @@ async fn every_network_mnemonic_identity_resolves_using_stored_derivation_data()
             crate::derivation::types::Wants::ADDRESS,
         )
         .unwrap();
-        let address = derived.address.unwrap();
+        // A Hedera key derives no address: the wallet holds the account the
+        // import found for it, which the identity resolves to.
+        let address = if chain.finds_accounts_by_key() {
+            "0.0.1234".to_string()
+        } else {
+            derived.address.unwrap()
+        };
         service
             .upsert_wallet(WalletState::single_address(
                 "w",

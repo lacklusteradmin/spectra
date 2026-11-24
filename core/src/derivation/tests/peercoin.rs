@@ -93,7 +93,9 @@ fn catalog_paths_derive_every_supported_script_on_the_selected_network() {
                     );
                     assert!(address.starts_with(if chain.is_testnet() { "tpc1p" } else { "pc1p" }));
                 }
-                DerivationProfile::Standard => panic!("Peercoin lists no standard profile"),
+                DerivationProfile::Standard | DerivationProfile::Ecdsa | DerivationProfile::Evm => {
+                    panic!("Peercoin lists only its script profiles")
+                }
             }
             let public = secp256k1::PublicKey::from_slice(
                 &hex::decode(result.public_key_hex.unwrap()).unwrap(),

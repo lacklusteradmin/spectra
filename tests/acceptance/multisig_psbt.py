@@ -23,7 +23,9 @@ from harness import Handler, Spectra, fixture, scratch, serve, signed_by
 FIXTURE = fixture('multisig-psbt.json')
 PHRASES = FIXTURE['phrases']
 NETWORK = next(entry for entry in FIXTURE['networks'] if entry['chain'] == 'bitcoin')
-GENESIS = '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f'
+# Bitcoin's block 1: what a Bitcoin indexer is told apart from Fractal
+# Bitcoin's by, which shares its genesis block.
+BLOCK_ONE = '00000000839a8e6886ab5951d76f411475428afc90947ee320161bbf18eb6048'
 USAGE = 2
 
 
@@ -56,8 +58,8 @@ class Esplora(Handler):
     def do_GET(self):
         parts = unquote(urlsplit(self.path).path).strip('/').split('/')
         held = self.state['funds'].get(parts[1], []) if len(parts) > 1 else []
-        if parts == ['block-height', '0']:
-            return self.text(GENESIS)
+        if parts == ['block-height', '1']:
+            return self.text(BLOCK_ONE)
         if parts[0] == 'address' and len(parts) == 2:
             stats = {'funded_txo_sum': sum(v for _, _, v in held), 'spent_txo_sum': 0, 'tx_count': len(held)}
             return self.reply({'address': parts[1], 'chain_stats': stats,

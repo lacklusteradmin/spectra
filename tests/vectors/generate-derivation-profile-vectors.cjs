@@ -12,7 +12,7 @@ const { BIP32Factory } = require('bip32');
 const bitcoin = require('bitcoinjs-lib');
 const bchaddr = require('bchaddrjs');
 const { ethers } = require('ethers');
-const { derivePath: slip10 } = require('ed25519-hd-key');
+const { derivePath: slip10, getPublicKey: ed25519Public } = require('ed25519-hd-key');
 const { Keypair: SolanaKeypair } = require('@solana/web3.js');
 const { Keypair: StellarKeypair } = require('@stellar/stellar-base');
 const rippleKeypairs = require('ripple-keypairs');
@@ -26,6 +26,14 @@ const { ripemd160 } = require('@noble/hashes/legacy.js');
 const bs58check = require('bs58check').default;
 const bs58 = require('bs58').default;
 const kaspa = require('kaspa-wasm');
+const { toBech32 } = require('@cosmjs/encoding');
+const ecash = require('ecash-lib');
+const ecashaddr = require('ecashaddrjs');
+const { Address: VechainAddress, HDKey: VechainHDKey } = require('@vechain/sdk-core');
+const { newSecp256k1Address } = require('@glif/filecoin-address');
+const { getPkhfromPk, b58Encode, PrefixV2 } = require('@taquito/utils');
+const { HDKey } = require('@scure/bip32');
+const { CallData, ec, encode, hash: starknetHash, num } = require('starknet');
 
 bitcoin.initEccLib(ecc);
 const bip32 = BIP32Factory(ecc);
@@ -58,6 +66,10 @@ const NETWORKS = {
   'bitcoin-sv': bitcoin.networks.bitcoin,
   'bitcoin-sv-testnet': bitcoin.networks.testnet,
   'bitcoin-gold': net(undefined, 0x26, 0x17),
+  // Qtum Core's and DigiByte Core's chainparams; Fractal keeps Bitcoin's.
+  'qtum': net('qc', 0x3a, 0x32),
+  'fractal-bitcoin': bitcoin.networks.bitcoin,
+  'digibyte': net('dgb', 0x1e, 0x3f),
 };
 function utxo(chain, script) {
   const network = NETWORKS[chain];
@@ -77,6 +89,18 @@ const bitcoinCash = (testnet) => (path) => {
   const legacy = bitcoin.payments.p2pkh({ pubkey: Buffer.from(secpKey(path).publicKey), network: testnet ? bitcoin.networks.testnet : bitcoin.networks.bitcoin }).address;
   if (bchaddr.toLegacyAddress(bchaddr.toCashAddress(legacy)) !== legacy) throw new Error('CashAddr round trip');
   return legacy;
+};
+// eCash: ecash-lib derives the key from the phrase on its own, and its
+// CashAddr encoding must agree with ecashaddrjs's.
+const ecashAddress = (path) => {
+  const pubkey = ecash.HdNode.fromSeed(ecash.mnemonicToSeed(PHRASE)).derivePath(path).pubkey();
+  const hash = ecash.shaRmd160(pubkey);
+  const address = ecash.Address.p2pkh(hash).toString();
+  if (address !== ecashaddr.encodeCashAddress('ecash', 'p2pkh', Buffer.from(hash).toString('hex'))) {
+    throw new Error('eCash CashAddr mismatch');
+  }
+  if (Buffer.compare(Buffer.from(pubkey), Buffer.from(secpKey(path).publicKey)) !== 0) throw new Error('eCash key mismatch');
+  return address;
 };
 const evm = (path) => ethers.HDNodeWallet.fromSeed(SEED).derivePath(path).address;
 const tron = (path) => {
@@ -99,7 +123,14 @@ const solana = (path) => SolanaKeypair.fromSeed(ed25519Seed(path)).publicKey.toB
 const stellar = (path) => StellarKeypair.fromRawEd25519Seed(ed25519Seed(path)).publicKey();
 const sui = (path) => Ed25519Keypair.deriveKeypair(PHRASE, path).toSuiAddress();
 const aptos = (path) => Account.fromDerivationPath({ path, mnemonic: PHRASE }).accountAddress.toString();
+// A tz1 account: Taquito's hash of the SLIP-10 key's edpk.
+const tezos = (path) => getPkhfromPk(b58Encode(ed25519Public(ed25519Seed(path), false), PrefixV2.Ed25519PublicKey));
 const near = (path) => Buffer.from(bs58.decode(parseSeedPhrase(PHRASE, path).publicKey.replace('ed25519:', ''))).toString('hex');
+// A Hedera key names no account: what a profile derives is the public key
+// an account is found by, in the DER Hedera's SDK writes. Ed25519 by SLIP-10,
+// ECDSA secp256k1 by BIP-32, as @hashgraph/sdk's Mnemonic derives them.
+const hederaEd25519 = (path) => '302a300506032b6570032100' + Buffer.from(ed25519Public(ed25519Seed(path), false)).toString('hex');
+const hederaEcdsa = (path) => '302d300706052b8104000a032200' + Buffer.from(secpKey(path).publicKey).toString('hex');
 // DFINITY's own phrase identity is the key at account 0; other accounts are
 // the same BIP-32 key at their own account index.
 if (Secp256k1KeyIdentity.fromSeedPhrase(PHRASE).getPrincipal().toText()
@@ -189,6 +220,20 @@ const PROFILES = {
   'decred': [['standard', "m/44'/42'/{account}'/0/0", decred([0x07, 0x3f])]],
   'decred-testnet': [['standard', "m/44'/1'/{account}'/0/0", decred([0x0f, 0x21])]],
   'kaspa': [['standard', "m/44'/111111'/{account}'/0/0", kaspaAddress('mainnet')]],
+  // Qtum Core's descriptor wallets and Qtum Electrum derive at coin type 88.
+  'qtum': [
+    ['legacy', "m/44'/88'/{account}'/0/0", utxo('qtum', 'p2pkh')],
+    ['nativeSegWit', "m/84'/88'/{account}'/0/0", utxo('qtum', 'p2wpkh')],
+    ['nestedSegWit', "m/49'/88'/{account}'/0/0", utxo('qtum', 'p2sh-p2wpkh')],
+  ],
+  // UniSat derives Fractal accounts at Bitcoin's paths.
+  'fractal-bitcoin': BTC_PROFILES(0, 'fractal-bitcoin'),
+  // Cashtab's m/44'/1899', and m/44'/899', Electrum ABC's BIP-39 default and Trezor's.
+  'ecash': [
+    ['standard', "m/44'/1899'/{account}'/0/0", ecashAddress],
+    ['legacy', "m/44'/899'/{account}'/0/0", ecashAddress],
+  ],
+  'digibyte': BTC_PROFILES(20, 'digibyte'),
   'kaspa-testnet': [['standard', "m/44'/111111'/{account}'/0/0", kaspaAddress('testnet-10')]],
   'xrp': [['standard', "m/44'/144'/{account}'/0/0", xrp]],
   'xrp-testnet': [['standard', "m/44'/144'/{account}'/0/0", xrp]],
@@ -209,23 +254,83 @@ const PROFILES = {
   'internet-computer': [['standard', "m/44'/223'/{account}'/0/0", icp]],
   'cardano': [['standard', "m/1852'/1815'/{account}'/0/0", cardano(true)]],
   'cardano-preprod': [['standard', "m/1852'/1815'/{account}'/0/0", cardano(false)]],
+  'tezos': [['standard', "m/44'/1729'/{account}'/0'", tezos]],
+  'hedera': [
+    ['standard', "m/44'/3030'/0'/0'/{account}'", hederaEd25519],
+    ['ecdsa', "m/44'/3030'/0'/0/{account}", hederaEcdsa],
+    ['evm', "m/44'/60'/0'/0/{account}", hederaEcdsa],
+  ],
 };
 for (const chain of EVM_CHAINS) PROFILES[chain] = [['standard', "m/44'/60'/{account}'/0/0", evm]];
+// Cosmos SDK accounts: the key's RIPEMD-160 of SHA-256 under the network's
+// prefix, or (Ethermint) its Ethereum address under it, at Keplr's paths.
+const cosmos = (hrp) => (path) => toBech32(hrp, hash160(secpKey(path).publicKey));
+const cosmosEth = (hrp) => (path) => toBech32(hrp, Buffer.from(evm(path).slice(2), 'hex'));
+const COSMOS_CHAINS = [
+  ['cosmos-hub', 118, cosmos('cosmos')], ['celestia', 118, cosmos('celestia')], ['dydx', 118, cosmos('dydx')],
+  ['terra', 330, cosmos('terra')], ['kava', 459, cosmos('kava')], ['injective', 60, cosmosEth('inj')],
+  ['akash', 118, cosmos('akash')], ['babylon', 118, cosmos('bbn')], ['osmosis', 118, cosmos('osmo')],
+  ['dymension', 60, cosmosEth('dym')], ['saga', 118, cosmos('saga')], ['allora', 118, cosmos('allo')],
+  ['band', 494, cosmos('band')],
+];
+for (const [chain, coin, encode] of COSMOS_CHAINS) PROFILES[chain] = [['standard', `m/44'/${coin}'/{account}'/0/0`, encode]];
+// A Filecoin f1 address hashes the 65-byte uncompressed key. Ledger Live's
+// BIP-44 mode puts the account here; Glif's puts it in the last segment, and
+// the two agree at account 0.
+const filecoin = (path) => newSecp256k1Address(ecc.pointCompress(secpKey(path).publicKey, false)).toString();
+PROFILES['filecoin'] = [['standard', "m/44'/461'/{account}'/0/0", filecoin]];
+// Ready (formerly Argent X): the phrase's Ethereum key, its leading zero
+// bytes dropped, seeds a second BIP-32 tree whose child at the path is ground
+// into a Stark key; the account is Argent 0.4.0 owned by it, salted with it.
+const starknet = (path) => {
+  const secret = '0x' + Buffer.from(ROOT.derivePath("m/44'/60'/0'/0/0").privateKey).toString('hex');
+  const seed = encode.sanitizeBytes(encode.removeHexPrefix(num.toHex(secret)), 2);
+  const child = HDKey.fromMasterSeed(Buffer.from(seed, 'hex')).derive(path);
+  const publicKey = ec.starkCurve.getStarkKey('0x' + ec.starkCurve.grindKey(child.privateKey));
+  const address = starknetHash.calculateContractAddressFromHash(
+    publicKey, '0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f', CallData.compile([0, publicKey, 1]), 0,
+  );
+  return '0x' + BigInt(address).toString(16).padStart(64, '0');
+};
+PROFILES.starknet = [['standard', "m/44'/9004'/0'/0/{account}", starknet]];
 
-const vectors = [];
-for (const [chain, profiles] of Object.entries(PROFILES)) {
-  for (const [profile, template, encode] of profiles) {
-    for (const account of [0, 1]) {
-      const path = template.replace('{account}', String(account));
-      vectors.push({ chain, profile, account, path, address: encode(path) });
+// VeWorld and Sync2 derive VeChainThor accounts as addresses under
+// `m/44'/818'/0'/0`, the account index being the last, unhardened segment.
+const vechain = (path) => VechainAddress.ofPublicKey(VechainHDKey.fromMnemonic(PHRASE.split(' '), path).publicKey).toString();
+PROFILES.vechain = [['standard', "m/44'/818'/0'/0/{account}", vechain]];
+
+(async () => {
+  // Pera's Universal Wallet: ARC-52 (BIP32-Ed25519, Peikert) through the
+  // Algorand Foundation's xhd-wallet-api, whose derivation is asynchronous,
+  // so its addresses are read before the synchronous walk.
+  const xhd = await import('@algorandfoundation/xhd-wallet-api');
+  const algosdk = await import('algosdk');
+  const algorandRoot = xhd.fromSeed(SEED);
+  const algorandAddresses = {};
+  for (const account of [0, 1]) {
+    const key = await new xhd.XHDWalletAPI().keyGen(algorandRoot, xhd.KeyContext.Address, account, 0, xhd.BIP32DerivationType.Peikert);
+    algorandAddresses[`m/44'/283'/${account}'/0/0`] = algosdk.encodeAddress(key);
+  }
+  PROFILES['algorand'] = [['standard', "m/44'/283'/{account}'/0/0", (path) => algorandAddresses[path]]];
+
+  const vectors = [];
+  for (const [chain, profiles] of Object.entries(PROFILES)) {
+    for (const [profile, template, encode] of profiles) {
+      for (const account of [0, 1]) {
+        const path = template.replace('{account}', String(account));
+        vectors.push({ chain, profile, account, path, address: encode(path) });
+      }
     }
   }
-}
-console.log(JSON.stringify({
-  provenance: 'bip39 3.1.0, bip32 5.0.1, bitcoinjs-lib 7.0.2, bchaddrjs 0.5.2, ethers 6.17.0, ed25519-hd-key 2.0.0, '
-    + '@solana/web3.js 1.98.4, @stellar/stellar-base 14.1.0, ripple-keypairs 3.1.0, @mysten/sui 1.45.2, '
-    + '@aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/identity-secp256k1 3.4.3, '
-    + '@emurgo/cardano-serialization-lib-nodejs 17.0.0, blake-hash 2.0.0, kaspa-wasm 0.13.0',
-  phrase: PHRASE,
-  vectors,
-}, null, 2));
+  console.log(JSON.stringify({
+    provenance: 'bip39 3.1.0, bip32 5.0.1, bitcoinjs-lib 7.0.2, bchaddrjs 0.5.2, ethers 6.17.0, ed25519-hd-key 2.0.0, '
+      + '@solana/web3.js 1.98.4, @stellar/stellar-base 14.1.0, ripple-keypairs 3.1.0, @mysten/sui 1.45.2, '
+      + '@aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/identity-secp256k1 3.4.3, '
+      + '@emurgo/cardano-serialization-lib-nodejs 17.0.0, blake-hash 2.0.0, kaspa-wasm 0.13.0, '
+      + '@cosmjs/encoding 0.39.0, @algorandfoundation/xhd-wallet-api 2.0.0-canary.1, algosdk 3.9.0, '
+      + 'ecash-lib 4.12.0, ecashaddrjs 2.0.1, @vechain/sdk-core 2.1.0, '
+      + '@glif/filecoin-address 4.0.0, @taquito/utils 25.1.1, @scure/bip32 1.7.0, starknet 11.6.1',
+    phrase: PHRASE,
+    vectors,
+  }, null, 2));
+})();

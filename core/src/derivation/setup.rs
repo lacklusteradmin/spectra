@@ -60,6 +60,10 @@ pub enum WalletSecretFormat {
     /// TON's own 24-word mnemonic, from the BIP-39 English list but not
     /// BIP-39.
     TonMnemonic,
+    /// Algorand's 25-word mnemonic: one account's 32-byte Ed25519 key in
+    /// 11-bit words of the BIP-39 English list and a checksum word, not
+    /// BIP-39.
+    AlgorandMnemonic,
     /// A 32-byte secret as 64 hex digits, with or without `0x`.
     HexSecret32,
     /// Cardano's 64-byte extended key (kL ‖ kR) as 128 hex digits.
@@ -78,6 +82,15 @@ pub enum WalletSecretFormat {
     AptosPrivateKey,
     /// A NEAR `ed25519:…` key string.
     NearSecretKey,
+    /// A Tezos `edsk…` Ed25519 key, as Temple, Kukai, Umami and
+    /// octez-client export it: the 32-byte seed or the 64-byte secret key.
+    TezosSecretKey,
+    /// A Stark private key: a field element as up to 64 hex digits, with or
+    /// without `0x`, as Starknet wallets export it.
+    StarknetPrivateKey,
+    /// A Hedera private key in DER hex, as its wallets export it: PKCS#8
+    /// naming Ed25519 (`302e…`) or secp256k1 (`3030…`).
+    HederaPrivateKey,
     /// An address on the network.
     Address,
     /// A BIP-32 account public key: xpub, ypub or zpub, or tpub, upub or vpub
@@ -107,9 +120,10 @@ pub enum WalletSetupField {
     /// Where a Monero wallet's scan starts. Optional: a Polyseed carries its
     /// birthday, and a 25-word seed otherwise scans from the start.
     RestoreHeight,
-    /// A named account the key controls (NEAR's `alice.near`), confirmed on
-    /// the network at import. Optional: without it the wallet is the key's
-    /// implicit account.
+    /// A named account the key controls (NEAR's `alice.near`, Hedera's
+    /// `0.0.N`), confirmed on the network at import. Optional: without it a
+    /// NEAR wallet is the key's implicit account, and a Hedera wallet the
+    /// one account the network finds holding the key.
     NamedAccount,
     /// The wallet contract a TON key holds its account under. Optional: W5
     /// unless the wallet being restored is an older version.
@@ -150,8 +164,9 @@ impl WalletSetupDescriptor {
     }
 }
 
-/// The ways a wallet can be added on `chain`. Every network offers a phrase,
-/// created or restored; the rest are offered where the network supports them.
+/// The ways a wallet can be added on `chain`. Every network restores a
+/// phrase, and creates one unless its accounts are created by a transaction;
+/// the rest are offered where the network supports them.
 #[uniffi::export]
 pub fn wallet_setup_descriptor(chain: Chain) -> WalletSetupDescriptor {
     // A scanning chain asks where a restored wallet's scan starts; a created
@@ -176,20 +191,23 @@ pub fn wallet_setup_descriptor(chain: Chain) -> WalletSetupDescriptor {
     } else {
         Vec::new()
     };
-    let mut options = vec![
-        WalletSetupOption {
+    let mut options = Vec::new();
+    // A new phrase holds no account where the network creates accounts by a
+    // transaction: it would import as nothing.
+    if !chain.finds_accounts_by_key() {
+        options.push(WalletSetupOption {
             method: WalletSetupMethod::CreatePhrase,
             formats: vec![chain.created_phrase_format()],
             profiles: chain.derivation_profiles(),
             fields: path_fields.clone(),
-        },
-        WalletSetupOption {
-            method: WalletSetupMethod::ImportPhrase,
-            formats: chain.phrase_formats(),
-            profiles: chain.derivation_profiles(),
-            fields: [path_fields, restore_fields, key_fields.clone()].concat(),
-        },
-    ];
+        });
+    }
+    options.push(WalletSetupOption {
+        method: WalletSetupMethod::ImportPhrase,
+        formats: chain.phrase_formats(),
+        profiles: chain.derivation_profiles(),
+        fields: [path_fields, restore_fields, key_fields.clone()].concat(),
+    });
     let key_formats = chain.private_key_formats();
     if !key_formats.is_empty() {
         options.push(WalletSetupOption {
@@ -249,8 +267,11 @@ pub(crate) fn check_offered(chain: Chain, kind: &WalletImportKind) -> Result<(),
         WalletSetupMethod::WatchAccountXpub => "%@ does not take an account public key.",
         WalletSetupMethod::WatchViewKey => "%@ does not take a view key.",
         WalletSetupMethod::WatchMultisig => "%@ has no multisig wallets.",
-        // Every network offers a phrase; the descriptor test holds it.
-        WalletSetupMethod::CreatePhrase | WalletSetupMethod::ImportPhrase => return Ok(()),
+        WalletSetupMethod::CreatePhrase => {
+            "%@ accounts are created by a transaction: import the phrase or key of one."
+        }
+        // Every network restores a phrase; the descriptor test holds it.
+        WalletSetupMethod::ImportPhrase => return Ok(()),
     };
     Err(DerivationError::refused(
         template,
@@ -289,7 +310,19 @@ pub(crate) mod tests {
     pub(crate) async fn service() -> (std::sync::Arc<WalletService>, std::path::PathBuf) {
         let directory = std::env::temp_dir().join(crate::store::new_id());
         std::fs::create_dir_all(&directory).unwrap();
-        let service = WalletService::new(vec![]).unwrap();
+        // A Hedera import reads its key's account from a mirror node: the
+        // test one holds an account for every key.
+        let service = WalletService::new(vec![crate::service::ChainEndpoints {
+            chain_id: Chain::Hedera,
+            endpoints: vec![crate::api::hedera_mirror::test_mirror::url().await],
+            capabilities: vec![
+                crate::api::endpoint::EndpointCapability::Balance,
+                crate::api::endpoint::EndpointCapability::History,
+                crate::api::endpoint::EndpointCapability::Fee,
+                crate::api::endpoint::EndpointCapability::Verification,
+            ],
+        }])
+        .unwrap();
         service.set_secret_store(std::sync::Arc::new(
             crate::secrets::backends::InMemorySecretStore::new(),
         ));
@@ -339,7 +372,8 @@ pub(crate) mod tests {
         match method {
             WalletSetupMethod::CreatePhrase | WalletSetupMethod::ImportPhrase => {
                 let mut commit = commit(chain, WalletImportKind::Phrase);
-                commit.seed_phrase = Some(if method == WalletSetupMethod::CreatePhrase {
+                commit.created = method == WalletSetupMethod::CreatePhrase;
+                commit.seed_phrase = Some(if commit.created {
                     crate::derivation::phrase::generate_seed_phrase(chain, None).unwrap()
                 } else {
                     phrase(chain).to_string()
@@ -348,12 +382,39 @@ pub(crate) mod tests {
             }
             WalletSetupMethod::ImportPrivateKey => {
                 let mut commit = commit(chain, WalletImportKind::PrivateKey);
-                commit.private_key = Some(
-                    derived
-                        .private_key_hex
-                        .map_or_else(|| "4c".repeat(32), |key| key.to_string()),
-                );
+                // An Algorand BIP-39 account's key is an ARC-52 extended
+                // key, which no Algorand key format holds; a raw key is the
+                // seed a 25-word mnemonic holds (algosdk's, in
+                // `algorand-vectors.json`).
+                let key = if chain.mainnet_counterpart() == Chain::Algorand {
+                    crate::derivation::algorand::seed_from_mnemonic(
+                        "pluck impulse gesture kangaroo mechanic fan harsh friend kidney siege \
+                         mandate average wise during rescue moral sign manual number boost \
+                         between omit reopen absent series",
+                    )
+                    .map(|seed| hex::encode(*seed))
+                    .ok()
+                } else {
+                    derived.private_key_hex.map(|key| key.to_string())
+                };
+                commit.private_key = Some(key.unwrap_or_else(|| "4c".repeat(32)));
                 commit
+            }
+            // A Hedera key derives no address: the account the test mirror
+            // holds for it is watched.
+            WalletSetupMethod::WatchAddresses if chain.finds_accounts_by_key() => {
+                let key = crate::derivation::hedera::HederaPublicKey::from_der_hex(
+                    &derived.address.unwrap(),
+                )
+                .unwrap();
+                commit(
+                    chain,
+                    WalletImportKind::WatchAddresses {
+                        addresses: vec![crate::api::hedera_mirror::test_mirror::account_of(
+                            &key.bytes,
+                        )],
+                    },
+                )
             }
             WalletSetupMethod::WatchAddresses => commit(
                 chain,
@@ -577,7 +638,12 @@ pub(crate) mod tests {
     fn every_network_offers_a_phrase_and_lists_formats_for_every_method() {
         for chain in Chain::all() {
             let descriptor = wallet_setup_descriptor(chain);
-            assert!(descriptor.option(WalletSetupMethod::CreatePhrase).is_some());
+            // A new phrase holds no account where a transaction creates them.
+            assert_eq!(
+                descriptor.option(WalletSetupMethod::CreatePhrase).is_some(),
+                !chain.finds_accounts_by_key(),
+                "{chain}"
+            );
             assert!(descriptor.option(WalletSetupMethod::ImportPhrase).is_some());
             for option in &descriptor.options {
                 assert!(!option.formats.is_empty(), "{chain} {:?}", option.method);

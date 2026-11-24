@@ -127,13 +127,8 @@ pub struct WalletNetworkAccount {
 pub(crate) fn has_network_account(wallet: &crate::store::state::WalletState) -> bool {
     let chain = wallet.chain_id;
     match chain.mainnet_counterpart() {
-        Chain::Tron
-        | Chain::Xrp
-        | Chain::Stellar
-        | Chain::Ton
-        | Chain::Polkadot
-        | Chain::Bittensor
-        | Chain::Near => true,
+        Chain::Tron | Chain::Xrp | Chain::Stellar | Chain::Ton | Chain::Near => true,
+        _ if chain.is_substrate() => true,
         Chain::Cardano => wallet
             .address_on(chain)
             .is_some_and(|address| matches!(cardano_stake_address(address), Ok(Some(_)))),
@@ -277,8 +272,8 @@ impl WalletService {
                         contract: wallet_type.map(ton_contract_name),
                     }
                 }
-                Chain::Polkadot | Chain::Bittensor => {
-                    let account = crate::derivation::primitives::decode_ss58(&address, None)?.1;
+                _ if chain.is_substrate() => {
+                    let account = crate::derivation::polkadot::decode_ss58(chain, &address)?;
                     let client = SubstrateClient::new(endpoints);
                     let context = client.polkadot_context(chain).await?;
                     let balance = client

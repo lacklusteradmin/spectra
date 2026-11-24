@@ -194,9 +194,10 @@ impl WalletService {
 
 impl WalletService {
     /// The least a new account on `chain` must receive for the ledger to
-    /// create it — XRP's base reserve, Stellar's two base reserves — read
-    /// from a verified endpoint, so a receive screen can say it before the
-    /// first payment. Refuses a network without a reserve.
+    /// create it — XRP's base reserve, Stellar's two base reserves, read
+    /// from a verified endpoint; Algorand's minimum balance, a consensus
+    /// constant — so a receive screen can say it before the first payment.
+    /// Refuses a network without a reserve.
     pub async fn account_reserve(
         &self,
         chain: Chain,
@@ -211,7 +212,9 @@ impl WalletService {
         let endpoints = self
             .endpoints_for(chain, &[EndpointCapability::Verification])
             .await;
-        let smallest = if chain.mainnet_counterpart() == Chain::Xrp {
+        let smallest = if chain.mainnet_counterpart() == Chain::Algorand {
+            u128::from(crate::registry::ALGORAND_MIN_BALANCE)
+        } else if chain.mainnet_counterpart() == Chain::Xrp {
             let client = crate::api::xrpl_json_rpc::XrplClient::new(endpoints);
             client.verify_network(chain).await?;
             u128::from(client.fetch_base_reserve().await?)

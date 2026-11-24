@@ -413,6 +413,9 @@ impl WalletService {
             .transaction_hash
             .clone()
             .ok_or_else(|| SpectraBridgeError::failure("Missing transaction hash"))?;
+        if api == Api::Algod {
+            return self.algorand_transaction_status(chain, &hash).await;
+        }
         let endpoints = if chain.endpoint_apis().contains(&api) {
             self.endpoints_for(chain, &[EndpointCapability::Verification])
                 .await
@@ -490,6 +493,15 @@ impl WalletService {
                         client.verify_network(chain).await?;
                         client.fetch_transaction_status(&hash).await
                     }
+                    Api::StarknetJsonRpc => {
+                        let client = crate::api::starknet_json_rpc::StarknetClient::new(eps);
+                        client.verify_network(chain).await?;
+                        let hash =
+                            crate::derivation::starknet::parse_felt(&hash).ok_or_else(|| {
+                                crate::api::error::ApiError::invalid("Invalid transaction hash")
+                            })?;
+                        client.fetch_transaction_status(&hash).await
+                    }
                     Api::SuiJsonRpc => {
                         let client = crate::api::sui_json_rpc::SuiClient::new(eps);
                         client.verify_network(chain).await?;
@@ -525,9 +537,34 @@ impl WalletService {
                         client.verify_network(chain).await?;
                         client.fetch_transaction_status(&hash).await
                     }
+                    Api::CosmosRest => {
+                        let client = crate::api::cosmos_rest::CosmosClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::ThorRest => {
+                        let client = crate::api::thor_rest::ThorClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::LotusJsonRpc => {
+                        let client = crate::api::lotus_json_rpc::LotusClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
                     Api::IcpRosetta => {
                         let client = crate::api::icp_rosetta::IcpClient::new(eps);
                         client.verify_network().await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::Tzkt => {
+                        let client = crate::api::tzkt::TzktClient::new(eps);
+                        client.verify_network(chain).await?;
+                        client.fetch_transaction_status(&hash).await
+                    }
+                    Api::HederaMirror => {
+                        let client = crate::api::hedera_mirror::HederaMirrorClient::new(eps);
+                        client.verify_network(chain).await?;
                         client.fetch_transaction_status(&hash).await
                     }
                     Api::MoneroDaemonRpc => {

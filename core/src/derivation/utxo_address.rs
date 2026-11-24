@@ -45,12 +45,46 @@ impl ParsedUtxoAddress {
     }
 }
 
+/// CashAddr's version byte for a 160-bit key hash, and for a 160-bit
+/// script hash.
+const CASHADDR_P2PKH: u8 = 0x00;
+const CASHADDR_P2SH: u8 = 0x08;
+
+/// `address` in `chain`'s CashAddr encoding, with its prefix: a P2PKH or
+/// P2SH hash. Kaspa's address codec is CashAddr's, with its own versions.
+pub(crate) fn encode_cashaddr(
+    chain: Chain,
+    address: &ParsedUtxoAddress,
+) -> Result<String, DerivationError> {
+    let prefix = chain
+        .cashaddr_prefix()
+        .ok_or_else(|| DerivationError::invalid("network has no CashAddr prefix"))?;
+    let (version, hash) = match address {
+        ParsedUtxoAddress::P2pkh(hash) => (CASHADDR_P2PKH, hash),
+        ParsedUtxoAddress::P2sh(hash) => (CASHADDR_P2SH, hash),
+        ParsedUtxoAddress::Witness { .. } => {
+            return Err(DerivationError::invalid("CashAddr has no witness programs"));
+        }
+    };
+    crate::derivation::kaspa::encode_kaspa_address(version, hash, prefix)
+}
+
 /// `script` as an address on `chain`: P2PKH and P2SH in the network's
-/// Base58 versions, a witness program in its SegWit encoding. `None` for a
-/// script no address on the network names.
+/// Base58 versions, or in CashAddr where the network has no Base58 ones, a
+/// witness program in its SegWit encoding. `None` for a script no address
+/// on the network names.
 pub(crate) fn script_address(chain: Chain, script: &[u8]) -> Option<String> {
     use crate::derivation::bitcoin::base58check_encode;
-    let (p2pkh, p2sh) = chain.fixed_utxo_address_versions().ok()?;
+    let Ok((p2pkh, p2sh)) = chain.fixed_utxo_address_versions() else {
+        let parsed = match script {
+            [0x76, 0xa9, 0x14, hash @ .., 0x88, 0xac] => {
+                ParsedUtxoAddress::P2pkh(hash.try_into().ok()?)
+            }
+            [0xa9, 0x14, hash @ .., 0x87] => ParsedUtxoAddress::P2sh(hash.try_into().ok()?),
+            _ => return None,
+        };
+        return encode_cashaddr(chain, &parsed).ok();
+    };
     match script {
         [0x76, 0xa9, 0x14, hash @ .., 0x88, 0xac] if hash.len() == 20 => {
             Some(base58check_encode(&[&[p2pkh], hash].concat()))
@@ -81,8 +115,14 @@ pub(crate) fn parse_utxo_address(
 ) -> Result<ParsedUtxoAddress, DerivationError> {
     let invalid = || DerivationError::Invalid("invalid address for selected UTXO network".into());
     let address = address.trim();
-    let (p2pkh, p2sh) = chain.fixed_utxo_address_versions().map_err(|_| invalid())?;
-    if let Ok(decoded) = bs58::decode(address).with_check(None).into_vec()
+    // eCash's wallets write CashAddr alone, whose payloads are Bitcoin's
+    // Base58 ones: it has no Base58 versions of its own.
+    let versions = chain.fixed_utxo_address_versions().ok();
+    if versions.is_none() && chain.cashaddr_prefix().is_none() {
+        return Err(invalid());
+    }
+    if let Some((p2pkh, p2sh)) = versions
+        && let Ok(decoded) = bs58::decode(address).with_check(None).into_vec()
         && decoded.len() == 21
     {
         let hash = decoded[1..].try_into().map_err(|_| invalid())?;

@@ -33,6 +33,7 @@ fn unreadable_preferences_refuse_loading_without_deleting_wallets() {
         hidden_holdings: Vec::new(),
         icp_principal: None,
         near_account_key: None,
+        starknet_public_key: None,
         multisig_policy: None,
         balances_read_at: None,
     });
@@ -97,6 +98,7 @@ fn an_unreadable_wallet_refuses_loading_without_deleting_rows() {
         hidden_holdings: Vec::new(),
         icp_principal: None,
         near_account_key: None,
+        starknet_public_key: None,
         multisig_policy: None,
         balances_read_at: None,
     };

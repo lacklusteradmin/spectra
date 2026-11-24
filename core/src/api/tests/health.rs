@@ -24,11 +24,12 @@ fn every_builtin_api_has_a_probe_on_its_own_origin() {
         }
         if matches!(
             record.api,
-            EndpointApi::Lightwalletd | EndpointApi::LitecoinP2p
+            EndpointApi::Lightwalletd | EndpointApi::LitecoinP2p | EndpointApi::Chronik
         ) {
             // gRPC and Litecoin's peer-to-peer protocol, probed by opening
             // the session a shielded or MWEB sync opens, which the
-            // acceptance suites drive against loopback servers.
+            // acceptance suites drive against loopback servers; Chronik's
+            // protobuf, probed through its client (`api/tests/chronik.rs`).
             continue;
         }
         let checks = checks_record(chain, record).unwrap_or_else(|e| panic!("{}: {e}", record.id));
@@ -450,6 +451,31 @@ async fn rosetta_posts_metadata_and_checks_the_response() {
         .await;
     let (_, reachable, detail) = probe_record(Chain::Icp, &record).await;
     assert!(!reachable && detail.contains("403"));
+}
+
+/// An Algorand node or indexer passes only naming mainnet's genesis id and
+/// hash, as Nodely's answered on 2026-11-24.
+#[test]
+fn an_algorand_endpoint_passes_only_on_mainnets_genesis() {
+    let check = Check::get(
+        "https://algod.invalid/v2/transactions/params".into(),
+        Response::AlgorandGenesis,
+    );
+    let mainnet = json!({
+        "genesis-id": "mainnet-v1.0",
+        "genesis-hash": "wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=",
+        "last-round": 67257603,
+    });
+    assert!(check.validate(Chain::Algorand, &mainnet).is_ok());
+    let testnet = json!({
+        "genesis-id": "testnet-v1.0",
+        "genesis-hash": "SGO1GKSzyE7IEPItTxCByw9x8FmnrCDexi9/cOUJOiI=",
+    });
+    assert!(check.validate(Chain::Algorand, &testnet).is_err());
+    let mut renamed = mainnet.clone();
+    renamed["genesis-hash"] = testnet["genesis-hash"].clone();
+    assert!(check.validate(Chain::Algorand, &renamed).is_err());
+    assert!(check.validate(Chain::Ethereum, &mainnet).is_err());
 }
 
 /// A catalog record's endpoint and what it is used for, as the service hands

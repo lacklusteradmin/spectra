@@ -26,11 +26,29 @@ pub(crate) async fn verify_network(
             .await?;
         return Ok(true);
     }
+    if chain.is_cosmos() {
+        cosmos_rest::CosmosClient::new(urls)
+            .verify_network(chain)
+            .await?;
+        return Ok(true);
+    }
+    if chain.is_substrate() {
+        substrate_json_rpc::SubstrateClient::new(urls)
+            .polkadot_context(chain)
+            .await?;
+        return Ok(true);
+    }
     match chain.mainnet_counterpart() {
-        Chain::Polkadot | Chain::Bittensor => {
-            substrate_json_rpc::SubstrateClient::new(urls)
-                .polkadot_context(chain)
-                .await?;
+        // A mirror node, or the mirror node an address book belongs to.
+        Chain::Hedera if api == Some(EndpointApi::HederaHapi) => {
+            hedera_hapi::HederaHapiClient::new(urls)
+                .verify_network(chain)
+                .await?
+        }
+        Chain::Hedera => {
+            hedera_mirror::HederaMirrorClient::new(urls)
+                .verify_network(chain)
+                .await?
         }
         Chain::Sui => {
             sui_json_rpc::SuiClient::new(urls)
@@ -58,6 +76,11 @@ pub(crate) async fn verify_network(
                 .await?
         }
         Chain::Cardano => koios::KoiosClient::new(urls).verify_network(chain).await?,
+        Chain::Vechain => {
+            thor_rest::ThorClient::new(urls)
+                .verify_network(chain)
+                .await?
+        }
         Chain::Tron => {
             tron_http::TronHttpClient::new(urls)
                 .verify_network(chain)
@@ -73,6 +96,11 @@ pub(crate) async fn verify_network(
                 .verify_network(chain)
                 .await?
         }
+        Chain::Starknet => {
+            starknet_json_rpc::StarknetClient::new(urls)
+                .verify_network(chain)
+                .await?
+        }
         Chain::Zcash => {
             blockbook::BlockbookClient::new(urls, chain)
                 .zcash_context()
@@ -83,22 +111,41 @@ pub(crate) async fn verify_network(
                 .verify_peercoin_network()
                 .await?
         }
-        // The indexer names the network's genesis block at height 0.
-        Chain::Bitcoin | Chain::Litecoin => {
+        // The indexer names the network's identity block: its genesis
+        // block, or a later one where networks share it.
+        Chain::Bitcoin
+        | Chain::Litecoin
+        | Chain::Qtum
+        | Chain::FractalBitcoin
+        | Chain::Ecash
+        | Chain::Digibyte => {
             let api =
                 api.ok_or_else(|| ApiError::invalid("Endpoint is not this network's indexer"))?;
-            let client = utxo::UtxoClient::new(
+            utxo::UtxoClient::new(
                 chain,
                 vec![Endpoint {
                     api,
                     url: url.to_string(),
                 }],
-            );
-            if client.fetch_block_hash(0).await? != chain.genesis_block_hash()? {
-                return Err(ApiError::invalid("Endpoint is on the wrong network"));
-            }
+            )
+            .verify_every_endpoint()
+            .await?;
         }
         Chain::Icp => icp_rosetta::IcpClient::new(urls).verify_network().await?,
+        Chain::Algorand => algod::AlgodClient::new(urls).verify_network(chain).await?,
+        Chain::Filecoin => {
+            lotus_json_rpc::LotusClient::new(urls)
+                .verify_network(chain)
+                .await?
+        }
+        Chain::Tezos => match api {
+            Some(EndpointApi::Tzkt) => tzkt::TzktClient::new(urls).verify_network(chain).await?,
+            _ => {
+                tezos_rpc::TezosClient::new(urls)
+                    .verify_network(chain)
+                    .await?
+            }
+        },
         Chain::Monero => {
             monero_daemon_rpc::daemon(url, chain).await?;
         }

@@ -397,10 +397,7 @@ fn a_local_monero_transfer_normalizes_like_an_adapters() {
 #[tokio::test]
 async fn substrate_history_is_an_error_not_an_empty_list() {
     let service = WalletService::new(vec![]).unwrap();
-    for chain in [
-        crate::registry::Chain::Polkadot,
-        crate::registry::Chain::Bittensor,
-    ] {
+    for chain in crate::registry::Chain::all().filter(|chain| chain.is_substrate()) {
         let history = service
             .fetch_history_entries(chain, "address", None)
             .await

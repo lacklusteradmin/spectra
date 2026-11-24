@@ -159,7 +159,10 @@ impl WalletService {
                 .as_ref()
                 .map(|preview| preview.estimated_network_fee.clone());
             let total = super::owned_send::send_total(
-                review.request.contract_address.is_none(),
+                review
+                    .request
+                    .chain_id
+                    .pays_own_fee(review.request.contract_address.as_deref()),
                 &review.request.amount_str,
                 network_fee.as_deref(),
             );
@@ -368,7 +371,7 @@ impl WalletService {
         new: crate::send::stages::NewArtifact,
     ) -> Result<SendArtifact, SpectraBridgeError> {
         let state = self.app_state().await;
-        let fee_asset = new.request.chain_id.native_holding_template();
+        let fee_asset = new.request.chain_id.fee_holding_template();
         let stored = StoredSend::prepared(new, |fee| {
             super::valuation::display_value_of(&state, &fee_asset, fee)
         })?;
@@ -496,6 +499,10 @@ impl WalletService {
                     &stored.prepared,
                     PreparedPayload::Ton { .. }
                         | PreparedPayload::Aptos(_)
+                        | PreparedPayload::Algorand(_)
+                        | PreparedPayload::Filecoin(_)
+                        | PreparedPayload::Starknet(_)
+                        | PreparedPayload::Hedera(_)
                         | PreparedPayload::Near { .. }
                         | PreparedPayload::NearFunctionCall(_)
                         | PreparedPayload::NearDeleteKey(_)
@@ -924,6 +931,8 @@ impl WalletService {
             PreparedPayload::Solana(p) => p.message.clone(),
             PreparedPayload::Tron(p) => p.raw.clone(),
             PreparedPayload::Aptos(p) => p.message.clone(),
+            PreparedPayload::Algorand(p) => p.bytes_to_sign(),
+            PreparedPayload::Vechain(p) => p.unsigned()?,
             PreparedPayload::Sui(p) => {
                 let mut bytes = vec![0, 0, 0];
                 bytes.extend(&p.bytes);

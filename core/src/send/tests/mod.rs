@@ -423,15 +423,17 @@ fn signed_transaction(chain: Chain, to: &str) -> ::bitcoin::Transaction {
         )
     };
     let result = match chain.mainnet_counterpart() {
-        Chain::Bitcoin => bitcoin::sign_inputs(
-            &[bitcoin::SigningInput {
-                utxo: &inputs[0],
-                private_key: &key,
-            }],
-            &outputs,
-            ::bitcoin::transaction::Version::TWO,
-            ::bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME,
-        ),
+        Chain::Bitcoin | Chain::Qtum | Chain::FractalBitcoin | Chain::Digibyte => {
+            bitcoin::sign_inputs(
+                &[bitcoin::SigningInput {
+                    utxo: &inputs[0],
+                    private_key: &key,
+                }],
+                &outputs,
+                ::bitcoin::transaction::Version::TWO,
+                ::bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME,
+            )
+        }
         Chain::BitcoinCash | Chain::BitcoinSV | Chain::BitcoinGold => {
             legacy(Some(chain.sighash_fork_id().unwrap()))
         }
@@ -918,7 +920,7 @@ mod affordability_reads_the_chain_rather_than_the_caller {
 
     fn input(chain: crate::registry::Chain, symbol: &str) -> SendAffordabilityInput {
         SendAffordabilityInput {
-            is_native: chain.coin_symbol() == symbol,
+            pays_own_fee: chain.fee_holding_template().symbol == symbol,
             chain_id: chain,
             symbol: symbol.to_string(),
             amount: "1".into(),
@@ -942,6 +944,22 @@ mod affordability_reads_the_chain_rather_than_the_caller {
                 gas_symbol: "ETH".to_string(),
                 fee: "0.5".to_string(),
                 chain_id: crate::registry::Chain::Arbitrum,
+            }
+        );
+        // VeChainThor's coin pays no fee: VTHO does.
+        assert_eq!(
+            send_affordability(input(crate::registry::Chain::Vechain, "VET")),
+            SendAffordability::FeeExceedsGasBalance {
+                gas_symbol: "VTHO".to_string(),
+                fee: "0.5".to_string(),
+                chain_id: crate::registry::Chain::Vechain,
+            }
+        );
+        assert_eq!(
+            send_affordability(input(crate::registry::Chain::Vechain, "VTHO")),
+            SendAffordability::AmountPlusFeeExceedsBalance {
+                symbol: "VTHO".to_string(),
+                required: "1.5".to_string(),
             }
         );
         // Tron's own asset, which its Swift caller matched with a literal.

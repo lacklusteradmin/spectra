@@ -1,17 +1,15 @@
 //! A payment's destination tag or memo: what tells a recipient that shares
 //! one account among many — an exchange's deposit address — whose deposit
 //! it is. XRP Ledger payments carry a `DestinationTag`, Stellar transactions
-//! a text or ID memo, TON messages a text comment. A send takes one, binds
-//! it into the review digest, and is refused without one when the
-//! destination asks for it: XRP's `lsfRequireDestTag`, Stellar's SEP-29
-//! `config.memo_required`. TON has no such flag.
+//! a text or ID memo, TON messages a text comment, and Cosmos and Hedera
+//! transactions a text memo. A send takes one, binds it into the review
+//! digest, and is refused without one when the destination asks for it:
+//! XRP's `lsfRequireDestTag`, Stellar's SEP-29 `config.memo_required`. TON,
+//! the Cosmos SDK and Hedera have no such flag.
 
 use crate::registry::{Chain, PaymentMemoKind};
 use crate::send::error::SendError;
 use serde::{Deserialize, Serialize};
-
-/// The longest `MEMO_TEXT` Stellar takes, in bytes.
-const STELLAR_MEMO_TEXT_BYTES: usize = 28;
 
 /// The longest TON comment a payment carries, in bytes: what one cell holds
 /// after the 32-bit op, so the message stays within the network's static fee.
@@ -75,8 +73,16 @@ impl PaymentMemo {
                 "A memo ID is a whole number from 0 to 18446744073709551615.",
             )?,
             PaymentMemoKind::MemoText => {
-                if self.value.is_empty() || self.value.len() > STELLAR_MEMO_TEXT_BYTES {
-                    return Err(SendError::invalid("A text memo is 1 to 28 bytes of text."));
+                let limit = chain.memo_text_limit().unwrap_or(0);
+                if self.value.is_empty() || self.value.len() > limit {
+                    return Err(SendError::Invalid(crate::error::LocalizableMessage::new(
+                        "A text memo is 1 to %@ bytes of text.",
+                        [limit.to_string()],
+                    )));
+                }
+                // A Hedera memo with a zero byte is refused by the network.
+                if chain.is_hedera() && self.value.contains('\0') {
+                    return Err(SendError::invalid("A text memo holds no zero byte."));
                 }
                 self.value.clone()
             }
@@ -117,7 +123,11 @@ impl PaymentMemo {
             Some(Self {
                 kind: PaymentMemoKind::MemoText,
                 value,
-            }) if !value.is_empty() && value.len() <= STELLAR_MEMO_TEXT_BYTES => {
+            }) if !value.is_empty()
+                && Chain::Stellar
+                    .memo_text_limit()
+                    .is_some_and(|limit| value.len() <= limit) =>
+            {
                 Ok(Some(StellarMemo::Text(value)))
             }
             Some(Self {
@@ -130,6 +140,26 @@ impl PaymentMemo {
             Some(_) => Err(SendError::invalid(
                 "A Stellar payment carries a text or ID memo",
             )),
+        }
+    }
+
+    /// The text memo a Cosmos or Hedera transaction on `chain` carries for
+    /// `memo`, empty when it names none.
+    pub(crate) fn text(memo: Option<&Self>, chain: Chain) -> Result<&str, SendError> {
+        match memo {
+            None => Ok(""),
+            Some(Self {
+                kind: PaymentMemoKind::MemoText,
+                value,
+            }) if !value.is_empty()
+                && !(chain.is_hedera() && value.contains('\0'))
+                && chain
+                    .memo_text_limit()
+                    .is_some_and(|limit| value.len() <= limit) =>
+            {
+                Ok(value)
+            }
+            Some(_) => Err(SendError::invalid("This transaction carries a text memo")),
         }
     }
 
@@ -183,6 +213,21 @@ mod tests {
                 &"x".repeat(123),
                 &"x".repeat(123),
             ),
+            (Chain::CosmosHub, MemoText, "104857600", "104857600"),
+            (
+                Chain::CosmosHub,
+                MemoText,
+                &"x".repeat(512),
+                &"x".repeat(512),
+            ),
+            (
+                Chain::Injective,
+                MemoText,
+                &"x".repeat(256),
+                &"x".repeat(256),
+            ),
+            (Chain::Hedera, MemoText, "104857600", "104857600"),
+            (Chain::Hedera, MemoText, &"é".repeat(50), &"é".repeat(50)),
         ] {
             assert_eq!(
                 memo(kind, value).validated(chain).unwrap(),
@@ -208,6 +253,18 @@ mod tests {
             (Chain::Ton, Comment, &"é".repeat(62)),
             (Chain::Ton, MemoText, "deposit"),
             (Chain::Stellar, Comment, "deposit"),
+            // A Cosmos memo is text, up to the network's own limit in bytes.
+            (Chain::CosmosHub, MemoText, ""),
+            (Chain::CosmosHub, MemoText, &"x".repeat(513)),
+            (Chain::Injective, MemoText, &"x".repeat(257)),
+            (Chain::Celestia, MemoId, "1"),
+            (Chain::Osmosis, Comment, "deposit"),
+            // A Hedera memo is text, up to 100 bytes, without a zero byte.
+            (Chain::Hedera, MemoText, ""),
+            (Chain::Hedera, MemoText, &"x".repeat(101)),
+            (Chain::Hedera, MemoText, "dep\0osit"),
+            (Chain::Hedera, MemoId, "1"),
+            (Chain::Hedera, DestinationTag, "1"),
         ] {
             assert!(
                 memo(kind, value).validated(chain).is_err(),
@@ -217,15 +274,17 @@ mod tests {
     }
 
     #[test]
-    fn only_xrp_stellar_and_ton_payments_carry_one() {
+    fn only_xrp_stellar_ton_cosmos_and_hedera_payments_carry_one() {
         for chain in Chain::all() {
             let kinds = payment_memo_kinds(chain);
             match chain.mainnet_counterpart() {
+                cosmos if cosmos.is_cosmos() => assert_eq!(kinds, [PaymentMemoKind::MemoText]),
                 Chain::Xrp => assert_eq!(kinds, [PaymentMemoKind::DestinationTag]),
                 Chain::Stellar => {
                     assert_eq!(kinds, [PaymentMemoKind::MemoText, PaymentMemoKind::MemoId])
                 }
                 Chain::Ton => assert_eq!(kinds, [PaymentMemoKind::Comment]),
+                Chain::Hedera => assert_eq!(kinds, [PaymentMemoKind::MemoText]),
                 _ => assert!(kinds.is_empty(), "{chain}"),
             }
         }

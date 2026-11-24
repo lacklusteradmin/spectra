@@ -105,7 +105,8 @@ fn owned_preview(
     mut preview: SendPreview,
 ) -> Result<OwnedSendPreview, SpectraBridgeError> {
     let holding_key = holding.deployment_id();
-    let is_native = holding.is_native();
+    let pays_own_fee = chain.pays_own_fee(holding.contract_address.as_deref());
+    let fee_asset = chain.fee_holding_template();
     let gas_decimals = u32::from(chain.native_decimals());
     let asset_decimals = decimals.unwrap_or(gas_decimals);
     let cut = |value: &str, places: u32| {
@@ -116,8 +117,7 @@ fn owned_preview(
     preview.spendable_balance = cut(&preview.spendable_balance, asset_decimals)?;
     preview.max_sendable = cut(&preview.max_sendable, asset_decimals)?;
     let network_fee = preview.estimated_network_fee.clone();
-    let network_fee_value =
-        super::valuation::display_value_of(state, &chain.native_holding_template(), &network_fee);
+    let network_fee_value = super::valuation::display_value_of(state, &fee_asset, &network_fee);
     let amount_value = super::valuation::display_value_of(state, holding, amount);
     // No fallback to the portfolio's balance: a quote without a maximum
     // offers no shortcut rather than the whole holding.
@@ -132,7 +132,7 @@ fn owned_preview(
             Some((percent, shortcut_amount(exact, percent, asset_decimals)))
         })
         .collect();
-    let total = send_total(is_native, amount, Some(&network_fee));
+    let total = send_total(pays_own_fee, amount, Some(&network_fee));
     let amount_refusal = state
         .wallets
         .iter()
@@ -140,17 +140,13 @@ fn owned_preview(
         .and_then(|wallet| {
             amount_refusal(&crate::send::send_affordability(
                 crate::send::SendAffordabilityInput {
-                    is_native,
+                    pays_own_fee,
                     chain_id: chain,
                     symbol: holding.symbol.clone(),
                     amount: amount.to_string(),
                     network_fee,
                     holding_balance: holding.amount.clone(),
-                    gas_balance: wallet
-                        .holdings
-                        .iter()
-                        .find(|h| h.is_native() && h.chain_id == chain)
-                        .map(|h| h.amount.clone()),
+                    gas_balance: gas_balance(wallet, &fee_asset),
                 },
             ))
         });
@@ -169,14 +165,28 @@ fn owned_preview(
     })
 }
 
+/// What the wallet holds of `fee_asset`, the asset its network's fees are
+/// paid in, where it holds any.
+fn gas_balance(
+    wallet: &crate::store::wallet_domain::WalletState,
+    fee_asset: &crate::store::wallet_domain::AssetHolding,
+) -> Option<String> {
+    let fee_asset = fee_asset.deployment_id();
+    wallet
+        .holdings
+        .iter()
+        .find(|h| h.deployment_id() == fee_asset)
+        .map(|h| h.amount.clone())
+}
+
 /// The amount and the fee together, when both are the sent asset: a coin
-/// pays its own fee, a token pays the gas asset's.
+/// that pays its own fees, or VTHO; anything else pays the gas asset's.
 pub(super) fn send_total(
-    is_native: bool,
+    pays_own_fee: bool,
     amount: &str,
     network_fee: Option<&str>,
 ) -> Option<String> {
-    if !is_native {
+    if !pays_own_fee {
         return None;
     }
     crate::amount::decimal::add(amount, network_fee?)
@@ -382,6 +392,23 @@ impl WalletService {
                 .await?
                 .address
         };
+        // VeChainThor prices VET and its tokens alike, in VTHO.
+        if chain.is_vechain() {
+            let preview = self
+                .preview_vechain_send(
+                    chain,
+                    &address,
+                    if destination.is_empty() {
+                        &address
+                    } else {
+                        &destination
+                    },
+                    token.as_ref().map(|t| (t.contract.as_str(), t.decimals)),
+                    crate::amount::input::parse_raw_amount(&amount, decimals)?,
+                )
+                .await?;
+            return wrap(preview).map(Some);
+        }
         // Tron reads its tokens in its own preview; every other network that
         // sends tokens quotes its coin's fee here and the token's balance.
         if let Some(token) = token.as_ref()
@@ -503,6 +530,10 @@ impl WalletService {
                 )
                 .await?
             }
+            Chain::Tezos => {
+                self.preview_tezos_send(chain, &address, Some(&destination))
+                    .await?
+            }
             Chain::Litecoin => {
                 match self
                     .preview_litecoin_owned_send(chain, &wallet_id, &amount, &destination)
@@ -614,17 +645,13 @@ impl WalletService {
             .find(|h| h.deployment_id() == holding_key)
             .ok_or_else(|| SpectraBridgeError::failure("holding was removed"))?;
         let verdict = crate::send::send_affordability(crate::send::SendAffordabilityInput {
-            is_native: holding.is_native(),
+            pays_own_fee: chain.pays_own_fee(holding.contract_address.as_deref()),
             chain_id: chain,
             symbol: holding.symbol.clone(),
             amount: preflight.amount.clone(),
             network_fee: fee.clone(),
             holding_balance: holding.amount.clone(),
-            gas_balance: wallet
-                .holdings
-                .iter()
-                .find(|h| h.is_native() && h.chain_id == chain)
-                .map(|h| h.amount.clone()),
+            gas_balance: gas_balance(wallet, &chain.fee_holding_template()),
         });
         if verdict == crate::send::SendAffordability::Unavailable {
             return Err(SpectraBridgeError::failure(

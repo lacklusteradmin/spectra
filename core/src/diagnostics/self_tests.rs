@@ -67,6 +67,10 @@ fn derive_one(chain: crate::registry::Chain, path: &str) -> Option<String> {
     .address
 }
 
+/// Hedera's fee collection account with its mainnet HIP-15 checksum, as
+/// `@hashgraph/sdk` writes it (`hedera-vectors.json`).
+const HEDERA_ACCOUNT: &str = "0.0.98-oljor";
+
 /// `@` is outside every address alphabet. Truncation is insufficient because
 /// short Aptos addresses and NEAR account names can still be valid.
 const IMPOSSIBLE_ADDRESS: &str = "@@not-an-address@@";
@@ -92,7 +96,7 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
     let Ok(path) = crate::derivation::path::default_path_from_catalog(chain) else {
         return results;
     };
-    let Some(address) = derive_one(chain, &path) else {
+    let Some(derived) = derive_one(chain, &path) else {
         results.push(result(
             chain,
             "Seed Derivation",
@@ -102,12 +106,23 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
         ));
         return results;
     };
+    // A Hedera key derives the public key its account is found by, not an
+    // address: the key must be one the network reads, and validation is
+    // checked on the network's fee account written with its checksum.
+    let (derived_valid, address) = if chain.finds_accounts_by_key() {
+        (
+            crate::derivation::hedera::HederaPublicKey::from_der_hex(&derived).is_some(),
+            HEDERA_ACCOUNT.to_string(),
+        )
+    } else {
+        (validate(chain, &derived), derived)
+    };
 
     let accepted = validate(chain, &address);
     results.push(result(
         chain,
         "Seed Derivation",
-        accepted,
+        derived_valid,
         ChainSelfTestOutcome::DerivedAddressValid,
         ChainSelfTestOutcome::DerivedAddressInvalid,
     ));
@@ -118,6 +133,17 @@ fn run_for_chain(chain: crate::registry::Chain) -> Vec<ChainSelfTestResult> {
         ChainSelfTestOutcome::ValidAddressAccepted,
         ChainSelfTestOutcome::ValidAddressRejected,
     ));
+
+    if chain.finds_accounts_by_key() {
+        let mutated = HEDERA_ACCOUNT.replace("oljor", "oljos");
+        results.push(result(
+            chain,
+            "Checksum Mutation",
+            !validate(chain, &mutated),
+            ChainSelfTestOutcome::ChecksumMutationRejected,
+            ChainSelfTestOutcome::ChecksumMutationAccepted,
+        ));
+    }
 
     let rejected = !validate(chain, IMPOSSIBLE_ADDRESS);
     results.push(result(
@@ -298,6 +324,10 @@ mod fixtures_are_real_tests {
             let Some(address) = derive_one(chain, &path) else {
                 continue;
             };
+            // A Hedera key derives no address (`run_for_chain`).
+            if chain.finds_accounts_by_key() {
+                continue;
+            }
             assert!(
                 validate_address(chain, &address).is_valid,
                 "{} derives {address} and its own validator refuses it",

@@ -1,0 +1,1254 @@
+{
+ "note": "Every catalogued cosmos-rest endpoint read through Spectra's CosmosClient, 2026-11-24 (Unix seconds in checked_at). Read-only: node_info, latest block, account, balances, fee market, a simulation of a 1-unit self-send with a memo (no signature), the status of a known and an unknown transaction, and the first history page. The second run simulated from the counterparty of the sample address's latest transfer on the three networks whose sample address held nothing.",
+ "first_run": [
+  {
+   "account": [
+    2756236,
+    106
+   ],
+   "balance": "0",
+   "chain": "cosmos-hub",
+   "checked_at": 1795521491.011656,
+   "endpoint": "https://cosmos-rest.publicnode.com",
+   "history": {
+    "entries": 4,
+    "first": {
+     "amount": "Units(9388751)",
+     "height": 34026150,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "DB902F7B7B3728DE0807AEB162D80C0EACDA1A0744E4E779C8A9341FE2764C17"
+    },
+    "has_next": true
+   },
+   "latest_height": 34026457,
+   "market_gas_price": "5/1000",
+   "simulate_gas_used": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(34026150) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    2756236,
+    106
+   ],
+   "balance": "0",
+   "chain": "cosmos-hub",
+   "checked_at": 1795521495.527758,
+   "endpoint": "https://cosmos-api.polkachu.com",
+   "history": {
+    "entries": 4,
+    "first": {
+     "amount": "Units(9388751)",
+     "height": 34026150,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "DB902F7B7B3728DE0807AEB162D80C0EACDA1A0744E4E779C8A9341FE2764C17"
+    },
+    "has_next": true
+   },
+   "latest_height": 34026458,
+   "market_gas_price": "5/1000",
+   "simulate_gas_used": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(34026150) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    240157,
+    1355
+   ],
+   "balance": "1555214857921",
+   "chain": "celestia",
+   "checked_at": 1795521501.394093,
+   "endpoint": "https://celestia-api.polkachu.com",
+   "history": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "latest_height": 16188399,
+   "market_gas_price": null,
+   "simulate_gas_used": 52080,
+   "spendable": "1555214857921",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(16187303) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    240157,
+    1355
+   ],
+   "balance": "1555214857921",
+   "chain": "celestia",
+   "checked_at": 1795521507.820904,
+   "endpoint": "https://public-celestia-lcd.numia.xyz",
+   "history": {
+    "entries": 68,
+    "first": {
+     "amount": "Units(3050470000)",
+     "height": 16187303,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "96B997BC3DF28274D23EF7C3B3776022C971B918C5C85111BC6522270265210C"
+    },
+    "has_next": true
+   },
+   "latest_height": 16188402,
+   "market_gas_price": null,
+   "simulate_gas_used": 52080,
+   "spendable": "1555214857921",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(16187303) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": {
+    "error": "all 3 attempts failed: HTTP 501 Not Implemented"
+   }
+  },
+  {
+   "account": [
+    164662,
+    1042
+   ],
+   "balance": "13953252913274036041477328",
+   "chain": "dydx",
+   "checked_at": 1795521514.801665,
+   "endpoint": "https://dydx-rest.publicnode.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(22839817400000000000)",
+     "height": 115176003,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "87F0A6F1017F29A11C7F0316B4EB21AFDE9342E0C78C47E60947DD615A1D1A2A"
+    },
+    "has_next": true
+   },
+   "latest_height": 115176718,
+   "market_gas_price": null,
+   "simulate_gas_used": 52792,
+   "spendable": "13953252913274036041477328",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(115173873) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    164662,
+    1042
+   ],
+   "balance": "13953252913274036041477328",
+   "chain": "dydx",
+   "checked_at": 1795521520.532802,
+   "endpoint": "https://dydx-api.polkachu.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(22839817400000000000)",
+     "height": 115176003,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "87F0A6F1017F29A11C7F0316B4EB21AFDE9342E0C78C47E60947DD615A1D1A2A"
+    },
+    "has_next": true
+   },
+   "latest_height": 115176727,
+   "market_gas_price": null,
+   "simulate_gas_used": 52792,
+   "spendable": "13953252913274036041477328",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(115173873) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    164662,
+    1042
+   ],
+   "balance": "13953252913274036041477328",
+   "chain": "dydx",
+   "checked_at": 1795521525.329284,
+   "endpoint": "https://dydx-rest.kingnodes.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(22839817400000000000)",
+     "height": 115176003,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "87F0A6F1017F29A11C7F0316B4EB21AFDE9342E0C78C47E60947DD615A1D1A2A"
+    },
+    "has_next": true
+   },
+   "latest_height": 115176736,
+   "market_gas_price": null,
+   "simulate_gas_used": 52792,
+   "spendable": "13953252913274036041477328",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(115173873) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    784910,
+    1080
+   ],
+   "balance": "6983674401238",
+   "chain": "terra",
+   "checked_at": 1795521531.512221,
+   "endpoint": "https://terra-rest.publicnode.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(45406381612)",
+     "height": 23895514,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "8F8F82325A61A24F0228299205CD1260F5ACB9C7C52CE752F5C8B226ADC4465A"
+    },
+    "has_next": true
+   },
+   "latest_height": 23895522,
+   "market_gas_price": null,
+   "simulate_gas_used": 54696,
+   "spendable": "6983674401238",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(23895084) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    784910,
+    1080
+   ],
+   "balance": "6983674401238",
+   "chain": "terra",
+   "checked_at": 1795521533.246246,
+   "endpoint": "https://terra-api.polkachu.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(45406381612)",
+     "height": 23895514,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "8F8F82325A61A24F0228299205CD1260F5ACB9C7C52CE752F5C8B226ADC4465A"
+    },
+    "has_next": true
+   },
+   "latest_height": 23895523,
+   "market_gas_price": null,
+   "simulate_gas_used": 54696,
+   "spendable": "6983674401238",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(23895084) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    3560044,
+    640
+   ],
+   "balance": "19749660006479",
+   "chain": "kava",
+   "checked_at": 1795521537.797873,
+   "endpoint": "https://api.data.kava.io",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(14955000)",
+     "height": 23640677,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "9B918124AD79C208796D009F208C8BDB889C4484F831F377AD0482DA5E28C881"
+    },
+    "has_next": true
+   },
+   "latest_height": 23640796,
+   "market_gas_price": null,
+   "simulate_gas_used": 59240,
+   "spendable": "19749660006479",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(23640460) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    3560044,
+    640
+   ],
+   "balance": "19749660006479",
+   "chain": "kava",
+   "checked_at": 1795521539.537031,
+   "endpoint": "https://kava-rest.publicnode.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(14955000)",
+     "height": 23640677,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "9B918124AD79C208796D009F208C8BDB889C4484F831F377AD0482DA5E28C881"
+    },
+    "has_next": true
+   },
+   "latest_height": 23640797,
+   "market_gas_price": null,
+   "simulate_gas_used": 59240,
+   "spendable": "19749660006479",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(23640460) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    3560044,
+    640
+   ],
+   "balance": "19749660006479",
+   "chain": "kava",
+   "checked_at": 1795521544.22349,
+   "endpoint": "https://kava-api.polkachu.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(14955000)",
+     "height": 23640677,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "9B918124AD79C208796D009F208C8BDB889C4484F831F377AD0482DA5E28C881"
+    },
+    "has_next": true
+   },
+   "latest_height": 23640798,
+   "market_gas_price": null,
+   "simulate_gas_used": 59240,
+   "spendable": "19749660006479",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(23640460) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    2456402,
+    3173
+   ],
+   "balance": "198791000000000000",
+   "chain": "injective",
+   "checked_at": 1795521548.274371,
+   "endpoint": "https://injective-rest.publicnode.com",
+   "history": {
+    "entries": 18,
+    "first": {
+     "amount": "Units(1000000000000)",
+     "height": 193126807,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "0B6B35EF0866AA0AB12C9C4E92A54B9820CB7CFAAC3C7DEFCE58DA5A840653E8"
+    },
+    "has_next": true
+   },
+   "latest_height": 193127215,
+   "market_gas_price": "160000000/1",
+   "simulate_gas_used": 89044,
+   "spendable": "198791000000000000",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(193124314) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    2456402,
+    3173
+   ],
+   "balance": "198791000000000000",
+   "chain": "injective",
+   "checked_at": 1795521549.999472,
+   "endpoint": "https://injective-api.polkachu.com",
+   "history": {
+    "entries": 17,
+    "first": {
+     "amount": "Units(1000000000000)",
+     "height": 193126807,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "0B6B35EF0866AA0AB12C9C4E92A54B9820CB7CFAAC3C7DEFCE58DA5A840653E8"
+    },
+    "has_next": true
+   },
+   "latest_height": 193127219,
+   "market_gas_price": "160000000/1",
+   "simulate_gas_used": 89044,
+   "spendable": "198791000000000000",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(193124314) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    2456402,
+    3173
+   ],
+   "balance": "198791000000000000",
+   "chain": "injective",
+   "checked_at": 1795521554.549682,
+   "endpoint": "https://sentry.lcd.injective.network",
+   "history": {
+    "entries": 17,
+    "first": {
+     "amount": "Units(1000000000000)",
+     "height": 193126807,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "0B6B35EF0866AA0AB12C9C4E92A54B9820CB7CFAAC3C7DEFCE58DA5A840653E8"
+    },
+    "has_next": true
+   },
+   "latest_height": 193127229,
+   "market_gas_price": "160000000/1",
+   "simulate_gas_used": 89044,
+   "spendable": "198791000000000000",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(193124314) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    1145283,
+    327
+   ],
+   "balance": "0",
+   "chain": "akash",
+   "checked_at": 1795521561.79968,
+   "endpoint": "https://akash-rest.publicnode.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(186464907)",
+     "height": 29659134,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6502867CBA72421FE81A5D2931868B3BA4AD61DEBB7370AD09BBC9A60A2787AB"
+    },
+    "has_next": true
+   },
+   "latest_height": 29659161,
+   "market_gas_price": null,
+   "simulate_gas_used": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(29658174) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    1145283,
+    327
+   ],
+   "balance": "0",
+   "chain": "akash",
+   "checked_at": 1795521569.654958,
+   "endpoint": "https://akash-api.polkachu.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(186464907)",
+     "height": 29659134,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6502867CBA72421FE81A5D2931868B3BA4AD61DEBB7370AD09BBC9A60A2787AB"
+    },
+    "has_next": true
+   },
+   "latest_height": 29659162,
+   "market_gas_price": null,
+   "simulate_gas_used": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(29658174) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    1145283,
+    327
+   ],
+   "balance": "0",
+   "chain": "akash",
+   "checked_at": 1795521575.961012,
+   "endpoint": "https://api.akashnet.net",
+   "history": {
+    "entries": 8,
+    "first": {
+     "amount": "Units(186464907)",
+     "height": 29659134,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6502867CBA72421FE81A5D2931868B3BA4AD61DEBB7370AD09BBC9A60A2787AB"
+    },
+    "has_next": true
+   },
+   "latest_height": 29659163,
+   "market_gas_price": null,
+   "simulate_gas_used": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(29658174) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    1145283,
+    327
+   ],
+   "balance": "0",
+   "chain": "akash",
+   "checked_at": 1795521580.843867,
+   "endpoint": "https://rest-akash.ecostake.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(186464907)",
+     "height": 29659134,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6502867CBA72421FE81A5D2931868B3BA4AD61DEBB7370AD09BBC9A60A2787AB"
+    },
+    "has_next": true
+   },
+   "latest_height": 29659164,
+   "market_gas_price": null,
+   "simulate_gas_used": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(29658174) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    366905,
+    48
+   ],
+   "balance": "0",
+   "chain": "babylon",
+   "checked_at": 1795521588.657744,
+   "endpoint": "https://babylon-rest.publicnode.com",
+   "history": {
+    "entries": 96,
+    "first": {
+     "amount": "Units(1150000889440)",
+     "height": 5151911,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "FA47CFEC2D74164C4DE2CB7B0C1BA5C2427997BD26C66BB722F5E6A11683FCB1"
+    },
+    "has_next": true
+   },
+   "latest_height": 5152120,
+   "market_gas_price": null,
+   "simulate_gas_used": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(5151911) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    366905,
+    48
+   ],
+   "balance": "0",
+   "chain": "babylon",
+   "checked_at": 1795521596.925184,
+   "endpoint": "https://babylon-api.polkachu.com",
+   "history": {
+    "entries": 96,
+    "first": {
+     "amount": "Units(1150000889440)",
+     "height": 5151911,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "FA47CFEC2D74164C4DE2CB7B0C1BA5C2427997BD26C66BB722F5E6A11683FCB1"
+    },
+    "has_next": true
+   },
+   "latest_height": 5152121,
+   "market_gas_price": null,
+   "simulate_gas_used": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(5151911) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    366905,
+    48
+   ],
+   "balance": "0",
+   "chain": "babylon",
+   "checked_at": 1795521603.730702,
+   "endpoint": "https://api.babylon.validatus.com",
+   "history": {
+    "entries": 96,
+    "first": {
+     "amount": "Units(1150000889440)",
+     "height": 5151911,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "FA47CFEC2D74164C4DE2CB7B0C1BA5C2427997BD26C66BB722F5E6A11683FCB1"
+    },
+    "has_next": true
+   },
+   "latest_height": 5152121,
+   "market_gas_price": null,
+   "simulate_gas_used": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(5151911) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    686839,
+    1109
+   ],
+   "balance": "216068180414",
+   "chain": "osmosis",
+   "checked_at": 1795521611.556408,
+   "endpoint": "https://lcd.osmosis.zone",
+   "history": {
+    "entries": 23,
+    "first": {
+     "amount": "Units(3077858100)",
+     "height": 75994445,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6135CAFBCDAC574BEEA9C12FF343F5AEDE860639E30860F0997D7B96DB6BD711"
+    },
+    "has_next": true
+   },
+   "latest_height": 75994711,
+   "market_gas_price": "3/100",
+   "simulate_gas_used": 85874,
+   "spendable": "216068180414",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(75992228) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    686839,
+    1109
+   ],
+   "balance": "216068180414",
+   "chain": "osmosis",
+   "checked_at": 1795521617.385974,
+   "endpoint": "https://osmosis-rest.publicnode.com",
+   "history": {
+    "entries": 23,
+    "first": {
+     "amount": "Units(3077858100)",
+     "height": 75994445,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6135CAFBCDAC574BEEA9C12FF343F5AEDE860639E30860F0997D7B96DB6BD711"
+    },
+    "has_next": true
+   },
+   "latest_height": 75994716,
+   "market_gas_price": "3/100",
+   "simulate_gas_used": 85907,
+   "spendable": "216068180414",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(75992228) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    686839,
+    1109
+   ],
+   "balance": "216068180414",
+   "chain": "osmosis",
+   "checked_at": 1795521619.070836,
+   "endpoint": "https://osmosis-api.polkachu.com",
+   "history": {
+    "entries": 19,
+    "first": {
+     "amount": "Units(3077858100)",
+     "height": 75994445,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6135CAFBCDAC574BEEA9C12FF343F5AEDE860639E30860F0997D7B96DB6BD711"
+    },
+    "has_next": true
+   },
+   "latest_height": 75994718,
+   "market_gas_price": "3/100",
+   "simulate_gas_used": 85907,
+   "spendable": "216068180414",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(75992228) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    341749,
+    3084
+   ],
+   "balance": "4266399927597957932931",
+   "chain": "dymension",
+   "checked_at": 1795521622.768101,
+   "endpoint": "https://dymension-api.polkachu.com",
+   "history": {
+    "entries": 67,
+    "first": {
+     "amount": "Units(10107742963517362369)",
+     "height": 24645819,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "66D6EE376271797F9AAD84085684D34248581D6B170D86AD29116215F4AB3774"
+    },
+    "has_next": true
+   },
+   "latest_height": 24648733,
+   "market_gas_price": null,
+   "simulate_gas_used": 125924,
+   "spendable": "4266399927597957932931",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(24645819) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    341749,
+    3084
+   ],
+   "balance": "4266399927597957932931",
+   "chain": "dymension",
+   "checked_at": 1795521627.198028,
+   "endpoint": "https://api.dymension.nodestake.org",
+   "history": {
+    "entries": 15,
+    "first": {
+     "amount": "Units(10107742963517362369)",
+     "height": 24645819,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "66D6EE376271797F9AAD84085684D34248581D6B170D86AD29116215F4AB3774"
+    },
+    "has_next": true
+   },
+   "latest_height": 24648733,
+   "market_gas_price": null,
+   "simulate_gas_used": 125924,
+   "spendable": "4266399927597957932931",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(24645819) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    341749,
+    3084
+   ],
+   "balance": "4266399927597957932931",
+   "chain": "dymension",
+   "checked_at": 1795521632.758153,
+   "endpoint": "https://dymension-mainnet-api.crouton.digital",
+   "history": {
+    "entries": 67,
+    "first": {
+     "amount": "Units(10107742963517362369)",
+     "height": 24645819,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "66D6EE376271797F9AAD84085684D34248581D6B170D86AD29116215F4AB3774"
+    },
+    "has_next": true
+   },
+   "latest_height": 24648736,
+   "market_gas_price": null,
+   "simulate_gas_used": 125924,
+   "spendable": "4266399927597957932931",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(24645819) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    155923,
+    373
+   ],
+   "balance": "3498156614043",
+   "chain": "saga",
+   "checked_at": 1795521636.873133,
+   "endpoint": "https://saga-rest.publicnode.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(1900000)",
+     "height": 14680375,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "155C3C1050008797D7555AF59BFC9B74EF8C5EB867443AFA18D7E30CED6227EE"
+    },
+    "has_next": true
+   },
+   "latest_height": 14680801,
+   "market_gas_price": null,
+   "simulate_gas_used": 50391,
+   "spendable": "3498156614043",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(14680375) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    155923,
+    373
+   ],
+   "balance": "3498156614043",
+   "chain": "saga",
+   "checked_at": 1795521640.285265,
+   "endpoint": "https://saga-api.polkachu.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(1900000)",
+     "height": 14680375,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "155C3C1050008797D7555AF59BFC9B74EF8C5EB867443AFA18D7E30CED6227EE"
+    },
+    "has_next": true
+   },
+   "latest_height": 14680802,
+   "market_gas_price": null,
+   "simulate_gas_used": 50391,
+   "spendable": "3498156614043",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(14680375) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    155923,
+    373
+   ],
+   "balance": "3498156614043",
+   "chain": "saga",
+   "checked_at": 1795521645.419638,
+   "endpoint": "https://api.saga.nodestake.org",
+   "history": {
+    "error": "all 3 attempts failed: HTTP 500 Internal Server Error"
+   },
+   "latest_height": 14680803,
+   "market_gas_price": null,
+   "simulate_gas_used": 50391,
+   "spendable": "3498156614043",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(14680375) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    36664,
+    236
+   ],
+   "balance": "5754249951403754863005933",
+   "chain": "allora",
+   "checked_at": 1795521652.316702,
+   "endpoint": "https://allora-api.polkachu.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(15494990000000000000000)",
+     "height": 12041604,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "95922AB540C57701B0C49010E763B1964CB014A508E17582DBEFD912B4751C1D"
+    },
+    "has_next": true
+   },
+   "latest_height": 12043940,
+   "market_gas_price": "250000000/1",
+   "simulate_gas_used": 94555,
+   "spendable": "5754249951403754863005933",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(12041604) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    36664,
+    236
+   ],
+   "balance": "5754249951403754863005933",
+   "chain": "allora",
+   "checked_at": 1795521656.747453,
+   "endpoint": "https://allora-api.mainnet.allora.network",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(15494990000000000000000)",
+     "height": 12041604,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "95922AB540C57701B0C49010E763B1964CB014A508E17582DBEFD912B4751C1D"
+    },
+    "has_next": true
+   },
+   "latest_height": 12043941,
+   "market_gas_price": {
+    "error": "HTTP 401: unauthorized"
+   },
+   "simulate_gas_used": 94555,
+   "spendable": "5754249951403754863005933",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(12041604) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    147397,
+    101
+   ],
+   "balance": "495872336854",
+   "chain": "band",
+   "checked_at": 1795521658.530434,
+   "endpoint": "https://band-api.polkachu.com",
+   "history": {
+    "entries": 38,
+    "first": {
+     "amount": "Units(9990000)",
+     "height": 78788283,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "72434CA057D05427BD1D57BC9128BE612A5A170AB572C87A546C1E0F3E891CE5"
+    },
+    "has_next": true
+   },
+   "latest_height": 78796025,
+   "market_gas_price": null,
+   "simulate_gas_used": 50261,
+   "spendable": "495872336854",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(78788283) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    147397,
+    101
+   ],
+   "balance": "495872336854",
+   "chain": "band",
+   "checked_at": 1795521661.927178,
+   "endpoint": "https://laozi1.bandchain.org/api",
+   "history": {
+    "entries": 21,
+    "first": {
+     "amount": "Units(9990000)",
+     "height": 78788283,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "72434CA057D05427BD1D57BC9128BE612A5A170AB572C87A546C1E0F3E891CE5"
+    },
+    "has_next": true
+   },
+   "latest_height": 78796029,
+   "market_gas_price": null,
+   "simulate_gas_used": 50261,
+   "spendable": "495872336854",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(78788283) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  }
+ ],
+ "second_run_simulations": [
+  {
+   "account": [
+    2756236,
+    106
+   ],
+   "balance": "0",
+   "chain": "cosmos-hub",
+   "checked_at": 1795521863.879244,
+   "endpoint": "https://cosmos-rest.publicnode.com",
+   "history": {
+    "entries": 17,
+    "first": {
+     "amount": "Units(330)",
+     "height": 34026172,
+     "incoming": true,
+     "outcome": "Confirmed",
+     "txid": "0E46581008A4777A0519B1961B8EAC0870B2C814124D06C71775F76C0B9C0E54"
+    },
+    "has_next": true
+   },
+   "latest_height": 34026523,
+   "market_gas_price": "5/1000",
+   "simulate_gas_used": 86976,
+   "simulated_from": "cosmos1cchda0fgmu5kqklcvhh0t6rq597a0ggflkx7z9",
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(34026150) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    2756236,
+    106
+   ],
+   "balance": "0",
+   "chain": "cosmos-hub",
+   "checked_at": 1795521865.788707,
+   "endpoint": "https://cosmos-api.polkachu.com",
+   "history": {
+    "entries": 34,
+    "first": {
+     "amount": "Units(330)",
+     "height": 34026172,
+     "incoming": true,
+     "outcome": "Confirmed",
+     "txid": "0E46581008A4777A0519B1961B8EAC0870B2C814124D06C71775F76C0B9C0E54"
+    },
+    "has_next": true
+   },
+   "latest_height": 34026523,
+   "market_gas_price": "5/1000",
+   "simulate_gas_used": 86976,
+   "simulated_from": "cosmos1cchda0fgmu5kqklcvhh0t6rq597a0ggflkx7z9",
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(34026150) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    1145283,
+    327
+   ],
+   "balance": "0",
+   "chain": "akash",
+   "checked_at": 1795521871.216547,
+   "endpoint": "https://akash-rest.publicnode.com",
+   "history": {
+    "entries": 92,
+    "first": {
+     "amount": "Units(336614303)",
+     "height": 29648511,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6503229E749142C7DF3FA8C1C3814E85EF606E336902B1FDE01A62BCE688B54F"
+    },
+    "has_next": true
+   },
+   "latest_height": 29659213,
+   "market_gas_price": null,
+   "simulate_gas_used": 50001,
+   "simulated_from": "akash1ren425fwsmx3c3spu7mn8kgf9my6j2gyelysyx",
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(29658174) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    1145283,
+    327
+   ],
+   "balance": "0",
+   "chain": "akash",
+   "checked_at": 1795521873.428886,
+   "endpoint": "https://akash-api.polkachu.com",
+   "history": {
+    "entries": 83,
+    "first": {
+     "amount": "Units(336614303)",
+     "height": 29648511,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6503229E749142C7DF3FA8C1C3814E85EF606E336902B1FDE01A62BCE688B54F"
+    },
+    "has_next": true
+   },
+   "latest_height": 29659214,
+   "market_gas_price": null,
+   "simulate_gas_used": 50001,
+   "simulated_from": "akash1ren425fwsmx3c3spu7mn8kgf9my6j2gyelysyx",
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(29658174) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    1145283,
+    327
+   ],
+   "balance": "0",
+   "chain": "akash",
+   "checked_at": 1795521880.251434,
+   "endpoint": "https://api.akashnet.net",
+   "history": {
+    "entries": 4,
+    "first": {
+     "amount": "Units(186464907)",
+     "height": 29659134,
+     "incoming": true,
+     "outcome": "Confirmed",
+     "txid": "6502867CBA72421FE81A5D2931868B3BA4AD61DEBB7370AD09BBC9A60A2787AB"
+    },
+    "has_next": true
+   },
+   "latest_height": 29659215,
+   "market_gas_price": null,
+   "simulate_gas_used": 50001,
+   "simulated_from": "akash1ren425fwsmx3c3spu7mn8kgf9my6j2gyelysyx",
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(29658174) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    1145283,
+    327
+   ],
+   "balance": "0",
+   "chain": "akash",
+   "checked_at": 1795521883.753943,
+   "endpoint": "https://rest-akash.ecostake.com",
+   "history": {
+    "entries": 84,
+    "first": {
+     "amount": "Units(336614303)",
+     "height": 29648511,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "6503229E749142C7DF3FA8C1C3814E85EF606E336902B1FDE01A62BCE688B54F"
+    },
+    "has_next": true
+   },
+   "latest_height": 29659215,
+   "market_gas_price": null,
+   "simulate_gas_used": 50001,
+   "simulated_from": "akash1ren425fwsmx3c3spu7mn8kgf9my6j2gyelysyx",
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(29658174) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    366905,
+    48
+   ],
+   "balance": "0",
+   "chain": "babylon",
+   "checked_at": 1795521891.325169,
+   "endpoint": "https://babylon-rest.publicnode.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(118390000000)",
+     "height": 5152011,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "E30A2C0350BFC1F69B90FD8A63E692D654D1E8F4CE0AA1E45432434D58B5B70A"
+    },
+    "has_next": true
+   },
+   "latest_height": 5152151,
+   "market_gas_price": null,
+   "simulate_gas_used": 53247,
+   "simulated_from": "bbn1598mq4h5hvmscwra8d7mvm2c0nnhq0scdq0wg8",
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(5151911) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    366905,
+    48
+   ],
+   "balance": "0",
+   "chain": "babylon",
+   "checked_at": 1795521893.598745,
+   "endpoint": "https://babylon-api.polkachu.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(118390000000)",
+     "height": 5152011,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "E30A2C0350BFC1F69B90FD8A63E692D654D1E8F4CE0AA1E45432434D58B5B70A"
+    },
+    "has_next": true
+   },
+   "latest_height": 5152151,
+   "market_gas_price": null,
+   "simulate_gas_used": 53247,
+   "simulated_from": "bbn1598mq4h5hvmscwra8d7mvm2c0nnhq0scdq0wg8",
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(5151911) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  },
+  {
+   "account": [
+    366905,
+    48
+   ],
+   "balance": "0",
+   "chain": "babylon",
+   "checked_at": 1795521899.501835,
+   "endpoint": "https://api.babylon.validatus.com",
+   "history": {
+    "entries": 100,
+    "first": {
+     "amount": "Units(118390000000)",
+     "height": 5152011,
+     "incoming": false,
+     "outcome": "Confirmed",
+     "txid": "E30A2C0350BFC1F69B90FD8A63E692D654D1E8F4CE0AA1E45432434D58B5B70A"
+    },
+    "has_next": true
+   },
+   "latest_height": 5152152,
+   "market_gas_price": null,
+   "simulate_gas_used": 53247,
+   "simulated_from": "bbn1598mq4h5hvmscwra8d7mvm2c0nnhq0scdq0wg8",
+   "spendable": "0",
+   "status_of_known_tx": "Confirmed { succeeded: true, block: Some(5151911) }",
+   "status_of_unknown_tx": "Pending",
+   "verify_network": "ok"
+  }
+ ]
+}

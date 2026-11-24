@@ -28,13 +28,14 @@ pub struct CreationArgs {
     #[arg(long)]
     name: Option<String>,
     /// Derivation path, for a path no profile names (default: the chain's
-    /// default profile at account 0). On Polkadot and Bittensor, Substrate
-    /// junctions such as `//polkadot//0/1` (default: the root key).
+    /// default profile at account 0). On Polkadot, Kusama, Astar and
+    /// Bittensor, Substrate junctions such as `//polkadot//0/1` (default:
+    /// the root key).
     #[arg(long, conflicts_with_all = ["profile", "account"])]
     path: Option<String>,
     /// Derivation profile, as `wallet methods` lists it: `standard`,
-    /// `legacy`, `nestedSegWit`, `nativeSegWit` or `taproot` (default: the
-    /// chain's first).
+    /// `legacy`, `nestedSegWit`, `nativeSegWit`, `taproot`, `ecdsa` or `evm`
+    /// (default: the chain's first).
     #[arg(long)]
     profile: Option<String>,
     /// Account index on the profile (default 0).
@@ -89,9 +90,11 @@ pub struct ImportArgs {
     /// Print the address the import would store, and store nothing.
     #[arg(long)]
     preview: bool,
-    /// NEAR only: a named account (`alice.near`) the key controls. The
-    /// import confirms on the network that the key is one of its full-access
-    /// keys, and the wallet holds the named account.
+    /// NEAR and Hedera only: a named account (`alice.near`, `0.0.N`) the
+    /// key controls. The import confirms on the network that the key is one
+    /// of its full-access keys (NEAR) or the account's one key (Hedera), and
+    /// the wallet holds the named account. Without it a Hedera import finds
+    /// the account that holds the key.
     #[arg(long)]
     named_account: Option<String>,
     /// TON only: the wallet contract the key's account is under, `w5`
@@ -165,7 +168,8 @@ pub struct CopyArgs {
     name: Option<String>,
     /// A phrase's derivation path on the new network, for a path no profile
     /// names (default: the network's default profile at account 0). On
-    /// Polkadot and Bittensor, Substrate junctions (default: the root key).
+    /// Polkadot, Kusama, Astar and Bittensor, Substrate junctions (default:
+    /// the root key).
     #[arg(long, conflicts_with_all = ["profile", "account"])]
     path: Option<String>,
     /// A phrase's derivation profile on the new network.

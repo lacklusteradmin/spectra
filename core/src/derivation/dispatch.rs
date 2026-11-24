@@ -33,7 +33,7 @@ pub fn derive_for_chain(
     use crate::registry::Chain;
 
     use crate::derivation::{
-        aptos, bitcoin, bittensor, cardano, evm, icp, monero, near, polkadot, solana, stellar, sui,
+        algorand, aptos, bitcoin, cardano, evm, icp, monero, near, polkadot, solana, stellar, sui,
         ton, tron, xrp,
     };
 
@@ -62,7 +62,11 @@ pub fn derive_for_chain(
         | Chain::BitcoinGold
         | Chain::Zcash
         | Chain::Decred
-        | Chain::Kaspa => {
+        | Chain::Kaspa
+        | Chain::Qtum
+        | Chain::FractalBitcoin
+        | Chain::Ecash
+        | Chain::Digibyte => {
             let script = script_type.unwrap_or_else(|| script_type_for_path(path));
             bitcoin::derive_from_seed_phrase(chain, phrase, path, passphrase, script, wants)?
         }
@@ -80,11 +84,29 @@ pub fn derive_for_chain(
         Chain::Ton => ton::derive_from_seed_phrase(chain, phrase, passphrase, wants)?,
         Chain::Icp => icp::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
         Chain::Near => near::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
-        Chain::Polkadot => {
+        Chain::Tezos => {
+            crate::derivation::tezos::derive_from_seed_phrase(phrase, path, passphrase, wants)?
+        }
+        _ if chain.is_substrate() => {
             polkadot::derive_from_seed_phrase(chain, phrase, path, passphrase, hmac_key, wants)?
         }
-        Chain::Bittensor => bittensor::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
         Chain::Monero => monero::derive_from_seed_phrase(chain, phrase, wants)?,
+        Chain::Algorand => algorand::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        _ if chain.is_cosmos() => crate::derivation::cosmos::derive_from_seed_phrase(
+            chain, phrase, path, passphrase, wants,
+        )?,
+        // VeChainThor's address is an Ethereum one: Keccak-256 of the key at
+        // its own path, coin type 818.
+        Chain::Vechain => evm::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
+        Chain::Filecoin => crate::derivation::filecoin::derive_from_seed_phrase(
+            chain, phrase, path, passphrase, wants,
+        )?,
+        Chain::Starknet => crate::derivation::starknet::derive_from_seed_phrase(
+            chain, phrase, path, passphrase, wants,
+        )?,
+        Chain::Hedera => crate::derivation::hedera::derive_from_seed_phrase(
+            chain, phrase, path, passphrase, wants,
+        )?,
         // Every EVM chain derives the same address from the same path — there
         // is no chain-specific encoding.
         _ if chain.is_evm() => evm::derive_from_seed_phrase(phrase, path, passphrase, wants)?,
@@ -117,7 +139,7 @@ pub fn derive_from_private_key(
     if !chain.derives_from_private_key() {
         return Ok(None);
     }
-    let result = if chain.is_evm() {
+    let result = if chain.is_evm() || chain.is_vechain() {
         crate::derivation::evm::derive_evm_from_private_key(
             private_key_hex,
             want_address,
@@ -138,17 +160,24 @@ mod dispatch_export_tests {
         use crate::derivation::phrase::test_phrase;
         use crate::registry::Chain;
         for chain in Chain::all().filter(|c| c.derives_from_private_key()) {
-            let path = crate::derivation::path::default_path_from_catalog(chain).unwrap();
-            let expected = derive_for_chain(
-                chain,
-                test_phrase(chain),
-                &path,
-                None,
-                None,
-                None,
-                Wants::ALL,
-            )
-            .unwrap();
+            // An Algorand BIP-39 account's key is an ARC-52 extended key,
+            // which no Algorand key format holds; a raw key is the one a
+            // 25-word mnemonic holds (algosdk, `algorand-vectors.json`).
+            let (phrase, path) = if chain == Chain::Algorand {
+                (
+                    "pluck impulse gesture kangaroo mechanic fan harsh friend kidney siege \
+                     mandate average wise during rescue moral sign manual number boost between \
+                     omit reopen absent series",
+                    String::new(),
+                )
+            } else {
+                (
+                    test_phrase(chain),
+                    crate::derivation::path::default_path_from_catalog(chain).unwrap(),
+                )
+            };
+            let expected =
+                derive_for_chain(chain, phrase, &path, None, None, None, Wants::ALL).unwrap();
             let actual = derive_from_private_key(
                 chain,
                 expected.private_key_hex.as_deref().unwrap().to_string(),
@@ -170,8 +199,11 @@ mod dispatch_export_tests {
             } else {
                 assert_eq!(actual.address, expected.address, "{chain}");
             }
-            assert!(
+            // A Hedera key's derived "address" is the public key its account
+            // is found by, which nothing pays.
+            assert_eq!(
                 crate::send::flow::is_valid_send_address(chain, actual.address.unwrap()),
+                !chain.finds_accounts_by_key(),
                 "{chain}"
             );
             assert!(
@@ -199,6 +231,12 @@ mod dispatch_export_tests {
                     ))
                     .unwrap();
                     vector["privateKey"].as_str().unwrap().into()
+                } else if chain.is_starknet() {
+                    // A Stark key is below the curve order, about 2^251.
+                    format!("0{}", &KEY[..63])
+                } else if chain.finds_accounts_by_key() {
+                    // Stored in the DER that names its scheme.
+                    format!("302e020100300506032b657004220420{KEY}")
                 } else {
                     KEY.to_string()
                 },

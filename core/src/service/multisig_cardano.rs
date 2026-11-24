@@ -389,7 +389,7 @@ impl WalletService {
                 "This key already signed the session.",
             ));
         }
-        let signature = crate::send::cardano::sign_extended(
+        let signature = crate::derivation::ed25519_extended::sign(
             private,
             public,
             &session.transaction.transaction_hash()?,

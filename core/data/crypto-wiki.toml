@@ -519,3 +519,108 @@ comment = "Governance token of Merlin Chain, an ERC-20 on the Merlin network."
 [[assets]]
 token_id = "stable-2"
 comment = "Governance token of the Stable network, an ERC-20 there; USDT0, not STABLE, pays gas."
+
+[[assets]]
+token_id = "cosmos"
+comment = "Staked to secure the Cosmos Hub and the consumer chains it lends its validators to, and pays the Hub's fees."
+
+[[assets]]
+token_id = "celestia"
+comment = "Pays for the rollup data published to Celestia's blocks and for its transfers, and is staked by its validators."
+
+[[assets]]
+token_id = "dydx-chain"
+comment = "Staked to secure the dYdX chain, whose stakers share the exchange's trading fees, and pays its gas."
+
+[[assets]]
+token_id = "terra-luna-2"
+comment = "Pays fees and is staked on the Terra chain relaunched in 2022. The original chain's coin is LUNC."
+
+[[assets]]
+token_id = "injective-protocol"
+comment = "Pays gas and is staked on Injective. A share of the protocol's fees buys INJ back in a recurring auction and burns it."
+
+[[assets]]
+token_id = "akash-network"
+comment = "Staked to secure Akash and accepted as payment for compute leases, a share of which goes to stakers."
+
+[[assets]]
+token_id = "babylon"
+comment = "Staked to secure Babylon Genesis, alongside the bitcoin staked through the protocol, and pays its fees."
+
+[[assets]]
+token_id = "osmosis"
+comment = "Pays fees and is staked on Osmosis, and its holders vote on the incentives its pools receive."
+
+[[assets]]
+token_id = "dymension"
+comment = "Staked to secure Dymension, where RollApps settle, and pays its fees."
+
+[[assets]]
+token_id = "saga-2"
+comment = "Staked by Saga's validators and pays for the Chainlets they run."
+
+[[assets]]
+token_id = "allora"
+comment = "Pays for inference requests on Allora, rewards the models it scores, and is staked by its validators."
+
+[[assets]]
+token_id = "band-protocol"
+comment = "Pays for oracle requests on BandChain and is staked by its validators, who answer them."
+
+[[assets]]
+token_id = "kusama"
+comment = "Staked to secure Kusama, votes in its referenda, and pays fees on the relay chain and Kusama Asset Hub, where its balances live."
+
+[[assets]]
+token_id = "astar"
+comment = "Pays fees on both of Astar's sides and is locked in dApp staking, which rewards stakers and the projects they back."
+
+[[assets]]
+token_id = "algorand"
+comment = "Pays fees on Algorand, where every account holds at least 0.1 ALGO, and weighs an online account's chance to propose and certify blocks."
+
+[[assets]]
+token_id = "qtum"
+comment = "Pays transaction fees and contract gas on Qtum, and is staked to produce its blocks."
+total_circulation_model = "100,000,000 QTUM were created at launch; block rewards to stakers add more and halve about every four years."
+
+[[assets]]
+token_id = "fractal-bitcoin"
+comment = "The coin of Fractal Bitcoin, paid to its miners and spent on its transaction fees. FB is not BTC: the same address can hold either, each on its own chain."
+total_circulation_model = "Capped at 21,000,000 FB, part of it allocated before launch; the block reward halves every 2,100,000 blocks."
+
+[[assets]]
+token_id = "ecash"
+comment = "The coin of eCash. One XEC is 100 satoshis, so a Bitcoin Cash coin held at the 2020 split became 1,000,000 XEC."
+total_circulation_model = "Capped at 21,000,000,000,000 XEC; part of each block reward funds development and Avalanche stakers."
+
+[[assets]]
+token_id = "digibyte"
+comment = "Pays transaction fees on DigiByte and rewards its miners."
+total_circulation_model = "Capped at 21,000,000,000 DGB, with the block reward shrinking monthly until issuance ends."
+
+[[assets]]
+token_id = "vechain"
+comment = "Staked to secure VeChainThor; staked VET generates VTHO, the token its gas is paid in."
+
+[[assets]]
+token_id = "vethor-token"
+comment = "Pays gas on VeChainThor, a VIP-180 token generated for staked VET. The base fee each transaction pays in it is burned."
+
+[[assets]]
+token_id = "filecoin"
+comment = "Pays Filecoin's gas and storage deals, and is locked by storage providers as pledge collateral for the sectors they commit."
+
+[[assets]]
+token_id = "tezos"
+comment = "Pays Tezos's fees and storage burns, and is staked or delegated to the bakers who produce its blocks and vote on its protocol upgrades."
+
+[[assets]]
+token_id = "starknet"
+comment = "Pays fees on Starknet and is staked by its validators. Like every asset there, it is an ERC-20 contract."
+
+[[assets]]
+token_id = "hedera-hashgraph"
+comment = "Pays Hedera's fees, which are set in US dollars and charged in HBAR at the network's exchange rate, and is staked to its consensus nodes."
+total_circulation_model = "Fixed supply of 50 billion HBAR minted at genesis; circulation grows as treasury holdings are released."

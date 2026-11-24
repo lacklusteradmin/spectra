@@ -141,6 +141,49 @@ impl WalletService {
                 KaspaClient::new(eps).broadcast(transaction).await?
             }
             (Api::Insight, Hex(raw)) => InsightClient::new(eps).broadcast_raw_tx(raw).await?,
+            (Api::CosmosRest, Base64(tx)) => {
+                crate::api::cosmos_rest::CosmosClient::new(eps)
+                    .broadcast(tx)
+                    .await?
+            }
+            (Api::Algod, Hex(signed)) => {
+                crate::api::algod::AlgodClient::new(eps)
+                    .broadcast(&hex::decode(signed)?)
+                    .await?
+            }
+            (Api::ThorRest, Hex(raw)) => {
+                crate::api::thor_rest::ThorClient::new(eps)
+                    .broadcast(raw)
+                    .await?
+            }
+            (Api::LotusJsonRpc, SignedPayload::Filecoin(message)) => {
+                crate::api::lotus_json_rpc::LotusClient::new(eps)
+                    .broadcast(message)
+                    .await?
+            }
+            (Api::TezosRpc, Hex(signed)) => {
+                crate::api::tezos_rpc::TezosClient::new(eps)
+                    .broadcast(signed)
+                    .await?
+            }
+            (Api::StarknetJsonRpc, SignedPayload::Starknet(transfer)) => {
+                crate::api::starknet_json_rpc::StarknetClient::new(eps)
+                    .broadcast(transfer)
+                    .await?
+            }
+            // Each node's body goes to that node, through the address book
+            // `eps` names.
+            (Api::HederaHapi, Hex(list)) => {
+                let nodes = crate::send::hedera::node_transactions(&hex::decode(list)?)?;
+                let transaction_id = nodes[0].transaction_id.clone();
+                let transactions: Vec<_> = nodes
+                    .into_iter()
+                    .map(|node| (node.node, node.transaction))
+                    .collect();
+                crate::api::hedera_hapi::HederaHapiClient::new(eps)
+                    .submit(&transactions, &transaction_id)
+                    .await?
+            }
             (api, _) => {
                 return Err(SpectraBridgeError::failure(format!(
                     "A {} endpoint does not take this signed transaction",

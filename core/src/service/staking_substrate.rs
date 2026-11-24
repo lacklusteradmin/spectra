@@ -65,7 +65,7 @@ impl WalletService {
             .await;
         crate::api::http::race(&eps, |endpoint| async move {
             let client = SubstrateClient::new(Arc::new(vec![endpoint]));
-            let account = crate::derivation::polkadot::decode_ss58(owner)
+            let account = crate::derivation::polkadot::decode_ss58(Chain::Polkadot, owner)
                 .map_err(SpectraBridgeError::invalid)?;
             let Some(member) = client.nomination_pool_snapshot(&account).await?.member else {
                 return Ok(Vec::new());
@@ -148,8 +148,8 @@ async fn prepare_pool_call(
     request: &StakingRequest,
     owner: &str,
 ) -> Result<PreparedPayload, SpectraBridgeError> {
-    let account =
-        crate::derivation::polkadot::decode_ss58(owner).map_err(SpectraBridgeError::invalid)?;
+    let account = crate::derivation::polkadot::decode_ss58(Chain::Polkadot, owner)
+        .map_err(SpectraBridgeError::invalid)?;
     let snapshot = client.nomination_pool_snapshot(&account).await?;
     let at = &snapshot.context.block_hash;
     let mut prerequisites = Vec::new();

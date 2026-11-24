@@ -18,6 +18,25 @@ enum Response {
     Monero,
     Xrpl,
     IcpReplica,
+    /// A Cosmos node's `node_info`, naming the network's chain id.
+    CosmosNetwork,
+    /// An Algorand node's or indexer's genesis id and hash, which name the
+    /// network every transaction binds.
+    AlgorandGenesis,
+    /// A VeChainThor node's block 0, naming the network's genesis id.
+    ThorGenesis,
+    /// A Lotus node's `StateNetworkName`, naming the network.
+    FilecoinNetwork,
+    /// A Lotus node's `ChainGetGenesis`, naming the genesis block.
+    FilecoinGenesis,
+    /// The Tezos chain id at this pointer: a node answers it bare, TzKT's
+    /// head under `chainId`.
+    TezosChainId(&'static str),
+    /// A Starknet node's `starknet_chainId`, naming the network's chain id.
+    StarknetChain,
+    /// A Hedera mirror node's block 0, naming the network's first record
+    /// file.
+    HederaGenesis,
     Field(&'static str),
 }
 
@@ -123,6 +142,49 @@ impl Check {
                         .is_some()
             }
             Response::IcpReplica => return Err("ICP replica health requires CBOR decoding"),
+            Response::CosmosNetwork => {
+                value
+                    .pointer("/default_node_info/network")
+                    .and_then(Value::as_str)
+                    == chain.cosmos().map(|network| network.chain_id)
+            }
+            Response::AlgorandGenesis => chain.algorand_network().is_ok_and(|network| {
+                use base64::Engine as _;
+                value["genesis-id"].as_str() == Some(network.genesis_id)
+                    && value["genesis-hash"].as_str().is_some_and(|hash| {
+                        base64::engine::general_purpose::STANDARD.decode(hash).ok()
+                            == Some(network.genesis_hash.to_vec())
+                    })
+            }),
+            Response::ThorGenesis => {
+                value.get("number").and_then(Value::as_u64) == Some(0)
+                    && value.get("id").and_then(Value::as_str)
+                        == chain.thor().map(|network| network.genesis_id)
+            }
+            Response::FilecoinNetwork => {
+                value.get("result").and_then(Value::as_str) == chain.filecoin_network_name().ok()
+            }
+            Response::FilecoinGenesis => {
+                value.pointer("/result/Cids/0/~1").and_then(Value::as_str)
+                    == chain.filecoin_genesis_cid().ok()
+            }
+            Response::TezosChainId(pointer) => {
+                value.pointer(pointer).and_then(Value::as_str)
+                    == chain.tezos().map(|network| network.chain_id)
+            }
+            Response::StarknetChain => value
+                .get("result")
+                .and_then(Value::as_str)
+                .and_then(crate::derivation::starknet::parse_felt)
+                .zip(chain.starknet())
+                .is_some_and(|(answer, network)| {
+                    answer
+                        == starknet_crypto::Felt::from_bytes_be_slice(network.chain_id.as_bytes())
+                }),
+            Response::HederaGenesis => {
+                value.pointer("/hash").and_then(Value::as_str)
+                    == chain.hedera().map(|network| network.genesis_block_hash)
+            }
             Response::Field(pointer) => value.pointer(pointer).is_some_and(|v| !v.is_null()),
         };
         if valid {
@@ -180,6 +242,14 @@ fn checks(
         Blockcypher => vec![get("", "/height")],
         AptosRest => vec![get("", "/ledger_version")],
         AptosIndexer => vec![],
+        Algod => vec![
+            Check::get(format!("{base}/v2/transactions/params"), Response::AlgorandGenesis),
+            get("/v2/status", "/last-round"),
+        ],
+        AlgorandIndexer => vec![
+            Check::get(format!("{base}/v2/blocks/0"), Response::AlgorandGenesis),
+            get("/health", "/round"),
+        ],
         Whatsonchain => vec![get("/chain/info", "/blocks")],
         Koios => vec![get("/tip", "/0/block_no")],
         ToncenterV2 => vec![get("/getMasterchainInfo", "/result/last/seqno")],
@@ -189,10 +259,54 @@ fn checks(
         Fastnear => vec![get("/v1/account/0000000000000000000000000000000000000000000000000000000000000000/staking", "/pools")],
         Insight => vec![get("/status", "/blocks")],
         KaspaRest => vec![get("/info/network", "/networkName")],
+        // A gateway that does not serve `node_info` cannot be verified, and
+        // claims no verification.
+        CosmosRest => capabilities
+            .contains(&EndpointCapability::Verification)
+            .then(|| Check::get(format!("{base}/cosmos/base/tendermint/v1beta1/node_info"), Response::CosmosNetwork))
+            .into_iter()
+            .chain([get("/cosmos/base/tendermint/v1beta1/blocks/latest", "/block/header/height")])
+            .collect(),
+        LotusJsonRpc => vec![
+            Check::rpc(base, "Filecoin.StateNetworkName", json!([]), Response::FilecoinNetwork),
+            Check::rpc(base, "Filecoin.ChainGetGenesis", json!([]), Response::FilecoinGenesis),
+            rpc("Filecoin.ChainHead"),
+        ],
+        // The burn address, which every network has.
+        Filfox => vec![get("/address/f099/transfers?pageSize=1&page=0&type=transfer", "/totalCount")],
         BchRestV2 => vec![get("/blockchain/getBlockchainInfo", "/blocks")],
-        // Checked through their own clients: gRPC, and Litecoin's
-        // peer-to-peer protocol.
-        Lightwalletd | LitecoinP2p => vec![],
+        UnisatOpenApi => vec![get("/v1/indexer/blockchain/info", "/data/blocks")],
+        ThorRest => vec![
+            Check::get(format!("{base}/blocks/0"), Response::ThorGenesis),
+            get("/blocks/best", "/number"),
+        ],
+        TezosRpc => vec![
+            Check::get(format!("{base}/chains/main/chain_id"), Response::TezosChainId("")),
+            get("/chains/main/blocks/head/header", "/level"),
+        ],
+        Tzkt => vec![Check::get(format!("{base}/v1/head"), Response::TezosChainId("/chainId"))],
+        StarknetJsonRpc => vec![
+            Check::rpc(base, "starknet_chainId", json!([]), Response::StarknetChain),
+            rpc("starknet_blockNumber"),
+        ],
+        HederaMirror => vec![
+            Check::get(format!("{base}/api/v1/blocks/0"), Response::HederaGenesis),
+            get("/api/v1/network/exchangerate", "/current_rate/cent_equivalent"),
+        ],
+        // The address book, and the network of the mirror node serving it.
+        HederaHapi => vec![
+            Check::get(
+                format!(
+                    "{}/api/v1/blocks/0",
+                    crate::api::hedera_mirror::mirror_of_address_book(base)?
+                ),
+                Response::HederaGenesis,
+            ),
+            Check::get(base.to_string(), Response::Field("/nodes/0/node_cert_hash")),
+        ],
+        // Checked through their own clients: gRPC, Litecoin's peer-to-peer
+        // protocol and Chronik's protobuf.
+        Lightwalletd | LitecoinP2p | Chronik => vec![],
     };
     if checks.is_empty() {
         return Err(ApiError::invalid(
@@ -218,6 +332,18 @@ pub(crate) async fn probe(
         .await
         {
             Ok(()) => (true, true, "Peercoin network and precision verified".into()),
+            Err(error) => (true, false, error.to_string()),
+        };
+    }
+    if endpoint.api == EndpointApi::Chronik {
+        return match crate::api::chronik::ChronikClient::new(
+            std::sync::Arc::new(vec![endpoint.url.clone()]),
+            chain,
+        )
+        .verify_network()
+        .await
+        {
+            Ok(()) => (true, true, "Chronik network verified".into()),
             Err(error) => (true, false, error.to_string()),
         };
     }
@@ -273,20 +399,14 @@ pub(crate) async fn probe(
             Err(error) => (true, false, error.to_string()),
         };
     }
-    if endpoint.api == EndpointApi::SubstrateJsonRpc
-        && chain.mainnet_counterpart() == Chain::Polkadot
-    {
+    if endpoint.api == EndpointApi::SubstrateJsonRpc && chain.is_substrate() {
         return match crate::api::substrate_json_rpc::SubstrateClient::new(std::sync::Arc::new(
             vec![endpoint.url.clone()],
         ))
         .polkadot_context(chain)
         .await
         {
-            Ok(_) => (
-                true,
-                true,
-                "Asset Hub genesis and runtime metadata verified".into(),
-            ),
+            Ok(_) => (true, true, "Genesis and runtime metadata verified".into()),
             Err(error) => (true, false, error.to_string()),
         };
     }

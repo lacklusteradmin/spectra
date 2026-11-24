@@ -565,7 +565,7 @@ mod tests {
     }
 }
 
-/// Callback interface implemented by Swift. Rust calls these from the tokio
+/// Callback interface implemented by each app. Rust calls these from the tokio
 /// task that owns the refresh timer loop. Implementations must be
 /// `Send + Sync` (UniFFI enforces this for foreign trait objects).
 ///

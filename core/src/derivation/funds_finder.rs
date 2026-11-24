@@ -44,13 +44,15 @@ pub struct FundsFinderCandidate {
 
 /// The candidates across every mainnet that restores a BIP-39 phrase: each
 /// profile at the first [`SCANNED_ACCOUNTS`] accounts, in registry order.
-/// Pure computation — no network calls.
+/// Pure computation — no network calls. A network whose accounts no key
+/// derives (Hedera) has no address to check and is left out.
 pub fn generate_funds_finder_candidates(
     request: FundsFinderRequest,
 ) -> Result<Vec<FundsFinderCandidate>, SpectraBridgeError> {
     Ok(Chain::all()
         .filter(|chain| {
             !chain.is_testnet()
+                && !chain.finds_accounts_by_key()
                 && chain
                     .phrase_formats()
                     .contains(&crate::derivation::setup::WalletSecretFormat::Bip39Phrase)
@@ -95,7 +97,12 @@ pub(crate) fn chain_candidates(
             })
             .collect();
     }
-    let profiles = chain.derivation_profiles();
+    // A phrase that is one account's key has the one address.
+    let profiles = if crate::derivation::phrase::is_single_key(chain, seed_phrase) {
+        Vec::new()
+    } else {
+        chain.derivation_profiles()
+    };
     let paths: Vec<(Option<DerivationProfile>, u32, String)> = if profiles.is_empty() {
         vec![(None, 0, String::new())]
     } else {
@@ -160,7 +167,7 @@ mod tests {
             let reads_bip39 = chain
                 .phrase_formats()
                 .contains(&crate::derivation::setup::WalletSecretFormat::Bip39Phrase);
-            if chain.is_testnet() || !reads_bip39 {
+            if chain.is_testnet() || !reads_bip39 || chain.finds_accounts_by_key() {
                 assert!(ours.is_empty(), "{chain}");
                 continue;
             }

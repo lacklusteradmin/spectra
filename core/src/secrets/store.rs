@@ -1,7 +1,8 @@
 //! `SecretStore` — UniFFI callback trait for platform-backed secret storage.
 //!
-//! Swift (and future Android) implements this interface and hands an instance
-//! to `WalletService::set_secret_store`. Rust then drives all secret I/O through
+//! Each app implements this interface — spectra-apple on the Keychain,
+//! spectra-android on the Android Keystore — and hands an instance to
+//! `WalletService::set_secret_store`. Rust then drives all secret I/O through
 //! it, keeping raw key material out of Rust-owned memory and letting each
 //! platform apply its strongest available protection (Secure Enclave / StrongBox).
 //!
@@ -15,7 +16,8 @@
 //!   pre-registration state (`Unavailable`).
 //! - Values are opaque `String`s. Callers decide encoding (base64/hex/JSON).
 //! - All methods are synchronous from the foreign side; UniFFI wraps them in a
-//!   blocking executor. Keychain I/O is fast enough that blocking is fine.
+//!   blocking executor. Keychain and Keystore I/O is fast enough that blocking
+//!   is fine.
 
 use thiserror::Error;
 

@@ -202,7 +202,8 @@ impl TokenStandardEntry {
 // ── Public serialized shape — exposed to Swift via UniFFI
 
 /// A named way a phrase wallet on a chain derives its account: the script
-/// type on the Bitcoin family, or an older path some wallets still use.
+/// type on the Bitcoin family, an older path some wallets still use, or
+/// Hedera's key type.
 /// Each chain lists the ones it offers in `chains.toml`; the account index
 /// is the `{account}` segment of the profile's template.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, uniffi::Enum)]
@@ -218,6 +219,12 @@ pub enum DerivationProfile {
     NativeSegWit,
     /// BIP-86 Taproot.
     Taproot,
+    /// Hedera's ECDSA secp256k1 key along its own coin type, as its SDK's
+    /// `toStandardECDSAsecp256k1PrivateKey` derives it.
+    Ecdsa,
+    /// An ECDSA secp256k1 key along Ethereum's path, as MetaMask derives it:
+    /// a Hedera account keyed from a phrase an EVM wallet restores.
+    Evm,
 }
 
 #[derive(Debug, Clone, Serialize, uniffi::Record)]
@@ -260,7 +267,11 @@ pub struct ChainEntry {
     /// A terse example of what an address on this network looks like, which
     /// a front end shows wherever an address is typed.
     pub address_prefix_hint: String,
-    pub gas_token_symbol: String,
+    /// The native coin's symbol.
+    pub coin_symbol: String,
+    /// The symbol of the asset this network's fees are paid in: the coin's
+    /// own, or VTHO on VeChainThor ([`crate::registry::Chain::fee_holding_template`]).
+    pub fee_symbol: String,
     pub search_keywords: Vec<String>,
     /// Where this chain sits in the picker's popular order, 1 first. Every
     /// mainnet has its own; a testnet shares its mainnet's.
@@ -495,7 +506,16 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 hosts_tokens: chain.hosts_tokens(),
                 native_deployment_id: native.deployment_id.clone(),
                 address_prefix_hint: c.address_prefix_hint.clone(),
-                gas_token_symbol: native.symbol.clone(),
+                coin_symbol: native.symbol.clone(),
+                fee_symbol: match chain.fee_token_contract() {
+                    None => native.symbol.clone(),
+                    Some(contract) => crate::catalog::tokens::catalog()
+                        .iter()
+                        .find(|d| d.chain_id == chain && !d.is_native() && d.contract == contract)
+                        .expect("the catalog lists the token a network's fees are paid in")
+                        .symbol
+                        .clone(),
+                },
                 search_keywords: c.search_keywords.clone(),
                 popular_rank,
                 tags,
@@ -738,13 +758,8 @@ mod explicit_network_catalog {
             );
             assert_eq!(
                 has(ChainTag::Substrate),
-                chain.substrate_balance_bytes().is_some(),
+                chain.is_substrate(),
                 "{} disagrees about being Substrate",
-                e.id
-            );
-            assert!(
-                !has(ChainTag::Layer2) || chain.is_evm(),
-                "{} is a non-EVM layer 2",
                 e.id
             );
             assert!(e.tags.windows(2).all(|w| w[0] < w[1]), "{}", e.id);

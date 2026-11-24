@@ -3,7 +3,7 @@
 use super::*;
 
 impl TokenStandard {
-    pub const ALL: [Self; 15] = [
+    pub const ALL: [Self; 16] = [
         Self::Erc20,
         Self::Bep20,
         Self::Arc20,
@@ -19,6 +19,7 @@ impl TokenStandard {
         Self::StellarAsset,
         Self::CardanoNativeToken,
         Self::AssetHubAsset,
+        Self::Vip180,
     ];
 
     /// The protocol's name, as the catalogs, the store and a person spell it.
@@ -39,6 +40,7 @@ impl TokenStandard {
             Self::StellarAsset => "Stellar Asset",
             Self::CardanoNativeToken => "Cardano Native Token",
             Self::AssetHubAsset => "Asset Hub Asset",
+            Self::Vip180 => "VIP-180",
         }
     }
 
@@ -52,7 +54,9 @@ impl TokenStandard {
     /// What a token of this protocol is identified by, as a field asks for it.
     pub fn identifier_prompt(self) -> &'static str {
         match self {
-            Self::Erc20 | Self::Bep20 | Self::Arc20 | Self::Trc20 => "Contract Address",
+            Self::Erc20 | Self::Bep20 | Self::Arc20 | Self::Trc20 | Self::Vip180 => {
+                "Contract Address"
+            }
             Self::Trc10 => "Token ID",
             Self::Spl => "Mint Address",
             Self::Tep74 => "Jetton Master Address",
@@ -112,7 +116,7 @@ impl Chain {
     /// deployments keep their recorded standard, including EVM aliases.
     pub fn token_standard_for_identifier(self, identifier: &str) -> Option<TokenStandard> {
         Some(match self {
-            chain if chain.is_evm() => TokenStandard::Erc20,
+            chain if chain.is_evm() || chain.is_starknet() => TokenStandard::Erc20,
             Self::Solana | Self::SolanaDevnet => TokenStandard::Spl,
             Self::Tron | Self::TronNile if identifier.bytes().all(|b| b.is_ascii_digit()) => {
                 TokenStandard::Trc10
@@ -129,6 +133,7 @@ impl Chain {
             Self::Stellar | Self::StellarTestnet => TokenStandard::StellarAsset,
             Self::Cardano | Self::CardanoPreprod => TokenStandard::CardanoNativeToken,
             Self::Polkadot | Self::PolkadotWestend => TokenStandard::AssetHubAsset,
+            Self::Vechain => TokenStandard::Vip180,
             _ => return None,
         })
     }
@@ -154,7 +159,9 @@ impl Chain {
             | Chain::Xrp
             | Chain::Stellar
             | Chain::Cardano
-            | Chain::Polkadot => true,
+            | Chain::Polkadot
+            | Chain::Vechain
+            | Chain::Starknet => true,
             _ => chain.is_evm(),
         }
     }

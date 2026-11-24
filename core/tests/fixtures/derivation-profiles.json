@@ -1,5 +1,5 @@
 {
-  "provenance": "bip39 3.1.0, bip32 5.0.1, bitcoinjs-lib 7.0.2, bchaddrjs 0.5.2, ethers 6.17.0, ed25519-hd-key 2.0.0, @solana/web3.js 1.98.4, @stellar/stellar-base 14.1.0, ripple-keypairs 3.1.0, @mysten/sui 1.45.2, @aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/identity-secp256k1 3.4.3, @emurgo/cardano-serialization-lib-nodejs 17.0.0, blake-hash 2.0.0, kaspa-wasm 0.13.0",
+  "provenance": "bip39 3.1.0, bip32 5.0.1, bitcoinjs-lib 7.0.2, bchaddrjs 0.5.2, ethers 6.17.0, ed25519-hd-key 2.0.0, @solana/web3.js 1.98.4, @stellar/stellar-base 14.1.0, ripple-keypairs 3.1.0, @mysten/sui 1.45.2, @aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/identity-secp256k1 3.4.3, @emurgo/cardano-serialization-lib-nodejs 17.0.0, blake-hash 2.0.0, kaspa-wasm 0.13.0, @cosmjs/encoding 0.39.0, @algorandfoundation/xhd-wallet-api 2.0.0-canary.1, algosdk 3.9.0, ecash-lib 4.12.0, ecashaddrjs 2.0.1, @vechain/sdk-core 2.1.0, @glif/filecoin-address 4.0.0, @taquito/utils 25.1.1, @scure/bip32 1.7.0, starknet 11.6.1",
   "phrase": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
   "vectors": [
     {
@@ -633,6 +633,188 @@
       "address": "kaspa:qzyqe0y64jqvx043jd0mpgugrd00y39zp0t7j64854k7r0ln2eu3vck8n7p07"
     },
     {
+      "chain": "qtum",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/88'/0'/0/0",
+      "address": "QPvRe2C17qk24K6v5gTg7CPghZ8b4WMxZP"
+    },
+    {
+      "chain": "qtum",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/88'/1'/0/0",
+      "address": "QaRYHwhwFxY833iXwZ7hiXMCsregmaswAs"
+    },
+    {
+      "chain": "qtum",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/88'/0'/0/0",
+      "address": "qc1qakdff2tuy9tsu6u6qxgkhncgx0uq765ql5qtjn"
+    },
+    {
+      "chain": "qtum",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/88'/1'/0/0",
+      "address": "qc1qs747hwdwpt5vdvfgm0xn7jkd8xp5ywk5u48av2"
+    },
+    {
+      "chain": "qtum",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/88'/0'/0/0",
+      "address": "MRbMaoBTXkbqEiPXKDtWx33b7TwvmnQ8GR"
+    },
+    {
+      "chain": "qtum",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/88'/1'/0/0",
+      "address": "MHsMLNdViXmfVfYiPZNQA4rX2Rh2iAGANq"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/0'/0'/0/0",
+      "address": "bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/0'/1'/0/0",
+      "address": "bc1qku0qh0mc00y8tk0n65x2tqw4trlspak0fnjmfz"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/0'/0'/0/0",
+      "address": "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/0'/1'/0/0",
+      "address": "15qucUWKf95Fo58FdCBhUTSAtsm22HHE2Q"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/0'/0'/0/0",
+      "address": "37VucYSaXLCAsxYyAPfbSi9eh4iEcbShgf"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/0'/1'/0/0",
+      "address": "35eszW2wmZ4hn7hfG5LGqxw5xCPjZcEJPM"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "taproot",
+      "account": 0,
+      "path": "m/86'/0'/0'/0/0",
+      "address": "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "taproot",
+      "account": 1,
+      "path": "m/86'/0'/1'/0/0",
+      "address": "bc1pkq6ayylfpe5hn05550ry25pkakuf72x9qkjc2sl06dfcet8sg25q9y3j3y"
+    },
+    {
+      "chain": "ecash",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/1899'/0'/0/0",
+      "address": "ecash:qrwzys2q6xq98vwz0kjn6ulu5m6yljr5fyc909kalg"
+    },
+    {
+      "chain": "ecash",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/1899'/1'/0/0",
+      "address": "ecash:qrfm48gr3zdgph6dt593hzlp587002ec4ysl59mavw"
+    },
+    {
+      "chain": "ecash",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/899'/0'/0/0",
+      "address": "ecash:qpluxjhhlxfjwsymf9nmctvsdrwzwygadsh2pq0ang"
+    },
+    {
+      "chain": "ecash",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/899'/1'/0/0",
+      "address": "ecash:qqf6qtfvljvj5cfpzkmldg93rjfq53khvuwzzyhse2"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "nativeSegWit",
+      "account": 0,
+      "path": "m/84'/20'/0'/0/0",
+      "address": "dgb1q9gmf0pv8jdymcly6lz6fl7lf6mhslsd72e2jq8"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "nativeSegWit",
+      "account": 1,
+      "path": "m/84'/20'/1'/0/0",
+      "address": "dgb1q7zmmuf2np3mnxf2rteuywaxz82w8pmwjgxgcnk"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "legacy",
+      "account": 0,
+      "path": "m/44'/20'/0'/0/0",
+      "address": "DG1KhhBKpsyWXTakHNezaDQ34focsXjN1i"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "legacy",
+      "account": 1,
+      "path": "m/44'/20'/1'/0/0",
+      "address": "DG5QhY8594V1Cg5nAYnLhe1Nkz59ZCA8y5"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "nestedSegWit",
+      "account": 0,
+      "path": "m/49'/20'/0'/0/0",
+      "address": "SQ9EXABrHztGgefL9aH3FyeRjowdjtLfn4"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "nestedSegWit",
+      "account": 1,
+      "path": "m/49'/20'/1'/0/0",
+      "address": "Sg1EeJ2aj7nQyqJJ1u8N2wGb8Xa3qMYkwG"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "taproot",
+      "account": 0,
+      "path": "m/86'/20'/0'/0/0",
+      "address": "dgb1pcevt23hht82rkdrjdpwzstmqyj4ngyy42r9cu73rl4n9h5vu6hgsx5tm5q"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "taproot",
+      "account": 1,
+      "path": "m/86'/20'/1'/0/0",
+      "address": "dgb1pmfh57ufn6483lv65c72mjne4q0ndvneh2yfcyq7rufpyfycg95xqcw66vs"
+    },
+    {
       "chain": "kaspa-testnet",
       "profile": "standard",
       "account": 0,
@@ -941,6 +1123,62 @@
       "address": "addr_test1qpkjqjg3yfql7uspafzanp0xq4fvuqzgyewhqhcqnk94w4gk9jlajcx98yc9g8rxgw0zrdsprlkkjl4l2s9ls6hvxlsq3n089y"
     },
     {
+      "chain": "tezos",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/1729'/0'/0'",
+      "address": "tz1VQA4RP4fLjEEMW2FR4pE9kAg5abb5h5GL"
+    },
+    {
+      "chain": "tezos",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/1729'/1'/0'",
+      "address": "tz1gvekQVEwFFdxT2KrcY6kZgFK1qMN3mmWF"
+    },
+    {
+      "chain": "hedera",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/3030'/0'/0'/0'",
+      "address": "302a300506032b657003210010fcec8c5db29aeab62272a08be39b1ec75eba50624351fba9948ff5d3d78ecf"
+    },
+    {
+      "chain": "hedera",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/3030'/0'/0'/1'",
+      "address": "302a300506032b6570032100f552ad3a0eb5a1836db40d03fe751ca670b4bb4ae656bf2894aada739b5706ca"
+    },
+    {
+      "chain": "hedera",
+      "profile": "ecdsa",
+      "account": 0,
+      "path": "m/44'/3030'/0'/0/0",
+      "address": "302d300706052b8104000a032200021de0d6f31872bbda0cfd1680e41a5a88af2646b8d1d015c5e1541ab21a0f4499"
+    },
+    {
+      "chain": "hedera",
+      "profile": "ecdsa",
+      "account": 1,
+      "path": "m/44'/3030'/0'/0/1",
+      "address": "302d300706052b8104000a0322000261bba75ef1b8ce762b8c9fdae7976f2c2577b2ae30ded298b30315b510efc53e"
+    },
+    {
+      "chain": "hedera",
+      "profile": "evm",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "302d300706052b8104000a0322000237b0bb7a8288d38ed49a524b5dc98cff3eb5ca824c9f9dc0dfdb3d9cd600f299"
+    },
+    {
+      "chain": "hedera",
+      "profile": "evm",
+      "account": 1,
+      "path": "m/44'/60'/0'/0/1",
+      "address": "302d300706052b8104000a032200039fd0991d0222b4e1339c1a1a5b5f6d9f6a96672a3247b638ee6156d9ea877a2f"
+    },
+    {
       "chain": "ethereum",
       "profile": "standard",
       "account": 0,
@@ -1737,6 +1975,244 @@
       "account": 1,
       "path": "m/44'/60'/1'/0/0",
       "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
+    },
+    {
+      "chain": "cosmos-hub",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/118'/0'/0/0",
+      "address": "cosmos19rl4cm2hmr8afy4kldpxz3fka4jguq0auqdal4"
+    },
+    {
+      "chain": "cosmos-hub",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/118'/1'/0/0",
+      "address": "cosmos1tehv5km5e9y706rc2gzk9yyun9dljjjnvyt3u0"
+    },
+    {
+      "chain": "celestia",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/118'/0'/0/0",
+      "address": "celestia19rl4cm2hmr8afy4kldpxz3fka4jguq0ad2ud9c"
+    },
+    {
+      "chain": "celestia",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/118'/1'/0/0",
+      "address": "celestia1tehv5km5e9y706rc2gzk9yyun9dljjjnaw6pxz"
+    },
+    {
+      "chain": "dydx",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/118'/0'/0/0",
+      "address": "dydx19rl4cm2hmr8afy4kldpxz3fka4jguq0a4erelz"
+    },
+    {
+      "chain": "dydx",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/118'/1'/0/0",
+      "address": "dydx1tehv5km5e9y706rc2gzk9yyun9dljjjn9a94uc"
+    },
+    {
+      "chain": "terra",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/330'/0'/0/0",
+      "address": "terra1amdttz2937a3dytmxmkany53pp6ma6dy4vsllv"
+    },
+    {
+      "chain": "terra",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/330'/1'/0/0",
+      "address": "terra1ml84j4lm0yj0wrxy364857lcj6r6e255776c5x"
+    },
+    {
+      "chain": "kava",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/459'/0'/0/0",
+      "address": "kava1fzgm3840v4xwme059mfnx9rc5qgzl0enq7qgac"
+    },
+    {
+      "chain": "kava",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/459'/1'/0/0",
+      "address": "kava1627gd9up6dgyk9fyfhw7skhtumntah020s44m7"
+    },
+    {
+      "chain": "injective",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "inj1npvwllfr9dqr8erajqqr6s0vxnk2ak55re90dz"
+    },
+    {
+      "chain": "injective",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "inj10zpe7cz56lk38yvt4cz88w33k89f6un9hh75cs"
+    },
+    {
+      "chain": "akash",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/118'/0'/0/0",
+      "address": "akash19rl4cm2hmr8afy4kldpxz3fka4jguq0a3mq6x0"
+    },
+    {
+      "chain": "akash",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/118'/1'/0/0",
+      "address": "akash1tehv5km5e9y706rc2gzk9yyun9dljjjnplxk94"
+    },
+    {
+      "chain": "babylon",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/118'/0'/0/0",
+      "address": "bbn19rl4cm2hmr8afy4kldpxz3fka4jguq0at7uvqv"
+    },
+    {
+      "chain": "babylon",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/118'/1'/0/0",
+      "address": "bbn1tehv5km5e9y706rc2gzk9yyun9dljjjnm66qrk"
+    },
+    {
+      "chain": "osmosis",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/118'/0'/0/0",
+      "address": "osmo19rl4cm2hmr8afy4kldpxz3fka4jguq0a5m7df8"
+    },
+    {
+      "chain": "osmosis",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/118'/1'/0/0",
+      "address": "osmo1tehv5km5e9y706rc2gzk9yyun9dljjjnylcp2a"
+    },
+    {
+      "chain": "dymension",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/60'/0'/0/0",
+      "address": "dym1npvwllfr9dqr8erajqqr6s0vxnk2ak55md7d65"
+    },
+    {
+      "chain": "dymension",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/60'/1'/0/0",
+      "address": "dym10zpe7cz56lk38yvt4cz88w33k89f6un90r9k0x"
+    },
+    {
+      "chain": "saga",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/118'/0'/0/0",
+      "address": "saga19rl4cm2hmr8afy4kldpxz3fka4jguq0azn50cn"
+    },
+    {
+      "chain": "saga",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/118'/1'/0/0",
+      "address": "saga1tehv5km5e9y706rc2gzk9yyun9dljjjnjhjrmf"
+    },
+    {
+      "chain": "allora",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/118'/0'/0/0",
+      "address": "allo19rl4cm2hmr8afy4kldpxz3fka4jguq0ajnh7gv"
+    },
+    {
+      "chain": "allora",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/118'/1'/0/0",
+      "address": "allo1tehv5km5e9y706rc2gzk9yyun9dljjjnzh3jtk"
+    },
+    {
+      "chain": "band",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/494'/0'/0/0",
+      "address": "band1vh8tr8ddf7g0gfep23t46yllmlvtqfjknjdd38"
+    },
+    {
+      "chain": "band",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/494'/1'/0/0",
+      "address": "band1xw64l9l0wxgs7hpx5fvnrmug03mw707u7trnhj"
+    },
+    {
+      "chain": "filecoin",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/461'/0'/0/0",
+      "address": "f1qode47ievxlxzk6z2viuovedabmn3tq6t57uqhq"
+    },
+    {
+      "chain": "filecoin",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/461'/1'/0/0",
+      "address": "f12oiips7bvuo3owfeietpqwhb6jf2zlcyoitbvra"
+    },
+    {
+      "chain": "starknet",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/9004'/0'/0/0",
+      "address": "0x0424e0202bce2d9abbee87ee8faa8fd416bcf02ad8fe18d66320f23b1b07fc02"
+    },
+    {
+      "chain": "starknet",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/9004'/0'/0/1",
+      "address": "0x0591960a2eae4798de21771480cede3ce3c17cbeeda9b3b988cfadd2e8db16a4"
+    },
+    {
+      "chain": "vechain",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/818'/0'/0/0",
+      "address": "0xE5d846748409dF0b23D5bd47CEB14afc1CBbbcB3"
+    },
+    {
+      "chain": "vechain",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/818'/0'/0/1",
+      "address": "0xDb62FE39887b1b3b80a05e16596150CcDB12199e"
+    },
+    {
+      "chain": "algorand",
+      "profile": "standard",
+      "account": 0,
+      "path": "m/44'/283'/0'/0/0",
+      "address": "ACJDJWM7GWMKJFROZP2VSWZBP5FLSSMMMFXL5MPLZQRPQFARUKKRLAZ53E"
+    },
+    {
+      "chain": "algorand",
+      "profile": "standard",
+      "account": 1,
+      "path": "m/44'/283'/1'/0/0",
+      "address": "R4PYILZ4ZX6AR52AZJMPQNXNO7PU3KI32VG6NXI6RUZD3WKCLCS5E2ADHQ"
     }
   ]
 }

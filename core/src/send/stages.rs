@@ -94,6 +94,22 @@ pub(crate) enum PreparedPayload {
     SolanaAccountClosure(super::solana::PreparedSolanaAccountClosure),
     Tron(super::tron::PreparedTronTransfer),
     Aptos(super::aptos::PreparedAptosTransfer),
+    /// A Cosmos SDK network's own coin, sent with a bank `MsgSend`.
+    Cosmos(super::cosmos::PreparedCosmosTransfer),
+    /// A payment of ALGO.
+    Algorand(super::algorand::PreparedAlgorandPayment),
+    /// VET or a VIP-180 token on VeChainThor, in a dynamic-fee transaction.
+    Vechain(super::vechain::PreparedVechainTransfer),
+    /// FIL, sent from a secp256k1 account.
+    Filecoin(super::filecoin::PreparedFilecoinMessage),
+    /// Tez, with the reveal of the sender's key ahead of it while the key
+    /// is not on chain.
+    Tezos(super::tezos::PreparedTezosTransfer),
+    /// An ERC-20 transfer on Starknet, behind its account's deployment
+    /// while the account has none.
+    Starknet(super::starknet::PreparedStarknetTransfer),
+    /// HBAR, sent with a `CryptoTransfer` signed for a few consensus nodes.
+    Hedera(super::hedera::PreparedHederaTransfer),
     Sui(super::sui::PreparedSuiTransfer),
     SuiMerge(super::sui::PreparedSuiMerge),
     /// A Zcash transaction that touches the shielded pools, as librustzcash

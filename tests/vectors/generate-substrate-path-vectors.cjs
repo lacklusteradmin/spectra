@@ -4,8 +4,8 @@
 //
 // Each key is polkadot.js's reading of the secret URI `phrase + path`, with
 // `///passphrase` when one is set: the key derived along the path, its public
-// key and its addresses on Polkadot (SS58 prefix 0) and on Westend and
-// Bittensor (prefix 42). A hard junction derives a deterministic secret key;
+// key and its addresses on Polkadot (SS58 prefix 0), Kusama (2), Astar (5)
+// and on Westend and Bittensor (42). A hard junction derives a deterministic secret key;
 // a soft one a key whose nonce half is random, so only its scalar half is
 // recorded.
 const { cryptoWaitReady, keyExtractSuri, keyFromPath, mnemonicToMiniSecret, sr25519PairFromSeed, encodeAddress } = require('@polkadot/util-crypto');
@@ -48,6 +48,8 @@ const CASES = [
       secretKey: u8aToHex(hardOnly ? pair.secretKey : pair.secretKey.slice(0, 32)).slice(2),
       polkadot: encodeAddress(pair.publicKey, 0),
       substrate: encodeAddress(pair.publicKey, 42),
+      kusama: encodeAddress(pair.publicKey, 2),
+      astar: encodeAddress(pair.publicKey, 5),
     };
   });
   console.log(JSON.stringify({

@@ -35,6 +35,19 @@ pub enum EndpointApi {
     BchRestV2,
     Lightwalletd,
     LitecoinP2p,
+    CosmosRest,
+    Algod,
+    AlgorandIndexer,
+    Chronik,
+    UnisatOpenApi,
+    ThorRest,
+    LotusJsonRpc,
+    Filfox,
+    TezosRpc,
+    Tzkt,
+    StarknetJsonRpc,
+    HederaMirror,
+    HederaHapi,
 }
 
 impl EndpointApi {
@@ -69,6 +82,19 @@ impl EndpointApi {
             Self::BchRestV2 => "bch-rest-v2",
             Self::Lightwalletd => "lightwalletd",
             Self::LitecoinP2p => "litecoin-p2p",
+            Self::CosmosRest => "cosmos-rest",
+            Self::Algod => "algod",
+            Self::AlgorandIndexer => "algorand-indexer",
+            Self::Chronik => "chronik",
+            Self::UnisatOpenApi => "unisat-open-api",
+            Self::ThorRest => "thor-rest",
+            Self::LotusJsonRpc => "lotus-json-rpc",
+            Self::Filfox => "filfox",
+            Self::TezosRpc => "tezos-rpc",
+            Self::Tzkt => "tzkt",
+            Self::StarknetJsonRpc => "starknet-json-rpc",
+            Self::HederaMirror => "hedera-mirror",
+            Self::HederaHapi => "hedera-hapi",
         }
     }
 
@@ -81,6 +107,8 @@ impl EndpointApi {
                 | Self::Blockcypher
                 | Self::Whatsonchain
                 | Self::BchRestV2
+                | Self::Chronik
+                | Self::UnisatOpenApi
         )
     }
 }
@@ -313,6 +341,10 @@ pub fn endpoint_capability_options(
         // fungible-asset stores, which hold the tokens that matter now.
         AptosRest => &[Balance, Fee, Broadcast, Verification, TokenBalance, Staking],
         AptosIndexer => &[History, TokenHistory, TokenDiscovery],
+        // A node answers an account's balance and pending transactions; an
+        // address's history is the indexer's.
+        Algod => &[Balance, Fee, Broadcast, Verification],
+        AlgorandIndexer => &[History],
         NearJsonRpc => &[Balance, Fee, Broadcast, Verification, TokenBalance, Staking],
         // A node lists an account's trust lines and its payments of every
         // currency, issued ones included.
@@ -332,7 +364,8 @@ pub fn endpoint_capability_options(
             &[Balance, History, Utxo, Fee, Broadcast, Verification]
         }
         KaspaRest => &[Balance, History, Utxo, Fee, Broadcast, Verification],
-        BchRestV2 => &[Balance, History, Utxo, Broadcast, Verification],
+        // Neither estimates a fee rate.
+        BchRestV2 | Chronik | UnisatOpenApi => &[Balance, History, Utxo, Broadcast, Verification],
         // The compact blocks a shielded wallet scans are its history; the
         // server also takes the wallet's transactions.
         Lightwalletd => &[History, Broadcast, Verification],
@@ -371,8 +404,38 @@ pub fn endpoint_capability_options(
         TrongridV1 => &[History, TokenHistory, TokenDiscovery],
         Nearblocks => &[History, TokenHistory, TokenDiscovery],
         Fastnear => &[Staking],
+        // A node's transaction index answers an address's history, where the
+        // node keeps one.
+        CosmosRest => &[Balance, History, Fee, Broadcast, Verification],
+        // A node's transfer and event logs are an address's VET and token
+        // history; a contract call answers for one token the caller names.
+        ThorRest => &[
+            Balance,
+            History,
+            TokenHistory,
+            TokenBalance,
+            Fee,
+            Broadcast,
+            Verification,
+        ],
+        // No Lotus node indexes an address's messages; Filfox does.
+        LotusJsonRpc => &[Balance, Fee, Broadcast, Verification],
+        Filfox => &[History],
+        // A Tezos node keeps no index by address; TzKT's indexer answers an
+        // address's history and an operation's status.
+        TezosRpc => &[Balance, Fee, Broadcast, Verification],
+        Tzkt => &[History, Verification],
+        // A Hedera mirror node: account keys and balances, transfers, results
+        // and the exchange rate a fee bound is priced at.
+        HederaMirror => &[Balance, History, Fee, Verification],
+        // A mirror node's address book, whose consensus nodes take a signed
+        // transaction over gRPC.
+        HederaHapi => &[Broadcast],
         // An `Assets` pallet account answers for one asset id the caller names.
         SubstrateJsonRpc => &[Balance, Fee, Broadcast, Verification, Staking, TokenBalance],
+        // Every asset is an ERC-20 contract a call reads; a node keeps no
+        // index of an address's transactions.
+        StarknetJsonRpc => &[Balance, Fee, Broadcast, Verification, TokenBalance],
     };
     values
         .iter()

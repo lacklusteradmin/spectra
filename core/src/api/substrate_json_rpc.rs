@@ -1,6 +1,7 @@
-//! The Substrate JSON-RPC adapter, for Polkadot and Bittensor alike: the
-//! `System.Account` balance, what signing needs, and extrinsic submission. A
-//! node keeps no account history, and no keyless indexer is configured.
+//! The Substrate JSON-RPC adapter, for every Substrate network alike
+//! (`Chain::is_substrate`): the `System.Account` balance, what signing needs,
+//! and extrinsic submission. A node keeps no account history, and no keyless
+//! indexer is configured.
 
 use crate::api::error::{ApiError, OrDecode};
 use serde::{Deserialize, Serialize};

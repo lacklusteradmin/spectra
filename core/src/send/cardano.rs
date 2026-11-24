@@ -491,7 +491,11 @@ impl PreparedCardanoTransaction {
         verification_key: &[u8; 32],
     ) -> Result<String, SendError> {
         self.conserves()?;
-        let signature = sign_extended(signing_key, verification_key, &self.transaction_hash()?)?;
+        let signature = crate::derivation::ed25519_extended::sign(
+            signing_key,
+            verification_key,
+            &self.transaction_hash()?,
+        )?;
         Ok(hex::encode(
             self.encode_signed(&[(*verification_key, signature)])?,
         ))
@@ -605,43 +609,6 @@ pub(crate) fn token_send_ada(
 enum Shortfall {
     Asset,
     Ada,
-}
-
-/// Cardano's extended Ed25519 key is kL || kR, not a seed. kL is the
-/// derived scalar and kR is the nonce prefix; hashing kL as a seed changes
-/// the public key and produces an invalid payment witness.
-pub(crate) fn sign_extended(
-    key: &[u8; 64],
-    public: &[u8; 32],
-    message: &[u8],
-) -> Result<[u8; 64], SendError> {
-    use curve25519_dalek::{constants::ED25519_BASEPOINT_POINT, scalar::Scalar};
-    use sha2::{Digest, Sha512};
-    use zeroize::Zeroizing;
-    let scalar_bytes =
-        Zeroizing::new(<[u8; 32]>::try_from(&key[..32]).expect("fixed extended key"));
-    if crate::derivation::cardano::public_from_extended_key(key)? != *public {
-        return Err(SendError::invalid(
-            "Cardano extended key does not match the witness public key",
-        ));
-    }
-    let scalar = Zeroizing::new(Scalar::from_bytes_mod_order(*scalar_bytes));
-    let mut nonce_hash = Sha512::new();
-    nonce_hash.update(&key[32..]);
-    nonce_hash.update(message);
-    let nonce_digest = Zeroizing::new(<[u8; 64]>::from(nonce_hash.finalize()));
-    let nonce = Zeroizing::new(Scalar::from_bytes_mod_order_wide(&nonce_digest));
-    let r = (*nonce * ED25519_BASEPOINT_POINT).compress().to_bytes();
-    let mut challenge = Sha512::new();
-    challenge.update(r);
-    challenge.update(public);
-    challenge.update(message);
-    let h = Scalar::from_bytes_mod_order_wide(&challenge.finalize().into());
-    let s = Zeroizing::new(*nonce + h * *scalar);
-    let mut signature = [0u8; 64];
-    signature[..32].copy_from_slice(&r);
-    signature[32..].copy_from_slice(&s.to_bytes());
-    Ok(signature)
 }
 
 // ── Minimal CBOR encoder

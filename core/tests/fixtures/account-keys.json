@@ -243,6 +243,66 @@
       "xpub": "kpub2JXpdok4yzBUdLiywgMbE36ixpEnffDhG31kJpRextvhpBQgBJVPcQJ7A99JryUvi8JNBcnzGoiu4qbGcvCfpY1T2RWndCaUjJqhwDSUNw8"
     },
     {
+      "chain": "qtum",
+      "profile": "legacy",
+      "prefix": "xpub",
+      "xpub": "xpub6D4LHAS3teHTWW8GsRJfo69cvJsJfrTAJy6HkeK4KsLDgY3XDsvvP9S1rGBo95iDuSgW9jLoJoD3ka5KpzqzEmxxMzZsaUSGQcfxypSN7Dp"
+    },
+    {
+      "chain": "qtum",
+      "profile": "nestedSegWit",
+      "prefix": "ypub",
+      "xpub": "ypub6X1QsMxJUquRtLgKNqxAefMTxymNVKc9AwwBRbTEe2uUtQJspJSWoEUhGuTvMcbyx1AVUS5VaVcxaCrWU7TAuRRu7bqUBNyaxd8LhM3LH5A"
+    },
+    {
+      "chain": "qtum",
+      "profile": "nativeSegWit",
+      "prefix": "zpub",
+      "xpub": "zpub6rujdwbGJRp5GLNs9MkztMQvp9rtXtU7sGBnCcUUGeZS7qNoNA2e6hzCut5B7HF2RcTAxBSUMJ8DQsGYqic5F9DGYW6UuPNXQ3RKzjvJJNd"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "legacy",
+      "prefix": "xpub",
+      "xpub": "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "nestedSegWit",
+      "prefix": "ypub",
+      "xpub": "ypub6Ww3ibxVfGzLrAH1PNcjyAWenMTbbAosGNB6VvmSEgytSER9azLDWCxoJwW7Ke7icmizBMXrzBx9979FfaHxHcrArf3zbeJJJUZPf663zsP"
+    },
+    {
+      "chain": "fractal-bitcoin",
+      "profile": "nativeSegWit",
+      "prefix": "zpub",
+      "xpub": "zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs"
+    },
+    {
+      "chain": "ecash",
+      "profile": "standard",
+      "prefix": "xpub",
+      "xpub": "xpub6C21pD9smqYRHznm2iJoMwRhoWHeWCi8CzzAAbL5xyS7CaapBTdCtj299XjXcMh8K34uji6TFHNtDaRQZUyqEC8ZMLrLPBn3VTQ5i1DHLbE"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "legacy",
+      "prefix": "xpub",
+      "xpub": "xpub6Cj2cdNXaWhn9mwjaxofCJujxrALww7kw6WcyCsGnU9twBEsGcaMqR6gCtQ9b3k6awqL2egNaat2btUCVoETYzcmngU9outdn6RA2KxmNEn"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "nestedSegWit",
+      "prefix": "ypub",
+      "xpub": "ypub6YAzMR6Pck8es9hsWTDoHUw95DS2ajZtmf6k9epK6aUoteJe5LWEtsW6ys97MqeK18CJe2MDYXWaitVDwogT46t6F7uGrHHk9VHzvxoX5in"
+    },
+    {
+      "chain": "digibyte",
+      "profile": "nativeSegWit",
+      "prefix": "zpub",
+      "xpub": "zpub6qSFywPULarUNuzKdbWVZwFpYnb2igv9AqLCufRkXwWfexmdhkAgAsosnc3UiYaBNWBHm3DpuCfmwEG9g27X5t6vKGuLq7jvtsmLoCBMw3j"
+    },
+    {
       "chain": "kaspa-testnet",
       "profile": "standard",
       "prefix": "ktub",

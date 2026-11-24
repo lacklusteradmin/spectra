@@ -3,8 +3,9 @@
 //!
 //! Wallets export keys in their chain's format, not as bare hex: WIF on the
 //! Bitcoin family, a base58 or JSON 64-byte keypair on Solana, an `S…` secret
-//! seed on Stellar, `suiprivkey1…` on Sui, AIP-80 on Aptos and `ed25519:…` on
-//! NEAR. Every check here refuses before anything is sealed: a WIF for another
+//! seed on Stellar, `suiprivkey1…` on Sui, AIP-80 on Aptos, `ed25519:…` on
+//! NEAR, `edsk…` on Tezos and DER hex on Hedera. Every check here refuses before anything is
+//! sealed: a WIF for another
 //! network or for an uncompressed key, and a keypair whose public half is not
 //! its secret's. Vectors from each chain's own SDK are in
 //! `core/tests/fixtures/private-key-formats.json`.
@@ -69,6 +70,11 @@ fn read(
             }))
         }
         WalletSecretFormat::NearSecretKey => near_secret_key(input),
+        WalletSecretFormat::TezosSecretKey => tezos_secret_key(input),
+        WalletSecretFormat::StarknetPrivateKey => starknet_private_key(input),
+        WalletSecretFormat::HederaPrivateKey => {
+            super::hedera::HederaPrivateKey::from_der_hex(input).map(|key| Ok(key?.der_hex()))
+        }
         _ => None,
     }
 }
@@ -183,6 +189,44 @@ fn near_secret_key(input: &str) -> Option<Result<Zeroizing<String>, DerivationEr
     (bytes.len() == 64).then(|| ed25519_pair(&bytes))
 }
 
+/// A Tezos `edsk…` key. Another scheme's key or an encrypted one is
+/// refused by name rather than read as no key at all: Spectra's Tezos
+/// wallets are tz1 accounts, which sign with an unencrypted Ed25519 key.
+fn tezos_secret_key(input: &str) -> Option<Result<Zeroizing<String>, DerivationError>> {
+    if ["spsk", "p2sk", "BLsk", "mdsk"]
+        .iter()
+        .any(|other| input.starts_with(other))
+    {
+        return Some(Err(DerivationError::invalid(
+            "Spectra's Tezos wallets are tz1 accounts, which sign with an Ed25519 (edsk…) key.",
+        )));
+    }
+    if input.starts_with("edesk") {
+        return Some(Err(DerivationError::invalid(
+            "This Tezos key is encrypted. Export it unencrypted (edsk…) to import it.",
+        )));
+    }
+    Some(
+        crate::derivation::tezos::read_secret_key(input)?
+            .map(|seed| Zeroizing::new(hex::encode(*seed))),
+    )
+}
+
+/// A Stark key of up to 64 hex digits, as 64; refused at zero and from the
+/// curve order up.
+fn starknet_private_key(input: &str) -> Option<Result<Zeroizing<String>, DerivationError>> {
+    let digits = input
+        .strip_prefix("0x")
+        .or_else(|| input.strip_prefix("0X"))
+        .unwrap_or(input);
+    if digits.is_empty() || digits.len() > 64 || !digits.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let key = Zeroizing::new(format!("{:0>64}", digits.to_ascii_lowercase()));
+    let bytes = Zeroizing::new(hex::decode(key.as_str()).ok()?);
+    Some(crate::derivation::starknet::private_key(&bytes).map(|_| key))
+}
+
 /// The encoding a key on `chain` is exported in: the chain's own, where its
 /// wallets have one, or hex. `None` where a key alone yields no address.
 pub(crate) fn export_format(chain: Chain) -> Option<WalletSecretFormat> {
@@ -253,6 +297,18 @@ pub(crate) fn encode_private_key(
         }
         WalletSecretFormat::AptosPrivateKey => {
             format!("ed25519-priv-0x{}", hex::encode(*seed()?))
+        }
+        WalletSecretFormat::TezosSecretKey => {
+            crate::derivation::tezos::secret_key_string(&*seed()?).to_string()
+        }
+        // As Ready exports it: `0x` and 64 digits.
+        WalletSecretFormat::StarknetPrivateKey => {
+            crate::derivation::starknet::private_key(&key)?;
+            format!("0x{}", hex::encode(&*key))
+        }
+        // Stored in the DER it is exported in.
+        WalletSecretFormat::HederaPrivateKey => {
+            super::hedera::stored_key(key_hex)?.der_hex().to_string()
         }
         _ => {
             return Err(DerivationError::refused(

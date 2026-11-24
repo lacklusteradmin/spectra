@@ -37,8 +37,10 @@ pub(crate) fn normalize_address(chain: Chain, address: &str) -> String {
     // an address book entry — accepted a mistyped mixed-case address, and a
     // send to it reaches an address nobody holds a key for. One that fails
     // stays as typed, which validation then refuses. XDC's `xdc` spelling
-    // folds to `0x` here too.
-    if chain.is_evm() {
+    // folds to `0x` here too, and a Hedera account's HIP-15 checksum is
+    // dropped the same way, once read. A Starknet address's checksum case,
+    // like EIP-55's, is read before it folds to its padded lowercase.
+    if chain.is_evm() || chain.is_starknet() || chain.is_hedera() {
         let validated = validate_address(chain, t);
         return match validated.normalized_value {
             Some(normalized) if validated.is_valid => normalized,
@@ -70,6 +72,10 @@ pub(crate) fn normalize_address(chain: Chain, address: &str) -> String {
                 format!("0x{l}")
             }
         }
+        AddressNormalization::HexFelt => crate::derivation::starknet::parse_felt(t).map_or_else(
+            || t.to_lowercase(),
+            |felt| crate::derivation::starknet::felt_hex(&felt),
+        ),
     }
 }
 

@@ -92,6 +92,21 @@ impl WalletService {
                         return Ok(true);
                     }
                 }
+                // An account contract exists only once it has sent its own
+                // deployment; one that has not has never sent anything.
+                if chain.is_starknet() {
+                    let client = crate::api::starknet_json_rpc::StarknetClient::new(
+                        this.endpoints_for(chain, &[EndpointCapability::Verification])
+                            .await,
+                    );
+                    client.verify_network(chain).await?;
+                    return Ok(client
+                        .fetch_class_hash(&crate::derivation::starknet::decode_address(
+                            chain, &address,
+                        )?)
+                        .await?
+                        .is_some());
+                }
                 this.has_history(chain_id, &address).await
             };
             let (balance, history) = tokio::join!(balance_read, history_read);

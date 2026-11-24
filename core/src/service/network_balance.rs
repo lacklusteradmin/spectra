@@ -200,11 +200,7 @@ async fn single_api_balance(
             .lovelace
             .to_string(),
         Api::SubstrateJsonRpc => {
-            let account = if chain.mainnet_counterpart() == Chain::Bittensor {
-                crate::derivation::bittensor::decode_bittensor_ss58(address)?
-            } else {
-                crate::derivation::polkadot::decode_ss58(address)?
-            };
+            let account = crate::derivation::polkadot::decode_ss58(chain, address)?;
             let client = SubstrateClient::new(endpoints);
             let balance = client.fetch_balance(chain, &account).await?;
             balance.transferable().to_string()
@@ -240,10 +236,44 @@ async fn single_api_balance(
             .await?
             .balance_atoms
             .to_string(),
+        Api::CosmosRest => crate::api::cosmos_rest::CosmosClient::new(endpoints)
+            .fetch_balance(chain, address)
+            .await?
+            .to_string(),
         Api::KaspaRest => KaspaClient::new(endpoints)
             .fetch_balance(address)
             .await?
             .balance_sompi
+            .to_string(),
+        Api::Algod => crate::api::algod::AlgodClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .to_string(),
+        Api::ThorRest => crate::api::thor_rest::ThorClient::new(endpoints)
+            .fetch_account(address)
+            .await?
+            .balance
+            .to_string(),
+        Api::LotusJsonRpc => crate::api::lotus_json_rpc::LotusClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .to_string(),
+        Api::TezosRpc => crate::api::tezos_rpc::TezosClient::new(endpoints)
+            .fetch_balance(address)
+            .await?
+            .to_string(),
+        Api::StarknetJsonRpc => crate::api::starknet_json_rpc::StarknetClient::new(endpoints)
+            .fetch_balance(
+                chain,
+                &crate::derivation::starknet::decode_address(chain, address)?,
+            )
+            .await?
+            .to_string(),
+        Api::HederaMirror => crate::api::hedera_mirror::HederaMirrorClient::new(endpoints)
+            .fetch_balance(crate::derivation::hedera::HederaAccountId::parse(
+                chain, address,
+            )?)
+            .await?
             .to_string(),
         api => {
             return Err(SpectraBridgeError::failure(format!(

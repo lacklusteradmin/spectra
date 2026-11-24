@@ -235,6 +235,12 @@ struct Ledger {
     /// What a submission is answered with, and every one received.
     accepted_hash: String,
     submitted: Vec<String>,
+    /// The raw transactions behind the outputs, where a send reads each
+    /// output from its transaction: txid to hex and confirmations.
+    transactions: HashMap<String, (String, u64)>,
+    /// A block hash the indexer names in place of the network's identity
+    /// block: another network's indexer.
+    claimed_identity: Option<String>,
 }
 
 impl Ledger {
@@ -249,14 +255,80 @@ impl Ledger {
     }
 }
 
-/// The answer `chain`'s default indexer gives to `request`.
+/// The answer `chain`'s default indexer gives to `request`: JSON, but for
+/// a block hash Esplora writes as text, and Chronik's protobuf.
+fn indexer_response(chain: Chain, ledger: &mut Ledger, request: &Request) -> ResponseTemplate {
+    let path = request.url.path().to_string();
+    let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
+    match (chain.default_api().unwrap(), parts.as_slice()) {
+        (EndpointApi::Esplora, ["block-height", height]) => {
+            let (identity, hash) = chain.identity_block().unwrap();
+            assert_eq!(height.parse::<u64>().unwrap(), identity, "{chain}");
+            ResponseTemplate::new(200)
+                .set_body_string(ledger.claimed_identity.clone().unwrap_or(hash))
+        }
+        (EndpointApi::Esplora, ["tx"]) => {
+            ledger
+                .submitted
+                .push(String::from_utf8(request.body.clone()).unwrap());
+            ResponseTemplate::new(200).set_body_string(ledger.accepted_hash.clone())
+        }
+        (EndpointApi::Chronik, ["block", height]) => {
+            let (identity, hash) = chain.identity_block().unwrap();
+            assert_eq!(height.parse::<u64>().unwrap(), identity, "{chain}");
+            ResponseTemplate::new(200).set_body_bytes(crate::api::chronik::block_answer(
+                identity as i32,
+                &ledger.claimed_identity.clone().unwrap_or(hash),
+            ))
+        }
+        (EndpointApi::Chronik, ["broadcast-tx"]) => {
+            let (raw, answer) = crate::api::chronik::accept_broadcast(&request.body);
+            ledger.submitted.push(hex::encode(raw));
+            ResponseTemplate::new(200).set_body_bytes(answer)
+        }
+        (EndpointApi::Chronik, ["script", "p2pkh", hash, "utxos"]) => {
+            let script = crate::derivation::utxo_address::ParsedUtxoAddress::P2pkh(
+                hex::decode(hash).unwrap().try_into().unwrap(),
+            )
+            .script_pubkey();
+            let outputs: Vec<_> = ledger
+                .outputs
+                .iter()
+                .find(|(address, _)| {
+                    crate::send::account_utxo::source_script(chain, address).unwrap() == script
+                })
+                .map(|(_, outputs)| outputs.clone())
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(txid, vout, value)| (txid, vout, value as i64, 1))
+                .collect();
+            ResponseTemplate::new(200)
+                .set_body_bytes(crate::api::chronik::script_utxos_answer(script, &outputs))
+        }
+        (EndpointApi::Blockbook, ["api", "v2", "tx", txid]) => {
+            let (hex, confirmations) = &ledger.transactions[*txid];
+            ResponseTemplate::new(200).set_body_json(json!({
+                "txid": txid, "hex": hex, "confirmations": confirmations,
+            }))
+        }
+        _ => ResponseTemplate::new(200).set_body_json(indexer_answer(chain, ledger, request)),
+    }
+}
+
+/// The JSON answer `chain`'s default indexer gives to `request`.
 fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value {
     let path = request.url.path().to_string();
     let parts: Vec<&str> = path.trim_matches('/').split('/').collect();
     let query = request.url.query().unwrap_or_default();
     match (chain.default_api().unwrap(), parts.as_slice()) {
         (EndpointApi::Blockbook, ["api", "v2", "block-index", "0"]) => {
-            json!({"blockHash": chain.zcash_genesis().unwrap()})
+            json!({"blockHash": match chain.mainnet_counterpart() {
+                Chain::Zcash => chain.zcash_genesis().unwrap().to_string(),
+                _ => ledger
+                    .claimed_identity
+                    .clone()
+                    .unwrap_or_else(|| chain.identity_block().unwrap().1),
+            }})
         }
         (EndpointApi::Blockbook, ["api", "v2"]) => {
             let height = ledger.height;
@@ -337,6 +409,7 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
 /// An account wallet on `chain` with its phrase, its own address the
 /// account's first, and receive 7 and change 3 handed out; and its indexer.
 struct Account {
+    chain: Chain,
     service: Arc<WalletService>,
     server: MockServer,
     ledger: Arc<Mutex<Ledger>>,
@@ -358,11 +431,7 @@ impl Account {
         let server = MockServer::start().await;
         Mock::given(any())
             .respond_with(move |request: &Request| {
-                ResponseTemplate::new(200).set_body_json(indexer_answer(
-                    chain,
-                    &mut reads.lock().unwrap(),
-                    request,
-                ))
+                indexer_response(chain, &mut reads.lock().unwrap(), request)
             })
             .mount(&server)
             .await;
@@ -413,6 +482,7 @@ impl Account {
                 .unwrap();
         }
         Self {
+            chain,
             service,
             server,
             ledger,
@@ -423,12 +493,61 @@ impl Account {
         }
     }
 
+    /// One output of `value` at `address`, output 1 of its transaction:
+    /// a real one where a send reads outputs from their transactions.
     fn fund(&self, address: &str, serial: u64, value: u64) {
+        let output = if self.chain.verifies_spent_outputs() {
+            let script = crate::send::account_utxo::source_script(self.chain, address).unwrap();
+            self.transaction(serial, (P2PKH.to_vec(), 1), (script, value), 6)
+        } else {
+            (format!("{serial:064x}"), 1, value)
+        };
         self.ledger
             .lock()
             .unwrap()
             .outputs
-            .insert(address.into(), vec![(format!("{serial:064x}"), 1, value)]);
+            .insert(address.into(), vec![output]);
+    }
+
+    /// A transaction of two outputs, `first` and `second` (script, value),
+    /// with `confirmations`, that the indexer serves; the outpoint of its
+    /// second output.
+    fn transaction(
+        &self,
+        serial: u64,
+        first: (Vec<u8>, u64),
+        second: (Vec<u8>, u64),
+        confirmations: u64,
+    ) -> (String, u32, u64) {
+        use bitcoin::hashes::Hash as _;
+        let value = second.1;
+        let tx = bitcoin::Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![bitcoin::TxIn {
+                previous_output: bitcoin::OutPoint {
+                    txid: bitcoin::Txid::from_byte_array([serial as u8; 32]),
+                    vout: 0,
+                },
+                ..Default::default()
+            }],
+            output: [first, second]
+                .into_iter()
+                .map(|(script, value)| bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(value),
+                    script_pubkey: bitcoin::ScriptBuf::from_bytes(script),
+                })
+                .collect(),
+        };
+        let txid = tx.compute_txid().to_string();
+        self.ledger.lock().unwrap().transactions.insert(
+            txid.clone(),
+            (
+                bitcoin::consensus::encode::serialize_hex(&tx),
+                confirmations,
+            ),
+        );
+        (txid, 1, value)
     }
 
     fn request(&self, chain: Chain, units: u64) -> SendExecutionRequest {
@@ -455,9 +574,10 @@ impl Account {
 }
 
 /// Every account network but Litecoin and Peercoin, whose transfers have
-/// stages of their own; with the amounts' scale (Dogecoin's static fee is a
-/// hundred times the others', and Kaspa's storage mass refuses outputs of
-/// less than about a tenth of a kaspa beside the coins they spend).
+/// stages of their own; with the amounts' scale (Dogecoin's static fee and
+/// Qtum's fee rate are a hundred times the others', and Kaspa's storage
+/// mass refuses outputs of less than about a tenth of a kaspa beside the
+/// coins they spend).
 fn account_networks() -> impl Iterator<Item = (Chain, u64)> {
     Chain::all()
         .filter(|chain| {
@@ -469,7 +589,8 @@ fn account_networks() -> impl Iterator<Item = (Chain, u64)> {
         })
         .map(|chain| {
             let scale = match chain.mainnet_counterpart() {
-                Chain::Dogecoin => 100,
+                // Qtum's minimum fee rate is 400 sat/vB.
+                Chain::Dogecoin | Chain::Qtum => 100,
                 Chain::Kaspa => 1_000,
                 _ => 1,
             };
@@ -743,5 +864,232 @@ async fn a_zcash_transfer_is_signed_and_sent_only_on_its_branch_before_its_expir
             .attempts
             .len(),
         1
+    );
+}
+
+/// Qtum, Fractal Bitcoin, eCash and DigiByte: a send is built from the
+/// account's outputs, signed, and broadcast through the network's own
+/// indexer API (Blockbook, Esplora, Chronik's protobuf), which is first
+/// checked to be the network, and the bytes sent are the bytes signed.
+#[tokio::test]
+async fn each_new_network_builds_signs_and_broadcasts_through_its_indexer() {
+    for chain in [
+        Chain::Qtum,
+        Chain::FractalBitcoin,
+        Chain::Ecash,
+        Chain::Digibyte,
+    ] {
+        let scale = if chain == Chain::Qtum { 100 } else { 1 };
+        let account = Account::new(chain).await;
+        account.fund(&account.root, 1, 100_000 * scale);
+        account.fund(&account.change.0, 3, 500_000 * scale);
+        let built = account
+            .service
+            .build_send(account.request(chain, 300_000 * scale))
+            .await
+            .unwrap();
+        let PreparedPayload::AccountTransfer(prepared) = account
+            .service
+            .load_send_artifact(built.id.clone())
+            .await
+            .unwrap()
+            .prepared
+        else {
+            panic!("{chain}: not an account transfer")
+        };
+        assert_eq!(
+            prepared.protocol,
+            AccountProtocol::for_chain(chain).unwrap(),
+            "{chain}"
+        );
+        // Each network's fee floor: Qtum's 400 sat/vB on one P2PKH input
+        // and two outputs (226 bytes), DigiByte's 100 on one P2WPKH input
+        // (141 vB), eCash's 1,000 per started kilobyte; Fractal pays the
+        // indexer's 2 sat/vB.
+        let expected_fee = match chain {
+            Chain::Qtum => 226 * 400,
+            Chain::Digibyte => 141 * 100,
+            Chain::Ecash => 1_000,
+            _ => 141 * 2,
+        };
+        assert_eq!(prepared.fee, expected_fee, "{chain}");
+        let signed = account
+            .service
+            .sign_send(built.id, built.review_digest, None)
+            .await
+            .unwrap();
+        let hash = signed.transaction_hash.clone().unwrap();
+        account.ledger.lock().unwrap().accepted_hash = hash.clone();
+        let sent = account
+            .service
+            .broadcast_send(signed.id.clone(), vec![account.server.uri()])
+            .await
+            .unwrap();
+        assert_eq!(
+            sent.attempts[0].outcome,
+            SubmissionOutcome::Accepted,
+            "{chain}"
+        );
+        assert_eq!(
+            sent.transaction_hash.as_deref(),
+            Some(hash.as_str()),
+            "{chain}"
+        );
+        assert_eq!(
+            account.ledger.lock().unwrap().submitted,
+            [signed.signed_payload.unwrap()],
+            "{chain}"
+        );
+    }
+}
+
+/// Fractal's keys and addresses are Bitcoin's, so its outputs are read
+/// only from an indexer naming Fractal's block 1: one naming Bitcoin's is
+/// refused before a send is built, and before a reviewed one is signed.
+/// eCash's indexer must name its block 896,800 before it broadcasts.
+#[tokio::test]
+async fn an_indexer_on_another_network_is_refused_before_signing() {
+    let bitcoin_block_one = Chain::Bitcoin.identity_block().unwrap().1;
+    let account = Account::new(Chain::FractalBitcoin).await;
+    account.fund(&account.root, 1, 500_000);
+    account.ledger.lock().unwrap().claimed_identity = Some(bitcoin_block_one.clone());
+    let refused = account
+        .service
+        .build_send(account.request(Chain::FractalBitcoin, 100_000))
+        .await
+        .unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("is not on the Fractal Bitcoin network"),
+        "{refused}"
+    );
+    account.ledger.lock().unwrap().claimed_identity = None;
+    let built = account
+        .service
+        .build_send(account.request(Chain::FractalBitcoin, 100_000))
+        .await
+        .unwrap();
+    account.ledger.lock().unwrap().claimed_identity = Some(bitcoin_block_one);
+    let refused = account
+        .service
+        .sign_send(built.id.clone(), built.review_digest, None)
+        .await
+        .unwrap_err();
+    assert!(
+        refused
+            .to_string()
+            .contains("is not on the Fractal Bitcoin network"),
+        "{refused}"
+    );
+    assert_eq!(
+        account.service.inspect_send(built.id).await.unwrap().stage,
+        SendStage::Prepared
+    );
+
+    // A Bitcoin Cash Chronik (any block there but eCash's) takes no eCash
+    // broadcast.
+    let account = Account::new(Chain::Ecash).await;
+    account.fund(&account.root, 1, 500_000);
+    let built = account
+        .service
+        .build_send(account.request(Chain::Ecash, 100_000))
+        .await
+        .unwrap();
+    let signed = account
+        .service
+        .sign_send(built.id, built.review_digest, None)
+        .await
+        .unwrap();
+    account.ledger.lock().unwrap().claimed_identity = Some("11".repeat(32));
+    assert!(
+        account
+            .service
+            .broadcast_send(signed.id, vec![account.server.uri()])
+            .await
+            .is_err()
+    );
+    assert!(account.ledger.lock().unwrap().submitted.is_empty());
+}
+
+/// A Qtum staking reward is spent only once it has 2,000 confirmations, and
+/// a coinstake output paying the key itself (P2PK) is never spent by the
+/// account's P2PKH signer; an output the indexer lists that its
+/// transaction does not pay is refused.
+#[tokio::test]
+async fn qtum_spends_only_mature_outputs_paying_its_address() {
+    let chain = Chain::Qtum;
+    let account = Account::new(chain).await;
+    let script = crate::send::account_utxo::source_script(chain, &account.root).unwrap();
+    let p2pk = [&[0x21][..], &[0x02; 33][..], &[0xac][..]].concat();
+    // A coinstake's first output is empty and worthless.
+    let coinstake = (Vec::new(), 0);
+    let ordinary = account.transaction(1, (P2PKH.to_vec(), 1), (script.clone(), 50_000_000), 6);
+    let maturing = account.transaction(2, coinstake.clone(), (script.clone(), 200_000_000), 1_999);
+    let to_the_key = account.transaction(3, coinstake.clone(), (p2pk, 300_000_000), 5_000);
+    account.ledger.lock().unwrap().outputs.insert(
+        account.root.clone(),
+        vec![ordinary.clone(), maturing, to_the_key],
+    );
+    let refused = account
+        .service
+        .build_send(account.request(chain, 60_000_000))
+        .await
+        .unwrap_err();
+    assert!(refused.to_string().contains("nsufficient"), "{refused}");
+    let built = account
+        .service
+        .build_send(account.request(chain, 20_000_000))
+        .await
+        .unwrap();
+    let PreparedPayload::AccountTransfer(prepared) = account
+        .service
+        .load_send_artifact(built.id)
+        .await
+        .unwrap()
+        .prepared
+    else {
+        panic!("not an account transfer")
+    };
+    assert_eq!(prepared.inputs.len(), 1);
+    assert_eq!(prepared.inputs[0].utxo.txid.to_string(), ordinary.0);
+
+    // Matured at 2,000 confirmations, the reward is spent too.
+    let matured = account.transaction(4, coinstake, (script.clone(), 200_000_000), 2_000);
+    account
+        .ledger
+        .lock()
+        .unwrap()
+        .outputs
+        .insert(account.root.clone(), vec![ordinary, matured.clone()]);
+    let built = account
+        .service
+        .build_send(account.request(chain, 150_000_000))
+        .await
+        .unwrap();
+    let PreparedPayload::AccountTransfer(prepared) = account
+        .service
+        .load_send_artifact(built.id)
+        .await
+        .unwrap()
+        .prepared
+    else {
+        panic!("not an account transfer")
+    };
+    assert_eq!(prepared.inputs[0].utxo.txid.to_string(), matured.0);
+
+    // The indexer lists an amount its transaction does not pay.
+    account
+        .ledger
+        .lock()
+        .unwrap()
+        .outputs
+        .insert(account.root.clone(), vec![(matured.0, 1, 199_999_999)]);
+    assert!(
+        account
+            .service
+            .build_send(account.request(chain, 20_000_000))
+            .await
+            .is_err()
     );
 }

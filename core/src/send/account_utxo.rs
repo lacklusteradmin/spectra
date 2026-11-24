@@ -16,12 +16,14 @@ use crate::send::error::SendError;
 /// How a network serializes and signs an account transfer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum AccountProtocol {
-    /// Bitcoin: version 2, every input signalling replace-by-fee, P2PKH,
-    /// nested and native P2WPKH and Taproot key-path inputs.
+    /// Bitcoin's own transaction and signature hashes, which Qtum, Fractal
+    /// Bitcoin and DigiByte keep: version 2, every input signalling
+    /// replace-by-fee, P2PKH, nested and native P2WPKH and Taproot key-path
+    /// inputs.
     Bitcoin,
     /// Version-1 P2PKH under the legacy hash (Dogecoin, Dash) or, with a
     /// fork id, BIP143 with SIGHASH_FORKID (Bitcoin Cash, Bitcoin SV, Bitcoin
-    /// Gold).
+    /// Gold, eCash).
     LegacyP2pkh { fork_id: Option<u32> },
     /// Zcash's transparent V5 transaction, mined below `expiry_height` under
     /// the network upgrade it was reviewed in.
@@ -40,11 +42,13 @@ impl AccountProtocol {
     /// the network; Zcash's expiry and upgrade come from the network at build.
     pub(crate) fn for_chain(chain: Chain) -> Result<Self, SendError> {
         Ok(match chain.mainnet_counterpart() {
-            Chain::Bitcoin => Self::Bitcoin,
+            Chain::Bitcoin | Chain::Qtum | Chain::FractalBitcoin | Chain::Digibyte => Self::Bitcoin,
             Chain::Dogecoin | Chain::Dash => Self::LegacyP2pkh { fork_id: None },
-            Chain::BitcoinCash | Chain::BitcoinSV | Chain::BitcoinGold => Self::LegacyP2pkh {
-                fork_id: Some(chain.sighash_fork_id()?),
-            },
+            Chain::BitcoinCash | Chain::BitcoinSV | Chain::BitcoinGold | Chain::Ecash => {
+                Self::LegacyP2pkh {
+                    fork_id: Some(chain.sighash_fork_id()?),
+                }
+            }
             Chain::Decred => Self::Decred,
             Chain::Kaspa => Self::Kaspa,
             _ => {
@@ -198,8 +202,8 @@ impl PreparedAccountTransfer {
 
 /// The script an address of a wallet's own account pays, as the account's
 /// signer spends it: a key's P2PKH everywhere, its nested and native P2WPKH
-/// where the network has SegWit, its Taproot key path on Bitcoin and
-/// Peercoin, and a Schnorr P2PK on Kaspa. Any other script is refused.
+/// and its Taproot key path where [`Chain::account_spends_witness`] says,
+/// and a Schnorr P2PK on Kaspa. Any other script is refused.
 pub(crate) fn source_script(chain: Chain, address: &str) -> Result<Vec<u8>, SendError> {
     use crate::derivation::utxo_address::{ParsedUtxoAddress, parse_utxo_address};
     match chain.mainnet_counterpart() {
@@ -212,20 +216,19 @@ pub(crate) fn source_script(chain: Chain, address: &str) -> Result<Vec<u8>, Send
         }
         Chain::Decred => super::decred::sender_script(chain, address),
         Chain::Kaspa => super::kaspa::sender_script(chain, address),
-        family => {
+        _ => {
             let parsed = parse_utxo_address(chain, address)?;
-            let segwit = matches!(family, Chain::Bitcoin | Chain::Litecoin | Chain::Peercoin);
             let supported = match &parsed {
                 ParsedUtxoAddress::P2pkh(_) => true,
-                ParsedUtxoAddress::P2sh(_) => segwit,
+                ParsedUtxoAddress::P2sh(_) => chain.account_spends_witness(0),
                 ParsedUtxoAddress::Witness {
                     version: 0,
                     program,
-                } => segwit && program.len() == 20,
+                } => chain.account_spends_witness(0) && program.len() == 20,
                 ParsedUtxoAddress::Witness {
                     version: 1,
                     program,
-                } => matches!(family, Chain::Bitcoin | Chain::Peercoin) && program.len() == 32,
+                } => chain.account_spends_witness(1) && program.len() == 32,
                 _ => false,
             };
             if !supported {

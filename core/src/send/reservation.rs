@@ -162,6 +162,22 @@ impl StoredSend {
             PreparedPayload::StellarChangeTrust(p) => vec![sequence(p.sequence)],
             PreparedPayload::Substrate(p) => vec![sequence(u64::from(p.nonce))],
             PreparedPayload::Aptos(p) => vec![sequence(p.sequence)],
+            PreparedPayload::Cosmos(p) => vec![sequence(p.sequence)],
+            PreparedPayload::Filecoin(p) => vec![sequence(p.nonce)],
+            PreparedPayload::Tezos(p) => p
+                .reveal
+                .iter()
+                .chain(std::iter::once(&p.transaction))
+                .map(|operation| sequence(operation.counter))
+                .collect(),
+            // A deployment spends nonce zero before the transfer's one.
+            PreparedPayload::Starknet(p) => p
+                .deployment
+                .as_ref()
+                .map(|_| sequence(0))
+                .into_iter()
+                .chain([sequence(p.nonce)])
+                .collect(),
             PreparedPayload::Icp(p) => vec![Reservation::IcpTransfer {
                 sender: sender(),
                 created_at_ns: p.created_at_time_ns,
@@ -188,7 +204,17 @@ impl StoredSend {
                 .collect(),
             PreparedPayload::Sui(p) => sui_objects(p),
             PreparedPayload::SuiMerge(merge) => sui_objects(&merge.transaction),
-            PreparedPayload::Tron(_) | PreparedPayload::ZcashShielded(_) => Vec::new(),
+            // An Algorand account has no sequence: two payments from it
+            // stand apart, each until its last valid round. A VeChainThor
+            // transaction takes none either: its random nonce makes it a
+            // transaction of its own. A Hedera transfer's transaction id is
+            // its payer and the moment it was signed, which no other
+            // transaction takes.
+            PreparedPayload::Tron(_)
+            | PreparedPayload::ZcashShielded(_)
+            | PreparedPayload::Algorand(_)
+            | PreparedPayload::Vechain(_)
+            | PreparedPayload::Hedera(_) => Vec::new(),
         })
     }
 }

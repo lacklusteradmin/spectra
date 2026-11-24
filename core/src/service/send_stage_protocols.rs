@@ -50,6 +50,13 @@ impl WalletService {
             PreparedPayload::Ton { .. } => self.validate_ton_state(chain, stored).await?,
             PreparedPayload::Tron(_) => self.validate_tron_state(chain, stored).await?,
             PreparedPayload::Aptos(_) => self.validate_aptos_state(chain, stored).await?,
+            PreparedPayload::Cosmos(_) => self.validate_cosmos_state(chain, stored).await?,
+            PreparedPayload::Algorand(_) => self.validate_algorand_state(chain, stored).await?,
+            PreparedPayload::Vechain(_) => self.validate_vechain_state(chain, stored).await?,
+            PreparedPayload::Filecoin(_) => self.validate_filecoin_state(chain, stored).await?,
+            PreparedPayload::Tezos(_) => self.validate_tezos_state(chain, stored).await?,
+            PreparedPayload::Starknet(_) => self.validate_starknet_state(chain, stored).await?,
+            PreparedPayload::Hedera(_) => self.validate_hedera_state(chain, stored).await?,
             PreparedPayload::Sui(_) | PreparedPayload::SuiMerge(_) => {
                 self.validate_sui_state(chain, stored).await?
             }
@@ -133,21 +140,39 @@ impl WalletService {
             decimals,
             amount,
         };
+        if chain.is_cosmos() {
+            return self.prepare_cosmos(chain, request, sender, staged).await;
+        }
         Ok(match chain.mainnet_counterpart() {
             Chain::Xrp => self.prepare_xrp(chain, request, sender, staged).await?,
             Chain::Stellar => self.prepare_stellar(chain, request, sender, staged).await?,
             Chain::Ton => self.prepare_ton(chain, request, sender, staged).await?,
             Chain::Tron => self.prepare_tron(chain, request, sender, staged).await?,
             Chain::Aptos => self.prepare_aptos(chain, request, sender, staged).await?,
+            Chain::Algorand => {
+                self.prepare_algorand(chain, request, sender, staged)
+                    .await?
+            }
+            Chain::Vechain => self.prepare_vechain(chain, request, sender, staged).await?,
+            Chain::Starknet => {
+                self.prepare_starknet(chain, request, sender, staged)
+                    .await?
+            }
             Chain::Sui => self.prepare_sui(chain, request, sender, staged).await?,
             Chain::Solana => self.prepare_solana(chain, request, sender, staged).await?,
             Chain::Cardano => self.prepare_cardano(chain, request, sender, staged).await?,
-            Chain::Polkadot | Chain::Bittensor => {
+            _ if chain.is_substrate() => {
                 self.prepare_substrate(chain, request, sender, staged)
                     .await?
             }
             Chain::Icp => self.prepare_icp(chain, request, sender, staged).await?,
             Chain::Near => self.prepare_near(chain, request, sender, staged).await?,
+            Chain::Filecoin => {
+                self.prepare_filecoin(chain, request, sender, staged)
+                    .await?
+            }
+            Chain::Tezos => self.prepare_tezos(chain, request, sender, staged).await?,
+            Chain::Hedera => self.prepare_hedera(chain, request, sender, staged).await?,
             Chain::Bitcoin
             | Chain::Dogecoin
             | Chain::BitcoinSV
@@ -156,7 +181,11 @@ impl WalletService {
             | Chain::Dash
             | Chain::Zcash
             | Chain::Decred
-            | Chain::Kaspa => {
+            | Chain::Kaspa
+            | Chain::Qtum
+            | Chain::FractalBitcoin
+            | Chain::Ecash
+            | Chain::Digibyte => {
                 self.prepare_account_transfer(chain, request, sender, protocol_u64(amount)?)
                     .await?
             }
@@ -206,6 +235,19 @@ impl WalletService {
             PreparedPayload::Ton { .. } => self.sign_staged_ton(chain, stored, signer).await?,
             PreparedPayload::Tron(_) => self.sign_staged_tron(stored, signer).await?,
             PreparedPayload::Aptos(_) => self.sign_staged_aptos(stored, signer).await?,
+            PreparedPayload::Cosmos(_) => self.sign_staged_cosmos(chain, stored, signer).await?,
+            PreparedPayload::Algorand(_) => {
+                self.sign_staged_algorand(chain, stored, signer).await?
+            }
+            PreparedPayload::Vechain(_) => self.sign_staged_vechain(chain, stored, signer).await?,
+            PreparedPayload::Filecoin(_) => {
+                self.sign_staged_filecoin(chain, stored, signer).await?
+            }
+            PreparedPayload::Tezos(_) => self.sign_staged_tezos(chain, stored, signer).await?,
+            PreparedPayload::Starknet(_) => {
+                self.sign_staged_starknet(chain, stored, signer).await?
+            }
+            PreparedPayload::Hedera(_) => self.sign_staged_hedera(chain, stored, signer).await?,
             PreparedPayload::Sui(_) | PreparedPayload::SuiMerge(_) => {
                 self.sign_staged_sui(stored, signer).await?
             }
@@ -321,6 +363,13 @@ impl WalletService {
             PreparedPayload::Ton { .. } => self.ton_signature_expired(stored).await?,
             PreparedPayload::Tron(_) => self.tron_signature_expired(stored).await?,
             PreparedPayload::Aptos(_) => self.aptos_signature_expired(stored).await?,
+            PreparedPayload::Cosmos(_) => self.cosmos_signature_expired(chain, stored).await?,
+            PreparedPayload::Algorand(_) => self.algorand_signature_expired(chain, stored).await?,
+            PreparedPayload::Vechain(_) => self.vechain_signature_expired(chain, stored).await?,
+            PreparedPayload::Filecoin(_) => self.filecoin_signature_expired(chain, stored).await?,
+            PreparedPayload::Tezos(_) => self.tezos_signature_expired(chain, stored).await?,
+            PreparedPayload::Starknet(_) => self.starknet_signature_expired(chain, stored).await?,
+            PreparedPayload::Hedera(_) => self.hedera_signature_expired(chain, stored).await?,
             PreparedPayload::Solana(_) | PreparedPayload::SolanaAccountClosure(_) => {
                 self.solana_signature_expired(chain, stored).await?
             }

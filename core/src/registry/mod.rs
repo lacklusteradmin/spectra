@@ -6,20 +6,45 @@
 //!
 //! This file holds the enum, its identity and the types its answers use; the
 //! `impl Chain` methods live in one sibling per topic (`keys`, `address`,
-//! `endpoints`, `tokens`, `send`, `staking`, `utxo`, `networks`, `evm`).
+//! `endpoints`, `tokens`, `send`, `staking`, `utxo`, `networks`, `evm`,
+//! `cosmos`, `substrate`, `algorand`, `vechain`, `tezos`, `starknet`,
+//! `hedera`).
 
 mod address;
+mod algorand;
+mod cosmos;
 mod endpoints;
 mod evm;
+mod hedera;
 mod keys;
 mod networks;
 mod send;
 mod staking;
+mod starknet;
+mod substrate;
+mod tezos;
+pub(crate) use algorand::{
+    MAX_TXN_LIFE as ALGORAND_MAX_TXN_LIFE, MIN_BALANCE as ALGORAND_MIN_BALANCE,
+};
+pub(crate) use cosmos::{
+    CosmosFeeMarket, CosmosKey, CosmosTxSearch, GasPrice,
+    TRANSFER_GAS_ESTIMATE as COSMOS_TRANSFER_GAS_ESTIMATE,
+};
+pub(crate) use hedera::{
+    LAST_SYSTEM_ACCOUNT as HEDERA_LAST_SYSTEM_ACCOUNT, SUBMISSION_NODES as HEDERA_SUBMISSION_NODES,
+    TRANSACTION_VALID_SECS as HEDERA_TRANSACTION_VALID_SECS,
+    TRANSFER_FEE_BOUND_MILLS as HEDERA_TRANSFER_FEE_BOUND_MILLS,
+};
 pub(crate) use staking::StakingModel;
+pub(crate) use starknet::FEE_HEADROOM_PERCENT as STARKNET_FEE_HEADROOM_PERCENT;
+pub(crate) use substrate::SubstrateFeePayment;
+pub(crate) use tezos::{TezosNetwork, TezosProtocol};
 #[cfg(test)]
 mod tests;
 mod tokens;
 mod utxo;
+mod vechain;
+pub(crate) use vechain::THOR_EXPIRATION_BLOCKS;
 
 pub(crate) mod cardano_asset;
 pub(crate) mod stellar_asset;
@@ -113,6 +138,31 @@ declare_chains! {
     Peaq,
     Somnia,
     ZeroG,
+    CosmosHub,
+    Celestia,
+    Dydx,
+    Terra,
+    Kava,
+    Injective,
+    Akash,
+    Babylon,
+    Osmosis,
+    Dymension,
+    Saga,
+    Allora,
+    Band,
+    Kusama,
+    Astar,
+    Algorand,
+    Qtum,
+    FractalBitcoin,
+    Ecash,
+    Digibyte,
+    Vechain,
+    Filecoin,
+    Tezos,
+    Starknet,
+    Hedera,
 
     // ── Testnets ─────────────────────────────────────────────────────────────
     BitcoinTestnet,
@@ -279,6 +329,10 @@ pub enum TokenStandard {
     CardanoNativeToken,
     #[serde(rename = "Asset Hub Asset")]
     AssetHubAsset,
+    /// VeChainThor's fungible token, ERC-20's interface under its own VIP:
+    /// VTHO and the tokens deployed like it.
+    #[serde(rename = "VIP-180")]
+    Vip180,
 }
 
 /// The signature scheme a chain's raw private key belongs to.
@@ -293,6 +347,8 @@ pub enum KeyScheme {
     Sr25519,
     /// Cardano's 64-byte BIP32-Ed25519 extended key.
     Ed25519Extended,
+    /// A Stark curve scalar: Starknet's.
+    Stark,
 }
 
 /// Where an EVM chain's transaction history can be read from.
@@ -392,13 +448,27 @@ impl Chain {
         .identified()
     }
 
+    /// A zero-balance holding of the asset this network's fees are paid in:
+    /// its own coin, or the catalog's deployment of the token that pays
+    /// them ([`Chain::fee_token_contract`]).
+    pub fn fee_holding_template(self) -> crate::store::wallet_domain::AssetHolding {
+        match self.fee_token_contract() {
+            None => self.native_holding_template(),
+            Some(contract) => crate::catalog::tokens::list_token_deployments(Some(self))
+                .into_iter()
+                .find(|deployment| !deployment.is_native() && deployment.contract == contract)
+                .expect("the catalog lists the token a network's fees are paid in")
+                .holding_template(),
+        }
+    }
+
     pub fn coin_name(self) -> &'static str {
         self.entry().native_asset_display_name.as_str()
     }
 
     /// The native token's symbol, joined through the network's deployment reference.
     pub fn coin_symbol(self) -> &'static str {
-        self.entry().gas_token_symbol.as_str()
+        self.entry().coin_symbol.as_str()
     }
 
     /// The name shown to a user — the catalog's `name`.
@@ -462,7 +532,9 @@ pub enum PaymentUriFormat {
 pub enum PaymentMemoKind {
     /// XRP Ledger `DestinationTag`: an unsigned 32-bit integer.
     DestinationTag,
-    /// Stellar `MEMO_TEXT`: up to 28 bytes of UTF-8.
+    /// A text memo: Stellar's `MEMO_TEXT` and a Cosmos or Hedera
+    /// transaction's memo,
+    /// up to the network's `Chain::memo_text_limit` bytes of UTF-8.
     MemoText,
     /// Stellar `MEMO_ID`: an unsigned 64-bit integer.
     MemoId,
@@ -528,6 +600,9 @@ pub enum AddressNormalization {
     Uppercase,
     /// Lowercase, and prefixed with `0x` when the input omitted it.
     LowercaseHexPrefixed,
+    /// A field element in hex: lowercase, `0x`-prefixed and zero-padded to
+    /// 64 digits, as Starknet wallets and explorers write an address.
+    HexFelt,
 }
 
 /// One encoding of an account public key on a network: its four version

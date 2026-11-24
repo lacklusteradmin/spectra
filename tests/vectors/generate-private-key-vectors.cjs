@@ -19,6 +19,8 @@ const WIF = {
   'bitcoin-gold': 0x80, 'litecoin': 0xb0, 'litecoin-testnet': 0xef, 'dogecoin': 0x9e,
   'dogecoin-testnet': 0xf1, 'dash': 0xcc, 'dash-testnet': 0xef, 'zcash': 0x80, 'zcash-testnet': 0xef,
   'peercoin': 0xb7, 'peercoin-testnet': 0xef,
+  // Qtum Core, Fractal, Bitcoin ABC and DigiByte Core chainparams' SECRET_KEY.
+  'qtum': 0x80, 'fractal-bitcoin': 0x80, 'ecash': 0x80, 'digibyte': 0x80,
 };
 
 function ed25519Public(seed) {

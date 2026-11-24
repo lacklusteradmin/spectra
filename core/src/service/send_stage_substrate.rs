@@ -21,8 +21,8 @@ impl WalletService {
             .as_deref()
             .map(super::network_tokens::asset_id)
             .transpose()?;
-        Ok(match chain.mainnet_counterpart() {
-            Chain::Polkadot | Chain::Bittensor => {
+        Ok(match chain {
+            substrate if substrate.is_substrate() => {
                 let prepared = crate::api::http::race(&eps, |endpoint| async move {
                     let client = SubstrateClient::new(Arc::new(vec![endpoint]));
                     match asset {

@@ -138,7 +138,7 @@ fn spends_sign_and_assemble_as_csl_does() {
                     let index = name.as_str().unwrap()[1..].parse::<usize>().unwrap();
                     let (private, public, _) = &keys[index];
                     let signature =
-                        crate::send::cardano::sign_extended(private, public, &hash).unwrap();
+                        crate::derivation::ed25519_extended::sign(private, public, &hash).unwrap();
                     assert_eq!(
                         hex::encode(signature),
                         vector["witnesses"][name.as_str().unwrap()]["signature"]

@@ -167,7 +167,8 @@ pub(crate) fn encode_address_inner(
 
 /// Derive a secp256k1 UTXO wallet on `chain` (the Bitcoin, Litecoin,
 /// Peercoin, Bitcoin Cash, Bitcoin SV, Dogecoin, Dash, Bitcoin Gold, Zcash,
-/// Decred and Kaspa networks) from a seed phrase.
+/// Decred, Kaspa, Qtum, Fractal Bitcoin, eCash and DigiByte networks) from a
+/// seed phrase.
 ///
 /// The address is `chain`'s encoding of the key for `script_type`, which
 /// [`Chain::encode_discovery_address`] owns: the P2PKH-only networks ignore

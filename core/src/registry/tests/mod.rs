@@ -21,10 +21,7 @@ fn peercoin_networks_use_native_precision_and_protocol_rules() {
             path
         );
         assert_eq!(chain.entry().artwork_name, "peercoin");
-        assert_eq!(
-            chain.peercoin_generated_output_maturity().unwrap(),
-            maturity
-        );
+        assert_eq!(chain.generated_output_maturity().unwrap(), maturity);
         assert_eq!(chain.peercoin_min_output_units().unwrap(), 10_000);
         assert_eq!(chain.peercoin_min_fee_units().unwrap(), 1_000);
         assert_eq!(chain.peercoin_fee_per_kb_units().unwrap(), 10_000);
@@ -46,13 +43,125 @@ fn peercoin_networks_use_native_precision_and_protocol_rules() {
     assert!(Chain::Bitcoin.peercoin_min_fee_units().is_err());
 }
 
-/// A chain with several APIs needs one client answering in all of them,
-/// and only the UTXO family has one.
+/// Qtum, Fractal Bitcoin, eCash and DigiByte: each node's own parameters,
+/// the account wallet they make, and the indexers they are read through.
+#[test]
+fn the_bitcoin_derived_networks_carry_their_nodes_parameters() {
+    use crate::api::endpoint::EndpointApi as Api;
+    for (chain, symbol, decimals, path, apis, dust, fee_floor) in [
+        (
+            Chain::Qtum,
+            "QTUM",
+            8,
+            "m/44'/88'/0'/0/0",
+            &[Api::Blockbook][..],
+            72_800,
+            Some(400),
+        ),
+        (
+            Chain::FractalBitcoin,
+            "FB",
+            8,
+            "m/84'/0'/0'/0/0",
+            &[Api::Esplora, Api::UnisatOpenApi][..],
+            546,
+            Some(1),
+        ),
+        (
+            Chain::Ecash,
+            "XEC",
+            2,
+            "m/44'/1899'/0'/0/0",
+            &[Api::Chronik][..],
+            546,
+            None,
+        ),
+        (
+            Chain::Digibyte,
+            "DGB",
+            8,
+            "m/84'/20'/0'/0/0",
+            &[Api::Esplora, Api::Blockbook][..],
+            5_460,
+            Some(100),
+        ),
+    ] {
+        assert_eq!(chain.coin_symbol(), symbol);
+        assert_eq!(chain.native_decimals(), decimals);
+        assert_eq!(
+            crate::derivation::path::default_path_from_catalog(chain).unwrap(),
+            path
+        );
+        assert_eq!(chain.endpoint_apis(), apis, "{chain}");
+        assert_eq!(chain.relay_dust_threshold().unwrap(), dust, "{chain}");
+        assert_eq!(chain.min_fee_rate(), fee_floor, "{chain}");
+        assert_eq!(chain.wif_version(), Some(0x80), "{chain}");
+        assert!(
+            chain.uses_account_utxo() && chain.uses_utxo_client(),
+            "{chain}"
+        );
+        assert!(chain.supports_watch_only_import() && chain.accepts_account_xpub());
+        assert!(chain.uses_generic_send_submit() && chain.has_send_preview());
+        assert!(chain.payment_memo_kinds().is_empty());
+        assert!(!chain.is_testnet() && !chain.hosts_tokens() && !chain.supports_staking());
+    }
+    assert_eq!(Chain::Ecash.sighash_fork_id().unwrap(), 0);
+    assert_eq!(Chain::Ecash.cashaddr_prefix(), Some("ecash"));
+    assert!(Chain::Ecash.fixed_utxo_address_versions().is_err());
+    assert_eq!(Chain::Ecash.static_fee_units(), Some(1_000));
+    assert_eq!(Chain::Qtum.generated_output_maturity().unwrap(), 2_000);
+    assert_eq!(Chain::Ecash.generated_output_maturity().unwrap(), 100);
+    assert!(Chain::Qtum.verifies_spent_outputs() && !Chain::Ecash.verifies_spent_outputs());
+    assert!(!Chain::Qtum.indexers_estimate_fee_rate());
+    // Taproot: spent on Fractal and DigiByte, not on Qtum.
+    assert!(Chain::FractalBitcoin.account_spends_witness(1));
+    assert!(Chain::Digibyte.account_spends_witness(1));
+    assert!(Chain::Qtum.account_spends_witness(0) && !Chain::Qtum.account_spends_witness(1));
+    // Fractal and eCash share Bitcoin's genesis block; each is told apart
+    // by a later one, and Bitcoin's own check is its block 1.
+    let genesis = Chain::Bitcoin.genesis_block_hash().unwrap();
+    for chain in [Chain::Bitcoin, Chain::FractalBitcoin, Chain::Ecash] {
+        let (height, hash) = chain.identity_block().unwrap();
+        assert!(height > 0 && hash != genesis, "{chain}");
+    }
+    assert_ne!(
+        Chain::Bitcoin.identity_block().unwrap(),
+        Chain::FractalBitcoin.identity_block().unwrap()
+    );
+    assert!(Chain::FractalBitcoin.verifies_indexer_before_signing());
+    assert!(!Chain::Bitcoin.verifies_indexer_before_signing());
+    assert_eq!(
+        Chain::Qtum.identity_block().unwrap(),
+        (
+            0,
+            "000075aef83cf2853580f8ae8ce6f8c3096cfa21d98334d6e3f95e5582ed986c".into()
+        )
+    );
+    // No payment request names Fractal's coin: a `bitcoin:` code would be
+    // paid in BTC.
+    assert!(Chain::FractalBitcoin.payment_uri_format().is_none());
+}
+
+/// A chain with several APIs needs one client answering in all of them —
+/// the UTXO family's — or APIs that serve different capabilities, so each
+/// read has one: Hedera's mirror node reads and its address book's nodes
+/// take transactions.
 #[test]
 fn only_the_utxo_client_speaks_several_apis() {
     for chain in Chain::all() {
-        if chain.endpoint_apis().len() > 1 {
-            assert!(chain.uses_utxo_client(), "{}", chain.str_id());
+        let apis = chain.endpoint_apis();
+        if apis.len() > 1 && !chain.uses_utxo_client() {
+            assert!(chain.is_hedera(), "{}", chain.str_id());
+            for capability in crate::api::endpoint::EndpointCapability::ALL {
+                let serving = apis
+                    .iter()
+                    .filter(|api| {
+                        crate::api::endpoint::endpoint_capability_options(chain, **api)
+                            .contains(&capability)
+                    })
+                    .count();
+                assert!(serving <= 1, "{chain} {capability:?}");
+            }
         }
     }
 }
@@ -212,6 +321,77 @@ fn new_evm_mainnets_have_native_assets_and_shared_wallet_rules() {
                         && record.capabilities.contains(&EndpointCapability::Broadcast)
                 })
         );
+    }
+}
+
+/// Kusama and Astar are Substrate networks like Polkadot: their identity
+/// and coin as read from their own nodes, sr25519 keys along junctions,
+/// raw keys and watch-only addresses, the shared transfer model and
+/// finality, verified keyless endpoints, and no tokens or staking.
+#[test]
+fn kusama_and_astar_share_the_substrate_wallet_rules() {
+    use crate::registry::SubstrateFeePayment;
+    for (chain, id, symbol, decimals, prefix, genesis, fee_payment) in [
+        (
+            Chain::Kusama,
+            "kusama",
+            "KSM",
+            12,
+            2,
+            "0x48239ef607d7928874027a43a67689209727dfb3d3dc5e5b03a39bdc2eda771a",
+            SubstrateFeePayment::Asset,
+        ),
+        (
+            Chain::Astar,
+            "astar",
+            "ASTR",
+            18,
+            5,
+            "0x9eb76c5184c4ab8679d2d5d819fdf90b9c001403e9e17da2e14b6d8aec4029c6",
+            SubstrateFeePayment::Native,
+        ),
+    ] {
+        assert_eq!(Chain::parse(id).unwrap(), chain);
+        assert!(!chain.is_testnet() && !chain.is_evm());
+        assert!(chain.is_substrate());
+        assert_eq!(chain.coin_symbol(), symbol);
+        assert_eq!(chain.native_decimals(), decimals);
+        assert_eq!(chain.ss58_prefix(), Some(prefix));
+        assert_eq!(chain.substrate_genesis_hash(), Some(genesis));
+        assert_eq!(chain.substrate_balance_bytes(), Some(16));
+        assert_eq!(chain.substrate().unwrap().fee_payment, fee_payment);
+        assert_eq!(chain.key_scheme(), Some(KeyScheme::Sr25519));
+        assert!(chain.derives_along_junctions() && !chain.uses_derivation_path());
+        assert!(!chain.supports_derivation_hmac_override());
+        assert!(chain.supports_watch_only_import());
+        assert!(chain.has_shared_send_preview() && chain.uses_generic_send_submit());
+        assert_eq!(chain.endpoint_apis(), &[EndpointApi::SubstrateJsonRpc]);
+        assert!(matches!(
+            chain.pending_status_poll(),
+            PendingStatusPoll::SubstrateFinality
+        ));
+        assert!(!chain.hosts_tokens() && !chain.supports_staking());
+        assert!(chain.multisig_policy_format().is_none());
+        assert!(chain.payment_memo_kinds().is_empty());
+        let deployment = crate::catalog::tokens::deployment(&format!("{id}:native")).unwrap();
+        assert_eq!(deployment.token_id, id);
+        assert_eq!(deployment.decimals, u32::from(decimals));
+        let endpoints = crate::catalog::endpoints::catalog()
+            .records
+            .iter()
+            .filter(|record| record.chain_id == chain)
+            .filter(|record| {
+                [
+                    EndpointCapability::Balance,
+                    EndpointCapability::Fee,
+                    EndpointCapability::Broadcast,
+                    EndpointCapability::Verification,
+                ]
+                .iter()
+                .all(|capability| record.capabilities.contains(capability))
+            })
+            .count();
+        assert!(endpoints >= 2, "{chain}");
     }
 }
 
@@ -614,6 +794,41 @@ fn protocol_sets_keep_legacy_and_current_protocols_on_one_network() {
             Some(crate::registry::TokenStandard::Aip21)
         );
     }
+}
+
+/// VeChainThor's fees are VTHO, a VIP-180 deployment counted at the
+/// network's own 18 places; every other network pays in its own coin.
+#[test]
+fn vechain_pays_its_fees_in_vtho() {
+    let vtho = Chain::Vechain.fee_holding_template();
+    let energy = Chain::Vechain.thor().unwrap().energy;
+    assert_eq!(vtho.symbol, "VTHO");
+    assert_eq!(Chain::Vechain.entry().fee_symbol, "VTHO");
+    assert_eq!(vtho.token_standard, Some(TokenStandard::Vip180));
+    assert_eq!(vtho.contract_address.as_deref(), Some(energy));
+    let deployment = crate::catalog::tokens::deployment(&vtho.deployment_id()).unwrap();
+    assert_eq!(
+        deployment.decimals,
+        u32::from(Chain::Vechain.native_decimals())
+    );
+    assert!(!Chain::Vechain.pays_own_fee(None));
+    assert!(Chain::Vechain.pays_own_fee(Some("0x0000000000000000000000000000456E65726779")));
+    assert!(!Chain::Vechain.pays_own_fee(Some("0x5ef79995fe8a89e0812330e4378eb2660cede699")));
+    for chain in Chain::all().filter(|chain| !chain.is_vechain()) {
+        assert!(chain.pays_own_fee(None), "{chain}");
+        assert!(!chain.pays_own_fee(Some(energy)), "{chain}");
+        assert_eq!(
+            chain.fee_holding_template(),
+            chain.native_holding_template(),
+            "{chain}"
+        );
+        assert_eq!(chain.entry().fee_symbol, chain.coin_symbol(), "{chain}");
+    }
+    // Ethereum's addresses, but its own network and slot.
+    assert!(!Chain::Vechain.is_evm());
+    assert_eq!(Chain::Vechain.address_slot(), "vechain");
+    assert_eq!(Chain::Vechain.coin_symbol(), "VET");
+    assert_eq!(Chain::Vechain.endpoint_apis(), &[EndpointApi::ThorRest]);
 }
 
 #[test]

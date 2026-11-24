@@ -1,0 +1,390 @@
+{
+  "provenance": "starknet 11.6.1 (@scure/starknet 2.4.0), ethers 6.17.0, @scure/bip32 1.7.0; derivation after argent-x ArgentSigner and the address after @argent/x-shared 1.79.4 getAccountDeploymentPayload",
+  "chain_id": "0x534e5f4d41494e",
+  "account_class_hash": "0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f",
+  "strk": "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+  "eth": "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+  "selectors": {
+    "transfer": "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+    "balanceOf": "0x2e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e",
+    "balance_of": "0x35a73cd311a05d46deda634c5ee045db92f811b4e74bca4437fcb5302b7af33",
+    "__execute__": "0x15d40a3d6ca2ac30f4031e42be28da9b056fef9bb7357ac5e85627ee876e5ad",
+    "decimals": "0x4c4fb1ab068f6039d5780c68dd0fa2f8742cceb3426d19667778ca7f3518a9"
+  },
+  "accounts": [
+    {
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "",
+      "account": 0,
+      "path": "m/44'/9004'/0'/0/0",
+      "ethereum_key": "0x1ab42cc412b618bdea3a599e3c9bae199ebf030895b039e9db1e30dafb12b727",
+      "private_key": "0x018a556cbd949d1e6d25ed391bf032559fb6055f321c3e02714f7a6268bff3d1",
+      "public_key": "0x001f03432e214578b6ac859bd1d282e948a615bef54feaf8da02141d42a5f5fa",
+      "address": "0x0424e0202bce2d9abbee87ee8faa8fd416bcf02ad8fe18d66320f23b1b07fc02",
+      "checksum_address": "0x0424e0202Bce2D9abbEE87ee8Faa8fD416BCF02AD8Fe18d66320F23b1B07fC02",
+      "constructor_calldata": [
+        "0x0",
+        "0x1f03432e214578b6ac859bd1d282e948a615bef54feaf8da02141d42a5f5fa",
+        "0x1"
+      ]
+    },
+    {
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "",
+      "account": 1,
+      "path": "m/44'/9004'/0'/0/1",
+      "ethereum_key": "0x1ab42cc412b618bdea3a599e3c9bae199ebf030895b039e9db1e30dafb12b727",
+      "private_key": "0x00d0be385d5735a38651e3c5bea440321f5d36468a52057801ae0cb3dbb4876c",
+      "public_key": "0x036e61884203720f28b6bbbb74fb6878ff2d2374ae562323f36439d236c8c827",
+      "address": "0x0591960a2eae4798de21771480cede3ce3c17cbeeda9b3b988cfadd2e8db16a4",
+      "checksum_address": "0x0591960A2eAE4798de21771480Cede3cE3c17cbeeda9B3B988CFADd2E8Db16A4",
+      "constructor_calldata": [
+        "0x0",
+        "0x36e61884203720f28b6bbbb74fb6878ff2d2374ae562323f36439d236c8c827",
+        "0x1"
+      ]
+    },
+    {
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "",
+      "account": 2,
+      "path": "m/44'/9004'/0'/0/2",
+      "ethereum_key": "0x1ab42cc412b618bdea3a599e3c9bae199ebf030895b039e9db1e30dafb12b727",
+      "private_key": "0x063c05a7b5dee6889bc16706865a871b36f08eaad2c5a601e3b242b895084317",
+      "public_key": "0x009062821a6ad55182fbba0a792dfb72463d5c43f436e681d50adc58c31cb065",
+      "address": "0x01c5d755e58217df73b8014213146b1d7803cd04f5035680ef4e2b48df86930a",
+      "checksum_address": "0x01c5D755E58217df73b8014213146b1d7803Cd04f5035680eF4E2B48DF86930a",
+      "constructor_calldata": [
+        "0x0",
+        "0x9062821a6ad55182fbba0a792dfb72463d5c43f436e681d50adc58c31cb065",
+        "0x1"
+      ]
+    },
+    {
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "passphrase": "TREZOR",
+      "account": 0,
+      "path": "m/44'/9004'/0'/0/0",
+      "ethereum_key": "0x62f1d86b246c81bdd8f6c166d56896a4a5e1eddbcaebe06480e5c0bc74c28224",
+      "private_key": "0x0063e5eabe42f65fd9ff4b1ce168115cda3d78af7f2b2899511e6f7d197bf2a7",
+      "public_key": "0x04ebfc2f743ef08b2b761d34d67cb264abbdf573d900f3e92897c370209432ec",
+      "address": "0x02609ef6349d3270b21f87661c19a83477243c624cf405fbd24cad203b152474",
+      "checksum_address": "0x02609ef6349d3270b21F87661c19A83477243C624cf405FBD24CAd203B152474",
+      "constructor_calldata": [
+        "0x0",
+        "0x4ebfc2f743ef08b2b761d34d67cb264abbdf573d900f3e92897c370209432ec",
+        "0x1"
+      ]
+    },
+    {
+      "mnemonic": "arch fancy virus weasel head critic online bonus cloth discover vibrant argue",
+      "passphrase": "",
+      "account": 0,
+      "path": "m/44'/9004'/0'/0/0",
+      "ethereum_key": "0x00a5a821296da37c1ceb49318281878dc8b26abfc95c55e2a398ae723ce53fea",
+      "private_key": "0x068f51ec9e3373389b41276e10122a27e8ad33f52a8a4adc7d82b6777c401f71",
+      "public_key": "0x015e60ccb018211b6c3b438b69857e4563719b75d2284ad61993a70112336861",
+      "address": "0x042ccf4adbc96b4326d52bc77bb8fee9d016813ab52c0b460aaa9c5fabe7848b",
+      "checksum_address": "0x042ccF4adbC96b4326d52BC77bb8feE9D016813aB52C0B460AAA9C5fABe7848B",
+      "constructor_calldata": [
+        "0x0",
+        "0x15e60ccb018211b6c3b438b69857e4563719b75d2284ad61993a70112336861",
+        "0x1"
+      ]
+    }
+  ],
+  "transfers": [
+    {
+      "name": "strk-from-a-deployed-account",
+      "private_key": "0x018a556cbd949d1e6d25ed391bf032559fb6055f321c3e02714f7a6268bff3d1",
+      "public_key": "0x001f03432e214578b6ac859bd1d282e948a615bef54feaf8da02141d42a5f5fa",
+      "sender": "0x0424e0202bce2d9abbee87ee8faa8fd416bcf02ad8fe18d66320f23b1b07fc02",
+      "token": "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+      "recipient": "0x0591960a2eae4798de21771480cede3ce3c17cbeeda9b3b988cfadd2e8db16a4",
+      "amount": "1500000000000000000",
+      "nonce": 7,
+      "resource_bounds": {
+        "l1_gas": {
+          "max_amount": "0x0",
+          "max_price_per_unit": "0x5af3107a4000"
+        },
+        "l2_gas": {
+          "max_amount": "0x13e140",
+          "max_price_per_unit": "0x2cb417800"
+        },
+        "l1_data_gas": {
+          "max_amount": "0x180",
+          "max_price_per_unit": "0x1b2"
+        }
+      },
+      "calldata": [
+        "0x1",
+        "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+        "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+        "0x3",
+        "0x591960a2eae4798de21771480cede3ce3c17cbeeda9b3b988cfadd2e8db16a4",
+        "0x14d1120d7b160000",
+        "0x0"
+      ],
+      "transaction_hash": "0x06e43736df14276bdad830ef3fdb6dc71f2a30480108b9441bab54860c345949",
+      "signature": [
+        "0x6a999a3185ea280ead703dae21722929c53ecb083d298f040df4fbdd33f00b6",
+        "0x1cb89397bb118db6a5b929c80b6a90259084d3b420ba3a2dfce85527139edd8"
+      ],
+      "invoke_transaction": {
+        "type": "INVOKE",
+        "sender_address": "0x424e0202bce2d9abbee87ee8faa8fd416bcf02ad8fe18d66320f23b1b07fc02",
+        "calldata": [
+          "0x1",
+          "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+          "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+          "0x3",
+          "0x591960a2eae4798de21771480cede3ce3c17cbeeda9b3b988cfadd2e8db16a4",
+          "0x14d1120d7b160000",
+          "0x0"
+        ],
+        "signature": [
+          "0x6a999a3185ea280ead703dae21722929c53ecb083d298f040df4fbdd33f00b6",
+          "0x1cb89397bb118db6a5b929c80b6a90259084d3b420ba3a2dfce85527139edd8"
+        ],
+        "nonce": "0x7",
+        "resource_bounds": {
+          "l1_gas": {
+            "max_amount": "0x0",
+            "max_price_per_unit": "0x5af3107a4000"
+          },
+          "l2_gas": {
+            "max_amount": "0x13e140",
+            "max_price_per_unit": "0x2cb417800"
+          },
+          "l1_data_gas": {
+            "max_amount": "0x180",
+            "max_price_per_unit": "0x1b2"
+          }
+        },
+        "tip": "0x0",
+        "paymaster_data": [],
+        "nonce_data_availability_mode": "L1",
+        "fee_data_availability_mode": "L1",
+        "account_deployment_data": [],
+        "version": "0x3"
+      },
+      "deployment": null
+    },
+    {
+      "name": "eth-from-an-undeployed-account",
+      "private_key": "0x00d0be385d5735a38651e3c5bea440321f5d36468a52057801ae0cb3dbb4876c",
+      "public_key": "0x036e61884203720f28b6bbbb74fb6878ff2d2374ae562323f36439d236c8c827",
+      "sender": "0x0591960a2eae4798de21771480cede3ce3c17cbeeda9b3b988cfadd2e8db16a4",
+      "token": "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+      "recipient": "0x00ababababababababababababababababababababababababababababababab",
+      "amount": "250000000000000",
+      "nonce": 1,
+      "resource_bounds": {
+        "l1_gas": {
+          "max_amount": "0x0",
+          "max_price_per_unit": "0x5af3107a4000"
+        },
+        "l2_gas": {
+          "max_amount": "0x162010",
+          "max_price_per_unit": "0x2cb417800"
+        },
+        "l1_data_gas": {
+          "max_amount": "0x100",
+          "max_price_per_unit": "0x1b2"
+        }
+      },
+      "calldata": [
+        "0x1",
+        "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+        "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+        "0x3",
+        "0xababababababababababababababababababababababababababababababab",
+        "0xe35fa931a000",
+        "0x0"
+      ],
+      "transaction_hash": "0x058b5fa7c00c9ab3665fb2b8a6afd651a38337732962929d065a93c9e0e0b3eb",
+      "signature": [
+        "0x5d188dff3e1a436397ed5d57b1aaacf6a1edb7b24ce5386894ff5bb3c1cd2d0",
+        "0x44067ffc6c7863bfd7bd591536e200b3aa1cf73ea9d8ccfe0d2586a4266b494"
+      ],
+      "invoke_transaction": {
+        "type": "INVOKE",
+        "sender_address": "0x591960a2eae4798de21771480cede3ce3c17cbeeda9b3b988cfadd2e8db16a4",
+        "calldata": [
+          "0x1",
+          "0x49d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+          "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+          "0x3",
+          "0xababababababababababababababababababababababababababababababab",
+          "0xe35fa931a000",
+          "0x0"
+        ],
+        "signature": [
+          "0x5d188dff3e1a436397ed5d57b1aaacf6a1edb7b24ce5386894ff5bb3c1cd2d0",
+          "0x44067ffc6c7863bfd7bd591536e200b3aa1cf73ea9d8ccfe0d2586a4266b494"
+        ],
+        "nonce": "0x1",
+        "resource_bounds": {
+          "l1_gas": {
+            "max_amount": "0x0",
+            "max_price_per_unit": "0x5af3107a4000"
+          },
+          "l2_gas": {
+            "max_amount": "0x162010",
+            "max_price_per_unit": "0x2cb417800"
+          },
+          "l1_data_gas": {
+            "max_amount": "0x100",
+            "max_price_per_unit": "0x1b2"
+          }
+        },
+        "tip": "0x0",
+        "paymaster_data": [],
+        "nonce_data_availability_mode": "L1",
+        "fee_data_availability_mode": "L1",
+        "account_deployment_data": [],
+        "version": "0x3"
+      },
+      "deployment": {
+        "class_hash": "0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f",
+        "contract_address_salt": "0x036e61884203720f28b6bbbb74fb6878ff2d2374ae562323f36439d236c8c827",
+        "constructor_calldata": [
+          "0x0",
+          "0x36e61884203720f28b6bbbb74fb6878ff2d2374ae562323f36439d236c8c827",
+          "0x1"
+        ],
+        "resource_bounds": {
+          "l1_gas": {
+            "max_amount": "0x0",
+            "max_price_per_unit": "0x5af3107a4000"
+          },
+          "l2_gas": {
+            "max_amount": "0xdbba0",
+            "max_price_per_unit": "0x2cb417800"
+          },
+          "l1_data_gas": {
+            "max_amount": "0x1e0",
+            "max_price_per_unit": "0x1b2"
+          }
+        },
+        "transaction_hash": "0x0215271f3f698109dac98ea70cc2dd171fd5813f39881f524d77b0b3f863a4b7",
+        "signature": [
+          "0x24e6acd5b6e48edca68efe812d0955b3b01630a2f0550aed3b92c13a4273c66",
+          "0x42f7810af7bb0680620ea31641f232f94dba3b367aff54e2e128426574c5ba3"
+        ],
+        "deploy_account_transaction": {
+          "type": "DEPLOY_ACCOUNT",
+          "constructor_calldata": [
+            "0x0",
+            "0x36e61884203720f28b6bbbb74fb6878ff2d2374ae562323f36439d236c8c827",
+            "0x1"
+          ],
+          "class_hash": "0x36078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f",
+          "contract_address_salt": "0x36e61884203720f28b6bbbb74fb6878ff2d2374ae562323f36439d236c8c827",
+          "signature": [
+            "0x24e6acd5b6e48edca68efe812d0955b3b01630a2f0550aed3b92c13a4273c66",
+            "0x42f7810af7bb0680620ea31641f232f94dba3b367aff54e2e128426574c5ba3"
+          ],
+          "nonce": "0x0",
+          "resource_bounds": {
+            "l1_gas": {
+              "max_amount": "0x0",
+              "max_price_per_unit": "0x5af3107a4000"
+            },
+            "l2_gas": {
+              "max_amount": "0xdbba0",
+              "max_price_per_unit": "0x2cb417800"
+            },
+            "l1_data_gas": {
+              "max_amount": "0x1e0",
+              "max_price_per_unit": "0x1b2"
+            }
+          },
+          "tip": "0x0",
+          "paymaster_data": [],
+          "nonce_data_availability_mode": "L1",
+          "fee_data_availability_mode": "L1",
+          "version": "0x3"
+        }
+      }
+    },
+    {
+      "name": "the-largest-amount-to-a-short-address",
+      "private_key": "0x063c05a7b5dee6889bc16706865a871b36f08eaad2c5a601e3b242b895084317",
+      "public_key": "0x009062821a6ad55182fbba0a792dfb72463d5c43f436e681d50adc58c31cb065",
+      "sender": "0x01c5d755e58217df73b8014213146b1d7803cd04f5035680ef4e2b48df86930a",
+      "token": "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+      "recipient": "0x0000000000000000000000000000000000000000000000000000000000001234",
+      "amount": "340282366920938463463374607431768211455",
+      "nonce": 4294967296,
+      "resource_bounds": {
+        "l1_gas": {
+          "max_amount": "0xa",
+          "max_price_per_unit": "0x1"
+        },
+        "l2_gas": {
+          "max_amount": "0x1",
+          "max_price_per_unit": "0x1"
+        },
+        "l1_data_gas": {
+          "max_amount": "0x1",
+          "max_price_per_unit": "0x1"
+        }
+      },
+      "calldata": [
+        "0x1",
+        "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+        "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+        "0x3",
+        "0x1234",
+        "0xffffffffffffffffffffffffffffffff",
+        "0x0"
+      ],
+      "transaction_hash": "0x06032d873938c3574207beda5b7ae54d146601fe202f8c8c0207e58bb82c0210",
+      "signature": [
+        "0x24e5be0f0022f691698abefa00c0bb081026c53f52c7994950bd81ff3244016",
+        "0x60dd65883977757e022f2b1d8143f99cc9ccf76be93b00b1f05d643749fe389"
+      ],
+      "invoke_transaction": {
+        "type": "INVOKE",
+        "sender_address": "0x1c5d755e58217df73b8014213146b1d7803cd04f5035680ef4e2b48df86930a",
+        "calldata": [
+          "0x1",
+          "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+          "0x83afd3f4caedc6eebf44246fe54e38c95e3179a5ec9ea81740eca5b482d12e",
+          "0x3",
+          "0x1234",
+          "0xffffffffffffffffffffffffffffffff",
+          "0x0"
+        ],
+        "signature": [
+          "0x24e5be0f0022f691698abefa00c0bb081026c53f52c7994950bd81ff3244016",
+          "0x60dd65883977757e022f2b1d8143f99cc9ccf76be93b00b1f05d643749fe389"
+        ],
+        "nonce": "0x100000000",
+        "resource_bounds": {
+          "l1_gas": {
+            "max_amount": "0xa",
+            "max_price_per_unit": "0x1"
+          },
+          "l2_gas": {
+            "max_amount": "0x1",
+            "max_price_per_unit": "0x1"
+          },
+          "l1_data_gas": {
+            "max_amount": "0x1",
+            "max_price_per_unit": "0x1"
+          }
+        },
+        "tip": "0x0",
+        "paymaster_data": [],
+        "nonce_data_availability_mode": "L1",
+        "fee_data_availability_mode": "L1",
+        "account_deployment_data": [],
+        "version": "0x3"
+      },
+      "deployment": null
+    }
+  ]
+}

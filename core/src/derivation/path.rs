@@ -72,9 +72,12 @@ pub fn derivation_profile_of_path(chain: Chain, path: &str) -> Option<Derivation
     let segments = parse_derivation_path_str(path)?;
     chain.derivation_profiles().into_iter().find_map(|profile| {
         let (template, account_at) = profile_template(chain, profile)?;
+        // The account segment is hardened where the template's is: BIP-44's
+        // account, or the last, unhardened address index VeChainThor's,
+        // Ready's and Hedera's ECDSA wallets number accounts with.
         let matches =
             segments.len() == template.len()
-                && segments[account_at].is_hardened
+                && segments[account_at].is_hardened == template[account_at].is_hardened
                 && segments.iter().zip(&template).enumerate().all(
                     |(position, (segment, expected))| position == account_at || segment == expected,
                 );
@@ -273,11 +276,13 @@ mod tests {
         // TON's mnemonic, Substrate's mini-secret — so a catalog path there
         // would be one the deriver ignores. Any other mainnet without one is
         // a catalog edit to notice rather than a silent empty path.
-        let pathless = [Chain::Monero, Chain::Ton, Chain::Polkadot, Chain::Bittensor];
+        let pathless = |chain: Chain| {
+            matches!(chain, Chain::Monero | Chain::Ton) || chain.derives_along_junctions()
+        };
         for chain in Chain::all().filter(|c| !c.is_testnet()) {
             assert_eq!(
                 chain.uses_derivation_path(),
-                !pathless.contains(&chain),
+                !pathless(chain),
                 "{}",
                 chain.str_id()
             );
@@ -288,8 +293,8 @@ mod tests {
         }
     }
 
-    /// A profile's account index moves exactly one hardened segment, and the
-    /// path reads back as the profile and account it came from.
+    /// A profile's account index moves exactly one segment, and the path
+    /// reads back as the profile and account it came from.
     #[test]
     fn every_profile_path_reads_back_as_its_profile_and_account() {
         for chain in Chain::all() {
@@ -365,14 +370,18 @@ mod tests {
                     .unwrap()
                     .address
                     .unwrap();
-                    // The address as an import stores it.
-                    let stored =
+                    // The address as an import stores it; a Hedera key
+                    // names no account, and its public key is compared.
+                    let stored = if chain.finds_accounts_by_key() {
+                        derived
+                    } else {
                         crate::derivation::import::normalized_import_address(chain, &derived)
-                            .unwrap();
-                    // EVM addresses are stored lowercase; the vector carries
-                    // EIP-55 casing.
+                            .unwrap()
+                    };
+                    // EVM and VeChainThor addresses are stored lowercase;
+                    // the vector carries EIP-55 casing.
                     let expected = vector["address"].as_str().unwrap();
-                    let expected = if chain.is_evm() {
+                    let expected = if chain.is_evm() || chain.is_vechain() {
                         expected.to_ascii_lowercase()
                     } else {
                         expected.to_string()

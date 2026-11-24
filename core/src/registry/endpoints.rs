@@ -9,11 +9,14 @@ impl Chain {
     /// by API.
     ///
     /// More than one API is only possible where one client answers in all of
-    /// them — the UTXO family, through `api::utxo`.
+    /// them — the UTXO family, through `api::utxo` — or where each serves
+    /// what the other does not: Hedera's mirror node reads, and its
+    /// consensus nodes take transactions.
     pub fn endpoint_apis(self) -> &'static [EndpointApi] {
         use EndpointApi as Api;
         match self.mainnet_counterpart() {
             c if c.is_evm() => &[Api::EvmJsonRpc],
+            c if c.is_cosmos() => &[Api::CosmosRest],
             Chain::Bitcoin => &[Api::Esplora, Api::Blockcypher],
             Chain::Litecoin => &[Api::Blockbook, Api::Esplora, Api::Blockcypher],
             Chain::Dogecoin => &[Api::Blockcypher, Api::Blockbook],
@@ -21,14 +24,17 @@ impl Chain {
             Chain::BitcoinCash => &[Api::Blockbook, Api::BchRestV2],
             // Zcash's transparent builder asks Blockbook for its consensus
             // branch, which no other indexer reports.
-            Chain::BitcoinGold | Chain::Zcash | Chain::Peercoin => &[Api::Blockbook],
+            Chain::BitcoinGold | Chain::Zcash | Chain::Peercoin | Chain::Qtum => &[Api::Blockbook],
+            Chain::FractalBitcoin => &[Api::Esplora, Api::UnisatOpenApi],
+            Chain::Ecash => &[Api::Chronik],
+            Chain::Digibyte => &[Api::Esplora, Api::Blockbook],
             Chain::BitcoinSV => &[Api::Whatsonchain],
             Chain::Solana => &[Api::SolanaJsonRpc],
             Chain::Tron => &[Api::TronHttp],
             Chain::Stellar => &[Api::Horizon],
             Chain::Xrp => &[Api::XrplJsonRpc],
             Chain::Cardano => &[Api::Koios],
-            Chain::Polkadot | Chain::Bittensor => &[Api::SubstrateJsonRpc],
+            c if c.is_substrate() => &[Api::SubstrateJsonRpc],
             Chain::Sui => &[Api::SuiJsonRpc],
             Chain::Aptos => &[Api::AptosRest],
             Chain::Ton => &[Api::ToncenterV2],
@@ -37,6 +43,14 @@ impl Chain {
             Chain::Monero => &[Api::MoneroDaemonRpc],
             Chain::Decred => &[Api::Insight],
             Chain::Kaspa => &[Api::KaspaRest],
+            Chain::Algorand => &[Api::Algod],
+            Chain::Vechain => &[Api::ThorRest],
+            Chain::Filecoin => &[Api::LotusJsonRpc],
+            Chain::Tezos => &[Api::TezosRpc],
+            Chain::Starknet => &[Api::StarknetJsonRpc],
+            // Reads from a mirror node; transactions go to the consensus
+            // nodes the mirror node's address book names.
+            Chain::Hedera => &[Api::HederaMirror, Api::HederaHapi],
             _ => &[],
         }
     }
@@ -47,10 +61,15 @@ impl Chain {
         let auxiliary: &[Api] = match self.mainnet_counterpart() {
             chain if chain.is_evm() => &[Api::Blockscout],
             Chain::Aptos => &[Api::AptosIndexer],
+            Chain::Algorand => &[Api::AlgorandIndexer],
             Chain::Icp => &[Api::IcpReplica],
             Chain::Near => &[Api::Nearblocks, Api::Fastnear],
             Chain::Tron => &[Api::TrongridV1],
             Chain::Ton => &[Api::ToncenterV3],
+            // An address's transfers, which no Lotus node indexes.
+            Chain::Filecoin => &[Api::Filfox],
+            // A node keeps no index by address; TzKT's does.
+            Chain::Tezos => &[Api::Tzkt],
             // Shielded funds are scanned from a lightwalletd server.
             Chain::Zcash => &[Api::Lightwalletd],
             // MWEB funds are scanned from a Litecoin node, peer to peer.
@@ -114,6 +133,11 @@ impl Chain {
                 require_send_kind: true,
             },
             Chain::Ton => PendingStatusPoll::TransactionStatus(EndpointApi::ToncenterV3),
+            cosmos if cosmos.is_cosmos() => {
+                PendingStatusPoll::TransactionStatus(EndpointApi::CosmosRest)
+            }
+            Chain::Vechain => PendingStatusPoll::TransactionStatus(EndpointApi::ThorRest),
+            Chain::Tezos => PendingStatusPoll::TransactionStatus(EndpointApi::Tzkt),
             Chain::Tron
             | Chain::Solana
             | Chain::Cardano
@@ -123,10 +147,14 @@ impl Chain {
             | Chain::Sui
             | Chain::Aptos
             | Chain::Icp
-            | Chain::Near => PendingStatusPoll::TransactionStatus(
+            | Chain::Near
+            | Chain::Algorand
+            | Chain::Filecoin
+            | Chain::Starknet
+            | Chain::Hedera => PendingStatusPoll::TransactionStatus(
                 chain.default_api().expect("Account transaction status API"),
             ),
-            Chain::Polkadot | Chain::Bittensor => PendingStatusPoll::SubstrateFinality,
+            substrate if substrate.is_substrate() => PendingStatusPoll::SubstrateFinality,
             other if other.is_evm() => PendingStatusPoll::EvmReceipt,
             _ => PendingStatusPoll::None,
         }

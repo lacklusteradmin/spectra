@@ -319,6 +319,18 @@ impl PaymentCode {
     }
 
     fn request(&self, chain: Chain) -> Result<PaymentRequest, SpectraBridgeError> {
+        // A code in another network's payment scheme asks for that network's
+        // coin, even where its address is spelled as this network's:
+        // `bitcoin:` scanned for Fractal Bitcoin, `dogecoin:D…` for DigiByte.
+        if let Some(scheme) = self.scheme.as_deref() {
+            let speaks = |network: Chain| matches!(network.payment_uri_format(), Some(PaymentUriFormat::Bip21(own)) if own == scheme);
+            if !speaks(chain) && Chain::all().any(speaks) {
+                return Err(SpectraBridgeError::refused(
+                    "The scanned code asks for a payment on another network than %@.",
+                    [chain.chain_display_name()],
+                ));
+            }
+        }
         match self.scheme.as_deref() {
             Some("ethereum") => self.eip681(chain),
             Some("web+stellar") => Ok(PaymentRequest {
@@ -586,6 +598,41 @@ mod tests {
                 "{chain} did not read {payload}"
             );
         }
+    }
+
+    /// Fractal Bitcoin's addresses are Bitcoin's and DigiByte's `D…` are
+    /// Dogecoin's: a code in the other network's scheme is refused, the
+    /// bare address read. eCash's address carries its scheme.
+    #[test]
+    fn a_code_in_another_networks_scheme_is_refused() {
+        assert!(read(Chain::FractalBitcoin, &format!("bitcoin:{BTC}?amount=1")).is_err());
+        assert_eq!(read(Chain::FractalBitcoin, BTC).unwrap().address, BTC);
+        assert!(
+            read(
+                Chain::Litecoin,
+                "bitcoin:3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"
+            )
+            .is_err()
+        );
+        let doge = "DG1KhhBKpsyWXTakHNezaDQ34focsXjN1i";
+        assert!(read(Chain::Digibyte, &format!("dogecoin:{doge}")).is_err());
+        assert_eq!(
+            read(Chain::Digibyte, &format!("digibyte:{doge}?amount=2"))
+                .unwrap()
+                .amount
+                .as_deref(),
+            Some("2")
+        );
+        let ecash = "ecash:qrwzys2q6xq98vwz0kjn6ulu5m6yljr5fyc909kalg";
+        assert!(read(Chain::Ecash, &format!("{ecash}?amount=12.34")).is_ok());
+        assert!(read(Chain::BitcoinCash, ecash).is_err());
+        assert_eq!(
+            payment_request_uri(Chain::Ecash, ecash.into(), Some("12.34".into()), None).unwrap(),
+            format!("{ecash}?amount=12.34")
+        );
+        assert!(
+            payment_request_uri(Chain::FractalBitcoin, BTC.into(), Some("1".into()), None).is_err()
+        );
     }
 
     #[test]

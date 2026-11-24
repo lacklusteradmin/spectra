@@ -46,6 +46,8 @@ pub struct WalletKeyExport {
 /// key: its base address names the account's stake key too, so it exports
 /// only its phrase. Nor does a Substrate phrase wallet whose path has a soft
 /// junction, which derives a key no seed gives (`derives_importable_seed`).
+/// Nor does an Algorand BIP-39 wallet, whose ARC-52 key is an extended key
+/// no Algorand key format holds; a 25-word mnemonic's is its seed.
 /// An account key is exported where its network has an encoding for the
 /// script the wallet uses: not for Taproot, which has none, nor for a path
 /// no profile names.
@@ -68,6 +70,8 @@ pub(crate) fn exportable_keys(wallet: &WalletState) -> Vec<WalletKeyKind> {
                 crate::derivation::key_formats::export_format(chain).is_some()
                     && !chain.uses_account_utxo()
                     && !chain.phrase_address_has_stake_key()
+                    && !(chain.mainnet_counterpart() == crate::registry::Chain::Algorand
+                        && wallet.derivation_path.is_some())
                     && (!chain.derives_along_junctions()
                         || crate::derivation::substrate_path::derives_importable_seed(
                             wallet.derivation_path.as_deref().unwrap_or_default(),

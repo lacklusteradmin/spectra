@@ -32,6 +32,17 @@ pub fn validate_address(chain: Chain, value: &str) -> AddressValidationResult {
         // EVM addresses are network-agnostic on the wire.
         return validate_evm_address(value);
     }
+    if chain.is_cosmos() {
+        return validate_cosmos_address(chain, value);
+    }
+    if chain.is_substrate() {
+        return validate_substrate_address(chain, value);
+    }
+    // VeChainThor's addresses are Ethereum's, written with the same EIP-55
+    // checksum: a mixed-case one must carry it.
+    if chain.is_vechain() {
+        return validate_evm_address(value);
+    }
     match chain {
         Chain::Bitcoin => validate_bitcoin_address(value, BitcoinNetworkKind::Mainnet),
         Chain::BitcoinTestnet | Chain::BitcoinTestnet4 | Chain::BitcoinSignet => {
@@ -47,7 +58,11 @@ pub fn validate_address(chain: Chain, value: &str) -> AddressValidationResult {
         | Chain::Peercoin
         | Chain::PeercoinTestnet
         | Chain::Dash
-        | Chain::DashTestnet => validate_fixed_utxo_address(value, chain),
+        | Chain::DashTestnet
+        | Chain::Qtum
+        | Chain::FractalBitcoin
+        | Chain::Ecash
+        | Chain::Digibyte => validate_fixed_utxo_address(value, chain),
         Chain::Litecoin | Chain::LitecoinTestnet => validate_litecoin_address(value, chain),
         Chain::Decred | Chain::DecredTestnet => validate_decred_address(value, chain),
         Chain::Zcash => validate_zcash_address(value, false),
@@ -63,14 +78,54 @@ pub fn validate_address(chain: Chain, value: &str) -> AddressValidationResult {
         Chain::TonTestnet => validate_ton_address(value, true),
         Chain::Icp => validate_icp_address(value),
         Chain::Near | Chain::NearTestnet => validate_near_address(value),
-        Chain::Polkadot | Chain::PolkadotWestend => validate_polkadot_address(value),
-        Chain::Bittensor => validate_bittensor_address(value),
         Chain::Monero => validate_monero_address(value, false),
         Chain::MoneroStagenet => validate_monero_address(value, true),
         Chain::Cardano | Chain::CardanoPreprod => validate_cardano_address(value),
+        Chain::Algorand => validate_algorand_address(value),
+        Chain::Filecoin => match crate::derivation::filecoin::decode_address(chain, value) {
+            Ok(_) => make_result(value.to_string()),
+            Err(_) => invalid_result(),
+        },
+        Chain::Tezos => validate_tezos_address(value),
+        Chain::Starknet => validate_starknet_address(chain, value),
+        Chain::Hedera => validate_hedera_address(chain, value),
         // Every EVM network returned above; `a_derived_address_passes_its_own_validator`
         // catches a new network missing here.
         _ => invalid_result(),
+    }
+}
+
+/// A Cosmos SDK account on `chain`, written in lowercase.
+fn validate_cosmos_address(chain: Chain, value: &str) -> AddressValidationResult {
+    match crate::derivation::cosmos::decode_address(chain, value) {
+        Ok(_) => make_result(value.to_ascii_lowercase()),
+        Err(_) => invalid_result(),
+    }
+}
+
+/// A Tezos implicit account (`tz1`–`tz4`) or contract (`KT1`), exactly as
+/// written: base58 is case sensitive.
+fn validate_tezos_address(value: &str) -> AddressValidationResult {
+    match crate::derivation::tezos::decode_address(value) {
+        Ok(_) => make_result(value.to_string()),
+        Err(_) => invalid_result(),
+    }
+}
+
+/// A Starknet account, written as its padded lowercase felt.
+fn validate_starknet_address(chain: Chain, value: &str) -> AddressValidationResult {
+    match crate::derivation::starknet::decode_address(chain, value) {
+        Ok(address) => make_result(crate::derivation::starknet::felt_hex(&address)),
+        Err(_) => invalid_result(),
+    }
+}
+
+/// A Hedera account `0.0.N`, its HIP-15 checksum checked where it is
+/// written and dropped from the stored form.
+fn validate_hedera_address(chain: Chain, value: &str) -> AddressValidationResult {
+    match crate::derivation::hedera::HederaAccountId::parse(chain, value) {
+        Ok(account) => make_result(account.to_string()),
+        Err(_) => invalid_result(),
     }
 }
 
@@ -139,6 +194,13 @@ fn validate_fixed_utxo_address(
     chain: crate::registry::Chain,
 ) -> AddressValidationResult {
     if let Ok(parsed) = crate::derivation::utxo_address::parse_utxo_address(chain, value) {
+        // A CashAddr-only network spells an address with its prefix.
+        if chain.fixed_utxo_address_versions().is_err() {
+            return match crate::derivation::utxo_address::encode_cashaddr(chain, &parsed) {
+                Ok(address) => make_result(address),
+                Err(_) => invalid_result(),
+            };
+        }
         let canonical_lowercase = matches!(
             parsed,
             crate::derivation::utxo_address::ParsedUtxoAddress::Witness { .. }
@@ -193,13 +255,6 @@ fn validate_decred_address(value: &str, chain: crate::registry::Chain) -> Addres
 fn validate_kaspa_address(value: &str) -> AddressValidationResult {
     if crate::derivation::kaspa::validate_kaspa_address(value) {
         return make_result(value.trim().to_ascii_lowercase());
-    }
-    invalid_result()
-}
-
-fn validate_bittensor_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::bittensor::validate_bittensor_address(value) {
-        return make_result(value.to_string());
     }
     invalid_result()
 }
@@ -264,6 +319,15 @@ fn validate_stellar_address(value: &str) -> AddressValidationResult {
         return make_result(canonical);
     }
     invalid_result()
+}
+
+/// An Algorand address, read in either case and spelled in base32's
+/// uppercase.
+fn validate_algorand_address(value: &str) -> AddressValidationResult {
+    match crate::derivation::algorand::decode_address(value) {
+        Ok(_) => make_result(value.to_ascii_uppercase()),
+        Err(_) => invalid_result(),
+    }
 }
 
 fn validate_xrp_address(value: &str) -> AddressValidationResult {
@@ -350,8 +414,12 @@ fn validate_near_address(value: &str) -> AddressValidationResult {
     make_result(normalized)
 }
 
-fn validate_polkadot_address(value: &str) -> AddressValidationResult {
-    if crate::derivation::polkadot::decode_ss58(value).is_ok() {
+/// An SS58 address carrying `chain`'s own prefix. Another network's prefix
+/// names the same key, but the address was written for that network (an
+/// exchange's Kusama deposit address is not its Polkadot one), so it is
+/// refused rather than read as this network's.
+fn validate_substrate_address(chain: Chain, value: &str) -> AddressValidationResult {
+    if crate::derivation::polkadot::decode_ss58(chain, value).is_ok() {
         return make_result(value.to_string());
     }
     invalid_result()
@@ -740,6 +808,53 @@ mod tests {
         assert!(!validate(Chain::Bittensor, mutate_last_char(&bittensor)).is_valid);
     }
 
+    /// One key's address on each Substrate network is valid there and on no
+    /// network with another SS58 prefix: an exchange's Kusama deposit
+    /// address is not its Polkadot or Astar one.
+    #[test]
+    fn a_substrate_address_is_valid_only_under_its_networks_prefix() {
+        let substrate: Vec<Chain> = Chain::all().filter(|c| c.is_substrate()).collect();
+        assert!(substrate.contains(&Chain::Kusama) && substrate.contains(&Chain::Astar));
+        let key = [7u8; 32];
+        for chain in &substrate {
+            let address =
+                crate::derivation::primitives::encode_ss58(&key, chain.ss58_prefix().unwrap());
+            for other in &substrate {
+                assert_eq!(
+                    validate(*other, address.clone()).is_valid,
+                    other.ss58_prefix() == chain.ss58_prefix(),
+                    "{chain} address on {other}"
+                );
+            }
+            assert!(!validate(*chain, mutate_last_char(&address)).is_valid);
+        }
+        // The key's address on each network, from polkadot.js's
+        // `encodeAddress`.
+        for (chain, address) in [
+            (
+                Chain::Polkadot,
+                "1ADRXEpxCcHPze36zV1imej5DNcGZ8puqopyUhbppXyGuhP",
+            ),
+            (
+                Chain::Kusama,
+                "CjXwWKdinMji7Sxv4F4UaBaNBfCNvPsHiv6CqzCkXiwqerR",
+            ),
+            (
+                Chain::Astar,
+                "W6WiUwqseyvBHfMdet8cGyrJe65YUHRrYaV3tv796WQga3d",
+            ),
+            (
+                Chain::Bittensor,
+                "5CDvHBym6RLoxTdX9MS1acpaDbNxaFagqM5LpBiFGjWT6o1n",
+            ),
+        ] {
+            assert_eq!(
+                crate::derivation::primitives::encode_ss58(&key, chain.ss58_prefix().unwrap()),
+                address
+            );
+        }
+    }
+
     #[test]
     fn validates_utxo_family_by_decoded_network() {
         let bch_cashaddr = "bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a".to_string();
@@ -852,6 +967,11 @@ mod every_chain_accepts_what_it_derives {
             let Some(address) = result.address.filter(|a| !a.is_empty()) else {
                 continue;
             };
+            // A Hedera key derives the public key its account is found by,
+            // not an address.
+            if chain.finds_accounts_by_key() {
+                continue;
+            }
             checked += 1;
             let verdict = super::validate_address(chain, &address);
             if !verdict.is_valid {

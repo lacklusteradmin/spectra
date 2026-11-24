@@ -6,8 +6,10 @@ use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::method};
 
 pub(crate) fn fixture(chain: Chain) -> &'static [u8] {
     // Full SCALE state_getMetadata responses from the official HTTP nodes:
-    // polkadot-asset-hub-rpc.polkadot.io (spec 2005000, tx 15), and
-    // westend-asset-hub-rpc.polkadot.io (spec 1025001, tx 16).
+    // polkadot-asset-hub-rpc.polkadot.io (spec 2005000, tx 15),
+    // westend-asset-hub-rpc.polkadot.io (spec 1025001, tx 16),
+    // kusama-asset-hub-rpc.polkadot.io (spec 2005003, tx 15) and
+    // rpc.astar.network (spec 2500, tx 3), the last two on 2026-11-24.
     match chain {
         Chain::Polkadot => {
             include_bytes!("../../../tests/fixtures/asset-hub-polkadot-metadata.scale")
@@ -18,7 +20,19 @@ pub(crate) fn fixture(chain: Chain) -> &'static [u8] {
         Chain::Bittensor => {
             include_bytes!("../../../tests/fixtures/bittensor-finney-metadata.scale")
         }
-        _ => panic!("fixture needs an Asset Hub chain"),
+        Chain::Kusama => include_bytes!("../../../tests/fixtures/asset-hub-kusama-metadata.scale"),
+        Chain::Astar => include_bytes!("../../../tests/fixtures/astar-metadata.scale"),
+        _ => panic!("fixture needs a Substrate chain"),
+    }
+}
+
+/// The runtime version each metadata fixture was read at.
+fn runtime_version_fixture(chain: Chain) -> (u32, u32) {
+    match chain {
+        Chain::Polkadot => (2_005_000, 15),
+        Chain::Kusama => (2_005_003, 15),
+        Chain::Astar => (2_500, 3),
+        _ => (1_025_001, 16),
     }
 }
 
@@ -29,13 +43,10 @@ pub(crate) fn runtime_fixture(chain: Chain) -> PolkadotRuntime {
             .unwrap()
             .contract(chain)
             .unwrap();
+    let (spec_version, transaction_version) = runtime_version_fixture(chain);
     PolkadotRuntime {
-        spec_version: if chain == Chain::Polkadot {
-            2_005_000
-        } else {
-            1_025_001
-        },
-        transaction_version: if chain == Chain::Polkadot { 15 } else { 16 },
+        spec_version,
+        transaction_version,
         genesis_hash: chain.substrate_genesis_hash().unwrap().into(),
         metadata_hash: blake2_hash(bytes),
         transfer_pallet,
@@ -110,7 +121,7 @@ fn live_metadata_contracts_select_asset_hub_calls_and_deposits() {
 
 #[tokio::test]
 async fn wrong_relay_genesis_is_refused_before_balance_or_nonce() {
-    for chain in [Chain::Polkadot, Chain::PolkadotWestend, Chain::Bittensor] {
+    for chain in Chain::all().filter(|chain| chain.is_substrate()) {
         let (client, live, server) = node(chain).await;
         live.lock().unwrap().genesis =
             "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3".into();
@@ -399,6 +410,30 @@ mod account_tests {
         // Read at the wrong width, either record is refused, not misread.
         assert!(decode_account_info(&polkadot, 8).is_err());
         assert!(decode_account_info(&bittensor, 16).is_err());
+    }
+
+    /// The treasury's records read at one finalized block from every
+    /// configured Kusama Asset Hub and Astar endpoint on 2026-11-24, which
+    /// all answered these bytes; both networks hold `u128` balances.
+    #[test]
+    fn kusama_and_astar_records_decode_at_u128() {
+        let kusama = hex::decode("00000000010000000100000001000000ec25ba5a6621e60d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080").unwrap();
+        let astar = hex::decode("00000000000000000100000018000000d47a5540c1c4f177c73afc0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000080").unwrap();
+        for (chain, record, free) in [
+            (Chain::Kusama, &kusama, 1_001_524_690_629_043_692u128),
+            (Chain::Astar, &astar, 304_926_883_343_869_153_836_890_836),
+        ] {
+            assert_eq!(
+                decode_account_info(record, chain.substrate_balance_bytes().unwrap()).unwrap(),
+                SubstrateBalance {
+                    free,
+                    reserved: 0,
+                    frozen: 0
+                },
+                "{chain}"
+            );
+            assert!(decode_account_info(record, 8).is_err());
+        }
     }
 
     #[test]

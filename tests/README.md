@@ -64,6 +64,7 @@ to load under `python -O` or `PYTHONOPTIMIZE`.
 | `wallet_operations.py` | Operations a wallet's page builds, against loopback nodes: closing XRP and Stellar accounts, deleting a NEAR access key, refunding NEAR token storage, merging Sui coins and closing Solana token accounts, each built, signed, broadcast once with the exact signed bytes and recorded in history; a refused closing stores nothing. |
 | `icp_staking.py` | An ICP neuron stake signed and reopened, then refused before funding on a forged certificate; recheck and repair leave the stored payload unchanged. |
 | `send_near.py` | A NEAR send across processes: a refused broadcast submits nothing, an uncertain one is retried with the same bytes, and the final status is recovered before the nonce, expiry or fee could change. |
+| `send_cosmos.py` | A Cosmos Hub send with a memo across processes: signing submits nothing, a node's refusal leaves it uncertain with its reason, the retry submits the same bytes with the memo and timeout height, and the status poll confirms it. |
 | `monero_regtest.py` | Optional: a real `monerod` behind a loopback proxy, run by hand with `--monerod /path/to/monerod`. Not part of `make test-cli`. |
 
 Each suite exercises only what the binary alone shows; the rules behind it are
@@ -129,6 +130,14 @@ source.
 | `generate-token-send-vectors.cjs` | Sui, Aptos and TON (v4R2 jetton, with and without a comment) token-transfer references from the official SDKs. |
 | `generate-xrp-payment-vector.cjs` | XRPL payment signing reference from the official XRPL packages. |
 | `generate-payment-memo-vectors.cjs` | XRP destination tags and Stellar text/ID memos on payments and account closing, from each network's SDK. |
+| `generate-cosmos-vectors.cjs` | Phrase addresses on every Cosmos SDK network, and bank `MsgSend` transfers with memos signed and hashed by CosmJS 0.39.0 (SDK secp256k1) and by CosmJS's protobuf with ethers.js's signing key (Ethermint `eth_secp256k1`, Injective and Dymension). |
+| `generate-substrate-transfer-vectors.cjs` | `Balances.transfer_keep_alive` on Polkadot, Bittensor, Kusama Asset Hub and Astar from @polkadot/types 17.0.2 and each runtime's metadata: call, signing payload and signed extrinsic, and captured finalized blocks' dispatch outcomes. |
+| `generate-algorand-vectors.cjs` | Algorand 25-word mnemonics, ARC-52 BIP-39 accounts (xhd-wallet-api) and `pay` transactions encoded, named and signed by algosdk 3.9.0. |
+| `generate-vechain-vectors.cjs` | VeChainThor accounts and dynamic-fee (type `0x51`) VET, VTHO and VIP-180 transfers from @vechain/sdk-core 2.1.0, and two mainnet transactions decoded by it. |
+| `generate-filecoin-vectors.cjs` | Filecoin `f1` accounts, addresses of every protocol a send pays, and messages with their CIDs and signatures from Zondax's filecoin-signing-tools, checked against Glif's address codec; one mainnet message. |
+| `generate-tezos-vectors.cjs` | Tezos `tz1` accounts and `edsk` keys, and reveal and transaction operations forged, signed and hashed by Taquito 25.1.1; three mainnet operations hashed again. |
+| `generate-starknet-vectors.cjs` | Ready (Argent X) Stark keys and class 0.4.0 addresses, and STRK and ETH v3 invokes with the deploy an undeployed account sends first, from starknet.js 11.6.1. |
+| `generate-hedera-vectors.cjs` | Hedera keys on each derivation profile, both readings of a bare key, HIP-15 checksums and HBAR transfers signed for one to three nodes, from @hashgraph/sdk 2.81.0. |
 | `generate-message-signature-vectors.cjs` | Legacy Bitcoin-family, BIP-322, EVM, Tron, Solana, Sui and Substrate message signatures from independent libraries. |
 | `generate-more-message-signature-vectors.cjs` | Cardano CIP-8 data signatures, Kaspa personal messages and Monero `SigV2`, from each network's SDK. |
 | `generate-stellar-message-vectors.py` | Stellar SEP-53 message signatures from the Stellar SDK for Python. |

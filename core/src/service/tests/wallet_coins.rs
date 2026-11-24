@@ -206,7 +206,7 @@ async fn a_peercoin_reward_still_maturing_is_held_and_not_spendable() {
             .unwrap()
             .script_pubkey(),
     );
-    let maturity = u64::from(chain.peercoin_generated_output_maturity().unwrap());
+    let maturity = u64::from(chain.generated_output_maturity().unwrap());
     // (parent, confirmations)
     let parents = vec![
         (
