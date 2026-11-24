@@ -8,7 +8,7 @@ const MNEMONIC: &str = "test test test test test test test test test test test j
 #[tokio::test]
 async fn evm_imports_keep_each_networks_address_and_derivation_path() {
     use crate::registry::Chain;
-    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    let temp = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&temp).unwrap();
     let path = temp.join("state.db").to_string_lossy().into_owned();
     let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
@@ -57,7 +57,7 @@ async fn evm_imports_keep_each_networks_address_and_derivation_path() {
 #[tokio::test]
 async fn evm_identity_reuses_the_wallets_path_without_duplicate_address_records() {
     use crate::registry::Chain;
-    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    let temp = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&temp).unwrap();
     let path = temp.join("state.db").to_string_lossy().into_owned();
     let secrets = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
@@ -119,7 +119,7 @@ fn commit(chain: crate::registry::Chain) -> WalletImportCommit {
 async fn account_utxo_import_refuses_wrong_network_paths_before_storing() {
     use crate::registry::Chain;
     for chain in Chain::all().filter(|chain| chain.uses_account_utxo()) {
-        let directory = std::env::temp_dir().join(crate::store::new_event_id());
+        let directory = std::env::temp_dir().join(crate::store::new_id());
         std::fs::create_dir_all(&directory).unwrap();
         let service = WalletService::new(vec![]).unwrap();
         service.set_secret_store(std::sync::Arc::new(
@@ -164,7 +164,7 @@ async fn account_utxo_import_refuses_wrong_network_paths_before_storing() {
 #[tokio::test]
 async fn imported_protected_peercoin_accounts_receive_after_restart_without_secrets() {
     use crate::registry::Chain;
-    let directory = std::env::temp_dir().join(crate::store::new_event_id());
+    let directory = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&directory).unwrap();
     let database = directory.join("state.db").to_string_lossy().into_owned();
     let service = WalletService::new(vec![]).unwrap();
@@ -220,7 +220,7 @@ async fn imported_protected_peercoin_accounts_receive_after_restart_without_secr
 
 #[tokio::test]
 async fn imported_wallets_land_in_core_state() {
-    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    let temp = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(Vec::new()).expect("service");
     service.set_secret_store(std::sync::Arc::new(
@@ -265,7 +265,7 @@ async fn imported_wallets_land_in_core_state() {
 /// network, so another network's address would be data nothing reads.
 #[tokio::test]
 async fn a_seed_import_stores_only_its_own_networks_address() {
-    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    let temp = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(Vec::new()).expect("service");
     service.set_secret_store(std::sync::Arc::new(
@@ -299,7 +299,7 @@ async fn a_seed_import_stores_only_its_own_networks_address() {
 
 #[tokio::test]
 async fn each_wallet_is_on_the_network_its_import_named() {
-    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    let temp = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(Vec::new()).expect("service");
     service.set_secret_store(std::sync::Arc::new(
@@ -404,10 +404,7 @@ impl crate::secrets::store::SecretStore for FailingSecrets {
 
 #[tokio::test]
 async fn a_failed_seal_leaves_neither_a_wallet_nor_its_secret_and_retries() {
-    let path = std::env::temp_dir().join(format!(
-        "spectra-import-{}.db",
-        crate::store::new_transaction_id()
-    ));
+    let path = std::env::temp_dir().join(format!("spectra-import-{}.db", crate::store::new_id()));
     let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(FailingSecrets::default());
     service.set_secret_store(store.clone());
@@ -458,10 +455,7 @@ async fn a_failed_seal_leaves_neither_a_wallet_nor_its_secret_and_retries() {
 /// means "no password".
 #[tokio::test]
 async fn a_short_password_is_refused_rather_than_stored() {
-    let path = std::env::temp_dir().join(format!(
-        "spectra-import-{}.db",
-        crate::store::new_transaction_id()
-    ));
+    let path = std::env::temp_dir().join(format!("spectra-import-{}.db", crate::store::new_id()));
     let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     service.set_secret_store(store.clone());
@@ -490,10 +484,7 @@ async fn a_short_password_is_refused_rather_than_stored() {
 
 #[tokio::test]
 async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refused() {
-    let path = std::env::temp_dir().join(format!(
-        "spectra-import-{}.db",
-        crate::store::new_transaction_id()
-    ));
+    let path = std::env::temp_dir().join(format!("spectra-import-{}.db", crate::store::new_id()));
     let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     service.set_secret_store(store.clone());
@@ -519,7 +510,7 @@ async fn database_failure_rolls_back_import_secrets_and_missing_material_is_refu
 
 #[tokio::test]
 async fn default_wallet_names_are_allocated_under_the_import_writer() {
-    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    let temp = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&temp).unwrap();
     let path = temp.join("state.db").to_string_lossy().into_owned();
     let service = WalletService::new(vec![]).unwrap();
@@ -575,7 +566,7 @@ async fn default_wallet_names_are_allocated_under_the_import_writer() {
 
 #[tokio::test]
 async fn raw_mnemonic_is_canonical_before_derivation_and_storage() {
-    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    let temp = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(std::sync::Arc::new(
@@ -617,7 +608,7 @@ async fn raw_mnemonic_is_canonical_before_derivation_and_storage() {
 async fn deep_rescan_reports_provider_failures_and_empty_scope_success() {
     use crate::service::app_refresh::AppRefreshIntent;
     use crate::service::refresh_policy::DeviceConditions;
-    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    let temp = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&temp).unwrap();
     let service = WalletService::new(vec![]).unwrap();
     service.set_secret_store(std::sync::Arc::new(
@@ -659,7 +650,7 @@ async fn testnet_paths_survive_reopen_and_signing() {
     use crate::registry::Chain;
     use crate::secrets::backends::InMemorySecretStore;
     use std::sync::Arc;
-    let temp = std::env::temp_dir().join(crate::store::new_transaction_id());
+    let temp = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&temp).unwrap();
     let db = temp.join("state.db").to_string_lossy().into_owned();
     let secrets = Arc::new(InMemorySecretStore::new());
@@ -723,10 +714,7 @@ async fn fresh_service(
     secrets: std::sync::Arc<dyn crate::secrets::store::SecretStore>,
 ) -> (std::sync::Arc<WalletService>, String) {
     let path = std::env::temp_dir()
-        .join(format!(
-            "spectra-upgrade-{}.db",
-            crate::store::new_transaction_id()
-        ))
+        .join(format!("spectra-upgrade-{}.db", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     let service = WalletService::new(vec![]).unwrap();
@@ -1033,10 +1021,7 @@ async fn a_near_named_account_is_held_once_the_network_lists_the_key() {
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
     let path = std::env::temp_dir()
-        .join(format!(
-            "spectra-named-{}.db",
-            crate::store::new_transaction_id()
-        ))
+        .join(format!("spectra-named-{}.db", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     service.open_state(path).await.unwrap();
@@ -1295,10 +1280,7 @@ async fn a_refused_key_import_seals_nothing() {
 #[tokio::test]
 async fn a_passphrase_is_sealed_not_stored_with_the_wallet() {
     const PASSPHRASE: &str = "a passphrase no row may hold";
-    let path = std::env::temp_dir().join(format!(
-        "spectra-import-{}.db",
-        crate::store::new_transaction_id()
-    ));
+    let path = std::env::temp_dir().join(format!("spectra-import-{}.db", crate::store::new_id()));
     let service = WalletService::new(vec![]).unwrap();
     let store = std::sync::Arc::new(crate::secrets::backends::InMemorySecretStore::new());
     service.set_secret_store(store.clone());

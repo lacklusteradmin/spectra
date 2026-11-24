@@ -18,8 +18,6 @@ use crate::out::{self, Done, Out, Report};
 pub enum TokenCommand {
     /// Tokens the build knows about for a chain.
     Catalog(CatalogArgs),
-    /// Resolve bundled artwork by catalog identity; unknown identities have no mark.
-    Artwork(ArtworkArgs),
     /// List stored preferences for built-in and custom tokens.
     List,
     /// Add a custom token to stored preferences.
@@ -34,31 +32,6 @@ pub enum TokenCommand {
     Reset(ResetArgs),
     /// Ask the chain what a wallet actually holds.
     Discover(WalletArg),
-    /// How an amount renders, and why that many places.
-    Format(FormatArgs),
-}
-
-#[derive(Args)]
-#[group(required = true, multiple = false)]
-pub struct ArtworkArgs {
-    #[arg(long)]
-    token_id: Option<String>,
-    #[arg(long)]
-    chain_id: Option<String>,
-    #[arg(long)]
-    deployment_id: Option<String>,
-}
-
-#[derive(Args)]
-pub struct FormatArgs {
-    /// Amount in the asset's own units, as a person would type it.
-    amount: String,
-    /// Chain display name or registry id.
-    #[arg(long)]
-    chain: String,
-    /// Token symbol. Omit for the chain's native asset.
-    #[arg(long)]
-    symbol: Option<String>,
 }
 
 #[derive(Args)]
@@ -132,16 +105,6 @@ pub struct ResetArgs {
 pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
     match command {
         TokenCommand::Catalog(args) => catalog(out, args),
-        TokenCommand::Artwork(args) => {
-            let artwork_name = if let Some(id) = args.token_id {
-                spectra_core::store::token_artwork_name(id)
-            } else if let Some(id) = args.chain_id {
-                spectra_core::store::chain_artwork_name(resolve_chain(&id)?)
-            } else {
-                spectra_core::store::deployment_artwork_name(args.deployment_id)
-            };
-            out.report(&ArtworkReport { artwork_name })
-        }
         TokenCommand::List => list(ctx, out),
         TokenCommand::Add(args) => add(ctx, out, args),
         TokenCommand::Edit(args) => edit(ctx, out, args),
@@ -149,24 +112,6 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
         TokenCommand::Decimals(args) => decimals(ctx, out, args),
         TokenCommand::Reset(args) => reset(ctx, out, args),
         TokenCommand::Discover(args) => discover(ctx, out, args),
-        TokenCommand::Format(args) => format_amount(out, args),
-    }
-}
-
-/// The bundled mark for a catalog identity; none for an unknown one.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ArtworkReport {
-    artwork_name: String,
-}
-
-impl Report for ArtworkReport {
-    fn render(&self) {
-        if self.artwork_name.is_empty() {
-            println!("  {}", out::hint("no artwork"));
-        } else {
-            println!("  {}", self.artwork_name);
-        }
     }
 }
 
@@ -436,7 +381,7 @@ fn decimals(ctx: &Ctx, out: Out, args: DecimalsArgs) -> CliResult<()> {
 
 fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
     if !args.yes {
-        return Err(CliError::usage("pass --yes: this drops every custom token"));
+        return Err(CliError::unconfirmed("drops every custom token"));
     }
     let transition = ctx.apply(StateCommand::ResetTokenPreferences)?;
     out.report(&ResetReport {
@@ -531,7 +476,7 @@ impl Report for DiscoveredReport {
 }
 
 fn discover(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let chain = wallet.chain_id;
     let address = wallet_address(&wallet).to_string();
     if address.is_empty() {
@@ -556,60 +501,6 @@ fn discover(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
             })
             .collect(),
     })
-}
-
-/// The display rule, from outside core.
-///
-/// Places follow the amount, not a per-chain setting: a small balance keeps its
-/// significant digits instead of rounding to nothing, and a large one does not
-/// print six zeros it does not have.
-fn format_amount(out: Out, args: FormatArgs) -> CliResult<()> {
-    let chain = resolve_chain(&args.chain)?;
-    let asset_decimals = match &args.symbol {
-        Some(symbol) => {
-            let symbol_upper = symbol.to_uppercase();
-            let entry = spectra_core::catalog::tokens::list_token_deployments(Some(chain))
-                .into_iter()
-                .find(|t| t.symbol.eq_ignore_ascii_case(&symbol_upper))
-                .ok_or_else(|| {
-                    CliError::rejected(format!(
-                        "{} has no token {symbol_upper} in the catalog",
-                        chain.chain_display_name()
-                    ))
-                })?;
-            entry.decimals
-        }
-        None => u32::from(chain.native_decimals()),
-    };
-    let text = spectra_core::amount::presentation::format_asset_amount(
-        args.amount.clone(),
-        asset_decimals,
-    )
-    .ok_or_else(|| CliError::usage("amount must be an unsigned decimal"))?;
-    out.report(&FormatReport {
-        shows: if text.below_threshold {
-            format!("<{}", text.value)
-        } else {
-            text.value
-        },
-        asset_decimals,
-        below_threshold: text.below_threshold,
-    })
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct FormatReport {
-    shows: String,
-    asset_decimals: u32,
-    below_threshold: bool,
-}
-
-impl Report for FormatReport {
-    fn render(&self) {
-        out::wide_field(14, "shows", &self.shows);
-        out::wide_field(14, "asset decimals", &self.asset_decimals.to_string());
-    }
 }
 
 /// A token protocol named as `chains` spells it.

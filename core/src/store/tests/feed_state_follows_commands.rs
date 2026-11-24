@@ -8,7 +8,7 @@ fn db(label: &str) -> String {
     std::env::temp_dir()
         .join(format!(
             "spectra-feed-{label}-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ))
         .to_string_lossy()
         .into_owned()
@@ -33,7 +33,7 @@ async fn removing_a_wallet_forgets_its_pagination_and_diagnostics() {
     let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(path.clone()).await.expect("open");
     // A unique id: the diagnostics registry is shared by every test.
-    let wallet_id = format!("feed-{}", crate::store::new_event_id());
+    let wallet_id = format!("feed-{}", crate::store::new_id());
     service
         .upsert_wallet(WalletState::single_address(
             wallet_id.clone(),
@@ -134,7 +134,7 @@ async fn a_history_run_records_its_rows_and_the_chains_health() {
     let path = db("history-run");
     let service = WalletService::new(Vec::new()).expect("service");
     service.open_state(path.clone()).await.expect("open");
-    let wallet_id = format!("run-{}", crate::store::new_event_id());
+    let wallet_id = format!("run-{}", crate::store::new_id());
     let outcome = |refreshed: u32, failed: u32| HistoryRefreshOutcome {
         wallets_refreshed: refreshed,
         wallets_failed: failed,

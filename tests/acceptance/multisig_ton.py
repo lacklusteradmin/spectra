@@ -269,9 +269,9 @@ with serve(Toncenter, next=5, balance=3 * TON, orders={}, wallets=wallets, execu
     a, b = spectra / 'a', spectra / 'b'
 
     for signer, name, index in [(a, 'T0', 0), (b, 'T1', 1)]:
-        signer.run('endpoints', '--chain', 'ton', '--api', 'toncenter-v2', '--capabilities',
-                   'balance,verification,broadcast', '--add', node.url)
-        signer.run('endpoints', '--chain', 'ton', '--custom-only', 'true')
+        signer.run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v2', '--capabilities',
+                   'balance,verification,broadcast', node.url)
+        signer.run('endpoints', 'custom-only', '--chain', 'ton', 'true')
         signer.run('wallet', 'watch', '--chain', 'ton', '--name', 'Vault', '--address', FIXTURE['multisig']['address'])
         signer.run('wallet', 'import', '--chain', 'ton', '--name', name, '--no-password',
                    env={'SPECTRA_SEED': MNEMONICS[index]['mnemonic']})

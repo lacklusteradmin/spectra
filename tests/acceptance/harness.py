@@ -137,11 +137,56 @@ class Spectra:
             payload['status'] = 'pending'
             store.execute('UPDATE history_records SET payload=? WHERE id=?', (json.dumps(payload), transaction_id))
 
+    def sign_and_broadcast(self, artifact, endpoint):
+        """Sign a reviewed send artifact and broadcast it to `endpoint`: the
+        signed artifact."""
+        signed = self.run('send', 'sign', artifact['id'], '--review-digest', artifact['review_digest'],
+                          '--endpoint', endpoint)['artifact']
+        self.run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
+        return signed
+
     def sign(self, session, signer):
         """Sign a multisig session as `signer`, one of this directory's
         wallets, for the digest it shows: the session as it now stands."""
         return self.run('multisig', 'sign', session['id'], '--review-digest', session['reviewDigest'],
                         '--signer', signer)['session']
+
+
+BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+
+def b58encode(raw):
+    """Base58 in Bitcoin's alphabet, each leading zero byte a '1'."""
+    number, text = int.from_bytes(raw, 'big'), ''
+    while number:
+        number, digit = divmod(number, 58)
+        text = BASE58[digit] + text
+    return '1' * (len(raw) - len(raw.lstrip(b'\0'))) + text
+
+
+def b58decode(text):
+    """The bytes a Bitcoin-alphabet base58 string spells."""
+    number = 0
+    for char in text:
+        number = number * 58 + BASE58.index(char)
+    return bytes(len(text) - len(text.lstrip('1'))) + number.to_bytes((number.bit_length() + 7) // 8, 'big')
+
+
+def scale_compact(value):
+    """SCALE's compact encoding of an unsigned integer."""
+    if value < 64:
+        return bytes([value << 2])
+    if value < 16384:
+        return ((value << 2) | 1).to_bytes(2, 'little')
+    if value < 2**30:
+        return ((value << 2) | 2).to_bytes(4, 'little')
+    length = max(4, (value.bit_length() + 7) // 8)
+    return bytes([((length - 4) << 2) | 3]) + value.to_bytes(length, 'little')
+
+
+def block_hash(number):
+    """The hash a mock Substrate node gives block `number`."""
+    return '0x' + number.to_bytes(32, 'big').hex()
 
 
 def protobuf(raw):

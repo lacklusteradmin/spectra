@@ -65,10 +65,7 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
         service
             .open_state(
                 std::env::temp_dir()
-                    .join(format!(
-                        "ton-expiry-{}.sqlite",
-                        crate::store::new_event_id()
-                    ))
+                    .join(format!("ton-expiry-{}.sqlite", crate::store::new_id()))
                     .to_string_lossy()
                     .into(),
             )
@@ -229,7 +226,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
         .unwrap();
         let path = std::env::temp_dir().join(format!(
             "ton-expired-recovery-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into())
@@ -274,7 +271,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             valid_until: expiry,
             jetton: None,
         };
-        let id = crate::store::new_event_id();
+        let id = crate::store::new_id();
         let mut stored = StoredSend {
             view: SendArtifact {
                 id: id.clone(),

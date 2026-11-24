@@ -10,6 +10,7 @@
 use base64::Engine;
 use sha2::{Digest, Sha256};
 
+use crate::derivation::primitives::ByteReader;
 use crate::derivation::primitives::blake2b;
 use crate::derivation::sui_multisig::{MULTISIG_FLAG, SuiMultisig, SuiScheme};
 use crate::send::error::SendError;
@@ -67,30 +68,11 @@ fn unread() -> SendError {
     SendError::invalid("The transaction is not a SUI transfer as Spectra writes one.")
 }
 
-struct Reader<'a> {
-    bytes: &'a [u8],
-}
-
-impl<'a> Reader<'a> {
-    fn take(&mut self, length: usize) -> Result<&'a [u8], SendError> {
-        if length > self.bytes.len() {
-            return Err(unread());
-        }
-        let (taken, rest) = self.bytes.split_at(length);
-        self.bytes = rest;
-        Ok(taken)
-    }
-
-    fn fixed<const N: usize>(&mut self) -> Result<[u8; N], SendError> {
-        Ok(self.take(N)?.try_into().expect("N bytes"))
-    }
-
-    fn u64(&mut self) -> Result<u64, SendError> {
-        Ok(u64::from_le_bytes(self.fixed()?))
-    }
-
+impl<'a> ByteReader<'a, SendError> {
     fn uleb(&mut self) -> Result<usize, SendError> {
-        let value = leb128::read(&mut self.bytes).map_err(|_| unread())?;
+        let mut rest = self.rest();
+        let value = leb128::read(&mut rest).map_err(|_| unread())?;
+        self.take(self.rest().len() - rest.len())?;
         usize::try_from(value).map_err(|_| unread())
     }
 }
@@ -98,36 +80,36 @@ impl<'a> Reader<'a> {
 /// `bytes` as a SUI transfer, refused unless encoding it again gives
 /// `bytes` byte for byte.
 pub(crate) fn decode(bytes: &[u8]) -> Result<SuiTransfer, SendError> {
-    let mut reader = Reader { bytes };
+    let mut reader = ByteReader::new(bytes, |_| unread());
     // The fixed head up to the amount.
     if reader.take(5)? != [0, 0, 2, 0, 8] {
         return Err(unread());
     }
-    let amount = reader.u64()?;
+    let amount = reader.u64_le()?;
     if reader.take(2)? != [0, 32] {
         return Err(unread());
     }
-    let recipient = reader.fixed()?;
+    let recipient = reader.array()?;
     if reader.take(17)? != [2, 2, 0, 1, 1, 0, 0, 1, 1, 3, 0, 0, 0, 0, 1, 1, 0] {
         return Err(unread());
     }
-    let sender = reader.fixed()?;
+    let sender = reader.array()?;
     let count = reader.uleb()?;
     if count == 0 || count > 256 {
         return Err(unread());
     }
     let mut gas = Vec::with_capacity(count);
     for _ in 0..count {
-        let id = reader.fixed()?;
-        let version = reader.u64()?;
+        let id = reader.array()?;
+        let version = reader.u64_le()?;
         if reader.take(1)? != [32] {
             return Err(unread());
         }
-        gas.push((id, version, reader.fixed()?));
+        gas.push((id, version, reader.array()?));
     }
-    let _owner: [u8; 32] = reader.fixed()?;
-    let gas_price = reader.u64()?;
-    let gas_budget = reader.u64()?;
+    let _owner: [u8; 32] = reader.array()?;
+    let gas_price = reader.u64_le()?;
+    let gas_budget = reader.u64_le()?;
     let transfer = SuiTransfer {
         sender,
         recipient,

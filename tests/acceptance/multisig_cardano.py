@@ -74,9 +74,9 @@ with serve(Koios, submitted=[]) as node, scratch('cardano-multisig') as director
 
     a, b = spectra / 'a', spectra / 'b'
     for signer, name, cosigner in [(a, 'Cosigner0', COSIGNERS[0]), (b, 'Cosigner2', COSIGNERS[2])]:
-        signer.run('endpoints', '--chain', 'cardano', '--api', 'koios', '--capabilities',
-                   'balance,utxo,fee,verification,broadcast', '--add', node.url)
-        signer.run('endpoints', '--chain', 'cardano', '--custom-only', 'true')
+        signer.run('endpoints', 'add', '--chain', 'cardano', '--api', 'koios', '--capabilities',
+                   'balance,utxo,fee,verification,broadcast', node.url)
+        signer.run('endpoints', 'custom-only', '--chain', 'cardano', 'true')
         signer.run('wallet', 'watch', '--chain', 'cardano', '--name', 'Vault', '--multisig',
                    json.dumps(SCRIPT['json']))
         signer.run('wallet', 'import', '--chain', 'cardano', '--name', name, '--no-password',

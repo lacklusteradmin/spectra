@@ -218,6 +218,81 @@ fn ss58_checksum(payload_without_checksum: &[u8]) -> [u8; 2] {
     [checksum[0], checksum[1]]
 }
 
+/// Bytes read in order, as every decoder of a signed or wire encoding reads
+/// them: each read past the end, or of a non-canonical CompactSize, is refused
+/// with the caller's own error.
+pub(crate) struct ByteReader<'a, E> {
+    bytes: &'a [u8],
+    refuse: fn(&'static str) -> E,
+}
+
+impl<'a, E> ByteReader<'a, E> {
+    pub(crate) fn new(bytes: &'a [u8], refuse: fn(&'static str) -> E) -> Self {
+        Self { bytes, refuse }
+    }
+
+    /// What is left to read.
+    pub(crate) fn rest(&self) -> &'a [u8] {
+        self.bytes
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    /// Refused unless everything was read.
+    pub(crate) fn finished(&self) -> Result<(), E> {
+        if self.bytes.is_empty() {
+            Ok(())
+        } else {
+            Err((self.refuse)("trailing bytes"))
+        }
+    }
+
+    pub(crate) fn take(&mut self, n: usize) -> Result<&'a [u8], E> {
+        if self.bytes.len() < n {
+            return Err((self.refuse)("truncated"));
+        }
+        let (head, tail) = self.bytes.split_at(n);
+        self.bytes = tail;
+        Ok(head)
+    }
+
+    pub(crate) fn array<const N: usize>(&mut self) -> Result<[u8; N], E> {
+        Ok(self.take(N)?.try_into().expect("N bytes"))
+    }
+
+    pub(crate) fn u8(&mut self) -> Result<u8, E> {
+        Ok(self.take(1)?[0])
+    }
+
+    pub(crate) fn u32_le(&mut self) -> Result<u32, E> {
+        Ok(u32::from_le_bytes(self.array()?))
+    }
+
+    pub(crate) fn u32_be(&mut self) -> Result<u32, E> {
+        Ok(u32::from_be_bytes(self.array()?))
+    }
+
+    pub(crate) fn u64_le(&mut self) -> Result<u64, E> {
+        Ok(u64::from_le_bytes(self.array()?))
+    }
+
+    pub(crate) fn u64_be(&mut self) -> Result<u64, E> {
+        Ok(u64::from_be_bytes(self.array()?))
+    }
+
+    /// Bitcoin's CompactSize, canonical only: rust-bitcoin's `VarInt`.
+    pub(crate) fn compact_size(&mut self) -> Result<u64, E> {
+        use bitcoin::consensus::Decodable;
+        let mut rest = self.bytes;
+        let value = bitcoin::VarInt::consensus_decode(&mut rest)
+            .map_err(|_| (self.refuse)("a non-canonical length"))?;
+        self.bytes = rest;
+        Ok(value.0)
+    }
+}
+
 /// BLAKE2b with an `N`-byte digest of `chunks` in order: every plain BLAKE2b
 /// in core, from Substrate's storage keys to Cardano's key hashes. A keyed
 /// or personalized one names its parameters on `blake2b_simd` itself.
@@ -375,5 +450,23 @@ mod mnemonic_language_tests {
             error.to_string().contains("Unsupported mnemonic wordlist"),
             "{error}"
         );
+    }
+}
+
+#[cfg(test)]
+mod byte_reader_tests {
+    use super::ByteReader;
+
+    /// A read past the end and a CompactSize longer than its value needs are
+    /// both refused, with the caller's error.
+    #[test]
+    fn reads_are_bounded_and_lengths_canonical() {
+        let mut reader = ByteReader::new(&[0xfd, 0x00, 0x01, 0x07], |what| what);
+        assert_eq!(reader.compact_size(), Ok(0x100));
+        assert_eq!(reader.u8(), Ok(7));
+        assert_eq!(reader.u8(), Err("truncated"));
+        assert!(reader.finished().is_ok());
+        let mut padded = ByteReader::new(&[0xfd, 0x05, 0x00], |what| what);
+        assert_eq!(padded.compact_size(), Err("a non-canonical length"));
     }
 }

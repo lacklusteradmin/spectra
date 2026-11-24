@@ -46,9 +46,7 @@ impl WalletService {
                 let chain = wallet.family();
                 let selected = match &scope {
                     HistoryRefreshScope::All => true,
-                    HistoryRefreshScope::Wallets { wallet_ids } => wallet_ids
-                        .iter()
-                        .any(|id| id.eq_ignore_ascii_case(&wallet.id)),
+                    HistoryRefreshScope::Wallets { wallet_ids } => wallet_ids.contains(&wallet.id),
                     HistoryRefreshScope::Chains { .. } => chains
                         .as_ref()
                         .unwrap()

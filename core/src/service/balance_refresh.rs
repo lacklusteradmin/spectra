@@ -281,7 +281,7 @@ mod tests {
         let service = WalletService::new(Vec::new()).unwrap();
         let db = std::env::temp_dir().join(format!(
             "spectra-balance-alias-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(db.to_string_lossy().into())
@@ -376,7 +376,7 @@ mod tests {
         .unwrap();
         let db = std::env::temp_dir().join(format!(
             "mixed-protocol-balances-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(db.to_string_lossy().into())
@@ -509,10 +509,8 @@ mod tests {
     #[tokio::test]
     async fn balance_commit_preserves_metadata_and_refuses_stale_network() {
         let service = WalletService::new(vec![]).unwrap();
-        let path = std::env::temp_dir().join(format!(
-            "balance-owned-{}.sqlite",
-            crate::store::new_event_id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("balance-owned-{}.sqlite", crate::store::new_id()));
         service
             .open_state(path.to_string_lossy().into())
             .await
@@ -596,10 +594,8 @@ mod lifecycle_tests {
     #[tokio::test]
     async fn wallet_delete_removes_secrets_and_relations_and_can_retry() {
         let service = WalletService::new(vec![]).unwrap();
-        let path = std::env::temp_dir().join(format!(
-            "delete-owned-{}.sqlite",
-            crate::store::new_event_id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("delete-owned-{}.sqlite", crate::store::new_id()));
         service
             .open_state(path.to_string_lossy().into())
             .await
@@ -708,7 +704,7 @@ mod concurrency_tests {
         .unwrap();
         let path = std::env::temp_dir().join(format!(
             "balance-concurrency-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into())

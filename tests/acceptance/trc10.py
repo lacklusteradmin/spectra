@@ -6,7 +6,7 @@ history and receipts are tested in core."""
 import hashlib
 import urllib.parse
 
-from harness import Handler, Spectra, fixture, protobuf, scratch, serve, tron_signed
+from harness import Handler, Spectra, b58decode, fixture, protobuf, scratch, serve, tron_signed
 
 FIXTURE = fixture('trc10-send-vectors.json')
 OWNER, RECEIVER = FIXTURE['owner'], FIXTURE['receiver']
@@ -14,11 +14,7 @@ GENESIS = '00000000000000001ebf88508a03865c71d452e25f4d51194196a1d22b6653dc'
 
 
 def base58_hex(address):
-    alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-    number = 0
-    for char in address:
-        number = number * 58 + alphabet.index(char)
-    return number.to_bytes(25, 'big')[:21].hex()
+    return b58decode(address)[:21].hex()
 
 
 class Node(Handler):
@@ -63,8 +59,8 @@ with serve(Node, payloads=[]) as node, scratch('trc10') as directory:
     payloads, endpoint = node.state['payloads'], node.url
     spectra = Spectra(directory, SPECTRA_PRIVATE_KEY=FIXTURE['key'], SPECTRA_PASSWORD='trc10-vector-password')
     spectra.run('wallet', 'import', '--chain', 'tron', '--name', 'Legacy', '--private-key-env', 'SPECTRA_PRIVATE_KEY')
-    spectra.run('endpoints', '--chain', 'tron', '--api', 'tron-http',
-                '--capabilities', 'balance,fee,verification,token-balance,broadcast', '--add', endpoint)
+    spectra.run('endpoints', 'add', '--chain', 'tron', '--api', 'tron-http',
+                '--capabilities', 'balance,fee,verification,token-balance,broadcast', endpoint)
     prepared = spectra.run('send', 'build', 'Legacy', '--to', RECEIVER, '--endpoint', endpoint,
                            '--contract', '1009999', '--decimals', '2', '--amount', '123.45')['artifact']
     signed = spectra.run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
@@ -74,9 +70,9 @@ with serve(Node, payloads=[]) as node, scratch('trc10') as directory:
     accepted = spectra.run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')['artifact']
     assert any(a['outcome'] == 'Accepted' for a in accepted['attempts']), accepted
     assert payloads == [signed['signed_payload']], payloads
-    changes = spectra.run('txs', '--poll-chain', 'tron')['changes']
+    changes = spectra.run('txs', 'poll', 'tron')['changes']
     assert changes and all(r['newStatus'] == 'confirmed' for r in changes), changes
-    records = spectra.run('txs', '--page', '--wallet', 'Legacy')['page']['records']
+    records = spectra.run('txs', 'page', '--wallet', 'Legacy')['page']['records']
     confirmed = next(r for r in records if r['transactionHash'] == accepted['transaction_hash'])
     assert (confirmed['status'], confirmed['deploymentId'], confirmed['amount']) == \
         ('confirmed', 'tron:trc-10:1009999', '123.45'), confirmed

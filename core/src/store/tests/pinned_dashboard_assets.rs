@@ -44,7 +44,7 @@ async fn setting_the_same_pins_emits_nothing() {
 #[tokio::test]
 async fn unpinning_every_asset_stays_empty_after_reopening_and_reset_restores_defaults() {
     let path = std::env::temp_dir()
-        .join(format!("pins-{}.sqlite", crate::store::new_event_id()))
+        .join(format!("pins-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     let service = WalletService::new(Vec::new()).expect("service");

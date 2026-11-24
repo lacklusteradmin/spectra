@@ -234,7 +234,7 @@ pub(crate) fn send_chain_for(
     let wallet = state
         .wallets
         .iter()
-        .find(|w| w.id.eq_ignore_ascii_case(wallet_id))
+        .find(|w| w.id == wallet_id)
         .ok_or_else(|| SpectraBridgeError::InvalidInput {
             message: "send wallet does not exist".into(),
         })?;

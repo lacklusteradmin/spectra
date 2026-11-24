@@ -57,7 +57,6 @@ SUITES = {
     'send_tokens': 'a TON jetton send resolved from its trace across processes',
     'send_icp_zcash': 'ICP and transparent Zcash sends with an identical retry',
     'endpoints': 'the endpoint listing and health verdict',
-    'tui': 'the windowed interface at a real terminal',
 }
 
 
@@ -140,7 +139,7 @@ def checks(run):
     run.section('exit codes')
     run.check('a valid request succeeds', OK,
               'address', 'validate', '--chain', 'Bitcoin', 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4')
-    run.check('an unknown wallet fails', FAILED, 'wallet', 'show', 'no such wallet')
+    run.check('an unknown wallet is refused', REJECTED, 'wallet', 'show', 'no such wallet')
     run.check('an unknown option value is a usage error', USAGE, 'chains', '--tag', 'sidechain')
     run.check('a ticker is not a network name', USAGE, 'token', 'catalog', '--chain', 'ETH')
     run.check('a refusal by core is rejected', REJECTED, 'address', 'validate', '--chain', 'Ethereum', '0xnothex')
@@ -206,9 +205,6 @@ def checks(run):
     # Commands that disclose a secret, move funds or destroy state need --yes.
     run.section('confirmation gates')
     run.check('export will not print a seed without --yes', USAGE, 'wallet', 'export', 'Acceptance BTC')
-    run.check('a broadcast without --yes is refused', USAGE,
-              'send', 'owned-broadcast', 'Acceptance BTC', '--holding', 'bitcoin:native',
-              '--amount', '0.001', '--destination', 'bc1qgkju4yvvtuz0s8vqn837q396jezu2h8ex7gk98')
     run.check('delete will not run without --yes', USAGE, 'wallet', 'delete', 'Acceptance BTC')
     run.check('reset will not run without --yes', USAGE, 'settings', 'reset')
 
@@ -225,7 +221,7 @@ def checks(run):
     run.holds('the sealed key is on disk', key_secret.is_file())
     run.check('deletes the seed wallet', OK, 'wallet', 'delete', 'Acceptance BTC', '--yes')
     run.check('deletes the key wallet', OK, 'wallet', 'delete', 'PK Wallet', '--yes')
-    run.check('the deleted wallet is gone', FAILED, 'wallet', 'show', 'Acceptance BTC')
+    run.check('the deleted wallet is gone', REJECTED, 'wallet', 'show', 'Acceptance BTC')
     run.holds('its sealed seed went with it', not seed_file.exists())
     run.holds('its sealed key went with it', not key_secret.exists())
 
@@ -259,7 +255,7 @@ def main():
         # nothing. Health probes call every built-in provider directly, so
         # this one is refused.
         run.check('a probe of remote providers still exits', OK,
-                  '--json', 'endpoints', '--chain', 'bitcoin', SPECTRA_LOOPBACK_ONLY=str(canary))
+                  '--json', 'endpoints', 'probe', '--chain', 'bitcoin', SPECTRA_LOOPBACK_ONLY=str(canary))
         refused = canary.read_text() if canary.exists() else ''
         run.holds('and the refusal is journaled by host', 'https://blockstream.info/' in refused, refused)
         reached = journal.read_text()

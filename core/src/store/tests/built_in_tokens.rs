@@ -37,7 +37,7 @@ fn the_catalog_chain_ids_all_resolve() {
 async fn only_the_users_tokens_are_stored() {
     let db = std::env::temp_dir().join(format!(
         "spectra-custom-tokens-{}.sqlite",
-        crate::store::new_event_id()
+        crate::store::new_id()
     ));
     let db = db.to_string_lossy().into_owned();
     let service = WalletService::new(Vec::new()).expect("service");
@@ -199,7 +199,7 @@ async fn reopening_prefers_catalog_identity_and_deduplicates_protocol_aliases() 
     };
     let db = std::env::temp_dir().join(format!(
         "spectra-token-alias-{}.sqlite",
-        crate::store::new_event_id()
+        crate::store::new_id()
     ));
     crate::wallet_db::app_state_save(
         &crate::wallet_db::WalletDatabase::new(db.to_str().unwrap()),

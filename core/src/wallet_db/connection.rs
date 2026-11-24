@@ -211,7 +211,6 @@ fn open_new(database_path: &str) -> Result<Connection, DbError> {
              payload    TEXT    NOT NULL,  -- full WalletState JSON
              updated_at INTEGER NOT NULL
          );
-         CREATE INDEX IF NOT EXISTS idx_wallets_lower_id ON wallets(lower(id));
          CREATE INDEX IF NOT EXISTS idx_wallets_order ON wallets(sort_index);
          CREATE TABLE IF NOT EXISTS wallet_secret_deletions (
              wallet_id TEXT PRIMARY KEY NOT NULL

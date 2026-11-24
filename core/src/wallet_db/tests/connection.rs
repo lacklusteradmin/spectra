@@ -7,7 +7,7 @@ fn path() -> String {
     std::env::temp_dir()
         .join(format!(
             "spectra-connection-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ))
         .to_string_lossy()
         .into_owned()

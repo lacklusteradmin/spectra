@@ -99,7 +99,7 @@ mod tests {
     async fn owned_reset_refuses_invalid_scope_and_waits_for_secret_cleanup() {
         let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir()
-            .join(format!("reset-{}.sqlite", crate::store::new_event_id()))
+            .join(format!("reset-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .into_owned();
         service.open_state(path.clone()).await.unwrap();

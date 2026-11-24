@@ -55,9 +55,9 @@ with serve(Node, submitted=[]) as node, scratch('multikey') as directory:
     policy = json.dumps({'signaturesRequired': 2, 'publicKeys': keys})
     for signer, name, phrase in [(a, 'Signer0', APTOS['keys'][0]['phrase']),
                                  (b, 'Signer1', APTOS['keys'][1]['phrase'])]:
-        signer.run('endpoints', '--chain', 'aptos-testnet', '--api', 'aptos-rest', '--capabilities',
-                   'balance,fee,verification,broadcast', '--add', node.url)
-        signer.run('endpoints', '--chain', 'aptos-testnet', '--custom-only', 'true')
+        signer.run('endpoints', 'add', '--chain', 'aptos-testnet', '--api', 'aptos-rest', '--capabilities',
+                   'balance,fee,verification,broadcast', node.url)
+        signer.run('endpoints', 'custom-only', '--chain', 'aptos-testnet', 'true')
         signer.run('wallet', 'watch', '--chain', 'aptos-testnet', '--name', 'Shared', '--multisig', policy)
         signer.run('wallet', 'import', '--chain', 'aptos-testnet', '--name', name, '--no-password',
                    env={'SPECTRA_SEED': phrase})

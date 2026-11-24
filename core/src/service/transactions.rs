@@ -359,10 +359,8 @@ mod audit_fix5_tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn concurrent_history_merges_keep_one_identity_per_wallet() {
         let service = WalletService::new(vec![]).unwrap();
-        let path = std::env::temp_dir().join(format!(
-            "atomic-history-{}.sqlite",
-            crate::store::new_event_id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("atomic-history-{}.sqlite", crate::store::new_id()));
         service
             .open_state(path.to_string_lossy().into())
             .await
@@ -387,7 +385,7 @@ mod audit_fix5_tests {
             let barrier = barrier.clone();
             tasks.push(tokio::spawn(async move {
                 let record: crate::store::persistence_models::TransactionRecord = serde_json::from_value(json!({
-                    "id":crate::store::new_transaction_id(), "walletId":format!("wallet-{}",i%2), "walletName":"W", "kind":"send", "status":"confirmed", "chainId":"ethereum", "transactionHash":"0xshared", "amount":"1", "symbol":"ETH", "assetDisplayName":"Ether", "address":"0xrecipient", "createdAtUnix":1000.0
+                    "id":crate::store::new_id(), "walletId":format!("wallet-{}",i%2), "walletName":"W", "kind":"send", "status":"confirmed", "chainId":"ethereum", "transactionHash":"0xshared", "amount":"1", "symbol":"ETH", "assetDisplayName":"Ether", "address":"0xrecipient", "createdAtUnix":1000.0
                 })).unwrap();
                 barrier.wait().await;
                 service.merge_fetched_history(vec![record]).await.unwrap()
@@ -430,10 +428,7 @@ mod status_commit_regressions {
     async fn setup() -> (Arc<WalletService>, String) {
         let service = WalletService::new(vec![]).unwrap();
         let db = std::env::temp_dir()
-            .join(format!(
-                "status-atomic-{}.sqlite",
-                crate::store::new_event_id()
-            ))
+            .join(format!("status-atomic-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .to_string();
         service.open_state(db.clone()).await.unwrap();
@@ -766,7 +761,7 @@ fn merge_history_rows(
 > {
     let before: std::collections::HashMap<String, String> = existing
         .iter()
-        .map(|record| (record.id.to_lowercase(), fingerprint(record)))
+        .map(|record| (record.id.clone(), fingerprint(record)))
         .collect();
 
     let merged = crate::store::transaction_merge::merge_transactions(
@@ -785,7 +780,7 @@ fn merge_history_rows(
     let mut updated = Vec::new();
     let mut rows = Vec::new();
     for record in merged {
-        let id = record.id.to_lowercase();
+        let id = record.id.clone();
         match before.get(&id) {
             Some(previous) if *previous == fingerprint(&record) => continue,
             Some(_) => updated.push(id),

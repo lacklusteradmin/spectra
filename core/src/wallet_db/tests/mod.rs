@@ -70,7 +70,7 @@ fn keypool_history_projection_is_scoped_indexed_and_tracks_edits() {
             Ok::<_, DbError>(())
         }).unwrap();
     assert_eq!(
-        history_keypool_indices(&db, "W", crate::registry::Chain::Bitcoin).unwrap(),
+        history_keypool_indices(&db, "w", crate::registry::Chain::Bitcoin).unwrap(),
         (Some(8), Some(3))
     );
     history_delete(&db, &["c".into()]).unwrap();
@@ -651,17 +651,14 @@ fn removing_a_wallet_takes_its_rows_and_leaves_the_others() {
 }
 
 #[test]
-fn history_id_lookup_uses_the_primary_key_and_normalizes_duplicates() {
-    let db = std::env::temp_dir().join(format!(
-        "history-ids-{}.sqlite",
-        crate::store::new_event_id()
-    ));
+fn history_id_lookup_uses_the_primary_key() {
+    let db = std::env::temp_dir().join(format!("history-ids-{}.sqlite", crate::store::new_id()));
     let db = WalletDatabase::new(db.to_str().unwrap());
     let rows: Vec<_> = (0..1100)
         .map(|i| history_record(&format!("tx{i}"), "w"))
         .collect();
     history_upsert_batch(&db, &rows).unwrap();
-    assert!(history_find(&db, "TX1099").unwrap().is_some());
+    assert!(history_find(&db, "tx1099").unwrap().is_some());
     assert!(history_find(&db, "absent").unwrap().is_none());
     with_conn(&db, |conn| {
         let plan: String = conn

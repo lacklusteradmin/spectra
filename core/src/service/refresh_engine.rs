@@ -119,7 +119,7 @@ impl RefreshEngine {
             let state = this.inner.wallet_service.app_state().await;
             let mut entries = refresh_entries_for(&state);
             if let Some(wallet_id) = wallet_id {
-                entries.retain(|entry| entry.wallet_id.eq_ignore_ascii_case(&wallet_id));
+                entries.retain(|entry| entry.wallet_id == wallet_id);
             }
             let count = entries.len() as u32;
             *this.inner.entries.write().unwrap() = entries;
@@ -794,7 +794,7 @@ mod refresh_entry_tests {
         let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "maintenance-loop-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into())
@@ -856,7 +856,7 @@ mod refresh_entry_tests {
         let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "reconcile-wallets-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into())
@@ -908,7 +908,7 @@ mod refresh_entry_tests {
         let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "reconcile-currency-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into())

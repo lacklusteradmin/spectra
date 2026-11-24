@@ -6,8 +6,8 @@ use std::fmt;
 /// Process exit codes. `2` is left to clap, which uses it for usage errors.
 pub const EXIT_FAILURE: i32 = 1;
 pub const EXIT_USAGE: i32 = 2;
-/// Core considered the request and said no. Distinct from a failure: the
-/// command worked, the answer was no.
+/// Core considered the request and said no, a name that matches nothing
+/// included. Distinct from a failure: the command worked, the answer was no.
 pub const EXIT_REJECTED: i32 = 3;
 
 #[derive(Debug)]
@@ -29,6 +29,12 @@ impl CliError {
             message: message.into(),
             code: EXIT_USAGE,
         }
+    }
+
+    /// A command that discloses a secret, moves funds or destroys state ran
+    /// without `--yes`: what it would have done, and how to go ahead.
+    pub fn unconfirmed(effect: impl fmt::Display) -> Self {
+        Self::usage(format!("this {effect} — re-run with --yes"))
     }
 
     /// Core refused the request.

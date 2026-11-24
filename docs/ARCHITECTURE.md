@@ -14,7 +14,7 @@ authoritative copy, and the CLI can drive every domain operation.
 | Directory | Responsibility |
 |---|---|
 | `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the app's static library |
-| `cli/` | Argument parsing, password prompting and each command's report, as text or `--json`; with no command, windows that run those commands (`cli/src/tui/`) |
+| `cli/` | Argument parsing, password prompting and each command's report, as text or `--json` |
 | `icons/crypto/` | The SVG library the apps draw tokens and chains with, one file per artwork name in the catalog |
 | `scripts/` | Source-check, icon and runtime-data tools |
 | `tests/` | CLI acceptance suites on one harness (`tests/acceptance/`) and independent SDK test-data generators (`tests/vectors/`) |
@@ -46,24 +46,12 @@ writes as one document and the terminal renders as text, so neither form can
 go missing. A command about one wallet takes it as its first argument;
 `--wallet` only narrows a command over many.
 
-`spectra` with no command, at a terminal, opens kitty's model around those
-commands: tabs, windows in switchable layouts and keys in kitty's table. It adds
-no operation and holds no domain state. Each window has a prompt and runs what
-is typed as a separate `spectra` process in a pseudo-terminal, so a command
-behaves there as it does in a shell: its own hidden password prompt, its colour,
-its exit code, a store opened fresh per command. What can be completed at the
-prompt is read from the clap definitions, so a new command needs nothing in the
-interface. Scripts and the acceptance suites keep calling subcommands directly.
-
 Swift owns navigation, sheets, text being edited, focus, animation and rendering
 caches. Keychain, biometrics, notifications, Live Activities and device signals
-stay on the platform and supply inputs to core-owned policy. The Mac app is
-the iOS app's sources built for macOS: every page and flow is the same view,
-and a file splits on `#if os(macOS)` only where the platform itself differs —
-AppKit's text views, the camera, the pasteboard, the window that covers a
-locked app. A Mac has no Live Activity, so a send there is followed by its
-notification alone. Losing view state
+stay on the platform and supply inputs to core-owned policy. Losing view state
 on restart may cost a redraw; losing domain state must not lose user data.
+How the app is put together, for iOS and macOS, is spectra-apple's
+`docs/ARCHITECTURE.md`.
 
 `ResidentState` holds small resident collections. Unbounded history is a separate
 queryable store so changing a setting does not clone every transaction.
@@ -100,9 +88,7 @@ fee the same way. What may be done next is `send_progress`: the next step
 (sign, broadcast, rebroadcast or done) and whether a rebroadcast, a staking
 repair or a status recheck applies, read from the artifact and its history
 record together. Front ends adopt it with every artifact they take and never
-derive a step from the stage. The composer's requests — recipient resolution,
-quotes, that progress — start in `SendFlowState` when what they depend on
-changes; its views only render.
+derive a step from the stage.
 
 The platform registers a cache directory with `configure_network_runtime`.
 Thereafter core reconciles Tor transports on committed settings changes and reset;
@@ -173,7 +159,9 @@ and wrappers that differ only in a chain name. Each primitive has one
 implementation: `derivation/bip32.rs` reads every derivation path and holds
 the secp256k1 extended keys (rust-bitcoin's), `derivation::primitives::blake2b`
 every plain BLAKE2b, `send/leb128.rs` every LEB128 number read or written,
-rust-bitcoin's `VarInt` every CompactSize, and `api::evm_json_rpc::abi_u128`
+rust-bitcoin's `VarInt` every CompactSize, `derivation::primitives::ByteReader`
+every bounded read of an encoded transaction or wire message, and
+`api::evm_json_rpc::abi_u128`
 every uint256 ABI word, EVM's and Tron's alike. Tests over the registry should assert
 complete capability coverage, rather than only test named examples.
 
@@ -187,24 +175,8 @@ nonce and fee configuration.
 
 Front ends share domain code, not a UI framework. Core must
 not exit the process or install a global logger; the executable owns logging
-configuration and keeps stdout available for CLI JSON.
-
-Rules for keeping the shell thin:
-
-- Swift code that reads core-owned data only to send it back for a decision is
-  a misplaced rule: make the owning service compute the answer instead. Audit
-  views and record extensions too, not only `AppState`.
-- Keep one writer per UI projection. Adopt core-derived answers
-  asynchronously; local indexes and button-enabling checks may remain view
-  state, with core enforcing validation on writes.
-- Delete projection and cache fields when their last reader disappears.
-- Keep concrete network, token and deployment identities distinct; never infer
-  identity from a ticker or a price provider's id.
-- Remove a dead wrapper only after checking direct FFI callers and foreign
-  callback implementations. Delete tests of a removed helper only once the
-  replacement's meaningful coverage is identified.
-- An export that removes a Swift rule can be worthwhile; moving code only to
-  lower a line count is not.
+configuration and keeps stdout available for CLI JSON. The rules that keep
+the app's Swift shell thin are in spectra-apple's `docs/ARCHITECTURE.md`.
 
 ## Signing and service modules
 
@@ -394,29 +366,12 @@ registry capabilities.
 
 Build-time send advisories are stored with each artifact and covered by its
 review digest. `build_owned_send` accepts user edits and owns quote/build
-coordination; Swift does not round-trip a quote's transaction request. Native
-`SendSession` owns only workflow identity, in-flight state and displayed results.
-Obsolete callbacks cannot update another session or start signing after native
-authentication. Core operations already dispatched remain durable after closing.
+coordination; Swift does not round-trip a quote's transaction request. Core
+operations already dispatched remain durable after closing.
 Amount display utilities are optional presentation policy; signing review always
 renders the exact artifact amount and exposes the prepared transaction details.
 
-### Native flow lifetimes and display precision
-
-`AppState` composes one `@MainActor @Observable` object per domain: the send
-and receive flows, wallet import, the address book, token preferences, price
-alerts, Tor, history paging, diagnostics and the platform's own preferences.
-Each holds that domain's projection or view state — form inputs, loading and
-error state, request identities, reset behavior — and the actions that need
-nothing else; views read the object, and no forwarding copies of its fields
-live on `AppState`. A projection of core state (contacts, tokens, alerts) has
-one writer, `adopt`, fed by `AppState.applyCoreState`, and its edits go through
-the shared `StateCommandQueue`. What needs the wallet projection or several
-domains — the selected send holding, a wallet's signing requirement,
-post-broadcast work — stays a thin adapter on `AppState`. Import and rename
-completions may update only the session that submitted them. Dismissal
-invalidates the session and clears secret inputs; a core commit still refreshes
-the domain projection even when its form is gone.
+### Display precision
 
 `PortfolioSnapshot.asset_precision` supplies effective precision keyed by
 concrete deployment, including disabled custom tokens needed by history views.
@@ -427,13 +382,7 @@ The compact six-significant-digit/eight-decimal style is an optional shared
 presentation utility, not domain validation or a requirement for detail views.
 Signing review continues to render exact artifact amounts.
 
-### Native completion and presentation boundaries
-
-A closed send composer rejects stale form updates but still returns successful
-broadcast results to application handling. Post-send work resolves the completed
-transaction ID, not the current composer. Recent/pending history is a summary;
-Live Activities and resumed send details query the stored ID and distinguish
-missing records from read failures.
+### Refresh and diagnostics
 
 Refresh completes alert/movement evaluation before adopting the final portfolio
 and history projections once. During a balance sweep the engine reports each
@@ -446,9 +395,3 @@ probes by network, and when each ran. `chain_diagnostics` and
 `diagnostics_bundle` answer from that record for every front end; the platform
 supplies only its own version, OS, locale and time zone, and keeps which runs
 are in flight.
-
-`AmountPresentation` renders explicit projection values without AppState or
-storage. Its native formatter cache is presentation-only.
-`AssetPresentationCatalog` indexes core's immutable artwork and colours by
-deployment id; balances and display labels do not identify assets. Neither can
-authorize a domain mutation.

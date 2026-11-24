@@ -84,7 +84,7 @@ async fn service(
     path: &str,
 ) -> (Arc<WalletService>, TestDirectory, Arc<InMemorySecretStore>) {
     let directory = TestDirectory(
-        std::env::temp_dir().join(format!("spectra-peercoin-{}", crate::store::new_event_id())),
+        std::env::temp_dir().join(format!("spectra-peercoin-{}", crate::store::new_id())),
     );
     std::fs::create_dir_all(directory.path()).unwrap();
     let service = WalletService::new(vec![ChainEndpoints {

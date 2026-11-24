@@ -128,8 +128,8 @@ def main():
         state, endpoint = node.state, node.url
         run = checked(Spectra(directory, SPECTRA_PRIVATE_KEY='01' * 32), state['errors'])
         run('wallet', 'import', '--chain', 'internet-computer', '--name', 'Neuron', '--private-key-env', 'SPECTRA_PRIVATE_KEY', '--no-password')
-        run('endpoints', '--chain', 'internet-computer', '--api', 'icp-replica', '--capabilities', 'staking,verification,broadcast', '--add', endpoint)
-        run('endpoints', '--chain', 'internet-computer', '--api', 'icp-rosetta', '--capabilities', 'balance,fee,verification,broadcast', '--add', endpoint)
+        run('endpoints', 'add', '--chain', 'internet-computer', '--api', 'icp-replica', '--capabilities', 'staking,verification,broadcast', endpoint)
+        run('endpoints', 'add', '--chain', 'internet-computer', '--api', 'icp-rosetta', '--capabilities', 'balance,fee,verification,broadcast', endpoint)
         built = run('staking', 'build', 'Neuron', '--action', 'stake', '--validator', '1', '--lockup-seconds', '600', '--amount', '2')['artifact']
         assert built['amount'] == '2' and built['staking']['action'] == 'stake'
         signed = run('send', 'sign', built['id'], '--review-digest', built['review_digest'], '--endpoint', endpoint)['artifact']

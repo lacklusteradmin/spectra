@@ -37,27 +37,6 @@ fn record(id: &str, wallet: &str, status: &str) -> TransactionRecord {
     .expect("fixture must match TransactionRecord")
 }
 
-#[tokio::test]
-async fn ids_are_matched_case_insensitively() {
-    let (service, db) = opened("case").await;
-    service
-        .upsert_history_records(vec![record("ABC-123", "w1", "pending")])
-        .await
-        .expect("upsert");
-    service
-        .upsert_history_records(vec![record("abc-123", "w1", "confirmed")])
-        .await
-        .expect("upsert");
-    let stored = service.transactions().await.expect("read");
-    assert_eq!(stored.len(), 1, "not a second record");
-    assert_eq!(
-        serde_json::to_value(stored[0].status).unwrap().as_str(),
-        Some("confirmed")
-    );
-
-    let _ = std::fs::remove_file(&db);
-}
-
 /// Clearing deletes what it cannot decode: a record written by another build
 /// would otherwise fail a reset after its wallets were already removed.
 #[tokio::test]

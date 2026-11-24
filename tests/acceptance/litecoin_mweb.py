@@ -50,11 +50,11 @@ class MwebTests(unittest.TestCase):
 
     def endpoints(self, device, chain='litecoin'):
         """The fixture's indexer and node as the network's only endpoints."""
-        device.run('endpoints', '--chain', chain, '--custom-only', 'true')
-        device.run('endpoints', '--chain', chain, '--api', 'esplora', '--capabilities',
-                   INDEXER_CAPABILITIES, '--add', self.chain.url)
-        device.run('endpoints', '--chain', chain, '--api', 'litecoin-p2p', '--capabilities',
-                   'history', '--add', self.chain.node)
+        device.run('endpoints', 'custom-only', '--chain', chain, 'true')
+        device.run('endpoints', 'add', '--chain', chain, '--api', 'esplora', '--capabilities',
+                   INDEXER_CAPABILITIES, self.chain.url)
+        device.run('endpoints', 'add', '--chain', chain, '--api', 'litecoin-p2p', '--capabilities',
+                   'history', self.chain.node)
 
     def sync(self, device, name='MWEB'):
         """Scan to the fixture's tip: each transaction it mined is a block."""
@@ -68,7 +68,7 @@ class MwebTests(unittest.TestCase):
         return device.run('wallet', 'mweb-status', name)['mweb']
 
     def history(self, device, name='MWEB'):
-        rows = device.run('txs', '--page', '--wallet', name)['page']['records']
+        rows = device.run('txs', 'page', '--wallet', name)['page']['records']
         return sorted((r['kind'], r['amount'], r['status'], r['address']) for r in rows)
 
     def send(self, device, artifact):

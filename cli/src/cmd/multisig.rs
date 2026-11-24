@@ -240,7 +240,7 @@ pub fn run(ctx: &Ctx, out: Out, command: MultisigCommand) -> CliResult<()> {
     let service = ctx.service()?;
     let session = match command {
         MultisigCommand::Account(args) => {
-            let wallet = ctx.find_wallet(&args.wallet)?;
+            let wallet = args.find(ctx)?;
             let account = ctx.rt.block_on(service.multisig_account(wallet.id))?;
             return out.report(&AccountReport { account });
         }
@@ -285,7 +285,7 @@ pub fn run(ctx: &Ctx, out: Out, command: MultisigCommand) -> CliResult<()> {
         }
         MultisigCommand::Show { id } => ctx.rt.block_on(service.multisig_session(id))?,
         MultisigCommand::List(args) => {
-            let wallet = ctx.find_wallet(&args.wallet)?;
+            let wallet = args.find(ctx)?;
             let sessions = ctx.rt.block_on(service.multisig_sessions(wallet.id))?;
             return out.report(&SessionsReport { sessions });
         }
@@ -295,7 +295,7 @@ pub fn run(ctx: &Ctx, out: Out, command: MultisigCommand) -> CliResult<()> {
         }
         MultisigCommand::Submit(args) => {
             if !args.yes {
-                return Err(CliError::usage("submit requires --yes"));
+                return Err(CliError::unconfirmed("submits the spend to the network"));
             }
             let (executor, password) = match &args.executor {
                 Some(executor) => {
@@ -310,7 +310,9 @@ pub fn run(ctx: &Ctx, out: Out, command: MultisigCommand) -> CliResult<()> {
         }
         MultisigCommand::Discard { id, yes } => {
             if !yes {
-                return Err(CliError::usage("discard requires --yes"));
+                return Err(CliError::unconfirmed(
+                    "discards the session and its signatures",
+                ));
             }
             ctx.rt.block_on(service.discard_multisig(id.clone()))?;
             return out.report(&Done::new(format!("discarded {id}")));

@@ -656,7 +656,7 @@ mod a_preview_quotes_the_asset_it_moves {
         .unwrap();
         let db = std::env::temp_dir().join(format!(
             "evm-owned-preview-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(db.to_string_lossy().into())

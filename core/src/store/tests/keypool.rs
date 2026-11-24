@@ -174,7 +174,7 @@ async fn keypool_diagnostics_report_the_recorded_reservation() {
     let db = std::env::temp_dir()
         .join(format!(
             "spectra-keypool-diagnostics-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ))
         .to_string_lossy()
         .into_owned();
@@ -240,7 +240,7 @@ async fn known_wallet_addresses_merge_the_wallet_and_its_owned_rows() {
     let db = std::env::temp_dir()
         .join(format!(
             "spectra-known-addresses-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ))
         .to_string_lossy()
         .into_owned();

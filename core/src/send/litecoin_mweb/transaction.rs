@@ -14,7 +14,7 @@ use super::keys::StealthAddress;
 use super::output::{self, OwnedOutput};
 use super::primitives::{self, blake3};
 use crate::api::litecoin_p2p::wire::{
-    ExtendedTransaction, Input, Kernel, MwebTx, Output, PegOut, RangeProof, Reader, TxBody,
+    ExtendedTransaction, Input, Kernel, MwebTx, Output, PegOut, RangeProof, TxBody, wire_reader,
 };
 use crate::send::error::SendError;
 
@@ -429,7 +429,7 @@ pub(crate) fn litecoin_txid(canonical: &bitcoin::Transaction, mweb: &MwebTx) -> 
 
 /// The MWEB outputs of a transaction `litecoin_transaction` wrote.
 pub(crate) fn mweb_outputs(raw: &[u8]) -> Result<Vec<Output>, SendError> {
-    let mut reader = Reader(raw);
+    let mut reader = wire_reader(raw);
     let tx = ExtendedTransaction::decode(&mut reader)?;
     reader.finished()?;
     Ok(tx.mweb.map(|mweb| mweb.body.outputs).unwrap_or_default())

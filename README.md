@@ -38,8 +38,8 @@ state and decisions; the front ends render its results and forward user intent.
 - [Tests](tests/README.md) and [scripts](scripts/README.md): the suites and tools
   behind the Makefile.
 
-`rust-toolchain.toml` pins the toolchain, so `cargo` installs the right one on
-first use and no version needs naming here.
+It builds with the current stable Rust, with rustfmt and clippy for
+`make lint`; `rustup update` keeps it current.
 
 ### The CLI
 
@@ -66,7 +66,7 @@ says which a change needs:
 
 | Target | What it runs |
 |---|---|
-| `make lint` | `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, the unused-code source scan |
+| `make lint` | `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, the source-scan tests and the unused-code source scan |
 | `make test` | `cargo test` |
 | `make test-cli` | `python3 -B tests/acceptance` — the real binary end to end, offline, throwaway data directory |
 | `make check-icons` | the icon-normalization check; needs `svgo` |

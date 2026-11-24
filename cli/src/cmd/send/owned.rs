@@ -17,14 +17,14 @@ use crate::out::{self, Out, Report};
 
 #[derive(Args)]
 pub struct OwnedSendArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     #[arg(long)]
     holding: String,
     #[arg(long)]
     amount: String,
     #[arg(long)]
-    destination: String,
+    to: String,
     #[command(flatten)]
     memo: MemoArgs,
 }
@@ -32,10 +32,10 @@ pub struct OwnedSendArgs {
 impl OwnedSendArgs {
     fn input(self, ctx: &Ctx) -> CliResult<SendReviewInput> {
         Ok(SendReviewInput {
-            wallet_id: ctx.find_wallet(&self.wallet)?.id,
+            wallet_id: self.wallet.find(ctx)?.id,
             holding_key: self.holding,
             amount: self.amount,
-            destination: self.destination,
+            destination: self.to,
             overrides: None,
             memo: self.memo.memo(),
         })
@@ -54,32 +54,32 @@ pub struct OwnedBroadcastArgs {
 
 #[derive(Args)]
 pub struct ReviewArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     #[arg(long)]
     holding: String,
     #[arg(long)]
     amount: String,
     #[arg(long)]
-    destination: String,
+    to: String,
 }
 
 #[derive(Args)]
 pub struct PreviewArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     #[arg(long)]
     holding: String,
     #[arg(long)]
     amount: String,
     #[arg(long, default_value = "")]
-    destination: String,
+    to: String,
 }
 
 #[derive(Args)]
 pub struct IdentityArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// Defaults to the wallet's chain; EVM wallets may select another shared-address chain.
     #[arg(long)]
     chain: Option<String>,
@@ -119,11 +119,11 @@ impl Report for PreflightReport {
 }
 
 pub fn review(ctx: &Ctx, out: Out, args: ReviewArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let preflight = ctx.rt.block_on(ctx.service()?.send_submit_preflight(
         wallet.id,
         args.holding,
-        args.destination,
+        args.to,
         args.amount,
     ))?;
     out.report(&PreflightReport { preflight })
@@ -171,12 +171,12 @@ impl Report for PreviewReport {
 }
 
 pub fn preview(ctx: &Ctx, out: Out, args: PreviewArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let preview = ctx.rt.block_on(ctx.service()?.preview_owned_send(
         wallet.id,
         args.holding,
         args.amount,
-        args.destination,
+        args.to,
         None,
         None,
     ))?;
@@ -234,9 +234,9 @@ pub fn build(ctx: &Ctx, out: Out, args: OwnedSendArgs) -> CliResult<()> {
 
 pub fn broadcast(ctx: &Ctx, out: Out, args: OwnedBroadcastArgs) -> CliResult<()> {
     if !args.yes {
-        return Err(CliError::usage("owned-broadcast requires --yes"));
+        return Err(CliError::unconfirmed("signs the send and broadcasts it"));
     }
-    let wallet = ctx.find_wallet(&args.send.wallet)?;
+    let wallet = args.send.wallet.find(ctx)?;
     let password = args.password.for_wallet(&wallet)?;
     let input = args.send.input(ctx)?;
     let service = ctx.service()?;
@@ -267,7 +267,7 @@ impl Report for IdentityReport {
 }
 
 pub fn identity(ctx: &Ctx, out: Out, args: IdentityArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let chain = match args.chain.as_deref() {
         Some(name) => resolve_chain(name)?,
         None => wallet.chain_id,
@@ -330,7 +330,7 @@ impl Report for MoneroSyncReport {
 }
 
 pub fn monero_status(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let sync = ctx
         .rt
         .block_on(ctx.service()?.monero_sync_status(wallet.id.clone()))?;
@@ -342,7 +342,7 @@ pub fn monero_status(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
 
 pub fn sync_monero(ctx: &Ctx, out: Out, args: SyncMoneroArgs) -> CliResult<()> {
     let identity = args.identity;
-    let wallet = ctx.find_wallet(&identity.wallet)?;
+    let wallet = identity.wallet.find(ctx)?;
     if let Some(chain) = identity.chain.as_deref()
         && resolve_chain(chain)? != wallet.chain_id
     {

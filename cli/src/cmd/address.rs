@@ -309,7 +309,7 @@ fn book_remove(ctx: &Ctx, out: Out, args: BookRemoveArgs) -> CliResult<()> {
             entry.id.eq_ignore_ascii_case(&args.contact)
                 || entry.name.eq_ignore_ascii_case(&args.contact)
         })
-        .ok_or_else(|| CliError::failure(format!("no contact matching {:?}", args.contact)))?;
+        .ok_or_else(|| CliError::rejected(format!("no contact matching {:?}", args.contact)))?;
     ctx.apply(StateCommand::RemoveAddressBookEntry {
         id: entry.id.clone(),
     })?;

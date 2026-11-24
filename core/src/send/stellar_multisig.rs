@@ -16,6 +16,7 @@ use ed25519_dalek::{Signer, SigningKey, Verifier, VerifyingKey};
 use sha2::{Digest, Sha256};
 
 use crate::api::horizon::{MAX_SIGNERS, StellarSigners};
+use crate::derivation::primitives::ByteReader;
 use crate::derivation::stellar::{address_from_public_key, decode_stellar_address};
 use crate::send::error::SendError;
 use crate::send::payment_memo::StellarMemo;
@@ -134,41 +135,16 @@ impl StellarPayment {
     }
 }
 
-struct Reader<'a> {
-    bytes: &'a [u8],
-}
-
-impl<'a> Reader<'a> {
-    fn take(&mut self, length: usize) -> Result<&'a [u8], SendError> {
-        if length > self.bytes.len() {
-            return Err(unread());
-        }
-        let (taken, rest) = self.bytes.split_at(length);
-        self.bytes = rest;
-        Ok(taken)
-    }
-
-    fn u32(&mut self) -> Result<u32, SendError> {
-        Ok(u32::from_be_bytes(
-            self.take(4)?.try_into().expect("4 bytes"),
-        ))
-    }
-
-    fn u64(&mut self) -> Result<u64, SendError> {
-        Ok(u64::from_be_bytes(
-            self.take(8)?.try_into().expect("8 bytes"),
-        ))
-    }
-
+impl<'a> ByteReader<'a, SendError> {
     fn key(&mut self) -> Result<[u8; 32], SendError> {
-        if self.u32()? != 0 {
+        if self.u32_be()? != 0 {
             return Err(unread());
         }
         Ok(self.take(32)?.try_into().expect("32 bytes"))
     }
 
     fn opaque(&mut self, limit: usize) -> Result<&'a [u8], SendError> {
-        let length = self.u32()? as usize;
+        let length = self.u32_be()? as usize;
         if length > limit {
             return Err(unread());
         }
@@ -187,37 +163,37 @@ fn unread() -> SendError {
 pub(crate) fn decode(
     envelope: &[u8],
 ) -> Result<(StellarPayment, Vec<StellarSignature>), SendError> {
-    let mut reader = Reader { bytes: envelope };
-    if reader.u32()? != 2 {
+    let mut reader = ByteReader::new(envelope, |_| unread());
+    if reader.u32_be()? != 2 {
         return Err(unread());
     }
     let source = reader.key()?;
-    let fee = reader.u32()?;
-    let sequence = reader.u64()? as i64;
-    if reader.u32()? != 1 {
+    let fee = reader.u32_be()?;
+    let sequence = reader.u64_be()? as i64;
+    if reader.u32_be()? != 1 {
         return Err(unread());
     }
-    let (min_time, max_time) = (reader.u64()?, reader.u64()?);
-    let memo = match reader.u32()? {
+    let (min_time, max_time) = (reader.u64_be()?, reader.u64_be()?);
+    let memo = match reader.u32_be()? {
         0 => None,
         1 => Some(OwnedMemo::Text(
             String::from_utf8(reader.opaque(28)?.to_vec()).map_err(|_| unread())?,
         )),
-        2 => Some(OwnedMemo::Id(reader.u64()?)),
+        2 => Some(OwnedMemo::Id(reader.u64_be()?)),
         _ => return Err(unread()),
     };
-    if reader.u32()? != 1 || reader.u32()? != 0 || reader.u32()? != 1 {
+    if reader.u32_be()? != 1 || reader.u32_be()? != 0 || reader.u32_be()? != 1 {
         return Err(unread());
     }
     let destination = reader.key()?;
-    if reader.u32()? != 0 {
+    if reader.u32_be()? != 0 {
         return Err(unread());
     }
-    let stroops = reader.u64()? as i64;
-    if reader.u32()? != 0 {
+    let stroops = reader.u64_be()? as i64;
+    if reader.u32_be()? != 0 {
         return Err(unread());
     }
-    let count = reader.u32()? as usize;
+    let count = reader.u32_be()? as usize;
     if count > MAX_SIGNERS {
         return Err(unread());
     }
@@ -227,7 +203,7 @@ pub(crate) fn decode(
         let signature = reader.opaque(64)?.to_vec();
         signatures.push(StellarSignature { hint, signature });
     }
-    if !reader.bytes.is_empty() {
+    if !reader.is_empty() {
         return Err(unread());
     }
     let payment = StellarPayment {

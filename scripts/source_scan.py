@@ -158,9 +158,3 @@ def split_test_code(path, text, declared_tests):
         production.append((i + 1, lines[i]))
         i += 1
     return production, ''.join(test)
-
-
-def production_text(path, declared_tests):
-    """A Rust file's text outside its tests."""
-    text = path.read_text(errors='replace')
-    return ''.join(line for _, line in split_test_code(path, text, declared_tests)[0])

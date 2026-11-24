@@ -29,7 +29,7 @@ impl std::ops::Deref for OpenService {
 /// A catalog service, as the CLI and the app construct one, with its state
 /// opened.
 pub(crate) async fn open() -> OpenService {
-    let directory = std::env::temp_dir().join(crate::store::new_event_id());
+    let directory = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&directory).unwrap();
     let service = WalletService::new_catalog().unwrap();
     service.set_secret_store(Arc::new(InMemorySecretStore::new()));

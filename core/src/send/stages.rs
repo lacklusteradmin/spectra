@@ -517,7 +517,7 @@ impl StoredSend {
         } = new;
         let mut stored = Self {
             view: SendArtifact {
-                id: crate::store::new_transaction_id(),
+                id: crate::store::new_id(),
                 revision: 0,
                 stage: SendStage::Prepared,
                 wallet_id: request.wallet_id.clone(),

@@ -132,7 +132,7 @@ fn an_account_receives_at_its_reference_unified_address() {
     let vector = &vectors["unified"]["vectors"][3];
     assert!(vector["p2pkh_bytes"].is_null() && vector["diversifier_index"] == 0);
     let network = Network::MainNetwork;
-    let directory = std::env::temp_dir().join(crate::store::new_event_id());
+    let directory = std::env::temp_dir().join(crate::store::new_id());
     let path = directory.join("wallet.sqlite");
     let mut db = open_zcash_db(&path, network).unwrap();
     assert_eq!(unified_address(&db, &network).unwrap(), None);

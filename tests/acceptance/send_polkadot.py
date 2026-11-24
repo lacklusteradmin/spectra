@@ -8,7 +8,7 @@ import hashlib
 import json
 import sqlite3
 
-from harness import ABANDON, FIXTURES, JsonRpc, RpcError, Spectra, scratch, serve
+from harness import ABANDON, FIXTURES, JsonRpc, RpcError, Spectra, block_hash, scale_compact, scratch, serve
 
 SCALE = 10 ** 10
 GENESIS = '0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f'
@@ -17,23 +17,12 @@ EVENTS_KEY = '0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7
 RECIPIENT = '13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB'
 
 
-def compact(value):
-    if value < 64: return bytes([value << 2])
-    if value < 16384: return ((value << 2) | 1).to_bytes(2, 'little')
-    if value < 2**30: return ((value << 2) | 2).to_bytes(4, 'little')
-    length = max(4, (value.bit_length() + 7) // 8)
-    return bytes([((length - 4) << 2) | 3]) + value.to_bytes(length, 'little')
-
-
-def block_hash(number): return '0x' + number.to_bytes(32, 'big').hex()
-
-
 def dispatch_event(succeeded):
     # Vec<EventRecord>: ApplyExtrinsic(0), RuntimeEvent::System,
     # ExtrinsicSuccess/Failed, DispatchEventInfo, empty topics.
     event = b'\x00' + bytes(4) + b'\x00' + bytes([int(not succeeded)])
     if not succeeded: event += b'\x02'  # DispatchError::BadOrigin
-    return '0x' + (compact(1) + event + bytes(4) + b'\x00').hex()
+    return '0x' + (scale_compact(1) + event + bytes(4) + b'\x00').hex()
 
 
 class Node(JsonRpc):
@@ -84,11 +73,11 @@ with serve(Node, nonce=7, fee=SCALE // 1000, free=10*SCALE, finalized=100, block
         return spectra.run(*arguments) if success else spectra.fail(*arguments)
 
     def poll():
-        return run('txs', '--poll-chain', 'polkadot')['changes']
+        return run('txs', 'poll', 'polkadot')['changes']
 
     run('wallet', 'import', '--chain', 'polkadot', '--name', 'DOT', '--no-password')
-    run('endpoints', '--chain', 'polkadot', '--api', 'substrate-json-rpc',
-        '--capabilities', 'balance,fee,verification,broadcast', '--add', endpoint)
+    run('endpoints', 'add', '--chain', 'polkadot', '--api', 'substrate-json-rpc',
+        '--capabilities', 'balance,fee,verification,broadcast', endpoint)
 
     signed = signed_send()
     raw = signed['signed_payload']
@@ -118,9 +107,9 @@ with serve(Node, nonce=7, fee=SCALE // 1000, free=10*SCALE, finalized=100, block
     assert verified_through(failed['id']) == 166
     failed_changes = poll()
     assert len(failed_changes) == 1 and failed_changes[0]['newStatus'] == 'failed', failed_changes
-    record = run('txs', '--record', failed['id'])['record']
+    record = run('txs', 'show', failed['id'])['record']
     assert record['failureReason']['kind'] == 'executionFailed', record
     assert verified_through(failed['id']) == 166
-    assert run('txs', '--maintenance')['chains'] == []
+    assert run('txs', 'maintenance')['chains'] == []
     print('polkadot staged sends: fee recheck at broadcast, one submission, unchanged rebroadcast, '
           'finalized success and failure recovered across processes')

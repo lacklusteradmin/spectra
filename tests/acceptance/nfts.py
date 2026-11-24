@@ -71,9 +71,9 @@ class NftTests(unittest.TestCase):
         imported = self.spectra.run('wallet', 'import', '--chain', 'ethereum', '--name', 'Collector', '--no-password',
                                     '--private-key-env', 'KEY', env={'KEY': '01' * 32})
         assert imported['wallet']['address'].lower() == OWNER, imported
-        self.spectra.run('endpoints', '--chain', 'ethereum', '--api', 'evm-json-rpc', '--capabilities',
-                         'balance,fee,broadcast,verification,token-balance', '--add', self.rpc)
-        self.spectra.run('endpoints', '--chain', 'ethereum', '--custom-only', 'true')
+        self.spectra.run('endpoints', 'add', '--chain', 'ethereum', '--api', 'evm-json-rpc', '--capabilities',
+                         'balance,fee,broadcast,verification,token-balance', self.rpc)
+        self.spectra.run('endpoints', 'custom-only', '--chain', 'ethereum', 'true')
         self.send(APES, '1234', '1', VECTORS['erc721'])
         self.send(ITEMS, '7', '3', VECTORS['erc1155'])
         assert self.submitted == [VECTORS['erc721']['raw'], VECTORS['erc1155']['raw']], self.submitted

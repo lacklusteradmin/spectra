@@ -3,10 +3,7 @@ use crate::api::endpoint::{EndpointApi, endpoint_capability_options};
 
 fn database() -> String {
     std::env::temp_dir()
-        .join(format!(
-            "spectra-write-{}.sqlite",
-            crate::store::new_event_id()
-        ))
+        .join(format!("spectra-write-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned()
 }

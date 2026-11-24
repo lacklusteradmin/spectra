@@ -10,14 +10,14 @@ use spectra_core::service::OwnedReplacementDraft;
 
 use super::{ArtifactReport, ArtifactsReport, BroadcastReport, MemoArgs};
 use crate::cmd::resolve_chain;
-use crate::ctx::{Ctx, PasswordArgs};
+use crate::ctx::{Ctx, PasswordArgs, WalletArg};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out, Report};
 
 #[derive(Args)]
 pub struct BuildArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     #[arg(long)]
     to: String,
     #[arg(long)]
@@ -61,7 +61,7 @@ pub struct BroadcastArgs {
 }
 
 pub fn build(ctx: &Ctx, out: Out, args: BuildArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let chain = wallet.chain_id;
     let service = ctx.service_with_endpoints(chain, args.endpoint.into_iter().collect())?;
     let overrides = (args.nonce.is_some()
@@ -126,7 +126,7 @@ pub fn sign(ctx: &Ctx, out: Out, args: SignArgs) -> CliResult<()> {
 
 pub fn broadcast(ctx: &Ctx, out: Out, args: BroadcastArgs) -> CliResult<()> {
     if !args.yes {
-        return Err(CliError::usage("broadcast-signed requires --yes"));
+        return Err(CliError::unconfirmed("broadcasts the signed transaction"));
     }
     let stored = ctx
         .rt
@@ -140,7 +140,7 @@ pub fn broadcast(ctx: &Ctx, out: Out, args: BroadcastArgs) -> CliResult<()> {
 
 pub fn rebroadcast(ctx: &Ctx, out: Out, transaction_id: String, yes: bool) -> CliResult<()> {
     if !yes {
-        return Err(CliError::usage("rebroadcast requires --yes"));
+        return Err(CliError::unconfirmed("broadcasts the transaction again"));
     }
     let transaction_hash = ctx
         .rt

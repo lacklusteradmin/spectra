@@ -105,7 +105,7 @@ impl DiagnosticState {
         self.logs.insert(
             0,
             DiagnosticLog {
-                id: crate::store::new_transaction_id(),
+                id: crate::store::new_id(),
                 timestamp_unix: crate::store::now_unix(),
                 input,
             },
@@ -329,7 +329,7 @@ mod tests {
         let service = WalletService::new_catalog().unwrap();
         let path = std::env::temp_dir().join(format!(
             "chain-diagnostics-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into())
@@ -413,7 +413,8 @@ mod tests {
             })
             .await
             .unwrap();
-        let parsed = diagnostics_bundle_from_json(bundle).unwrap();
+        let parsed: crate::diagnostics::DiagnosticsBundlePayload =
+            serde_json::from_str(&bundle).unwrap();
         assert_eq!(parsed.environment.app_version, "9.9");
         assert_eq!(parsed.environment.selected_fiat_currency, "USD");
         assert_eq!(parsed.environment.wallet_count, 0);
@@ -450,7 +451,7 @@ mod tests {
         let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir().join(format!(
             "diagnostic-owned-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into())

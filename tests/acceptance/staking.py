@@ -12,19 +12,8 @@ import hashlib
 import json
 import urllib.parse
 
-from harness import ABANDON, ARGS, FIXTURES, JsonRpc, RpcError, Spectra, checked, fixture, scratch, serve
-
-ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-
-
-def b58(raw):
-    number = int.from_bytes(raw, 'big')
-    text = ''
-    while number:
-        number, digit = divmod(number, 58)
-        text = ALPHABET[digit] + text
-    return '1' * (len(raw) - len(raw.lstrip(b'\0'))) + text
-
+from harness import (ABANDON, ARGS, FIXTURES, JsonRpc, RpcError, Spectra, b58decode, b58encode, checked, fixture,
+                     scale_compact, scratch, serve)
 
 def aptos_call(raw):
     """The entry function, arguments, max gas and Ed25519 signature of an
@@ -62,22 +51,6 @@ def aptos_call(raw):
     return function, arguments, max_gas, vector()
 
 
-def unb58(text):
-    number = 0
-    for char in text:
-        number = number*58 + ALPHABET.index(char)
-    return b'\0'*(len(text)-len(text.lstrip('1'))) + number.to_bytes((number.bit_length()+7)//8,'big')
-
-
-def compact(value):
-    if value<64:
-        return bytes([value<<2])
-    if value<16384:
-        return ((value<<2)|1).to_bytes(2,'little')
-    if value<2**30:
-        return ((value<<2)|2).to_bytes(4,'little')
-    count=max(4,(value.bit_length()+7)//8)
-    return bytes([((count-4)<<2)|3])+value.to_bytes(count,'little')
 
 
 class Node(JsonRpc):
@@ -126,7 +99,7 @@ class Node(JsonRpc):
         if method == 'getGenesisHash':
             return '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d'
         if method == 'getLatestBlockhash':
-            return {'value': {'blockhash': b58(bytes([0x33]) * 32), 'lastValidBlockHeight': 1000}}
+            return {'value': {'blockhash': b58encode(bytes([0x33]) * 32), 'lastValidBlockHeight': 1000}}
         if method == 'isBlockhashValid':
             return {'value': s['block_valid']}
         if method == 'getVoteAccounts':
@@ -147,9 +120,9 @@ class Node(JsonRpc):
             return {'value': {'err': None if s['simulation'] else {'InstructionError': [0, 'Custom']}}}
         if method == 'sendTransaction':
             raw = base64.b64decode(params[0])
-            assert b58(raw[1:65]) == s['hash']
+            assert b58encode(raw[1:65]) == s['hash']
             s['submitted'].append(params[0])
-            return b58(bytes([0x55]) * 64) if s['foreign'] else s['hash']
+            return b58encode(bytes([0x55]) * 64) if s['foreign'] else s['hash']
         if method == 'getSignatureStatuses':
             return {'value': [None if not s['final'] else {'confirmationStatus': 'finalized', 'slot': 101, 'err': None if s['succeeded'] else {'InstructionError': [0, 'Custom']}}]}
         raise AssertionError(method)
@@ -179,9 +152,9 @@ class Node(JsonRpc):
             return {'effects': {'status': {'status': 'success' if s['simulation'] else 'failure'}}}
         if method == 'sui_executeTransactionBlock':
             raw = base64.b64decode(params[0])
-            assert b58(hashlib.blake2b(b'TransactionData::' + raw, digest_size=32).digest()) == s['hash']
+            assert b58encode(hashlib.blake2b(b'TransactionData::' + raw, digest_size=32).digest()) == s['hash']
             s['submitted'].append(params)
-            return {'digest': b58(bytes([0x55])*32) if s['foreign'] else s['hash'], 'effects': {'status': {'status': 'success'}}}
+            return {'digest': b58encode(bytes([0x55])*32) if s['foreign'] else s['hash'], 'effects': {'status': {'status': 'success'}}}
         if method == 'sui_getTransactionBlock':
             if not s['final']:
                 return {'digest': s['hash']}
@@ -217,8 +190,8 @@ class Node(JsonRpc):
             return {'chain_id': 'mainnet'}
         if method == 'block':
             if params.get('finality') == 'optimistic':
-                return {'header': {'hash': b58(bytes([0x66])*32), 'height': 96501 if s.get('expired') else 10001}}
-            return {'header': {'hash': b58(bytes([0x33])*32), 'height': 10000}}
+                return {'header': {'hash': b58encode(bytes([0x66])*32), 'height': 96501 if s.get('expired') else 10001}}
+            return {'header': {'hash': b58encode(bytes([0x33])*32), 'height': 10000}}
         if method == 'gas_price':
             return {'gas_price': str(s['gas_price'])}
         if method == 'EXPERIMENTAL_protocol_config':
@@ -243,9 +216,9 @@ class Node(JsonRpc):
             return {'result': list(json.dumps(value).encode()), 'block_height': 100, 'logs': []}
         if method == 'broadcast_tx_commit':
             raw = base64.b64decode(params[0])
-            assert b58(hashlib.sha256(raw[:-65]).digest()) == s['hash']
+            assert b58encode(hashlib.sha256(raw[:-65]).digest()) == s['hash']
             s['submitted'].append(params[0])
-            return {'transaction': {'hash': b58(bytes([0x55])*32) if s['foreign'] else s['hash']}}
+            return {'transaction': {'hash': b58encode(bytes([0x55])*32) if s['foreign'] else s['hash']}}
         if method == 'tx':
             return {'transaction': {'hash': s['hash'], 'signer_id': s['owner']},
                     'final_execution_status': 'FINAL' if s['final'] else 'INCLUDED',
@@ -272,7 +245,7 @@ class Node(JsonRpc):
             key=params[0]
             if key=='0x26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7':
                 # One System::ExtrinsicSuccess event with empty topics.
-                return '0x'+(compact(1)+bytes(5)+bytes(2)+bytes(4)+bytes(1)).hex()
+                return '0x'+(scale_compact(1)+bytes(5)+bytes(2)+bytes(4)+bytes(1)).hex()
             if key.startswith('0x26aa394eea5630e07c48ae0c9558cef7b99d'):
                 return '0x'+(s['nonce'].to_bytes(4,'little')+bytes(12)+s['balance'].to_bytes(16,'little')+bytes(48)).hex()
             member_key=vectors['state']['member']['key']
@@ -317,7 +290,7 @@ class Node(JsonRpc):
 def account_case(chain):
     """A stake lost in flight, retried with the same bytes from a new
     process, then recovered from its exact hash once final."""
-    target = b58(bytes([0x22])*32) if chain=='solana' else ('validator.poolv1.near' if chain=='near' else '0x'+'22'*32)
+    target = b58encode(bytes([0x22])*32) if chain=='solana' else ('validator.poolv1.near' if chain=='near' else '0x'+'22'*32)
     with serve(Node, chain=chain, owner='', nonce=7, balance=100*10**{'solana':9, 'sui':9, 'aptos':8, 'near':24}[chain],
                gas_price=100 if chain=='aptos' else 100000000, authority=True, simulation=True, block_valid=True,
                foreign=True, final=False, succeeded=True, submitted=[], errors=[], hash=None, target=target) as node, \
@@ -326,7 +299,7 @@ def account_case(chain):
         run = checked(Spectra(directory, SPECTRA_SEED=ABANDON), s['errors'])
         api = {'solana':'solana-json-rpc', 'sui':'sui-json-rpc', 'aptos':'aptos-rest', 'near':'near-json-rpc'}[chain]
         s['owner'] = run('wallet','import','--chain',chain,'--name','Stake','--no-password')['wallet']['address']
-        run('endpoints','--chain',chain,'--api',api,'--capabilities','staking,balance,fee,verification,broadcast','--add',endpoint)
+        run('endpoints','add','--chain',chain,'--api',api,'--capabilities','staking,balance,fee,verification,broadcast',endpoint)
         amount = '20' if chain=='aptos' else '2'
         prepared = run('staking','build','Stake','--chain',chain,'--action','stake','--validator',s['target'],'--amount',amount)['artifact']
         assert prepared['staking']['action']=='stake' and prepared['review']['staking'] and prepared['review']['network_fee']['amount'], prepared
@@ -354,7 +327,7 @@ def account_case(chain):
         refused = run(*broadcast, success=False)
         assert 'already confirmed' in refused['error'], refused
         assert len(s['submitted'])==2, s['submitted']
-        record = run('txs','--record',signed['id'])['record']
+        record = run('txs','show',signed['id'])['record']
         assert record['transactionHash']==s['hash'] and record['status']=='confirmed', record
         print(f'{chain}: reviewed stake, refused broadcast, uncertain retry and exact finality recovery passed', flush=True)
 
@@ -366,8 +339,8 @@ def polkadot_case():
         s, endpoint = node.state, node.url
         run = checked(Spectra(directory, SPECTRA_SEED=ABANDON), s['errors'])
         s['owner']=run('wallet','import','--chain','polkadot','--name','Stake','--no-password')['wallet']['address']
-        s['public']=unb58(s['owner'])[1:33]
-        run('endpoints','--chain','polkadot','--api','substrate-json-rpc','--capabilities','staking,balance,fee,verification,broadcast','--add',endpoint)
+        s['public']=b58decode(s['owner'])[1:33]
+        run('endpoints','add','--chain','polkadot','--api','substrate-json-rpc','--capabilities','staking,balance,fee,verification,broadcast',endpoint)
         prepared=run('staking','build','Stake','--action','stake','--validator','7','--amount','1')['artifact']
         signed=run('send','sign',prepared['id'],'--review-digest',prepared['review_digest'],'--endpoint',endpoint)['artifact']
         s['hash']=signed['transaction_hash']
@@ -382,7 +355,7 @@ def polkadot_case():
         run('staking','recheck','--id',signed['id'])
         refusal=run(*broadcast,success=False)
         assert 'already final; do not rebroadcast' in refusal['error'],refusal
-        record=run('txs','--record',signed['id'])['record']
+        record=run('txs','show',signed['id'])['record']
         assert record['transactionHash']==s['hash'] and record['status']=='confirmed',record
         print('polkadot: nomination-pool stake, durable uncertain submission and finalized event recovery passed',flush=True)
 

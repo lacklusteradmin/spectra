@@ -108,7 +108,7 @@ async fn only_a_held_asset_can_be_hidden() {
 
 #[tokio::test]
 async fn a_hidden_holding_stays_hidden_after_reopening() {
-    let directory = std::env::temp_dir().join(crate::store::new_event_id());
+    let directory = std::env::temp_dir().join(crate::store::new_id());
     std::fs::create_dir_all(&directory).unwrap();
     let db = directory.join("state.sqlite");
     {

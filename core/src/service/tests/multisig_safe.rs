@@ -181,10 +181,8 @@ async fn wallets(server: &MockServer) -> Wallets {
     }])
     .unwrap();
     service.set_secret_store(Arc::new(InMemorySecretStore::new()));
-    let database = std::env::temp_dir().join(format!(
-        "multisig-safe-{}.sqlite",
-        crate::store::new_event_id()
-    ));
+    let database =
+        std::env::temp_dir().join(format!("multisig-safe-{}.sqlite", crate::store::new_id()));
     service
         .open_state(database.to_string_lossy().into_owned())
         .await

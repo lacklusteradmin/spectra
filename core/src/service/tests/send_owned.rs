@@ -57,10 +57,7 @@ async fn wallets(endpoints: Vec<String>, elsewhere: &str) -> Arc<WalletService> 
     }])
     .unwrap();
     let database = std::env::temp_dir()
-        .join(format!(
-            "owned-send-{}.sqlite",
-            crate::store::new_event_id()
-        ))
+        .join(format!("owned-send-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     service.open_state(database).await.unwrap();

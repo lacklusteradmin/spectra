@@ -191,7 +191,7 @@ mod tests {
     fn continuation_and_exhaustion_survive_reopen_and_reset() {
         let path = std::env::temp_dir().join(format!(
             "spectra-history-pagination-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         let database = WalletDatabase::new(path.to_str().unwrap());
         let first = HistoryPaginationStore::new();

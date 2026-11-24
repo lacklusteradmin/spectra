@@ -69,7 +69,7 @@ impl WalletService {
             .transactions()
             .await?
             .into_iter()
-            .find(|row| row.id.eq_ignore_ascii_case(&transaction_id))
+            .find(|row| row.id == transaction_id)
             .ok_or_else(|| SpectraBridgeError::InvalidInput {
                 message: "Transaction not found.".into(),
             })?;

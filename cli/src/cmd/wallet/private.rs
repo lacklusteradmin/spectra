@@ -15,8 +15,8 @@ use crate::out::{self, Out, Report};
 /// A wallet whose private funds this device scans for.
 #[derive(Args)]
 pub struct ScanSyncArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// Scan one batch and stop.
     #[arg(long)]
     once: bool,
@@ -26,8 +26,8 @@ pub struct ScanSyncArgs {
 
 #[derive(Args)]
 pub struct SendShieldedArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The recipient: a unified, Sapling or transparent Zcash address.
     #[arg(long)]
     to: String,
@@ -41,8 +41,8 @@ pub struct SendShieldedArgs {
 
 #[derive(Args)]
 pub struct MwebPeginArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// How much LTC arrives in MWEB, as an exact decimal.
     #[arg(long)]
     amount: String,
@@ -50,8 +50,8 @@ pub struct MwebPeginArgs {
 
 #[derive(Args)]
 pub struct SendMwebArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The recipient: an MWEB address, or any other Litecoin address for a
     /// peg-out.
     #[arg(long)]
@@ -88,7 +88,7 @@ impl Report for ShieldedReport {
 }
 
 pub fn zcash_sync(ctx: &Ctx, out: Out, args: ScanSyncArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let password = args.password.for_wallet(&wallet)?;
     let service = ctx.service()?;
     // Each batch moves the scan on or finishes it.
@@ -113,7 +113,7 @@ pub fn zcash_sync(ctx: &Ctx, out: Out, args: ScanSyncArgs) -> CliResult<()> {
 }
 
 pub fn zcash_status(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let shielded = ctx
         .rt
         .block_on(ctx.service()?.zcash_shielded_status(wallet.id))?;
@@ -124,7 +124,7 @@ pub fn zcash_status(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
 }
 
 pub fn shield(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let artifact = ctx
         .rt
         .block_on(ctx.service()?.build_zcash_shielding(wallet.id))?;
@@ -132,7 +132,7 @@ pub fn shield(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
 }
 
 pub fn send_shielded(ctx: &Ctx, out: Out, args: SendShieldedArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx.rt.block_on(ctx.service()?.build_zcash_shielded_send(
         wallet.id,
         args.to,
@@ -171,7 +171,7 @@ impl Report for MwebReport {
 }
 
 pub fn mweb_sync(ctx: &Ctx, out: Out, args: ScanSyncArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let password = args.password.for_wallet(&wallet)?;
     let service = ctx.service()?;
     // Each batch moves the scan on or finishes it.
@@ -193,7 +193,7 @@ pub fn mweb_sync(ctx: &Ctx, out: Out, args: ScanSyncArgs) -> CliResult<()> {
 }
 
 pub fn mweb_status(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let mweb = ctx
         .rt
         .block_on(ctx.service()?.litecoin_mweb_status(wallet.id))?;
@@ -204,7 +204,7 @@ pub fn mweb_status(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
 }
 
 pub fn mweb_pegin(ctx: &Ctx, out: Out, args: MwebPeginArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx.rt.block_on(
         ctx.service()?
             .build_litecoin_mweb_pegin(wallet.id, args.amount),
@@ -213,7 +213,7 @@ pub fn mweb_pegin(ctx: &Ctx, out: Out, args: MwebPeginArgs) -> CliResult<()> {
 }
 
 pub fn send_mweb(ctx: &Ctx, out: Out, args: SendMwebArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx.rt.block_on(ctx.service()?.build_litecoin_mweb_send(
         wallet.id,
         args.to,

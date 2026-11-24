@@ -29,8 +29,8 @@ with serve(Node, chain='near', owner='', nonce=7, balance=100*UNIT, gas_price=10
     s, endpoint = node.state, node.url
     run = checked(Spectra(directory, SPECTRA_SEED=ABANDON), s['errors'])
     s['owner'] = run('wallet', 'import', '--chain', 'near', '--name', 'Near', '--no-password')['wallet']['address']
-    run('endpoints', '--chain', 'near', '--api', 'near-json-rpc',
-        '--capabilities', 'balance,fee,verification,token-balance,broadcast', '--add', endpoint)
+    run('endpoints', 'add', '--chain', 'near', '--api', 'near-json-rpc',
+        '--capabilities', 'balance,fee,verification,token-balance,broadcast', endpoint)
     prepared = run('send', 'build', 'Near', '--to', '22'*32, '--amount', '1', '--endpoint', endpoint)['artifact']
     signed = run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
                  '--endpoint', endpoint)['artifact']
@@ -53,6 +53,6 @@ with serve(Node, chain='near', owner='', nonce=7, balance=100*UNIT, gas_price=10
     refusal = run(*broadcast, success=False)
     assert 'already confirmed' in refusal['error'], refusal
     assert len(s['submitted']) == 2
-    record = run('txs', '--record', signed['id'])['record']
+    record = run('txs', 'show', signed['id'])['record']
     assert record['status'] == 'confirmed' and record['transactionHash'] == s['hash'], record
     print('near native: durable retries and final status recovery passed', flush=True)

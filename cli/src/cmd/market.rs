@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use clap::Args;
+use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use serde::Serialize;
 use spectra_core::amount::presentation::{AssetPrecisionCatalog, format_asset_amount};
@@ -17,47 +17,62 @@ use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out, Report};
 
+#[derive(Subcommand)]
+pub enum PriceCommand {
+    /// A chain's native asset, priced now in the display currency.
+    Spot(SpotArgs),
+    /// The quotes core holds, without the network.
+    Stored,
+    /// Refresh the prices of stored holdings and price alerts.
+    Refresh,
+}
+
 #[derive(Args)]
-pub struct PriceArgs {
+pub struct SpotArgs {
     /// Chain display name or registry id.
-    chain: Option<String>,
-    /// Refresh prices for stored holdings and price alerts.
-    #[arg(long)]
-    refresh: bool,
-    /// Read core-owned cached quotes without network.
-    #[arg(long)]
-    stored: bool,
+    chain: String,
+}
+
+#[derive(Subcommand)]
+pub enum PortfolioCommand {
+    /// Refresh balances, prices and the display currency's rate, then value
+    /// the holdings. A wallet whose balance cannot be read is listed as
+    /// unavailable.
+    Live,
+    /// Value the holdings from stored balances and quotes, without the
+    /// network.
+    Stored,
+    /// The assets the dashboard can pin, and which it does, without the
+    /// network.
+    Pins,
+    /// Pin exactly these token ids on the dashboard, in this order.
+    SetPins(TokenIdsArgs),
+    /// Unpin these token ids from the dashboard.
+    Unpin(TokenIdsArgs),
 }
 
 #[derive(Args)]
-pub struct PortfolioArgs {
-    /// Replace dashboard pins with these token IDs; repeat to set their order.
-    #[arg(long)]
-    pin_token: Vec<String>,
-    /// Unpin one token ID from the set the dashboard shows (repeatable).
-    #[arg(long)]
-    unpin_token: Vec<String>,
-    /// List core-owned pin candidates without network.
-    #[arg(long)]
-    pin_options: bool,
-    /// Render core dashboard groups using stored balances and quotes, without network.
-    #[arg(long)]
-    stored: bool,
-    /// Skip wallets whose balance lookup fails instead of stopping.
-    #[arg(long, default_value_t = true)]
-    skip_unreachable: bool,
+pub struct TokenIdsArgs {
+    #[arg(required = true)]
+    token_ids: Vec<String>,
+}
+
+#[derive(Subcommand)]
+pub enum CurrencyCommand {
+    /// The display currency.
+    Show,
+    /// Switch the display currency.
+    Set(CurrencyCodeArgs),
+    /// The stored USD cross-rates.
+    Rates,
+    /// Fetch the cross-rates and store them.
+    RefreshRates,
 }
 
 #[derive(Args)]
-pub struct CurrencyArgs {
-    /// ISO 4217 code to switch to. Omit to print the current one.
-    code: Option<String>,
-    /// Fetch the cross-rates and store them (needs network).
-    #[arg(long)]
-    refresh_rates: bool,
-    /// Print the stored cross-rates rather than the selected currency.
-    #[arg(long)]
-    rates: bool,
+pub struct CurrencyCodeArgs {
+    /// ISO 4217 code.
+    code: String,
 }
 
 // ─── price ──────────────────────────────────────────────────────────────────
@@ -114,23 +129,22 @@ impl Report for SpotReport {
     }
 }
 
-pub fn price(ctx: &Ctx, out: Out, args: PriceArgs) -> CliResult<()> {
-    if args.refresh || args.stored {
-        let service = ctx.service()?;
-        let state = if args.refresh {
-            ctx.rt.block_on(service.refresh_owned_prices(true))?
-        } else {
-            ctx.rt.block_on(service.app_state())
-        };
-        return out.report(&QuotesReport {
-            quotes: state.quotes,
-        });
-    }
-    let chain = resolve_chain(
-        args.chain
-            .as_deref()
-            .ok_or_else(|| CliError::usage("specify a chain, --stored or --refresh"))?,
-    )?;
+pub fn price(ctx: &Ctx, out: Out, command: PriceCommand) -> CliResult<()> {
+    let args = match command {
+        PriceCommand::Spot(args) => args,
+        PriceCommand::Stored | PriceCommand::Refresh => {
+            let service = ctx.service()?;
+            let state = if matches!(command, PriceCommand::Refresh) {
+                ctx.rt.block_on(service.refresh_owned_prices(true))?
+            } else {
+                ctx.rt.block_on(service.app_state())
+            };
+            return out.report(&QuotesReport {
+                quotes: state.quotes,
+            });
+        }
+    };
+    let chain = resolve_chain(&args.chain)?;
     // Core fetches the quote and converts it with its own stored rate.
     let quote = ctx.rt.block_on(ctx.service()?.native_spot_price(chain))?;
     out.report(&SpotReport {
@@ -309,32 +323,38 @@ impl Report for PortfolioReport {
     }
 }
 
-pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
-    if !args.pin_token.is_empty() {
-        ctx.apply(StateCommand::SetPinnedDashboardAssets {
-            token_ids: args.pin_token,
-        })?;
+pub fn portfolio(ctx: &Ctx, out: Out, command: PortfolioCommand) -> CliResult<()> {
+    match command {
+        PortfolioCommand::Live => return live_portfolio(ctx, out),
+        PortfolioCommand::Stored => {
+            let snapshot = ctx.rt.block_on(ctx.service()?.portfolio_snapshot())?;
+            return out.report(&StoredPortfolioReport {
+                groups: snapshot.groups,
+                valuation: snapshot.valuation,
+                revision: snapshot.revision,
+                asset_precision: snapshot.asset_precision,
+            });
+        }
+        PortfolioCommand::Pins => {}
+        PortfolioCommand::SetPins(args) => {
+            ctx.apply(StateCommand::SetPinnedDashboardAssets {
+                token_ids: args.token_ids,
+            })?;
+        }
+        PortfolioCommand::Unpin(args) => {
+            for token_id in args.token_ids {
+                ctx.apply(StateCommand::SetDashboardAssetPinned {
+                    token_id,
+                    is_pinned: false,
+                })?;
+            }
+        }
     }
-    for token_id in args.unpin_token {
-        ctx.apply(StateCommand::SetDashboardAssetPinned {
-            token_id,
-            is_pinned: false,
-        })?;
-    }
-    if args.pin_options {
-        let options = ctx.rt.block_on(ctx.service()?.dashboard_pin_options())?;
-        return out.report(&PinOptionsReport { options });
-    }
-    if args.stored {
-        let snapshot = ctx.rt.block_on(ctx.service()?.portfolio_snapshot())?;
-        return out.report(&StoredPortfolioReport {
-            groups: snapshot.groups,
-            valuation: snapshot.valuation,
-            revision: snapshot.revision,
-            asset_precision: snapshot.asset_precision,
-        });
-    }
+    let options = ctx.rt.block_on(ctx.service()?.dashboard_pin_options())?;
+    out.report(&PinOptionsReport { options })
+}
 
+fn live_portfolio(ctx: &Ctx, out: Out) -> CliResult<()> {
     // Live means core refreshes what it values from — balances, prices and
     // the display currency's rate — and then values it.
     let service = ctx.service()?;
@@ -345,9 +365,6 @@ pub fn portfolio(ctx: &Ctx, out: Out, args: PortfolioArgs) -> CliResult<()> {
             .rt
             .block_on(service.refresh_wallet_balances(wallet.id.clone()))
         {
-            if !args.skip_unreachable {
-                return Err(error.into());
-            }
             unavailable.push(Unavailable {
                 wallet: wallet.id.clone(),
                 error: error.to_string(),
@@ -453,17 +470,19 @@ impl Report for CurrencyReport {
     }
 }
 
-pub fn currency(ctx: &Ctx, out: Out, args: CurrencyArgs) -> CliResult<()> {
-    if args.refresh_rates || args.rates {
-        return rates(ctx, out, args.refresh_rates);
-    }
-    let current = ctx.state()?.settings.fiat_currency.code();
-    let Some(requested) = args.code else {
-        return out.report(&CurrencyReport {
-            from: None,
-            currency: current,
-        });
+pub fn currency(ctx: &Ctx, out: Out, command: CurrencyCommand) -> CliResult<()> {
+    let requested = match command {
+        CurrencyCommand::Rates => return rates(ctx, out, false),
+        CurrencyCommand::RefreshRates => return rates(ctx, out, true),
+        CurrencyCommand::Show => {
+            return out.report(&CurrencyReport {
+                from: None,
+                currency: ctx.state()?.settings.fiat_currency.code(),
+            });
+        }
+        CurrencyCommand::Set(args) => args.code,
     };
+    let current = ctx.state()?.settings.fiat_currency.code();
     // Reject currency codes absent from the rate table.
     let Some(currency) = FiatCurrency::from_code(&requested) else {
         return Err(CliError::rejected(format!(
@@ -493,7 +512,7 @@ impl Report for RatesReport {
         if self.rates.is_empty() {
             println!(
                 "  {}",
-                out::hint("no rates stored — run with --refresh-rates")
+                out::hint("no rates stored — run `currency refresh-rates`")
             );
             return;
         }

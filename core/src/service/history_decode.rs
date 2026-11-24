@@ -186,7 +186,7 @@ pub(crate) fn build_evm_transaction_records(
                 direction: Default::default(),
                 submitted: false,
                 deployment_id: transfer.deployment_id.clone(),
-                id: crate::store::new_transaction_id(),
+                id: crate::store::new_id(),
                 wallet_id: Some(wallet.wallet_id.clone()),
                 kind: if is_outgoing {
                     TransactionKind::Send

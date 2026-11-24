@@ -1,6 +1,0 @@
-# Pinned so every machine runs the same rustc, rustfmt and clippy.
-# Platform targets are omitted: each front end's build script adds its own.
-[toolchain]
-channel = "1.98.1"
-components = ["rustfmt", "clippy"]
-profile = "minimal"

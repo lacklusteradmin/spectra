@@ -60,7 +60,7 @@ impl WalletService {
         .ok_or_else(|| SpectraBridgeError::failure("token identifier missing"))?;
         let record: TransactionRecord = serde_json::from_value(json!({
             "deploymentId": deployment_id,
-            "id": crate::store::new_transaction_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
+            "id": crate::store::new_id(), "walletId": wallet.id, "kind": "send", "status": "pending",
             "walletName": wallet.name, "assetDisplayName": display_name, "symbol": symbol,
             "chainId": chain.str_id(), "amount": crate::amount::decimal::canonical(&request.amount_str).ok_or_else(|| SpectraBridgeError::failure("invalid amount"))?,
             "address": request.to_address, "sourceAddress": source,
@@ -297,7 +297,7 @@ mod tests {
         .unwrap();
         let path = std::env::temp_dir().join(format!(
             "rebroadcast-owned-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into())
@@ -315,7 +315,7 @@ mod tests {
             .await
             .unwrap();
         let mut record: TransactionRecord = serde_json::from_value(json!({
-            "id": crate::store::new_transaction_id(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainId": "ethereum-sepolia", "amount": "1", "address": "0x2222222222222222222222222222222222222222", "createdAtUnix": 1000.0
+            "id": crate::store::new_id(), "walletId": "w", "kind": "send", "status": "pending", "walletName": "W", "assetDisplayName": "Ether", "symbol": "ETH", "chainId": "ethereum-sepolia", "amount": "1", "address": "0x2222222222222222222222222222222222222222", "createdAtUnix": 1000.0
         })).unwrap();
         service.save_send_record(record.clone()).await.unwrap();
         assert_eq!(

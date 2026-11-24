@@ -58,9 +58,9 @@ class ShieldedTests(unittest.TestCase):
     def wallet(self, device, name='Shielded', restore_height=START):
         """A Zcash wallet restored from the phrase, and the server it scans."""
         device.run('wallet', 'import', '--chain', 'zcash', '--name', name, '--restore-height', str(restore_height))
-        device.run('endpoints', '--chain', 'zcash', '--custom-only', 'true')
-        device.run('endpoints', '--chain', 'zcash', '--api', 'lightwalletd', '--capabilities',
-                   'history,broadcast,verification', '--add', self.chain.url)
+        device.run('endpoints', 'custom-only', '--chain', 'zcash', 'true')
+        device.run('endpoints', 'add', '--chain', 'zcash', '--api', 'lightwalletd', '--capabilities',
+                   'history,broadcast,verification', self.chain.url)
 
     def sync(self, device, name='Shielded'):
         status = device.run('wallet', 'zcash-sync', name)['shielded']
@@ -68,7 +68,7 @@ class ShieldedTests(unittest.TestCase):
         return status
 
     def history(self, device, name='Shielded'):
-        rows = device.run('txs', '--page', '--wallet', name)['page']['records']
+        rows = device.run('txs', 'page', '--wallet', name)['page']['records']
         return sorted((r['kind'], r['amount'], r['status'], r['address']) for r in rows)
 
     def send(self, device, artifact):

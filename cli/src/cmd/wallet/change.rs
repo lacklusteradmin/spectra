@@ -6,30 +6,30 @@ use colored::Colorize as _;
 use serde::Serialize;
 use spectra_core::store::state::StateCommand;
 
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, WalletArg};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Done, Out, Report};
 
 #[derive(Args)]
 pub struct RenameArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// New name.
     name: String,
 }
 
 #[derive(Args)]
 pub struct InclusionArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     #[arg(action = clap::ArgAction::Set)]
     included: bool,
 }
 
 #[derive(Args)]
 pub struct HoldingArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The holding: its deployment id (`ethereum:erc-20:0x…`) or a symbol
     /// only one of the wallet's holdings has.
     asset: String,
@@ -37,8 +37,8 @@ pub struct HoldingArgs {
 
 #[derive(Args)]
 pub struct DeleteArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// Delete without asking for confirmation.
     #[arg(long)]
     yes: bool,
@@ -63,7 +63,7 @@ impl Report for RenameReport {
 }
 
 pub fn rename(ctx: &Ctx, out: Out, args: RenameArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let name = args.name.trim().to_string();
     if name.is_empty() {
         return Err(CliError::rejected("a wallet name cannot be empty"));
@@ -79,7 +79,7 @@ pub fn rename(ctx: &Ctx, out: Out, args: RenameArgs) -> CliResult<()> {
 }
 
 pub fn inclusion(ctx: &Ctx, out: Out, args: InclusionArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     ctx.apply(StateCommand::SetWalletPortfolioInclusion {
         wallet_id: wallet.id,
         included: args.included,
@@ -114,7 +114,7 @@ impl Report for HiddenReport {
 }
 
 pub fn set_hidden(ctx: &Ctx, out: Out, args: HoldingArgs, hidden: bool) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let asset = args.asset.trim();
     let mut matches: Vec<String> = wallet
         .holdings
@@ -173,15 +173,15 @@ impl Report for DeletedReport {
 }
 
 pub fn delete(ctx: &Ctx, out: Out, args: DeleteArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     if !args.yes {
         let secrets = if wallet.is_watch_only() {
             ""
         } else {
             " and its stored signing material"
         };
-        return Err(CliError::usage(format!(
-            "this deletes \"{}\" ({}), its history{secrets} — re-run with --yes",
+        return Err(CliError::unconfirmed(format!(
+            "deletes \"{}\" ({}), its history{secrets}",
             wallet.name,
             wallet.chain_id.chain_display_name()
         )));

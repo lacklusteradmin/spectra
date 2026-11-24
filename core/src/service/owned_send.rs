@@ -695,7 +695,7 @@ impl WalletService {
                 .replaceable_sends()
                 .await?
                 .into_iter()
-                .find(|p| p.transaction_id.eq_ignore_ascii_case(&transaction_id))
+                .find(|p| p.transaction_id == transaction_id)
                 .ok_or_else(|| {
                     SpectraBridgeError::failure("transaction is no longer replaceable")
                 })?;
@@ -709,7 +709,7 @@ impl WalletService {
             let wallet = state
                 .wallets
                 .iter()
-                .find(|w| w.id.eq_ignore_ascii_case(&pending.wallet_id))
+                .find(|w| w.id == pending.wallet_id)
                 .ok_or_else(|| SpectraBridgeError::failure("wallet does not exist"))?;
             super::send_execution::send_chain_for(&state, &wallet.id, chain)?;
             let holding = wallet

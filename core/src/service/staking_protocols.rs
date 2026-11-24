@@ -32,6 +32,260 @@ fn staking_target(request: &StakingRequest) -> Result<&str, SpectraBridgeError> 
     target
         .ok_or_else(|| SpectraBridgeError::invalid("Select an owned staking position or validator"))
 }
+/// The 32-byte Ed25519 key a staking build is signed with, from its hex.
+fn staking_public_key(
+    hex_key: Option<&str>,
+    network: &str,
+) -> Result<[u8; 32], SpectraBridgeError> {
+    hex::decode(hex_key.ok_or_else(|| {
+        SpectraBridgeError::invalid(format!("Missing {network} staking public key"))
+    })?)?
+    .try_into()
+    .map_err(|_| SpectraBridgeError::invalid(format!("Invalid {network} public key")))
+}
+
+/// The staking-pool call an action makes on NEAR: its method, its JSON
+/// arguments and the deposit it attaches. Built and rechecked alike.
+fn near_staking_call(
+    action: StakingAction,
+    amount: u128,
+) -> Result<(&'static str, Vec<u8>, u128), SpectraBridgeError> {
+    Ok(match action {
+        StakingAction::Stake => ("deposit_and_stake", b"{}".to_vec(), amount),
+        StakingAction::Unstake => (
+            "unstake",
+            serde_json::to_vec(&serde_json::json!({"amount": amount.to_string()}))?,
+            0,
+        ),
+        _ => (
+            "withdraw",
+            serde_json::to_vec(&serde_json::json!({"amount": amount.to_string()}))?,
+            0,
+        ),
+    })
+}
+
+async fn prepare_solana_staking(
+    client: SolanaClient,
+    request: &StakingRequest,
+    owner: &str,
+    target: &str,
+    amount: u128,
+) -> Result<PreparedPayload, SpectraBridgeError> {
+    let amount = u64::try_from(amount).map_err(SpectraBridgeError::invalid)?;
+    let blockhash = client.fetch_recent_blockhash().await?;
+    let (rent, seed) = if request.action == StakingAction::Stake {
+        let validators = client.fetch_staking_validators().await?;
+        if !validators.current.iter().any(|v| v.vote_pubkey == target) {
+            return Err(SpectraBridgeError::invalid(
+                "Select an active Solana vote account",
+            ));
+        }
+        if amount < client.fetch_stake_minimum().await? {
+            return Err(SpectraBridgeError::invalid(
+                "Stake is below the live minimum delegation",
+            ));
+        }
+        (
+            client.fetch_stake_rent().await?,
+            Some(crate::store::new_id().replace('-', "")),
+        )
+    } else {
+        validate_sol_position(&client, owner, target, request.action, amount).await?;
+        (0, None)
+    };
+    let mut prepared = crate::send::solana::prepare_staking_data(
+        owner,
+        target,
+        amount,
+        rent,
+        &blockhash,
+        seed.as_deref(),
+        request.action,
+    )?;
+    let fee = client.fetch_staking_message_fee(&prepared.message).await?;
+    prepared.network_fee = Some(fee);
+    let debit = if request.action == StakingAction::Stake {
+        amount
+            .checked_add(rent)
+            .ok_or_else(|| SpectraBridgeError::invalid("Solana stake rent overflow"))?
+    } else {
+        0
+    };
+    require_balance(
+        u128::from(client.fetch_balance(owner).await?.lamports),
+        u128::from(debit),
+        u128::from(fee),
+    )?;
+    if !client.simulate_staking_message(&prepared.message).await? {
+        return Err(SpectraBridgeError::invalid(
+            "Solana staking simulation refused this authority, amount or unlock state",
+        ));
+    }
+    Ok(PreparedPayload::Solana(prepared))
+}
+
+async fn prepare_sui_staking(
+    client: SuiClient,
+    request: &StakingRequest,
+    owner: &str,
+    target: &str,
+    amount: u128,
+) -> Result<PreparedPayload, SpectraBridgeError> {
+    let chain = request.chain_id;
+    let amount = u64::try_from(amount).map_err(SpectraBridgeError::invalid)?;
+    client.validate_staking_system(chain).await?;
+    let prepared = if request.action == StakingAction::Stake {
+        if amount < chain.sui_staking_minimum()? {
+            return Err(SpectraBridgeError::invalid(
+                "Sui stake is below the protocol minimum",
+            ));
+        }
+        if !client
+            .fetch_staking_validators()
+            .await?
+            .active_validators
+            .iter()
+            .any(|v| v.sui_address == target)
+        {
+            return Err(SpectraBridgeError::invalid(
+                "Select an active Sui validator",
+            ));
+        }
+        crate::send::sui::prepare_staking(
+            &client,
+            owner,
+            Some(target),
+            amount,
+            None,
+            Chain::Sui.sui_staking_gas_budget()?,
+        )
+        .await?
+    } else {
+        let object = validate_sui_position(&client, owner, target, amount).await?;
+        crate::send::sui::prepare_staking(
+            &client,
+            owner,
+            None,
+            0,
+            Some((target, &object)),
+            Chain::Sui.sui_staking_gas_budget()?,
+        )
+        .await?
+    };
+    client.simulate_staking(&prepared.bytes).await?;
+    Ok(PreparedPayload::Sui(prepared))
+}
+
+async fn prepare_aptos_staking(
+    client: AptosClient,
+    request: &StakingRequest,
+    owner: &str,
+    target: &str,
+    amount: u128,
+    public: [u8; 32],
+) -> Result<PreparedPayload, SpectraBridgeError> {
+    let chain = request.chain_id;
+    let amount = u64::try_from(amount).map_err(SpectraBridgeError::invalid)?;
+    validate_aptos_position(&client, owner, target, request.action, amount).await?;
+    let price = client.fetch_gas_price().await?;
+    let limit = chain.aptos_max_gas_amount()?;
+    let sequence = client.fetch_account_info(owner).await?.0;
+    let expiry = crate::store::now_unix() as u64 + chain.aptos_transaction_lifetime_secs()?;
+    let initial = crate::send::aptos::prepare_delegation(
+        owner,
+        target,
+        amount,
+        sequence,
+        price,
+        limit,
+        expiry,
+        chain.aptos_chain_id()?,
+        request.action,
+    )?;
+    let function = crate::send::aptos::delegation_function(request.action)?;
+    let (used, maximum) = client
+        .simulate_staking(&initial.simulation(&public)?, function, true, amount)
+        .await?;
+    // A fifth over the simulated gas, and a hundred units more, within the node's maximum.
+    let gas = used
+        .checked_mul(6)
+        .and_then(|v| v.checked_add(4))
+        .map(|v| v / 5)
+        .and_then(|v| v.checked_add(100))
+        .ok_or_else(|| SpectraBridgeError::invalid("Aptos simulated gas overflow"))?
+        .min(maximum);
+    let fee = price
+        .checked_mul(gas)
+        .ok_or_else(|| SpectraBridgeError::invalid("Aptos gas overflow"))?;
+    require_balance(
+        u128::from(client.fetch_balance(owner).await?.octas),
+        if request.action == StakingAction::Stake {
+            u128::from(amount)
+        } else {
+            0
+        },
+        u128::from(fee),
+    )?;
+    let mut prepared = crate::send::aptos::prepare_delegation(
+        owner,
+        target,
+        amount,
+        sequence,
+        price,
+        gas,
+        expiry,
+        chain.aptos_chain_id()?,
+        request.action,
+    )?;
+    client
+        .simulate_staking(&prepared.simulation(&public)?, function, false, amount)
+        .await?;
+    prepared.staking_public_key = Some(public);
+    Ok(PreparedPayload::Aptos(prepared))
+}
+
+async fn prepare_near_staking(
+    client: NearClient,
+    request: &StakingRequest,
+    owner: &str,
+    target: &str,
+    amount: u128,
+    public: [u8; 32],
+) -> Result<PreparedPayload, SpectraBridgeError> {
+    validate_near_position(&client, owner, target, request.action, amount).await?;
+    let nonce = client
+        .fetch_full_access_key_nonce(owner, &bs58::encode(public).into_string())
+        .await?
+        .checked_add(1)
+        .ok_or_else(|| SpectraBridgeError::invalid("NEAR access-key nonce overflow"))?;
+    let (method, args, deposit) = near_staking_call(request.action, amount)?;
+    let fee = client
+        .function_call_fee_budget(
+            owner,
+            target,
+            method,
+            args.len(),
+            Chain::Near.near_staking_gas_limit()?,
+        )
+        .await?;
+    require_balance(client.fetch_spendable_balance(owner).await?, deposit, fee)?;
+    let hash = crate::derivation::solana::decode_b58_32(&client.fetch_latest_block_hash().await?)?;
+    let mut prepared = crate::send::near::PreparedNearFunctionCall::prepare(
+        owner,
+        public,
+        nonce,
+        target,
+        method,
+        args,
+        Chain::Near.near_staking_gas_limit()?,
+        deposit,
+        hash,
+    );
+    prepared.fee_budget = fee.to_string();
+    Ok(PreparedPayload::NearFunctionCall(prepared))
+}
+
 fn require_balance(balance: u128, amount: u128, fee: u128) -> Result<(), SpectraBridgeError> {
     let required = amount
         .checked_add(fee)
@@ -84,82 +338,52 @@ impl WalletService {
             ));
         }
         let endpoints = self.account_staking_endpoints(chain).await?;
-        crate::api::http::race(&endpoints,|endpoint|async move{
-            self.validate_endpoint_network(chain,&endpoint).await?;
-            let endpoints=Arc::new(vec![endpoint]);
-            Ok(match chain {
-                Chain::Solana=>{
-                    let client=SolanaClient::new(endpoints);
-                    let amount=u64::try_from(amount).map_err(SpectraBridgeError::invalid)?;
-                    let blockhash=client.fetch_recent_blockhash().await?;
-                    let (rent,seed)=if request.action==StakingAction::Stake{
-                        let validators=client.fetch_staking_validators().await?;
-                        if !validators.current.iter().any(|v|v.vote_pubkey==target){return Err(SpectraBridgeError::invalid("Select an active Solana vote account"));}
-                        if amount<client.fetch_stake_minimum().await?{return Err(SpectraBridgeError::invalid("Stake is below the live minimum delegation"));}
-                        (client.fetch_stake_rent().await?,Some(crate::store::new_event_id().replace('-',"")))
-                    }else{
-                        validate_sol_position(&client,owner,target,request.action,amount).await?;
-                        (0,None)
-                    };
-                    let mut prepared=crate::send::solana::prepare_staking_data(owner,target,amount,rent,&blockhash,seed.as_deref(),request.action)?;
-                    let fee=client.fetch_staking_message_fee(&prepared.message).await?;
-                    prepared.network_fee=Some(fee);
-                    let debit=if request.action==StakingAction::Stake{amount.checked_add(rent).ok_or_else(||SpectraBridgeError::invalid("Solana stake rent overflow"))?}else{0};
-                    require_balance(u128::from(client.fetch_balance(owner).await?.lamports),u128::from(debit),u128::from(fee))?;
-                    if !client.simulate_staking_message(&prepared.message).await?{return Err(SpectraBridgeError::invalid("Solana staking simulation refused this authority, amount or unlock state"));}
-                    PreparedPayload::Solana(prepared)
+        crate::api::http::race(&endpoints, |endpoint| async move {
+            self.validate_endpoint_network(chain, &endpoint).await?;
+            let endpoints = Arc::new(vec![endpoint]);
+            match chain {
+                Chain::Solana => {
+                    prepare_solana_staking(
+                        SolanaClient::new(endpoints),
+                        request,
+                        owner,
+                        target,
+                        amount,
+                    )
+                    .await
                 }
-                Chain::Sui=>{
-                    let client=SuiClient::new(endpoints);
-                    let amount=u64::try_from(amount).map_err(SpectraBridgeError::invalid)?;
-                    client.validate_staking_system(chain).await?;
-                    let prepared=if request.action==StakingAction::Stake{
-                        if amount<chain.sui_staking_minimum()?{return Err(SpectraBridgeError::invalid("Sui stake is below the protocol minimum"));}
-                        if !client.fetch_staking_validators().await?.active_validators.iter().any(|v|v.sui_address==target){return Err(SpectraBridgeError::invalid("Select an active Sui validator"));}
-                        crate::send::sui::prepare_staking(&client,owner,Some(target),amount,None,Chain::Sui.sui_staking_gas_budget()?).await?
-                    }else{
-                        let object=validate_sui_position(&client,owner,target,amount).await?;
-                        crate::send::sui::prepare_staking(&client,owner,None,0,Some((target,&object)),Chain::Sui.sui_staking_gas_budget()?).await?
-                    };
-                    client.simulate_staking(&prepared.bytes).await?;
-                    PreparedPayload::Sui(prepared)
+                Chain::Sui => {
+                    prepare_sui_staking(SuiClient::new(endpoints), request, owner, target, amount)
+                        .await
                 }
-                Chain::Aptos=>{
-                    let client=AptosClient::new(endpoints);
-                    let amount=u64::try_from(amount).map_err(SpectraBridgeError::invalid)?;
-                    validate_aptos_position(&client,owner,target,request.action,amount).await?;
-                    let price=client.fetch_gas_price().await?;
-                    let limit=chain.aptos_max_gas_amount()?;
-                    let public:[u8;32]=hex::decode(public_key_hex.ok_or_else(||SpectraBridgeError::invalid("Missing Aptos staking public key"))?)?.try_into().map_err(|_|SpectraBridgeError::invalid("Invalid Aptos public key"))?;
-                    let sequence=client.fetch_account_info(owner).await?.0;let expiry=crate::store::now_unix() as u64+chain.aptos_transaction_lifetime_secs()?;
-                    let initial=crate::send::aptos::prepare_delegation(owner,target,amount,sequence,price,limit,expiry,chain.aptos_chain_id()?,request.action)?;
-                    let function=crate::send::aptos::delegation_function(request.action)?;let (used,maximum)=client.simulate_staking(&initial.simulation(&public)?,function,true,amount).await?;
-                    let gas=used.checked_mul(6).and_then(|v|v.checked_add(4)).map(|v|v/5).and_then(|v|v.checked_add(100)).ok_or_else(||SpectraBridgeError::invalid("Aptos simulated gas overflow"))?.min(maximum);
-                    let fee=price.checked_mul(gas).ok_or_else(||SpectraBridgeError::invalid("Aptos gas overflow"))?;
-                    require_balance(u128::from(client.fetch_balance(owner).await?.octas),if request.action==StakingAction::Stake{u128::from(amount)}else{0},u128::from(fee))?;
-                    let mut prepared=crate::send::aptos::prepare_delegation(owner,target,amount,sequence,price,gas,expiry,chain.aptos_chain_id()?,request.action)?;
-                    client.simulate_staking(&prepared.simulation(&public)?,function,false,amount).await?;
-                    prepared.staking_public_key=Some(public);
-                    PreparedPayload::Aptos(prepared)
+                Chain::Aptos => {
+                    let public = staking_public_key(public_key_hex, "Aptos")?;
+                    prepare_aptos_staking(
+                        AptosClient::new(endpoints),
+                        request,
+                        owner,
+                        target,
+                        amount,
+                        public,
+                    )
+                    .await
                 }
-                Chain::Near=>{
-                    let client=NearClient::new(endpoints);
-                    validate_near_position(&client,owner,target,request.action,amount).await?;
-                    let public:[u8;32]=hex::decode(public_key_hex.ok_or_else(||SpectraBridgeError::invalid("Missing NEAR staking public key"))?)?.try_into().map_err(|_|SpectraBridgeError::invalid("Invalid NEAR public key"))?;
-                    let nonce=client.fetch_full_access_key_nonce(owner,&bs58::encode(public).into_string()).await?.checked_add(1).ok_or_else(||SpectraBridgeError::invalid("NEAR access-key nonce overflow"))?;
-                    let deposit=if request.action==StakingAction::Stake{amount}else{0};
-                    let method=match request.action{StakingAction::Stake=>"deposit_and_stake",StakingAction::Unstake=>"unstake",_=>"withdraw"};
-                    let args=serde_json::to_vec(&if request.action==StakingAction::Stake{serde_json::json!({})}else{serde_json::json!({"amount":amount.to_string()})})?;
-                    let fee=client.function_call_fee_budget(owner,target,method,args.len(),Chain::Near.near_staking_gas_limit()?).await?;
-                    require_balance(client.fetch_spendable_balance(owner).await?,deposit,fee)?;
-                    let hash=crate::derivation::solana::decode_b58_32(&client.fetch_latest_block_hash().await?)?;
-                    let mut prepared=crate::send::near::PreparedNearFunctionCall::prepare(owner,public,nonce,target,method,args,Chain::Near.near_staking_gas_limit()?,deposit,hash);
-                    prepared.fee_budget=fee.to_string();
-                    PreparedPayload::NearFunctionCall(prepared)
+                Chain::Near => {
+                    let public = staking_public_key(public_key_hex, "NEAR")?;
+                    prepare_near_staking(
+                        NearClient::new(endpoints),
+                        request,
+                        owner,
+                        target,
+                        amount,
+                        public,
+                    )
+                    .await
                 }
-                _=>return Err(SpectraBridgeError::invalid("Unsupported staking network")),
-            })
-        }).await
+                _ => Err(SpectraBridgeError::invalid("Unsupported staking network")),
+            }
+        })
+        .await
     }
 
     pub(super) async fn fetch_account_staking_positions(
@@ -707,21 +931,7 @@ impl WalletService {
                         .await?
                         .checked_add(1)
                         .ok_or_else(|| SpectraBridgeError::invalid("NEAR nonce overflow"))?;
-                    let method = match request.action {
-                        StakingAction::Stake => "deposit_and_stake",
-                        StakingAction::Unstake => "unstake",
-                        _ => "withdraw",
-                    };
-                    let deposit = if request.action == StakingAction::Stake {
-                        amount
-                    } else {
-                        0
-                    };
-                    let args = serde_json::to_vec(&if request.action == StakingAction::Stake {
-                        serde_json::json!({})
-                    } else {
-                        serde_json::json!({"amount":amount.to_string()})
-                    })?;
+                    let (method, args, deposit) = near_staking_call(request.action, amount)?;
                     let expected = crate::send::near::PreparedNearFunctionCall::prepare(
                         owner,
                         prepared.public_key,

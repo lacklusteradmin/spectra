@@ -203,8 +203,7 @@ mod tests {
     }
     #[tokio::test]
     async fn movement_baseline_survives_reopen_and_consumes_each_change_once() {
-        let path =
-            std::env::temp_dir().join(format!("movement-{}.db", crate::store::new_event_id()));
+        let path = std::env::temp_dir().join(format!("movement-{}.db", crate::store::new_id()));
         let service = WalletService::new(vec![]).unwrap();
         service
             .open_state(path.to_string_lossy().into())

@@ -288,7 +288,7 @@ pub(crate) struct StoredSession {
 impl StoredSession {
     pub(crate) fn new(wallet: &WalletState, body: SessionBody) -> Self {
         Self {
-            id: crate::store::new_event_id(),
+            id: crate::store::new_id(),
             wallet_id: wallet.id.clone(),
             chain: wallet.chain_id,
             created_at: crate::wallet_db::now_secs() as f64,

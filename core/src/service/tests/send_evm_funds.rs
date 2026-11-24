@@ -95,7 +95,7 @@ async fn an_evm_send_is_built_on_its_own_network_and_signed_only_when_funded() {
     service
         .open_state(
             std::env::temp_dir()
-                .join(format!("evm-funds-{}.sqlite", crate::store::new_event_id()))
+                .join(format!("evm-funds-{}.sqlite", crate::store::new_id()))
                 .to_string_lossy()
                 .into(),
         )

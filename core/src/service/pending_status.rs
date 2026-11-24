@@ -792,10 +792,7 @@ mod tests {
     async fn stored_service() -> (std::sync::Arc<WalletService>, String) {
         let service = WalletService::new(vec![]).unwrap();
         let path = std::env::temp_dir()
-            .join(format!(
-                "spectra-poll-{}.sqlite",
-                crate::store::new_event_id()
-            ))
+            .join(format!("spectra-poll-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .into_owned();
         service.open_state(path.clone()).await.unwrap();
@@ -857,7 +854,7 @@ mod tests {
         .unwrap();
         let path = std::env::temp_dir().join(format!(
             "spectra-status-failures-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into_owned())
@@ -934,7 +931,7 @@ mod tests {
         .unwrap();
         let path = std::env::temp_dir().join(format!(
             "spectra-overflow-status-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(path.to_string_lossy().into_owned())
@@ -1003,7 +1000,7 @@ mod tests {
         .unwrap();
         let db = std::env::temp_dir().join(format!(
             "spectra-poll-rounds-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(db.to_string_lossy().into_owned())

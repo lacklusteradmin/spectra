@@ -468,6 +468,191 @@ pub struct DashboardPinOption {
     pub is_pinned: bool,
 }
 
+/// What a wallet signs with, recorded when its secret is stored.
+///
+/// Non-secret metadata about the secret store's contents, kept with the wallet
+/// so rendering a wallet reads no Keychain item. Only an import writes a
+/// wallet's secret, and it records this in the same commit.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, uniffi::Enum)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum WalletSigning {
+    /// Addresses only; nothing is stored to sign with. The default, because
+    /// it claims no capability.
+    #[default]
+    WatchOnly,
+    /// A seed phrase, sealed under a password when `password_protected`.
+    #[serde(rename_all = "camelCase")]
+    SeedPhrase { password_protected: bool },
+    /// A raw private key, sealed under a password when `password_protected`.
+    #[serde(rename_all = "camelCase")]
+    PrivateKey { password_protected: bool },
+}
+
+impl WalletSigning {
+    pub fn is_watch_only(self) -> bool {
+        self == Self::WatchOnly
+    }
+
+    /// Secret operations such as signing and revealing need the wallet's password.
+    pub fn requires_password(self) -> bool {
+        matches!(
+            self,
+            Self::SeedPhrase {
+                password_protected: true
+            } | Self::PrivateKey {
+                password_protected: true
+            }
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, uniffi::Record)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WalletState {
+    pub id: String,
+    pub name: String,
+    pub signing: WalletSigning,
+    /// The concrete network this wallet is on. Its family is the network's
+    /// mainnet counterpart; there is no second spelling of either.
+    pub chain_id: crate::registry::Chain,
+    pub include_in_portfolio_total: bool,
+    /// The wallet's address on its network: the one it receives at and
+    /// queries. `None` for a watched account key, which has none of its own.
+    pub address: Option<String>,
+    /// An account public key, for receiving and recovery without unlocking a
+    /// seed.
+    pub xpub: Option<String>,
+    /// The single path this wallet derives from: a profile's or a custom one,
+    /// fixed at import. `None` on a chain that derives without a path.
+    pub derivation_path: Option<String>,
+    /// The profile and account `derivation_path` is on, or `None` for a
+    /// custom path or none. Set when core serves the wallet; never stored.
+    #[serde(skip)]
+    pub derivation_profile: Option<crate::derivation::path::DerivationProfileChoice>,
+    /// Which power-user derivation overrides the wallet was imported with.
+    /// The overrides themselves are sealed in the `SecretStore`.
+    pub derivation_flags: crate::store::wallet_domain::WalletDerivationFlags,
+    pub holdings: Vec<crate::store::wallet_domain::AssetHolding>,
+    /// The block height a scanning wallet starts from, fixed when it is
+    /// imported: a Monero wallet's restore height, or where a Zcash wallet's
+    /// scan for shielded funds starts. `None` on every other chain, which
+    /// reads balances from a provider instead of scanning.
+    pub restore_height: Option<u64>,
+    /// The deployment ids of the holdings the user hid, sorted: left out of
+    /// the wallet's total and the portfolio, listed apart, still sendable.
+    pub hidden_holdings: Vec<String>,
+    /// An ICP wallet's principal, the identity its ledger account derives
+    /// from, recorded at import from the key. `None` on every other chain
+    /// and on a watched ICP account, whose principal its address cannot give.
+    pub icp_principal: Option<String>,
+    /// The key a NEAR named account signs with, as `ed25519:…`, recorded at
+    /// import once the network confirmed it is a full-access key of the
+    /// account. `None` elsewhere, and for an implicit account, whose address
+    /// is its key.
+    pub near_account_key: Option<String>,
+    /// A multisig account's descriptor (`derivation::multisig`), canonical
+    /// with its checksum: the policy every address and signature follows.
+    /// `None` for every single-key wallet.
+    pub multisig_policy: Option<String>,
+    /// When a balance read for this wallet first committed, as Unix seconds.
+    /// `None` until then: the holdings an import writes are zero
+    /// placeholders, not balances, and are shown as still loading.
+    #[uniffi(default = None)]
+    pub balances_read_at: Option<f64>,
+}
+
+// Plain `impl` — deliberately not `#[uniffi::export]`. These are Rust-side
+// domain helpers; the FFI surface stays the record's fields.
+impl WalletState {
+    /// The holdings the wallet's total and the portfolio count: all but the
+    /// hidden ones.
+    pub(crate) fn counted_holdings(
+        &self,
+    ) -> impl Iterator<Item = &crate::store::wallet_domain::AssetHolding> {
+        self.holdings
+            .iter()
+            .filter(|holding| !self.hidden_holdings.contains(&holding.deployment_id()))
+    }
+
+    /// The wallet as core serves it to a front end: each holding with its
+    /// id, and the profile its derivation path is on.
+    pub(crate) fn served(&self) -> Self {
+        let mut wallet = self.clone();
+        wallet.holdings = wallet
+            .holdings
+            .into_iter()
+            .map(crate::store::wallet_domain::AssetHolding::identified)
+            .collect();
+        wallet.derivation_profile = wallet.derivation_path.as_deref().and_then(|path| {
+            crate::derivation::path::derivation_profile_of_path(wallet.chain_id, path)
+        });
+        wallet
+    }
+
+    /// A wallet with one address on one chain.
+    ///
+    /// A test constructor: production wallets are built by the import and
+    /// derivation paths, which fill in the fields this shortcut defaults.
+    #[cfg(test)]
+    pub fn single_address(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        chain_id: crate::registry::Chain,
+        address: impl Into<String>,
+        derivation_path: Option<String>,
+        is_watch_only: bool,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            signing: if is_watch_only {
+                WalletSigning::WatchOnly
+            } else {
+                WalletSigning::SeedPhrase {
+                    password_protected: false,
+                }
+            },
+            chain_id,
+            include_in_portfolio_total: true,
+            address: Some(address.into()),
+            xpub: None,
+            derivation_path,
+            derivation_profile: None,
+            derivation_flags: Default::default(),
+            holdings: Vec::new(),
+            restore_height: None,
+            hidden_holdings: Vec::new(),
+            icp_principal: None,
+            near_account_key: None,
+            multisig_policy: None,
+            balances_read_at: None,
+        }
+    }
+
+    pub fn is_watch_only(&self) -> bool {
+        self.signing.is_watch_only()
+    }
+
+    /// The mainnet whose family this wallet belongs to.
+    pub fn family(&self) -> crate::registry::Chain {
+        self.chain_id.mainnet_counterpart()
+    }
+
+    /// The wallet's address where `chain` reads it: its own, on any network
+    /// whose addresses share its network's slot (every EVM network shares
+    /// one key and address). `None` on another network.
+    pub fn address_on(&self, chain: crate::registry::Chain) -> Option<&str> {
+        self.shares_address_with(chain)
+            .then_some(self.address.as_deref())
+            .flatten()
+    }
+
+    /// Whether `chain` takes this wallet's address and derivation path.
+    pub(crate) fn shares_address_with(&self, chain: crate::registry::Chain) -> bool {
+        self.chain_id.address_slot() == chain.address_slot()
+    }
+}
+
 #[cfg(test)]
 mod direction_tests {
     use super::*;

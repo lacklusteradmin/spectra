@@ -72,7 +72,7 @@ async fn reopened_account_holding(
         .mount(&server)
         .await;
     let directory =
-        std::env::temp_dir().join(format!("account-balance-{}", crate::store::new_event_id()));
+        std::env::temp_dir().join(format!("account-balance-{}", crate::store::new_id()));
     std::fs::create_dir_all(&directory).unwrap();
     let database = directory.join("state.db").to_string_lossy().into_owned();
     let endpoints = vec![ChainEndpoints {

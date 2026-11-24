@@ -11,7 +11,7 @@ use spectra_core::staking::StakingPosition;
 
 use super::resolve_chain;
 use super::send::ArtifactReport;
-use crate::ctx::{Ctx, PasswordArgs};
+use crate::ctx::{Ctx, PasswordArgs, WalletArg};
 use crate::error::CliResult;
 use crate::out::{self, Out, Report};
 
@@ -37,8 +37,8 @@ pub enum StakingCommand {
 
 #[derive(Args)]
 pub struct WalletArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The network to stake on; defaults to the wallet's.
     #[arg(long)]
     chain: Option<String>,
@@ -238,7 +238,7 @@ impl Report for PositionsReport {
 }
 
 fn positions(ctx: &Ctx, out: Out, args: PositionsArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet.wallet)?;
+    let wallet = args.wallet.wallet.find(ctx)?;
     let chain = args
         .wallet
         .chain
@@ -259,7 +259,7 @@ fn positions(ctx: &Ctx, out: Out, args: PositionsArgs) -> CliResult<()> {
 }
 
 fn build(ctx: &Ctx, out: Out, args: BuildArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet.wallet)?;
+    let wallet = args.wallet.wallet.find(ctx)?;
     let chain = args
         .wallet
         .chain

@@ -89,10 +89,8 @@ impl Wallet {
         service.set_secret_store(Arc::new(
             crate::secrets::backends::InMemorySecretStore::new(),
         ));
-        let database = std::env::temp_dir().join(format!(
-            "staged-send-{}.sqlite",
-            crate::store::new_event_id()
-        ));
+        let database =
+            std::env::temp_dir().join(format!("staged-send-{}.sqlite", crate::store::new_id()));
         service
             .open_state(database.to_string_lossy().into())
             .await

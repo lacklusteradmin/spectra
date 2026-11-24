@@ -72,7 +72,7 @@ pub(super) fn add(
     {
         return rejected(PriceAlertRejection::DuplicateAlert);
     }
-    let id = super::new_event_id();
+    let id = super::new_id();
     state.price_alerts.insert(
         0,
         PriceAlertRule {

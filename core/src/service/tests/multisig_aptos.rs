@@ -64,10 +64,7 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
         endpoints: vec![endpoint],
     }])
     .unwrap();
-    let db = std::env::temp_dir().join(format!(
-        "aptos-multikey-{}.sqlite",
-        crate::store::new_event_id()
-    ));
+    let db = std::env::temp_dir().join(format!("aptos-multikey-{}.sqlite", crate::store::new_id()));
     service
         .open_state(db.to_string_lossy().into())
         .await

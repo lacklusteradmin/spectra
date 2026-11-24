@@ -287,7 +287,7 @@ pub(crate) mod tests {
     }
 
     pub(crate) async fn service() -> (std::sync::Arc<WalletService>, std::path::PathBuf) {
-        let directory = std::env::temp_dir().join(crate::store::new_event_id());
+        let directory = std::env::temp_dir().join(crate::store::new_id());
         std::fs::create_dir_all(&directory).unwrap();
         let service = WalletService::new(vec![]).unwrap();
         service.set_secret_store(std::sync::Arc::new(

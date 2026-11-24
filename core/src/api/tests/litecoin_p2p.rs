@@ -40,7 +40,7 @@ fn live_answers_prove_into_the_tip() {
     assert_eq!(outputs[0].leaf, 370_003);
     // The ids the node gives for the same page, asked for by hash alone.
     let hashes = bytes(&light["mwebutxos_hashes"]);
-    let mut reader = Reader(&hashes[32..]);
+    let mut reader = wire_reader(&hashes[32..]);
     assert_eq!(reader.compact_size().unwrap(), 370_003);
     assert_eq!(reader.u8().unwrap(), 1);
     assert_eq!(reader.compact_size().unwrap(), 64);
@@ -102,7 +102,7 @@ fn headers_chain_from_the_anchor() {
     let anchor = header(&light["anchor_header"]);
     assert_eq!(display(&anchor.hash), light["anchor"].as_str().unwrap());
     let raw = bytes(&light["headers"]);
-    let mut reader = Reader(&raw);
+    let mut reader = wire_reader(&raw);
     let count = reader.compact_size().unwrap();
     let headers: Vec<BlockHeader> = (0..count)
         .map(|_| {

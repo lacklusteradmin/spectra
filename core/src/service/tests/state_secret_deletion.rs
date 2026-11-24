@@ -40,10 +40,7 @@ async fn deleting_stored_secrets_requires_a_durable_state_binding() {
 
 fn path() -> String {
     std::env::temp_dir()
-        .join(format!(
-            "delete-secrets-{}.sqlite",
-            crate::store::new_event_id()
-        ))
+        .join(format!("delete-secrets-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned()
 }

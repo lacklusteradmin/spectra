@@ -89,7 +89,7 @@ async fn wallets() -> (Arc<WalletService>, MockServer, Arc<Mutex<Horizon>>) {
     .unwrap();
     let db = std::env::temp_dir().join(format!(
         "stellar-multisig-{}.sqlite",
-        crate::store::new_event_id()
+        crate::store::new_id()
     ));
     service
         .open_state(db.to_string_lossy().into())

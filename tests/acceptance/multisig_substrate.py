@@ -14,7 +14,8 @@ the Substrate API's).
 import hashlib
 import json
 
-from harness import ABANDON, FIXTURES, LEGAL, JsonRpc, Spectra, fixture, scratch, serve, signed_by
+from harness import (ABANDON, FIXTURES, LEGAL, JsonRpc, Spectra, b58decode, b58encode, block_hash, fixture,
+                     scale_compact, scratch, serve, signed_by)
 
 SCALE = 10 ** 10
 GENESIS = '0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f'
@@ -27,31 +28,15 @@ MULTISIGS_PREFIX = bytes.fromhex(VECTORS['storage']['prefix'][2:])
 WEIGHT = (1_234_567, 8_910)
 PHRASES = [ABANDON, LEGAL, 'letter advice cage absurd amount doctor acoustic avoid letter advice cage above']
 RECIPIENT = bytes([0xdd]) * 32
-ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
 
 def account_of(address):
-    number = 0
-    for char in address:
-        number = number * 58 + ALPHABET.index(char)
-    raw = number.to_bytes((number.bit_length() + 7) // 8, 'big')
-    return (bytes(len(address) - len(address.lstrip('1'))) + raw)[1:33]
+    return b58decode(address)[1:33]
 
 
 def ss58(account):
     payload = bytes([0]) + account
-    raw = payload + hashlib.blake2b(b'SS58PRE' + payload).digest()[:2]
-    number, out = int.from_bytes(raw, 'big'), ''
-    while number:
-        number, rest = divmod(number, 58)
-        out = ALPHABET[rest] + out
-    return '1' * (len(raw) - len(raw.lstrip(b'\0'))) + out
-
-
-def compact(value):
-    if value < 64: return bytes([value << 2])
-    if value < 16384: return ((value << 2) | 1).to_bytes(2, 'little')
-    return ((value << 2) | 2).to_bytes(4, 'little')
+    return b58encode(payload + hashlib.blake2b(b'SS58PRE' + payload).digest()[:2])
 
 
 def read_compact(raw):
@@ -59,9 +44,6 @@ def read_compact(raw):
     count = [1, 2, 4, (raw[0] >> 2) + 5][mode]
     if mode == 3: return int.from_bytes(raw[1:count], 'little'), raw[count:]
     return int.from_bytes(raw[:count], 'little') >> 2, raw[count:]
-
-
-def block_hash(number): return '0x' + number.to_bytes(32, 'big').hex()
 
 
 def apply(live, sender, call):
@@ -118,7 +100,7 @@ class Node(JsonRpc):
             return None if pending is None else '0x' + (
                 pending['when'][0].to_bytes(4, 'little') + pending['when'][1].to_bytes(4, 'little')
                 + DEPOSIT.to_bytes(16, 'little') + pending['depositor']
-                + compact(len(pending['approvals'])) + b''.join(pending['approvals'])).hex()
+                + scale_compact(len(pending['approvals'])) + b''.join(pending['approvals'])).hex()
         assert name == 'author_submitExtrinsic', 'unexpected method: ' + name
         raw = bytes.fromhex(params[0][2:])
         size, body = read_compact(raw)
@@ -144,9 +126,9 @@ with serve(Node, pending={}, height=200, submitted=[], executed=[]) as node, \
                                      env={'SPECTRA_SEED': phrase})['wallet']['address']
     policy = json.dumps(dict(threshold=2, signatories=[addresses['S2'], addresses['S0'], addresses['S1']]))
     for signer in [a, b]:
-        signer.run('endpoints', '--chain', 'polkadot', '--api', 'substrate-json-rpc', '--capabilities',
-                   'balance,fee,verification,broadcast', '--add', node.url)
-        signer.run('endpoints', '--chain', 'polkadot', '--custom-only', 'true')
+        signer.run('endpoints', 'add', '--chain', 'polkadot', '--api', 'substrate-json-rpc', '--capabilities',
+                   'balance,fee,verification,broadcast', node.url)
+        signer.run('endpoints', 'custom-only', '--chain', 'polkadot', 'true')
         signer.run('wallet', 'watch', '--chain', 'polkadot', '--name', 'Vault', '--multisig', policy)
 
     created = a.run('multisig', 'create', 'Vault', '--to', ss58(RECIPIENT), '--amount', '1')['session']

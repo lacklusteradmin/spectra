@@ -32,9 +32,9 @@ with serve(Node, submitted=[]) as node, scratch('cardano') as directory:
     submitted, endpoint = node.state['submitted'], node.url
     spectra = Spectra(directory, SPECTRA_SEED=vector['mnemonic'], SPECTRA_PASSWORD='cardano-test-password')
     spectra.run('wallet', 'import', '--chain', 'cardano', '--name', 'Cardano', '--no-password')
-    spectra.run('endpoints', '--chain', 'cardano', '--api', 'koios',
-                '--capabilities', 'balance,utxo,fee,verification,broadcast', '--add', endpoint)
-    spectra.run('endpoints', '--chain', 'cardano', '--custom-only', 'true')
+    spectra.run('endpoints', 'add', '--chain', 'cardano', '--api', 'koios',
+                '--capabilities', 'balance,utxo,fee,verification,broadcast', endpoint)
+    spectra.run('endpoints', 'custom-only', '--chain', 'cardano', 'true')
     prepared = spectra.run('send', 'build', 'Cardano', '--to', vector['address'], '--amount', '1',
                            '--endpoint', endpoint)['artifact']
     signed = spectra.run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],

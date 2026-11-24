@@ -61,12 +61,7 @@ fn targets(state: &ResidentState, chain: Chain, wallet_ids: &[String]) -> Vec<Ta
         .wallets
         .iter()
         .filter(|wallet| wallet.family() == chain)
-        .filter(|wallet| {
-            wallet_ids.is_empty()
-                || wallet_ids
-                    .iter()
-                    .any(|id| id.eq_ignore_ascii_case(&wallet.id))
-        })
+        .filter(|wallet| wallet_ids.is_empty() || wallet_ids.contains(&wallet.id))
         .filter_map(|wallet| {
             Some(Target {
                 wallet_id: wallet.id.clone(),
@@ -137,7 +132,7 @@ pub(super) fn record_for(
         submitted: false,
         // The feed names every row's deployment; the ticker is display text.
         deployment_id: entry.deployment_id,
-        id: crate::store::new_transaction_id(),
+        id: crate::store::new_id(),
         wallet_id: Some(target.wallet_id.clone()),
         kind: entry.kind,
         status: entry.status,

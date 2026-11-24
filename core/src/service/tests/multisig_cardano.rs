@@ -100,7 +100,7 @@ async fn wallets(endpoint: String) -> Arc<WalletService> {
     .unwrap();
     let db = std::env::temp_dir().join(format!(
         "cardano-multisig-{}.sqlite",
-        crate::store::new_event_id()
+        crate::store::new_id()
     ));
     service
         .open_state(db.to_string_lossy().into())

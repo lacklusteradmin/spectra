@@ -9,7 +9,6 @@ use clap::Args;
 use colored::Colorize as _;
 use serde::Serialize;
 use spectra_core::registry::Chain;
-use spectra_core::service::ChainEndpoints;
 use spectra_core::service::app_refresh::AppRefreshResult;
 use spectra_core::service::refresh_engine::{RefreshEngine, RefreshObserver};
 use spectra_core::store::state::WalletState;
@@ -73,17 +72,8 @@ pub fn refresh(ctx: &Ctx, out: Out, args: RefreshArgs) -> CliResult<()> {
         return Err(CliError::rejected("no wallets to refresh"));
     }
 
-    let service = ctx.service()?;
-    if let Some(endpoint) = args.endpoint {
-        let chain = wallets[0].chain_id;
-        ctx.rt
-            .block_on(service.update_endpoints(vec![ChainEndpoints {
-                capabilities: spectra_core::api::endpoint::EndpointCapability::ALL.to_vec(),
-                chain_id: chain,
-                endpoints: vec![endpoint],
-            }]))
-            .map_err(CliError::from)?;
-    }
+    let service =
+        ctx.service_with_endpoints(wallets[0].chain_id, args.endpoint.into_iter().collect())?;
 
     let engine = RefreshEngine::new(service);
     let collector = Arc::new(Collector(Mutex::new(Collected::default())));

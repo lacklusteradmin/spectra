@@ -3,7 +3,7 @@ use super::output::{self, OwnedOutput};
 use super::primitives::{self, Commitment};
 use super::transaction::{self, Plan, Spend, verify_input, verify_kernel, verify_output};
 use crate::api::litecoin_p2p::wire::{
-    self as wire, HogEx, MwebHeader, Output, OutputMessage, PegOut, RangeProof, Reader, TxBody,
+    self as wire, HogEx, MwebHeader, Output, OutputMessage, PegOut, RangeProof, TxBody, wire_reader,
 };
 use crate::registry::Chain;
 
@@ -25,7 +25,7 @@ fn mainnet_blocks_verify() {
     let (mut inputs, mut outputs, mut kernels, mut pegins) = (0, 0, 0, 0);
     for block in fixture["blocks"].as_array().unwrap() {
         let raw = bytes(&block["mweb_body"]);
-        let mut reader = Reader(&raw);
+        let mut reader = wire_reader(&raw);
         let body = TxBody::decode(&mut reader).unwrap();
         reader.finished().unwrap();
         let mut encoded = Vec::new();
@@ -63,11 +63,11 @@ fn mainnet_blocks_verify() {
             pegins += 1;
         }
         let raw = bytes(&block["hogex"]);
-        let mut reader = Reader(&raw);
+        let mut reader = wire_reader(&raw);
         let hogex = HogEx::decode(&mut reader).unwrap();
         reader.finished().unwrap();
         let raw = bytes(&block["mweb_header"]);
-        let mut reader = Reader(&raw);
+        let mut reader = wire_reader(&raw);
         let header = MwebHeader::decode(&mut reader).unwrap();
         reader.finished().unwrap();
         assert_eq!(header.height, block["height"].as_u64().unwrap());
@@ -85,7 +85,7 @@ fn a_changed_part_fails_verification() {
     let fixture = fixture();
     let block = &fixture["blocks"][0];
     let raw = bytes(&block["mweb_body"]);
-    let body = TxBody::decode(&mut Reader(&raw)).unwrap();
+    let body = TxBody::decode(&mut wire_reader(&raw)).unwrap();
     let mut output = body.outputs[0].clone();
     let fields = output.message.standard.as_mut().unwrap();
     fields.masked_value ^= 1;
@@ -127,7 +127,7 @@ fn ltcd_vector_rewinds_to_address_zero() {
     let mut head = raw[..158].to_vec();
     head.extend(&raw[190..222]);
     head.extend(&raw[222..]);
-    let output = Output::decode_compact(&mut Reader(&head)).unwrap();
+    let output = Output::decode_compact(&mut wire_reader(&head)).unwrap();
     assert!(raw[158..190].iter().all(|byte| *byte == 0));
     let key = |name: &str| primitives::secret(bytes(&vector[name]).try_into().unwrap()).unwrap();
     let sender = key("sender_secret");
@@ -244,7 +244,7 @@ fn a_payment_balances_and_each_side_finds_its_output() {
     // The serialization round-trips.
     let mut raw = Vec::new();
     built.encode(&mut raw);
-    assert_eq!(wire::MwebTx::decode(&mut Reader(&raw)).unwrap(), built);
+    assert_eq!(wire::MwebTx::decode(&mut wire_reader(&raw)).unwrap(), built);
 
     // What a node refuses: a changed fee, a dropped output, an offset off by one.
     let mut tampered = built.clone();
@@ -334,7 +334,7 @@ fn commitments_round_trip() {
 }
 
 fn decode_signed(raw: &[u8]) -> wire::ExtendedTransaction {
-    let mut reader = Reader(raw);
+    let mut reader = wire_reader(raw);
     let tx = wire::ExtendedTransaction::decode(&mut reader).unwrap();
     reader.finished().unwrap();
     tx

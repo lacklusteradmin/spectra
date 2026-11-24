@@ -242,21 +242,6 @@ pub struct WalletService {
 impl WalletService {
     #[uniffi::constructor]
     pub fn new(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
-        // Log to stderr, and stay quiet unless `RUST_LOG` asks: a library
-        // writing to stdout would corrupt every `spectra --json` document, and
-        // a caller cannot opt out of a `OnceLock`.
-        static LOGGING: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-        LOGGING.get_or_init(|| {
-            use tracing_subscriber::{EnvFilter, fmt};
-            let filter =
-                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
-            let _ = fmt()
-                .with_env_filter(filter)
-                .with_writer(std::io::stderr)
-                .without_time()
-                .with_ansi(false)
-                .try_init();
-        });
         Ok(Arc::new(Self {
             transport_cache_dir: Arc::new(parking_lot::Mutex::new(None)),
             trc20_metadata: Arc::new(crate::api::tron_metadata_cache::MetadataCache::default()),

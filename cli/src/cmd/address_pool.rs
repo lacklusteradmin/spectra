@@ -102,7 +102,7 @@ impl Report for DiscoveryReport {
 }
 
 fn discover(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let chain = wallet.chain_id;
     let service = ctx.service()?;
 
@@ -157,7 +157,7 @@ impl Report for PoolReport {
 }
 
 fn show(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     // The diagnostics screen's row: the indices, and the address the reserved
     // receive index was handed out as, read from what was recorded then.
     let row = ctx
@@ -203,7 +203,7 @@ impl Report for ReservedReport {
 }
 
 fn next(ctx: &Ctx, out: Out, args: WalletArg, change: bool) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let service = ctx.service()?;
     let index = ctx.rt.block_on(async {
         if change {

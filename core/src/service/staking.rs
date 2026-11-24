@@ -537,8 +537,7 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn staking_reads_latest_owned_settings_and_preserves_explicit_overrides() {
-        let path =
-            std::env::temp_dir().join(format!("staking-{}.db", crate::store::new_event_id()));
+        let path = std::env::temp_dir().join(format!("staking-{}.db", crate::store::new_id()));
         let service = WalletService::new_catalog().unwrap();
         service
             .open_state(path.to_string_lossy().into())
@@ -620,8 +619,7 @@ mod tests {
                 .mount(&server)
                 .await;
         }
-        let path =
-            std::env::temp_dir().join(format!("staking-{}.db", crate::store::new_event_id()));
+        let path = std::env::temp_dir().join(format!("staking-{}.db", crate::store::new_id()));
         let service = WalletService::new_catalog().unwrap();
         service
             .open_state(path.to_string_lossy().into())

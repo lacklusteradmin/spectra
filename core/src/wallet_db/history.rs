@@ -41,7 +41,7 @@ pub(crate) fn history_keypool_indices(
             );
             let mut stmt = conn.prepare(&sql).map_err(DbError::from)?;
             let rows = stmt
-                .query_map(params![wallet_id.to_lowercase(), chain_id], |row| {
+                .query_map(params![wallet_id, chain_id], |row| {
                     row.get::<_, Option<String>>(0)
                 })
                 .map_err(DbError::from)?;
@@ -64,11 +64,7 @@ pub fn history_fetch_for_wallet(
     database: &WalletDatabase,
     wallet_id: &str,
 ) -> Result<Vec<TransactionRecord>, DbError> {
-    history_fetch_where(
-        database,
-        "wallet_id = ?1",
-        params![wallet_id.to_lowercase()],
-    )
+    history_fetch_where(database, "wallet_id = ?1", params![wallet_id])
 }
 
 /// Shared body for `history_fetch_all` and the scoped fetches: same query,
@@ -131,8 +127,8 @@ fn history_upsert_on_conn(
             .map_err(|e| DbError::Corrupt(format!("history_upsert_batch encode payload: {e}")))?;
         statement
             .execute(params![
-                record.id.to_lowercase(),
-                record.wallet_id.as_deref().map(str::to_lowercase),
+                record.id,
+                record.wallet_id,
                 record.chain_id,
                 record.transaction_hash.as_deref().map(str::to_lowercase),
                 history_sort_key(record),
@@ -273,7 +269,7 @@ pub(crate) fn history_save_send_progress(
                 .as_deref()
                 .ok_or_else(|| DbError::Invalid("missing EVM sender".into()))?;
             let conflict: bool = tx.query_row(
-                "SELECT EXISTS(SELECT 1 FROM history_records WHERE chain_id = ?1 AND id != lower(?2)
+                "SELECT EXISTS(SELECT 1 FROM history_records WHERE chain_id = ?1 AND id != ?2
                  AND lower(json_extract(payload, '$.sourceAddress')) = lower(?3)
                  AND json_extract(payload, '$.nonce') = ?4
                  AND json_extract(payload, '$.kind') IN ('send', 'stake', 'unstake', 'withdraw', 'claimRewards', 'revokeApproval', 'deleteAccessKey', 'mergeCoins', 'closeTokenAccounts', 'refundTokenStorage', 'trustAsset', 'removeTrustLine', 'shield')
@@ -288,7 +284,7 @@ pub(crate) fn history_save_send_progress(
         }
         let previous: Option<String> = tx
             .query_row(
-                "SELECT payload FROM history_records WHERE id = lower(?1)",
+                "SELECT payload FROM history_records WHERE id = ?1",
                 params![incoming.id],
                 |row| row.get(0),
             )

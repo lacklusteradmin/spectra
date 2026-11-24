@@ -12,7 +12,7 @@ import json
 import sqlite3
 import unittest
 
-from harness import ABANDON, Handler, Spectra, fixture, scratch, serve, unittest_main
+from harness import ABANDON, Handler, Spectra, b58encode, fixture, scratch, serve, unittest_main
 
 xrp = fixture('xrp-mnemonic-payment.json')
 merge = fixture('account-closing.json')['stellar_account_merge']
@@ -22,19 +22,10 @@ NEAR_CONFIG = fixture('near-staking-fee-protocol86.json')
 NEAR_IMPLICIT = '5510e2b44cae6eb807e3e0e45d579dda058c274abcba15e5cb84636f5d1ee412'
 NEAR_DEPOSIT = 1250000000000000000000
 SUI_TOKEN = '0x' + 'aa' * 32 + '::usdc::USDC'
-B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-
-
-def b58(data: bytes) -> str:
-    number, text = int.from_bytes(data, 'big'), ''
-    while number:
-        number, digit = divmod(number, 58)
-        text = B58[digit] + text
-    return '1' * (len(data) - len(data.lstrip(b'\0'))) + text
 
 
 def ed25519(hex_key: str) -> str:
-    return 'ed25519:' + b58(bytes.fromhex(hex_key))
+    return 'ed25519:' + b58encode(bytes.fromhex(hex_key))
 
 
 def stellar_secret(seed: bytes) -> str:
@@ -69,7 +60,7 @@ class Node(Handler):
 
     def near(self, call):
         method, params, state = call['method'], call['params'], self.state
-        block = {'header': {'hash': b58(bytes([2] * 32)), 'height': 100}}
+        block = {'header': {'hash': b58encode(bytes([2] * 32)), 'height': 100}}
         if method == 'status':
             return {'chain_id': 'mainnet'}
         if method == 'block':
@@ -81,7 +72,7 @@ class Node(Handler):
             return {**NEAR_CONFIG, 'runtime_config': runtime, 'transaction_validity_period': 86400}
         if method == 'broadcast_tx_commit':
             self.state['submitted'].append(params[0])
-            return {'transaction': {'hash': b58(bytes([5] * 32))}}
+            return {'transaction': {'hash': b58encode(bytes([5] * 32))}}
         assert method == 'query', call
         kind = params['request_type']
         if kind == 'view_access_key_list':
@@ -131,7 +122,7 @@ class Node(Handler):
             program = params[1]['programId']
             return {'value': [row for row in state['token_accounts'] if row['program'] == program]}
         if method == 'getLatestBlockhash':
-            return {'value': {'blockhash': b58(bytes([5] * 32)), 'lastValidBlockHeight': 100}}
+            return {'value': {'blockhash': b58encode(bytes([5] * 32)), 'lastValidBlockHeight': 100}}
         if method == 'getFeeForMessage':
             return {'value': 5000}
         if method == 'getBalance':
@@ -140,7 +131,7 @@ class Node(Handler):
             return {'value': True}
         if method == 'sendTransaction':
             self.state['submitted'].append(params[0])
-            return b58(base64.b64decode(params[0])[1:65])
+            return b58encode(base64.b64decode(params[0])[1:65])
         raise AssertionError(call)
 
     def do_POST(self):
@@ -187,16 +178,13 @@ class WalletOperationsTests(unittest.TestCase):
         self.spectra = Spectra(self.directory)
 
     def endpoint(self, chain, api, path):
-        self.spectra.run('endpoints', '--chain', chain, '--api', api, '--capabilities',
-                         'balance,fee,broadcast,verification', '--add', self.base + path)
-        self.spectra.run('endpoints', '--chain', chain, '--custom-only', 'true')
+        self.spectra.run('endpoints', 'add', '--chain', chain, '--api', api, '--capabilities',
+                         'balance,fee,broadcast,verification', self.base + path)
+        self.spectra.run('endpoints', 'custom-only', '--chain', chain, 'true')
 
     def sign_and_broadcast(self, built, path):
         """Sign the reviewed artifact and broadcast it once; its signed payload."""
-        signed = self.spectra.run('send', 'sign', built['id'], '--review-digest', built['review_digest'],
-                                  '--endpoint', self.base + path)['artifact']
-        self.spectra.run('send', 'broadcast-signed', signed['id'], '--endpoint', self.base + path, '--yes')
-        return signed['signed_payload']
+        return self.spectra.sign_and_broadcast(built, self.base + path)['signed_payload']
 
     def history(self):
         with sqlite3.connect(self.directory / 'spectra.sqlite') as db:
@@ -282,8 +270,8 @@ class WalletOperationsTests(unittest.TestCase):
         owner = self.spectra.run('wallet', 'import', '--chain', 'solana', '--name', 'SOL', '--no-password',
                                  env={'SPECTRA_SEED': ABANDON})['wallet']['address']
         def account(n, program, lamports):
-            return {'program': program, 'pubkey': b58(bytes([n] * 32)), 'account': {'lamports': lamports, 'data': {
-                'parsed': {'info': {'mint': b58(bytes([n + 1] * 32)), 'owner': owner, 'state': 'initialized',
+            return {'program': program, 'pubkey': b58encode(bytes([n] * 32)), 'account': {'lamports': lamports, 'data': {
+                'parsed': {'info': {'mint': b58encode(bytes([n + 1] * 32)), 'owner': owner, 'state': 'initialized',
                                     'tokenAmount': {'amount': '0', 'decimals': 6}}}}}}
         self.state.update(owner=owner, token_accounts=[account(0x11, spl, 2039280), account(0x22, t22, 2074080)])
         self.endpoint('solana', 'solana-json-rpc', '/solana')

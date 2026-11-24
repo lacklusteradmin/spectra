@@ -15,7 +15,7 @@ pub(crate) struct HistoryRefreshKey {
 impl HistoryRefreshKey {
     pub(crate) fn new(wallet_id: &str, chain_id: crate::registry::Chain) -> Self {
         Self {
-            wallet_id: wallet_id.to_lowercase(),
+            wallet_id: wallet_id.to_string(),
             chain_id,
         }
     }

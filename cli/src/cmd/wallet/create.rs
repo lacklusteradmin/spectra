@@ -79,6 +79,9 @@ pub struct NewArgs {
     words: Option<u32>,
 }
 
+/// What derives a key from a phrase, which a private key has none of.
+const DERIVATION_OVERRIDES: [&str; 4] = ["path", "profile", "account", "derivation_input_file"];
+
 #[derive(Args)]
 pub struct ImportArgs {
     #[command(flatten)]
@@ -109,10 +112,10 @@ pub struct ImportArgs {
     /// Import a private key instead of a phrase, in hex or the chain's own
     /// encoding (`wallet methods` lists them). Reads from this file;
     /// `-` means stdin.
-    #[arg(long, value_name = "PATH", conflicts_with = "seed_file")]
+    #[arg(long, value_name = "PATH", conflicts_with = "seed_file", conflicts_with_all = DERIVATION_OVERRIDES)]
     private_key_file: Option<String>,
     /// Import a private key instead of a phrase, from this variable.
-    #[arg(long, value_name = "VAR")]
+    #[arg(long, value_name = "VAR", conflicts_with_all = DERIVATION_OVERRIDES)]
     private_key_env: Option<String>,
 }
 
@@ -152,8 +155,8 @@ pub struct WatchArgs {
 
 #[derive(Args)]
 pub struct CopyArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The network to add it to, as `wallet copy-targets` lists them.
     #[arg(long)]
     chain: String,
@@ -328,16 +331,6 @@ pub fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
     let chain = resolve_chain(&args.creation.chain)?;
     let private_key = args.private_key_file.is_some() || args.private_key_env.is_some();
     let (mut commit, what) = if private_key {
-        let creation = &args.creation;
-        if creation.derivation_input_file.is_some()
-            || creation.path.is_some()
-            || creation.profile.is_some()
-            || creation.account.is_some()
-        {
-            return Err(CliError::rejected(
-                "Derivation overrides require a mnemonic wallet",
-            ));
-        }
         // Core reads the key in any of the chain's own encodings, and derives
         // its address on the chain before sealing anything.
         let key = SecretSource {
@@ -345,7 +338,7 @@ pub fn import(ctx: &Ctx, out: Out, args: ImportArgs) -> CliResult<()> {
             env: args.private_key_env.clone(),
         }
         .resolve("private key", "private-key-file")?;
-        let name = creation.name.clone().unwrap_or_default();
+        let name = args.creation.name.clone().unwrap_or_default();
         let mut commit = commit_for(chain, &name, WalletImportKind::PrivateKey);
         commit.private_key = Some(key.trim().to_string());
         (commit, "imported a private key".to_string())
@@ -448,7 +441,7 @@ pub fn watch(ctx: &Ctx, out: Out, args: WatchArgs) -> CliResult<()> {
 }
 
 pub fn copy_targets(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let targets = ctx
         .rt
         .block_on(ctx.service()?.wallet_copy_targets(wallet.id))?;
@@ -456,7 +449,7 @@ pub fn copy_targets(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
 }
 
 pub fn copy(ctx: &Ctx, out: Out, args: CopyArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let chain = resolve_chain(&args.chain)?;
     let path = chosen_path(
         chain,

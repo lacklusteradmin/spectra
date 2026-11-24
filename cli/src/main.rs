@@ -1,19 +1,16 @@
 //! `spectra`: the front end for `spectra_core` that needs no platform.
 //!
 //! Every subcommand is non-interactive and scriptable, and `tests/acceptance`
-//! drives the built binary end to end. `spectra` alone, at a terminal, opens
-//! [`tui`]: windows that run those same subcommands.
+//! drives the built binary end to end.
 
 mod cmd;
 mod ctx;
 mod error;
 mod out;
-mod tui;
 
 use std::path::PathBuf;
 
-use clap::error::ErrorKind;
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 
 use ctx::Ctx;
 use error::CliError;
@@ -24,8 +21,7 @@ use out::Out;
     name = "spectra",
     about = "Multi-chain self-custody wallet",
     version,
-    disable_help_subcommand = true,
-    after_help = "With no command, at a terminal: tabs and windows that run these commands."
+    disable_help_subcommand = true
 )]
 struct Cli {
     /// Emit machine-readable JSON instead of formatted text.
@@ -37,7 +33,7 @@ struct Cli {
     data_dir: Option<PathBuf>,
 
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
 }
 
 #[derive(Subcommand)]
@@ -55,8 +51,9 @@ enum Command {
     Address(cmd::address::AddressCommand),
     /// Chains this build supports.
     Chains(cmd::chain::ChainsArgs),
-    /// Call every registered endpoint and report which ones answer.
-    Endpoints(cmd::chain::EndpointsArgs),
+    /// Probe, list and manage the endpoints each network uses.
+    #[command(subcommand)]
+    Endpoints(cmd::chain::EndpointsCommand),
     /// Transaction explorer pages, one per network.
     Explorers(cmd::chain::ExplorersArgs),
     /// Donation addresses, one per network.
@@ -66,16 +63,20 @@ enum Command {
     /// Fetch a wallet's on-chain transaction history.
     History(cmd::chain::HistoryArgs),
     /// Transactions recorded in the local store.
-    Txs(cmd::txs::TxsArgs),
+    #[command(subcommand)]
+    Txs(cmd::txs::TxsCommand),
     /// Build, review, sign and broadcast transfers.
     #[command(subcommand)]
     Send(cmd::send::SendCommand),
     /// Fetch native asset prices or read and refresh stored quotes.
-    Price(cmd::market::PriceArgs),
+    #[command(subcommand)]
+    Price(cmd::market::PriceCommand),
     /// Value portfolio holdings and manage dashboard pins.
-    Portfolio(cmd::market::PortfolioArgs),
+    #[command(subcommand)]
+    Portfolio(cmd::market::PortfolioCommand),
     /// Read or set the display currency.
-    Currency(cmd::market::CurrencyArgs),
+    #[command(subcommand)]
+    Currency(cmd::market::CurrencyCommand),
     /// Read, change or reset stored application settings.
     #[command(subcommand)]
     Settings(cmd::settings::SettingsCommand),
@@ -104,19 +105,20 @@ enum Command {
 }
 
 fn main() {
+    // Core's warnings go to stderr, quiet unless `RUST_LOG` asks: stdout
+    // carries every `--json` document.
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .without_time()
+        .with_ansi(false)
+        .init();
     let cli = Cli::parse();
     let out = Out::new(cli.json);
 
-    let result = match cli.command {
-        Some(command) => Ctx::new(cli.data_dir).and_then(|ctx| dispatch(&ctx, out, command)),
-        None if tui::available(cli.json) => tui::run(cli.data_dir, Cli::command()),
-        None => Cli::command()
-            .error(
-                ErrorKind::MissingSubcommand,
-                "a command is required; only `spectra` alone at a terminal opens the interface",
-            )
-            .exit(),
-    };
+    let result = Ctx::new(cli.data_dir).and_then(|ctx| dispatch(&ctx, out, cli.command));
 
     if let Err(error) = result {
         out.fail(&error);
@@ -130,16 +132,16 @@ fn dispatch(ctx: &Ctx, out: Out, command: Command) -> Result<(), CliError> {
         Command::Wallet(command) => cmd::wallet::run(ctx, out, command),
         Command::Address(command) => cmd::address::run(ctx, out, command),
         Command::Chains(args) => cmd::chain::chains(out, args),
-        Command::Endpoints(args) => cmd::chain::endpoints(ctx, out, args),
+        Command::Endpoints(command) => cmd::chain::endpoints(ctx, out, command),
         Command::Explorers(args) => cmd::chain::explorers(out, args),
         Command::Donations => cmd::chain::donations(out),
         Command::Balance(args) => cmd::chain::balance(ctx, out, args),
         Command::History(args) => cmd::chain::history(ctx, out, args),
-        Command::Txs(args) => cmd::txs::txs(ctx, out, args),
+        Command::Txs(command) => cmd::txs::txs(ctx, out, command),
         Command::Send(command) => cmd::send::run(ctx, out, command),
-        Command::Price(args) => cmd::market::price(ctx, out, args),
-        Command::Portfolio(args) => cmd::market::portfolio(ctx, out, args),
-        Command::Currency(args) => cmd::market::currency(ctx, out, args),
+        Command::Price(command) => cmd::market::price(ctx, out, command),
+        Command::Portfolio(command) => cmd::market::portfolio(ctx, out, command),
+        Command::Currency(command) => cmd::market::currency(ctx, out, command),
         Command::Settings(command) => cmd::settings::run(ctx, out, command),
         Command::Staking(command) => cmd::staking::run(ctx, out, command),
         Command::Token(command) => cmd::token::run(ctx, out, command),

@@ -797,8 +797,7 @@ mod tests {
     #[tokio::test]
     async fn same_api_endpoints_keep_independent_capabilities_and_requests() {
         let service = WalletService::new_catalog().unwrap();
-        let db =
-            std::env::temp_dir().join(format!("endpoint-caps-{}.db", crate::store::new_event_id()));
+        let db = std::env::temp_dir().join(format!("endpoint-caps-{}.db", crate::store::new_id()));
         service
             .open_state(db.to_string_lossy().into())
             .await

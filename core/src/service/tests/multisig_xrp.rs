@@ -112,10 +112,7 @@ async fn service(endpoint: String) -> (Arc<WalletService>, Arc<InMemorySecretSto
         endpoints: vec![endpoint],
     }])
     .unwrap();
-    let db = std::env::temp_dir().join(format!(
-        "xrp-multisig-{}.sqlite",
-        crate::store::new_event_id()
-    ));
+    let db = std::env::temp_dir().join(format!("xrp-multisig-{}.sqlite", crate::store::new_id()));
     service
         .open_state(db.to_string_lossy().into())
         .await

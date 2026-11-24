@@ -19,7 +19,7 @@ use bitcoin::hashes::{Hash, sha256d};
 use num_bigint::BigUint;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use self::wire::{HogEx, MwebHeader, Output, Reader, blake3, hogaddr_script};
+use self::wire::{HogEx, MwebHeader, Output, blake3, hogaddr_script, wire_reader};
 use crate::api::error::ApiError;
 use crate::registry::Chain;
 
@@ -497,7 +497,7 @@ impl Session {
         version.push(0);
         self.send("version", &version).await?;
         let (_, theirs) = self.answer(&["version"]).await?;
-        let mut reader = Reader(&theirs);
+        let mut reader = wire_reader(&theirs);
         let their_version = reader.u32_le().map_err(|_| decode("version"))?;
         let services = reader.u64_le().map_err(|_| decode("version"))?;
         reader
@@ -533,7 +533,7 @@ impl Session {
             if command != "headers" {
                 return Err(decode("no headers"));
             }
-            let mut reader = Reader(&payload);
+            let mut reader = wire_reader(&payload);
             let count = reader.length(81).map_err(|_| decode("headers"))?;
             for _ in 0..count {
                 let header = BlockHeader::parse(reader.array().map_err(|_| decode("headers"))?);
@@ -621,7 +621,7 @@ pub(crate) fn parse_mweb_header(payload: &[u8]) -> Result<ProvedMwebHeader, ApiE
     let mut cursor = payload;
     let merkle =
         bitcoin::MerkleBlock::consensus_decode(&mut cursor).map_err(|_| decode("merkle block"))?;
-    let mut reader = Reader(cursor);
+    let mut reader = wire_reader(cursor);
     let hogex = HogEx::decode(&mut reader)?;
     let mweb = MwebHeader::decode(&mut reader)?;
     reader.finished()?;
@@ -656,7 +656,7 @@ pub(crate) fn parse_leafset(
     payload: &[u8],
     header: &ProvedMwebHeader,
 ) -> Result<Leafset, ApiError> {
-    let mut reader = Reader(payload);
+    let mut reader = wire_reader(payload);
     if reader.array::<32>()? != header.block.hash {
         return Err(decode("a leafset for another block"));
     }
@@ -680,7 +680,7 @@ pub(crate) fn parse_unspent_outputs(
     leafset: &Leafset,
     start: u64,
 ) -> Result<Vec<LeafOutput>, ApiError> {
-    let mut reader = Reader(payload);
+    let mut reader = wire_reader(payload);
     if reader.array::<32>()? != header.block.hash {
         return Err(decode("outputs of another block"));
     }

@@ -18,7 +18,7 @@ fn shielded_only() -> UnifiedAddressRequest {
 
 /// A wallet database with no account yet, in a directory of its own.
 fn empty_db() -> (std::path::PathBuf, ZcashDb) {
-    let directory = std::env::temp_dir().join(crate::store::new_event_id());
+    let directory = std::env::temp_dir().join(crate::store::new_id());
     let db = open_zcash_db(&directory.join("wallet.sqlite"), Network::MainNetwork).unwrap();
     (directory, db)
 }

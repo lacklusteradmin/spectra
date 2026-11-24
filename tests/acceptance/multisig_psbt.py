@@ -96,8 +96,8 @@ with serve(Esplora, funds=funds, broadcasts=[]) as node, scratch('multisig') as 
 
     vault = descriptor(NETWORK['cosigners'])
     for signer in [coordinator, spectra / 'a', spectra / 'b']:
-        signer.run('endpoints', '--chain', 'bitcoin', '--api', 'esplora',
-                   '--capabilities', 'balance,history,utxo,fee,broadcast,verification', '--add', node.url)
+        signer.run('endpoints', 'add', '--chain', 'bitcoin', '--api', 'esplora',
+                   '--capabilities', 'balance,history,utxo,fee,broadcast,verification', node.url)
         signer.run('wallet', 'watch', '--chain', 'bitcoin', '--name', 'Vault', '--multisig', vault)
 
     # The keypool is kept between processes: 0/0 is the account's own
@@ -117,7 +117,7 @@ with serve(Esplora, funds=funds, broadcasts=[]) as node, scratch('multisig') as 
     # nothing.
     for verb in ['submit', 'discard']:
         refusal = coordinator.fail('multisig', verb, created['id'], code=USAGE)
-        assert refusal['error'] == f'{verb} requires --yes', refusal
+        assert refusal['error'].endswith('re-run with --yes'), refusal
     assert [s['id'] for s in coordinator.run('multisig', 'list', 'Vault')['sessions']] == [created['id']]
 
     # Each cosigner's phrase upgrades its watched copy; A signs the

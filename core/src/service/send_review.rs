@@ -393,10 +393,8 @@ mod tests {
                 endpoints: vec![server.uri()],
             }])
             .unwrap();
-            let database = std::env::temp_dir().join(format!(
-                "send-review-{}.sqlite",
-                crate::store::new_event_id()
-            ));
+            let database =
+                std::env::temp_dir().join(format!("send-review-{}.sqlite", crate::store::new_id()));
             service
                 .open_state(database.to_string_lossy().into())
                 .await

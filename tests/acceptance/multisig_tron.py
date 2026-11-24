@@ -54,9 +54,9 @@ with serve(Node, broadcasts=[]) as node, scratch('tron-multisig') as directory:
     broadcasts = node.state['broadcasts']
 
     for signer, key in [(a, 1), (b, 2)]:
-        signer.run('endpoints', '--chain', 'tron', '--api', 'tron-http', '--capabilities',
-                   'balance,fee,verification,broadcast', '--add', node.url)
-        signer.run('endpoints', '--chain', 'tron', '--custom-only', 'true')
+        signer.run('endpoints', 'add', '--chain', 'tron', '--api', 'tron-http', '--capabilities',
+                   'balance,fee,verification,broadcast', node.url)
+        signer.run('endpoints', 'custom-only', '--chain', 'tron', 'true')
         signer.run('wallet', 'watch', '--chain', 'tron', '--name', 'Account', '--address', ACCOUNT)
         signer.run('wallet', 'import', '--chain', 'tron', '--name', 'Signer', '--no-password',
                    '--private-key-env', 'KEY', env={'KEY': KEYS[key]['private_key']})

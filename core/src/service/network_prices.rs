@@ -348,10 +348,8 @@ mod tests {
     }
     #[tokio::test]
     async fn quote_state_survives_restart_and_no_work_needs_no_network() {
-        let path = std::env::temp_dir().join(format!(
-            "spectra-quotes-{}.db",
-            crate::store::new_transaction_id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("spectra-quotes-{}.db", crate::store::new_id()));
         let service = WalletService::new(vec![]).unwrap();
         service
             .open_state(path.to_string_lossy().into())

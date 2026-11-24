@@ -135,8 +135,10 @@ impl WalletService {
         address: &str,
     ) -> Result<Option<Vec<crate::api::HeldToken>>, SpectraBridgeError> {
         let discovery = [crate::api::endpoint::EndpointCapability::TokenDiscovery];
-        let held = match chain {
-            Chain::Solana | Chain::SolanaDevnet => {
+        // Choose the service by family; every read keeps the concrete
+        // network's endpoints and identity.
+        let held = match chain.mainnet_counterpart() {
+            Chain::Solana => {
                 let endpoints = self.endpoints_for(chain, &discovery).await;
                 if endpoints.is_empty() {
                     return Ok(None);
@@ -159,7 +161,7 @@ impl WalletService {
                     })
                     .collect::<Result<_, crate::api::error::ApiError>>()?
             }
-            Chain::Sui | Chain::SuiTestnet => {
+            Chain::Sui => {
                 let endpoints = self.endpoints_for(chain, &discovery).await;
                 if endpoints.is_empty() {
                     return Ok(None);
@@ -168,7 +170,7 @@ impl WalletService {
                     .fetch_all_coin_balances(address)
                     .await?
             }
-            Chain::Aptos | Chain::AptosTestnet => {
+            Chain::Aptos => {
                 let endpoints = self
                     .listing_endpoints(chain, EndpointApi::AptosIndexer)
                     .await?;
@@ -180,7 +182,7 @@ impl WalletService {
                     .fetch_holdings(address)
                     .await?
             }
-            Chain::Near | Chain::NearTestnet => {
+            Chain::Near => {
                 let endpoints = self
                     .listing_endpoints(chain, EndpointApi::Nearblocks)
                     .await?;
@@ -191,7 +193,7 @@ impl WalletService {
                     .fetch_ft_holdings(address)
                     .await?
             }
-            Chain::Tron | Chain::TronNile => {
+            Chain::Tron => {
                 let primary = self.endpoints_for(chain, &discovery).await;
                 let accounts = self
                     .tron_account_endpoints(chain, &primary, &discovery)
@@ -225,7 +227,7 @@ impl WalletService {
                 held.extend(trc10);
                 held
             }
-            Chain::Ton | Chain::TonTestnet => {
+            Chain::Ton => {
                 let v3 = self
                     .listing_endpoints(chain, EndpointApi::ToncenterV3)
                     .await?;
@@ -238,7 +240,7 @@ impl WalletService {
             }
             // A node lists every trust line of the account; a negative
             // balance is one it owes, not one it holds.
-            Chain::Xrp | Chain::XrpTestnet => {
+            Chain::Xrp => {
                 let endpoints = self.endpoints_for(chain, &discovery).await;
                 if endpoints.is_empty() {
                     return Ok(None);
@@ -261,7 +263,7 @@ impl WalletService {
             }
             // Every unspent output names the assets it holds; their sum is
             // what the address holds, at decimals read in one request.
-            Chain::Cardano | Chain::CardanoPreprod => {
+            Chain::Cardano => {
                 let endpoints = self.endpoints_for(chain, &discovery).await;
                 if endpoints.is_empty() {
                     return Ok(None);
@@ -291,7 +293,7 @@ impl WalletService {
                     .collect()
             }
             // An account's balances name every trustline it has.
-            Chain::Stellar | Chain::StellarTestnet => {
+            Chain::Stellar => {
                 let endpoints = self.endpoints_for(chain, &discovery).await;
                 if endpoints.is_empty() {
                     return Ok(None);
@@ -311,7 +313,7 @@ impl WalletService {
                     })
                     .collect()
             }
-            c if c.is_evm() => {
+            _ if chain.is_evm() => {
                 let explorers = self
                     .listing_endpoints(chain, EndpointApi::Blockscout)
                     .await?;
@@ -468,15 +470,13 @@ impl WalletService {
                         },
                     ),
                 };
-                Ok::<_, SpectraBridgeError>(TokenBalanceResult {
-                    standard: token.standard_on(chain),
-                    contract_address: token.contract.clone(),
-                    symbol: token.symbol.clone(),
+                Ok::<_, SpectraBridgeError>(TokenBalanceResult::known(
+                    chain,
+                    token,
+                    token.contract.clone(),
+                    raw,
                     decimals,
-                    balance_raw: raw.to_string(),
-                    balance_display: crate::amount::decimal::from_units(raw, u32::from(decimals)),
-                    is_known: true,
-                })
+                ))
             }
         });
         readable_tokens(futures::future::join_all(reads).await)
@@ -614,47 +614,6 @@ impl WalletService {
             )
             .await;
 
-        // A token read as two questions: its balance and its own decimals.
-        macro_rules! own_decimals_token_balances {
-            ($Client:ty, $endpoints:expr, $balance:ident) => {{
-                use futures::future::join_all;
-                let client = std::sync::Arc::new(<$Client>::new($endpoints));
-                let futs: Vec<_> = tokens
-                    .iter()
-                    .map(|t| {
-                        let client = client.clone();
-                        let address = address.clone();
-                        let contract = t.contract.clone();
-                        let symbol = t.symbol.clone();
-                        let standard = t.standard_on(chain);
-                        async move {
-                            // Balance and decimals together: the token's own
-                            // count wins over the catalog's, which can only
-                            // ever be the one that is wrong.
-                            let (raw, decimals) = tokio::join!(
-                                client.$balance(&address, &contract),
-                                self.token_decimals(chain, &contract, MetadataRead::Shared)
-                            );
-                            let (raw, decimals) = (raw?, decimals?);
-                            Ok::<_, SpectraBridgeError>(TokenBalanceResult {
-                                standard,
-                                contract_address: contract,
-                                symbol,
-                                decimals,
-                                balance_raw: raw.to_string(),
-                                balance_display: crate::amount::decimal::from_units(
-                                    raw as u128,
-                                    u32::from(decimals),
-                                ),
-                                is_known: true,
-                            })
-                        }
-                    })
-                    .collect();
-                readable_tokens(join_all(futs).await)
-            }};
-        }
-
         // Choose the protocol by family while every read keeps the concrete
         // network's endpoints and identity.
         let results: Vec<TokenBalanceResult> = match chain.mainnet_counterpart() {
@@ -759,41 +718,34 @@ impl WalletService {
                 readable_tokens(join_all(futs).await)
             }
             Chain::Near => {
-                use futures::future::join_all;
-                let client = std::sync::Arc::new(NearClient::new(endpoints));
-                let futs: Vec<_> = tokens
-                    .iter()
-                    .map(|t| {
-                        let client = client.clone();
-                        let contract = t.contract.clone();
-                        let holder = address.clone();
-                        let symbol = t.symbol.clone();
-                        let standard = t.standard_on(chain);
-                        async move {
-                            let (raw, decimals) = tokio::join!(
-                                client.fetch_ft_balance_of(&contract, &holder),
-                                self.token_decimals(chain, &contract, MetadataRead::Shared)
-                            );
-                            let (raw, decimals) = (raw?, decimals?);
-                            let display =
-                                crate::amount::decimal::from_units(raw, u32::from(decimals));
-                            Ok::<_, SpectraBridgeError>(TokenBalanceResult {
-                                standard,
-                                contract_address: contract,
-                                symbol,
-                                decimals,
-                                balance_raw: raw.to_string(),
-                                balance_display: display,
-                                is_known: true,
-                            })
-                        }
-                    })
-                    .collect();
-                readable_tokens(join_all(futs).await)
+                let client = NearClient::new(endpoints);
+                let (client, holder) = (&client, address.as_str());
+                self.own_decimals_balances(chain, &tokens, move |contract| async move {
+                    client.fetch_ft_balance_of(&contract, holder).await
+                })
+                .await
             }
-            Chain::Sui => own_decimals_token_balances!(SuiClient, endpoints, fetch_coin_balance),
+            Chain::Sui => {
+                let client = SuiClient::new(endpoints);
+                let (client, owner) = (&client, address.as_str());
+                self.own_decimals_balances(chain, &tokens, move |coin_type| async move {
+                    client
+                        .fetch_coin_balance(owner, &coin_type)
+                        .await
+                        .map(u128::from)
+                })
+                .await
+            }
             Chain::Aptos => {
-                own_decimals_token_balances!(AptosClient, endpoints, fetch_token_balance)
+                let client = AptosClient::new(endpoints);
+                let (client, owner) = (&client, address.as_str());
+                self.own_decimals_balances(chain, &tokens, move |identifier| async move {
+                    client
+                        .fetch_token_balance(owner, &identifier)
+                        .await
+                        .map(u128::from)
+                })
+                .await
             }
             Chain::Ton => {
                 // A jetton balance lives in a wallet contract derived per
@@ -842,17 +794,8 @@ impl WalletService {
                         .zip(contracts)
                         .zip(reads)
                         .map(|((token, contract), read)| {
-                            read.map(|(raw, decimals)| TokenBalanceResult {
-                                standard: token.standard_on(chain),
-                                contract_address: contract,
-                                symbol: token.symbol.clone(),
-                                decimals,
-                                balance_raw: raw.to_string(),
-                                balance_display: crate::amount::decimal::from_units(
-                                    raw,
-                                    u32::from(decimals),
-                                ),
-                                is_known: true,
+                            read.map(|(raw, decimals)| {
+                                TokenBalanceResult::known(chain, token, contract, raw, decimals)
                             })
                         })
                         .collect(),
@@ -866,6 +809,40 @@ impl WalletService {
         };
 
         Ok(results)
+    }
+}
+
+impl WalletService {
+    /// Each token read as two questions at once, its balance from `balance`
+    /// and its decimals from its own contract: the token's own count wins
+    /// over the catalog's, which can only ever be the one that is wrong.
+    async fn own_decimals_balances<F, Fut>(
+        &self,
+        chain: Chain,
+        tokens: &[TokenDescriptor],
+        balance: F,
+    ) -> Vec<TokenBalanceResult>
+    where
+        F: Fn(String) -> Fut,
+        Fut: std::future::Future<Output = Result<u128, ApiError>>,
+    {
+        let reads = tokens.iter().map(|token| {
+            let raw = balance(token.contract.clone());
+            async move {
+                let (raw, decimals) = tokio::join!(
+                    raw,
+                    self.token_decimals(chain, &token.contract, MetadataRead::Shared)
+                );
+                Ok::<_, SpectraBridgeError>(TokenBalanceResult::known(
+                    chain,
+                    token,
+                    token.contract.clone(),
+                    raw?,
+                    decimals?,
+                ))
+            }
+        });
+        readable_tokens(futures::future::join_all(reads).await)
     }
 }
 
@@ -908,6 +885,28 @@ pub struct TokenBalanceResult {
     /// The catalog has an entry for this contract. False for anything found by
     /// discovery that nobody has vouched for.
     pub is_known: bool,
+}
+
+impl TokenBalanceResult {
+    /// A catalog token's balance of `raw` base units at the `decimals` the
+    /// read found, under `contract` as the read spells it.
+    fn known(
+        chain: Chain,
+        token: &TokenDescriptor,
+        contract: String,
+        raw: u128,
+        decimals: u8,
+    ) -> Self {
+        Self {
+            standard: token.standard_on(chain),
+            contract_address: contract,
+            symbol: token.symbol.clone(),
+            decimals,
+            balance_raw: raw.to_string(),
+            balance_display: crate::amount::decimal::from_units(raw, u32::from(decimals)),
+            is_known: true,
+        }
+    }
 }
 
 #[cfg(test)]

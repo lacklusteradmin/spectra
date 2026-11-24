@@ -390,7 +390,7 @@ pub(crate) fn wallets_for_import(
                 } => (Some(address), None, Some(descriptor)),
             };
             crate::store::state::WalletState {
-                id: crate::store::new_transaction_id(),
+                id: crate::store::new_id(),
                 name: if count > 1 && !name.is_empty() {
                     format!("{name} {}", index + 1)
                 } else {

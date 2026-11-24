@@ -88,13 +88,13 @@ with serve(Node, external_hash=None, trace_response=None, submitted=[], traces=0
     run = spectra.run
 
     def poll():
-        return run('txs', '--poll-chain', 'ton')['changes']
+        return run('txs', 'poll', 'ton')['changes']
 
     run('wallet', 'import', '--chain', 'ton', '--name', 'Token', '--private-key-env', 'SPECTRA_PRIVATE_KEY')
-    run('endpoints', '--chain', 'ton', '--api', 'toncenter-v2',
-        '--capabilities', 'balance,fee,verification,token-balance,broadcast', '--add', endpoint)
-    run('endpoints', '--chain', 'ton', '--api', 'toncenter-v3',
-        '--capabilities', 'verification,token-balance,token-discovery', '--add', endpoint + '/v3')
+    run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v2',
+        '--capabilities', 'balance,fee,verification,token-balance,broadcast', endpoint)
+    run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v3',
+        '--capabilities', 'verification,token-balance,token-discovery', endpoint + '/v3')
     prepared = run('send', 'build', 'Token', '--to', DESTINATION, '--endpoint', endpoint,
                    '--contract', CONTRACT, '--decimals', '6', '--amount', '123.456789')['artifact']
     signed = run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],

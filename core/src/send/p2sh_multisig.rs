@@ -675,6 +675,7 @@ fn decode_partial(
 /// (`PSBT_IN_UTXO`, key 0) a serialized `CTxOut`, no witness fields.
 mod bch_psbt {
     use super::*;
+    use crate::derivation::primitives::ByteReader;
     use bitcoin::bip32::{ChildNumber, DerivationPath, Fingerprint};
 
     const MAGIC: &[u8] = b"psbt\xff";
@@ -767,38 +768,22 @@ mod bch_psbt {
         Ok(base64::engine::general_purpose::STANDARD.encode(out))
     }
 
-    struct Cursor<'a>(&'a [u8]);
-
-    impl<'a> Cursor<'a> {
-        fn take(&mut self, n: usize) -> Result<&'a [u8], SendError> {
-            if self.0.len() < n {
-                return Err(unread());
-            }
-            let (head, rest) = self.0.split_at(n);
-            self.0 = rest;
-            Ok(head)
-        }
-
-        fn varint(&mut self) -> Result<usize, SendError> {
-            let first = self.take(1)?[0];
-            Ok(match first {
-                0xfd => u16::from_le_bytes(self.take(2)?.try_into().expect("two")) as usize,
-                0xfe => u32::from_le_bytes(self.take(4)?.try_into().expect("four")) as usize,
-                0xff => return Err(unread()),
-                n => n as usize,
-            })
+    impl<'a> ByteReader<'a, SendError> {
+        /// A canonical CompactSize length.
+        fn length(&mut self) -> Result<usize, SendError> {
+            usize::try_from(self.compact_size()?).map_err(|_| unread())
         }
 
         /// One map, its records in order, until the separator.
-        fn map(&mut self) -> Result<Vec<(&'a [u8], &'a [u8])>, SendError> {
+        fn psbt_map(&mut self) -> Result<Vec<(&'a [u8], &'a [u8])>, SendError> {
             let mut records = Vec::new();
             loop {
-                let length = self.varint()?;
+                let length = self.length()?;
                 if length == 0 {
                     return Ok(records);
                 }
                 let key = self.take(length)?;
-                let length = self.varint()?;
+                let length = self.length()?;
                 records.push((key, self.take(length)?));
             }
         }
@@ -839,12 +824,12 @@ mod bch_psbt {
     /// The spent output `value` holds: a `CTxOut`, or, as some writers
     /// keep it, the whole transaction `outpoint` names.
     fn spent_output(value: &[u8], outpoint: &OutPoint) -> Result<TxOut, SendError> {
-        let mut cursor = Cursor(value);
+        let mut cursor = ByteReader::new(value, |_| unread());
         let parsed = (|| {
-            let amount = u64::from_le_bytes(cursor.take(8)?.try_into().expect("eight"));
-            let length = cursor.varint()?;
+            let amount = cursor.u64_le()?;
+            let length = cursor.length()?;
             let script = cursor.take(length)?.to_vec();
-            if !cursor.0.is_empty() {
+            if !cursor.is_empty() {
                 return Err(unread());
             }
             Ok(TxOut {
@@ -876,18 +861,18 @@ mod bch_psbt {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(text)
             .map_err(|_| SendError::invalid("Not a PSBT: it is not base64."))?;
-        let mut cursor = Cursor(&bytes);
+        let mut cursor = ByteReader::new(&bytes, |_| unread());
         if cursor.take(MAGIC.len())? != MAGIC {
             return Err(SendError::invalid("Not a PSBT."));
         }
-        let global = cursor.map()?;
+        let global = cursor.psbt_map()?;
         let [([0x00], unsigned)] = global.as_slice() else {
             return Err(unread());
         };
         let tx: Transaction = bitcoin::consensus::deserialize(unsigned).map_err(|_| unread())?;
         let mut inputs = Vec::with_capacity(tx.input.len());
         for (index, txin) in tx.input.iter().enumerate() {
-            let records = cursor.map()?;
+            let records = cursor.psbt_map()?;
             let foreign = || {
                 SendError::refused(
                     "Input %@ does not belong to this wallet.",
@@ -937,7 +922,7 @@ mod bch_psbt {
         }
         let mut change = Vec::with_capacity(tx.output.len());
         for _ in &tx.output {
-            let records = cursor.map()?;
+            let records = cursor.psbt_map()?;
             let place = place_of(policy, &records, 0x02)?;
             for (key, value) in &records {
                 match (key.first(), key.len(), place) {
@@ -954,7 +939,7 @@ mod bch_psbt {
             }
             change.push(place);
         }
-        if !cursor.0.is_empty() {
+        if !cursor.is_empty() {
             return Err(unread());
         }
         let mut spent: Vec<SpentInput> = Vec::with_capacity(inputs.len());

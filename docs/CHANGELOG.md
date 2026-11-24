@@ -1,5 +1,144 @@
 # Changelog
 
+## Beta Commit 254
+
+- **The CLI's windowed interface is deleted** (`cli/src/tui/`,
+  `tests/acceptance/tui.py`): it ran the same subcommands in tabs and windows
+  as kitty or tmux would, with no operation of its own; `spectra` with no
+  command is clap's missing-subcommand error, and the help no longer
+  describes the interface. Its dependencies `ratatui`, `portable-pty`,
+  `vt100`, `unicode-width` and `base64` are removed from `cli/Cargo.toml`.
+- **The CLI's commands follow one set of conventions** (`cli/src/`).
+  - A wallet or contact name that matches nothing exits 3, as an unknown
+    transaction, setting or alert does (before: 1).
+  - `wallet import` with a private key and a derivation override is a usage
+    error from clap, exit 2 (before: exit 3 from the CLI's own check, which
+    core repeats).
+  - Every recipient flag is `--to` (before: `--destination` on `send review`,
+    `preview`, `quote`, `build-owned`, `owned-broadcast` and `self-check`).
+  - `endpoints`, `txs`, `price`, `portfolio` and `currency` take subcommands
+    instead of mode flags: `endpoints` `probe`, `list`, `add`, `replace`,
+    `remove` and `custom-only`; `txs` `list`, `summary`, `show`, `endpoints`,
+    `page`, `recheck`, `refresh-pending`, `maintenance`, `poll` and
+    `replaceable`; `price` `spot`, `stored` and `refresh`; `portfolio` `live`,
+    `stored`, `pins`, `set-pins` and `unpin`; `currency` `show`, `set`,
+    `rates` and `refresh-rates`. `portfolio set-pins` and
+    `unpin` report the pins after the change (before: a pin flag alone fell
+    through to a live valuation).
+  - `portfolio`'s `--skip-unreachable`, which defaulted to true and could not
+    be turned off, is removed with its unreachable stop-on-error branch.
+  - The 28 argument structs that declared the "Wallet id, name or address"
+    positional flatten `WalletArg` instead.
+  - Every `--yes` gate says what the command would do, then "re-run with
+    --yes" (`CliError::unconfirmed`; before: three message shapes).
+- **The CLI's offline calculators and artwork lookups are deleted**: `send
+  amount`, `shortcut`, `fee-units`, `assemble` and `affordability`, and `token
+  artwork` and `format`, which no suite ran and whose rules core tests;
+  `send scan`, `request`, `fees` and `overrides` stay. `token_artwork_name` and
+  `chain_artwork_name` go with them (`store/artwork.rs`).
+- **The `diagnostics_bundle_from_json` export is removed**
+  (`diagnostics/export.rs`): the app no longer imports a bundle, and core's
+  tests read one with serde.
+- **`store/state.rs` is split by concern** (`store/settings.rs`,
+  `store/address_book.rs`, `store/token_preferences.rs`; the wallet types in
+  `store/wallet_domain.rs`; the reducer's tests in
+  `store/tests/state_reducer.rs`): each module holds its types, helpers and
+  the reducer arms for its commands, which `reduce_state_in_place` routes to
+  it, and `state` re-exports them (before: 2147 lines in one file).
+- **Staking preparation is one function per network**
+  (`service/staking_protocols.rs` `prepare_solana_staking`,
+  `prepare_sui_staking`, `prepare_aptos_staking`, `prepare_near_staking`;
+  `service/staking_substrate.rs` `prepare_pool_call`),
+  which rustfmt formats (before: statements of up to 300 characters inside one
+  closure that rustfmt left alone); a NEAR pool call's method, arguments and
+  deposit come from `near_staking_call`, which the build and its recheck share.
+- **One bounded byte reader decodes every encoded transaction and wire
+  message** (`derivation::primitives::ByteReader`, used by the XRP, Stellar,
+  Sui and BCH PSBT multisig decoders and the Litecoin wire codec), each
+  refusing with its own error; protocol-specific reads stay in each module
+  (before: five readers, each with its own `take`, integers and end check).
+  - A BCH PSBT whose CompactSize is longer than its value needs is refused
+    (before: the reader accepted it).
+- **Token balance reads share one shape** (`service/network_tokens.rs`): Sui,
+  Aptos and NEAR read balance and decimals through `own_decimals_balances`,
+  every catalog token's row comes from `TokenBalanceResult::known`, and
+  `held_tokens` chooses its service by family as `fetch_token_balances` does
+  (before: a macro for Sui and Aptos, a hand copy for NEAR, and each testnet
+  named in its own arm).
+- **The acceptance suites share base58, SCALE compact, `block_hash` and
+  sign-then-broadcast from the harness** (`tests/acceptance/harness.py`
+  `b58encode`, `b58decode`, `scale_compact`, `block_hash`,
+  `Spectra.sign_and_broadcast`; before: copies in six suites, one SCALE copy
+  without the big-integer mode).
+  - `__main__.py` no longer checks that `send owned-broadcast` needs `--yes`,
+    which `send.py` checks.
+- **Stale notes and vestigial code are corrected**.
+  - `core/tests/fixtures/monero-local.md` no longer says subaddress discovery
+    is unsupported, which `CHAIN-SUPPORT.md` contradicts.
+  - README's `make lint` row names the source-scan tests, and `Cargo.toml`
+    names `scripts/build-apple-package.sh` as what runs the bindgen.
+  - `production_text` moves from `scripts/source_scan.py` into the one file
+    that calls it, `scripts/test-source-scan.py`.
+  - The CLI's tokio drops the unused `macros` feature (`cli/Cargo.toml`).
+  - `refresh --endpoint` and `txs recheck --endpoint` use
+    `Ctx::service_with_endpoints` (before: each wrote the endpoint update
+    again).
+  - `PasswordArgs`' doc comment is back on `PasswordArgs` (`cli/src/ctx.rs`;
+    before: fused onto `WalletArg`'s).
+- **The CLI configures logging, not core** (`cli/src/main.rs`;
+  `service/mod.rs` `WalletService::new`): the stderr subscriber, quiet unless
+  `RUST_LOG` asks, is installed by the CLI's `main`, and core no longer
+  depends on `tracing-subscriber` (before: every `WalletService` construction
+  installed a process-wide subscriber, so the app could not configure its own).
+- **Every id core mints is a v4 UUID, compared exactly** (`store::new_id`).
+  - Contacts, price alerts and multisig sessions get UUIDs as wallets and
+    transactions do (before: 32 hex characters from `new_event_id`).
+  - Wallet and transaction ids are stored and compared as given: the history
+    store no longer lowercases them on write or compares with `lower()`, the
+    `idx_wallets_lower_id` index is gone, and the services, the history
+    refresh clock and the transaction merge compare ids with `==` (before:
+    case-insensitive in the history store, eight service lookups, the refresh
+    clock and the merge; exact in the reducer and the keypool, multisig and
+    pagination deletes). Addresses and transaction hashes keep their case
+    folding.
+- **The test that pinned 58 catalog rows to the 2026-10-04 audit files is
+  deleted** (`catalog/tokens.rs` `pending_catalog_tests`): no
+  `# TODO(verify-token)` marker is left for it to read, and a corrected
+  contract failed `cargo test`; the audits stay in `docs/audits/` as dated
+  evidence.
+- **The toolchain is no longer pinned** (`rust-toolchain.toml` deleted,
+  `README.md`, `scripts/build-apple-package.sh`): builds use the current
+  stable Rust (before: 1.98.1).
+- **The app's internals are documented in spectra-apple**
+  (`docs/ARCHITECTURE.md`): the Mac build, the composer's requests in
+  `SendFlowState`, the rules that keep the Swift shell thin, `SendSession`'s
+  ownership, the `AppState` composition, and the completion and
+  `AmountPresentation` paragraphs move to spectra-apple's
+  `docs/ARCHITECTURE.md`, which two sentences here point to.
+- Tests: 1 new, 91 removed
+  - Byte reader 1: a read past the end, or a CompactSize longer than its
+    value needs, accepted.
+  - The removed tests checked the windowed interface (89), the audit-pinned
+    catalog rows and case-insensitive transaction ids; the diagnostics and
+    history-id tests no longer check the deleted import's refusals or that
+    ids differing in case are one record.
+- Docs: `ARCHITECTURE.md` "Ownership", "Boundary design" (the thin-shell
+  rules), "Persistent send stages", "Display precision" and "Refresh and
+  diagnostics" (renamed from the native-flow headings), the `cli/` row, the
+  primitives list (`ByteReader`); `tests/README.md` (`tui.py`); `README.md`
+  "Development" (the toolchain) and "Verification" (`make lint`);
+  `core/tests/fixtures/monero-local.md`.
+- Total: 137 .rs files changed (4 new, 10 deleted), +3384 −7428 lines; data
+  and config files: `Cargo.toml`, `Cargo.lock`, `cli/Cargo.toml`,
+  `core/Cargo.toml`, `rust-toolchain.toml` (deleted),
+  `scripts/build-apple-package.sh`, `scripts/source_scan.py`,
+  `scripts/test-source-scan.py`, 29 files in `tests/acceptance/` (`tui.py`
+  deleted); dependencies: the CLI
+  drops `ratatui`, `portable-pty`, `vt100`, `unicode-width`, `base64` and
+  tokio's `macros` feature, `tracing-subscriber` moves from core to the CLI,
+  and 38 crates leave `Cargo.lock`; `#[test]` functions 1559 → 1469,
+  `cargo test` 1469 passing.
+
 ## Beta Commit 253
 
 - **Per-chain constants that callers restated are read from `registry::Chain`**

@@ -271,8 +271,8 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
     };
     if !args.yes {
         let plan = spectra_core::service::reset_dispatch(scopes);
-        return Err(CliError::usage(format!(
-            "this resets {} — re-run with --yes",
+        return Err(CliError::unconfirmed(format!(
+            "resets {}",
             reset_description(&plan)
         )));
     }
@@ -300,8 +300,8 @@ impl Report for ResetReport {
 /// gets here: a readable one is cleared with `settings reset`.
 fn discard(ctx: &Ctx, out: Out, args: DiscardArgs) -> CliResult<()> {
     if !args.yes {
-        return Err(CliError::usage(
-            "this deletes the stored data and every wallet secret it names — re-run with --yes",
+        return Err(CliError::unconfirmed(
+            "deletes the stored data and every wallet secret it names",
         ));
     }
     ctx.rt

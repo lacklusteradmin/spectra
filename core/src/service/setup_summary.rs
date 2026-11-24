@@ -271,7 +271,7 @@ mod tests {
     #[tokio::test]
     async fn custom_endpoints_only_keeps_every_catalog_url_out() {
         use crate::store::state::{AppSettingUpdate, StateCommand};
-        let directory = std::env::temp_dir().join(crate::store::new_event_id());
+        let directory = std::env::temp_dir().join(crate::store::new_id());
         std::fs::create_dir_all(&directory).unwrap();
         let service = WalletService::new_catalog().unwrap();
         service

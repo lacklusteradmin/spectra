@@ -91,7 +91,7 @@ def main():
         spectra = Spectra(directory, SCAN, SPECTRA_SEED=MONERO_SEED, SPECTRA_PASSWORD='fixture-password')
         wallet, restore, watch = spectra / 'wallet', spectra / 'restored', spectra / 'viewonly'
         wallet.run('wallet', 'import', '--chain', 'monero', '--name', 'LocalXmr')
-        wallet.run('endpoints','--chain','monero','--api','monero-daemon-rpc','--capabilities','fee,broadcast,verification','--add', endpoint)
+        wallet.run('endpoints','add','--chain','monero','--api','monero-daemon-rpc','--capabilities','fee,broadcast,verification',endpoint)
         address = wallet.run('send', 'identity', 'LocalXmr')['address']
         rpc(daemon, 'generateblocks', {'wallet_address': address, 'amount_of_blocks': 180})
         synced = wallet.run('send', 'sync-monero', 'LocalXmr')['sync']
@@ -148,7 +148,7 @@ def main():
 
         # The phrase, restored elsewhere, finds every subaddress again.
         restore.run('wallet', 'import', '--chain', 'monero', '--name', 'RestoredXmr')
-        restore.run('endpoints','--chain','monero','--api','monero-daemon-rpc','--capabilities','fee,broadcast,verification','--add', endpoint)
+        restore.run('endpoints','add','--chain','monero','--api','monero-daemon-rpc','--capabilities','fee,broadcast,verification',endpoint)
         restored = restore.run('send', 'sync-monero', 'RestoredXmr')['sync']
         assert restored['used_subaddresses'] == used, restored
         assert restored['unlocked_piconeros'] == original['unlocked_piconeros'], (restored, original)
@@ -165,7 +165,7 @@ def main():
                       '--view-key', view)
         watch.run('wallet', 'watch', '--chain', 'monero', '--name', 'ViewXmr', '--address', address,
                      '--view-key', view)
-        watch.run('endpoints','--chain','monero','--api','monero-daemon-rpc','--capabilities','fee,broadcast,verification','--add', endpoint)
+        watch.run('endpoints','add','--chain','monero','--api','monero-daemon-rpc','--capabilities','fee,broadcast,verification',endpoint)
         watched = watch.run('send', 'sync-monero', 'ViewXmr')['sync']
         assert watched['complete'] and not watched['spends_known'], watched
         assert watched['used_subaddresses'] == used, watched

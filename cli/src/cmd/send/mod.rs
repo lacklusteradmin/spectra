@@ -105,20 +105,10 @@ pub enum SendCommand {
     Probe(recipient::ProbeArgs),
     /// Resolve what was typed into the address a send would go to.
     Destination(recipient::DestinationArgs),
-    /// Validate exact decimal input and show integer units, without keys or network.
-    Amount(offline::AmountArgs),
-    /// Convert a fee-adjusted estimate to a conservative decimal shortcut offline.
-    Shortcut(offline::ShortcutArgs),
-    /// Validate a fee or gas budget in native units, without keys or network.
-    FeeUnits(offline::FeeUnitsArgs),
-    /// Build the transaction an EVM send would sign — no key, no network.
-    Assemble(offline::AssembleArgs),
     /// Read the address, amount and memo a scanned QR payload asks for, offline.
     Scan(offline::ScanArgs),
     /// The payment code a receiving address shows to ask for an amount, offline.
     Request(offline::RequestArgs),
-    /// Ask whether a send can land once the fee is counted.
-    Affordability(offline::AffordabilityArgs),
     /// Validate custom EVM gas fees in gwei, without keys or network.
     Fees(offline::FeesArgs),
     /// Validate EVM nonce, gas, calldata and access-list overrides offline.
@@ -154,13 +144,8 @@ pub fn run(ctx: &Ctx, out: Out, command: SendCommand) -> CliResult<()> {
         SendCommand::SelfCheck(args) => recipient::self_check(ctx, out, args),
         SendCommand::Probe(args) => recipient::probe(ctx, out, args),
         SendCommand::Destination(args) => recipient::destination(ctx, out, args),
-        SendCommand::Amount(args) => offline::amount(out, args),
-        SendCommand::Shortcut(args) => offline::shortcut(out, args),
-        SendCommand::FeeUnits(args) => offline::fee_units(out, args),
-        SendCommand::Assemble(args) => offline::assemble(out, args),
         SendCommand::Scan(args) => offline::scan(out, args),
         SendCommand::Request(args) => offline::request(out, args),
-        SendCommand::Affordability(args) => offline::affordability(out, args),
         SendCommand::Fees(args) => offline::fees(out, args),
         SendCommand::Overrides(args) => offline::overrides(out, args),
     }

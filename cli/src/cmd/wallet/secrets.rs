@@ -8,14 +8,14 @@ use spectra_core::service::{SeedPhraseReveal, WalletKeyKind};
 use spectra_core::store::state::WalletSigning;
 
 use super::{render_secret_warning, render_words};
-use crate::ctx::{Ctx, PasswordArgs};
+use crate::ctx::{Ctx, PasswordArgs, WalletArg};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out, Report};
 
 #[derive(Args)]
 pub struct ExportArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The key to print, in the encoding its network's wallets import:
     /// `private-key`, `spend-key` or `view-key` (Monero), or `account-key`
     /// (an account's public key). `wallet actions` lists what a wallet has.
@@ -30,8 +30,8 @@ pub struct ExportArgs {
 
 #[derive(Args)]
 pub struct SignMessageArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The message, as text.
     #[arg(long)]
     message: String,
@@ -80,7 +80,7 @@ impl Report for KeyReport {
 
 pub fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
     use WalletKeyKind as Kind;
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     // A wallet imported from a raw key has no phrase: its export is its key,
     // written as its network's wallets read it.
     let key = match args.key.as_deref() {
@@ -107,8 +107,8 @@ pub fn export(ctx: &Ctx, out: Out, args: ExportArgs) -> CliResult<()> {
         Some(Kind::AccountPublicKey) => "account key",
     };
     if !args.yes {
-        return Err(CliError::usage(format!(
-            "this prints your {what} in plain text — re-run with --yes"
+        return Err(CliError::unconfirmed(format!(
+            "prints your {what} in plain text"
         )));
     }
 
@@ -168,7 +168,7 @@ impl Report for SignedReport {
 }
 
 pub fn sign_message(ctx: &Ctx, out: Out, args: SignMessageArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let password = args.password.for_wallet(&wallet)?;
     let service = ctx.service()?;
     service.set_secret_store(ctx.secrets.clone());

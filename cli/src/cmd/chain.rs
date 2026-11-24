@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use clap::Args;
+use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use serde::Serialize;
 use spectra_core::api::endpoint::EndpointApi;
@@ -51,8 +51,8 @@ fn parse_tag(value: &str) -> Result<ChainTag, String> {
 
 #[derive(Args)]
 pub struct HistoryArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// Most entries to show.
     #[arg(long, default_value_t = 20)]
     limit: usize,
@@ -197,38 +197,102 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
 
 // ─── endpoints ──────────────────────────────────────────────────────────────
 
+/// The nodes and services each network is read and sent through.
+#[derive(Subcommand)]
+pub enum EndpointsCommand {
+    /// Call every registered endpoint and report which ones answer.
+    Probe(ChainFilterArgs),
+    /// The registered endpoints and their capabilities, without the network.
+    List(ListEndpointsArgs),
+    /// Save an endpoint of yours on a network.
+    Add(AddEndpointArgs),
+    /// Change one of your saved endpoints in place.
+    Replace(ReplaceEndpointArgs),
+    /// Remove one of your endpoints from a network. Removing its last one
+    /// also stops using only yours there.
+    Remove(RemoveEndpointArgs),
+    /// Use only your endpoints on a network (`true`), so the catalog's are
+    /// never contacted, or the catalog's too (`false`).
+    CustomOnly(CustomOnlyArgs),
+}
+
 #[derive(Args)]
-pub struct EndpointsArgs {
-    /// Chain to probe. Omit to probe every chain the catalog knows.
+pub struct ChainFilterArgs {
+    /// One chain. Omit for every chain the catalog knows.
     #[arg(long)]
     chain: Option<String>,
-    /// List registered endpoints and capabilities offline, without health probes.
-    #[arg(long)]
-    catalog: bool,
-    /// Save a custom endpoint offline. Requires --chain, --api and --capabilities.
-    #[arg(long, requires_all = ["chain", "api", "capabilities"], conflicts_with = "catalog")]
-    add: Option<String>,
-    /// API contract, using the api value from endpoints.toml.
-    #[arg(long, requires = "add")]
-    api: Option<String>,
-    /// Capabilities enabled on this endpoint (comma separated).
-    #[arg(long, requires = "add", value_delimiter = ',')]
-    capabilities: Vec<String>,
-    /// Restrict offline listing to built-in or custom endpoints.
-    #[arg(long, requires = "catalog", value_parser = ["built-in", "custom"])]
+}
+
+#[derive(Args)]
+pub struct ListEndpointsArgs {
+    #[command(flatten)]
+    chain: ChainFilterArgs,
+    /// Only the built-in or only your endpoints.
+    #[arg(long, value_parser = ["built-in", "custom"])]
     source: Option<String>,
-    /// Use only your endpoints on this network (`true`), so the catalog's
-    /// are never contacted, or the catalog's too (`false`). Requires --chain.
-    #[arg(long, requires = "chain", conflicts_with_all = ["catalog", "add"], action = clap::ArgAction::Set)]
-    custom_only: Option<bool>,
-    /// Remove one of your endpoints from this network. Removing its last one
-    /// also stops using only yours there. Requires --chain.
-    #[arg(long, requires = "chain", conflicts_with_all = ["catalog", "add", "custom_only"])]
-    remove: Option<String>,
-    /// Edit one of your endpoints in place: the saved URL to change, with
-    /// --add naming what it becomes, and its --api and --capabilities.
-    #[arg(long, requires = "add")]
-    replace: Option<String>,
+}
+
+/// What an endpoint of yours is: its network, API contract and capabilities.
+#[derive(Args)]
+pub struct EndpointSpecArgs {
+    #[arg(long)]
+    chain: String,
+    /// API contract, using the api value from endpoints.toml.
+    #[arg(long)]
+    api: String,
+    /// Capabilities enabled on this endpoint (comma separated).
+    #[arg(long, value_delimiter = ',', required = true)]
+    capabilities: Vec<String>,
+}
+
+impl EndpointSpecArgs {
+    fn resolve(self) -> CliResult<(Chain, String, Vec<EndpointCapability>)> {
+        let capabilities = self
+            .capabilities
+            .iter()
+            .map(|name| {
+                name.parse()
+                    .map_err(|e: spectra_core::error::SpectraBridgeError| {
+                        CliError::usage(e.to_string())
+                    })
+            })
+            .collect::<CliResult<_>>()?;
+        Ok((resolve_chain(&self.chain)?, self.api, capabilities))
+    }
+}
+
+#[derive(Args)]
+pub struct AddEndpointArgs {
+    #[command(flatten)]
+    spec: EndpointSpecArgs,
+    /// The endpoint's URL.
+    url: String,
+}
+
+#[derive(Args)]
+pub struct ReplaceEndpointArgs {
+    #[command(flatten)]
+    spec: EndpointSpecArgs,
+    /// The saved URL to change.
+    saved: String,
+    /// The URL it becomes.
+    url: String,
+}
+
+#[derive(Args)]
+pub struct RemoveEndpointArgs {
+    #[arg(long)]
+    chain: String,
+    /// The saved URL to remove.
+    url: String,
+}
+
+#[derive(Args)]
+pub struct CustomOnlyArgs {
+    #[arg(long)]
+    chain: String,
+    #[arg(action = clap::ArgAction::Set)]
+    value: bool,
 }
 
 /// The endpoints of yours that are stored, after a change to them.
@@ -389,68 +453,64 @@ impl Report for HealthReport {
 
 /// Check read methods for every API, including testnets and history indexers.
 /// Networks with no API at all are reported separately from unchecked ones.
-pub fn endpoints(ctx: &Ctx, out: Out, args: EndpointsArgs) -> CliResult<()> {
-    let chains: Vec<Chain> = match &args.chain {
+fn chains_named(name: Option<&str>) -> CliResult<Vec<Chain>> {
+    Ok(match name {
         Some(name) => vec![resolve_chain(name)?],
         None => Chain::all().collect(),
-    };
-    let update = if let Some(value) = args.custom_only {
-        Some(AppSettingUpdate::CustomEndpointsOnly {
-            chain_id: chains[0],
-            value,
-        })
-    } else if let Some(endpoint) = args.remove {
-        Some(AppSettingUpdate::RemoveCustomEndpoint {
-            chain_id: chains[0],
-            endpoint,
-        })
-    } else if let Some(url) = args.add {
-        let capabilities = args
-            .capabilities
-            .iter()
-            .map(|name| {
-                name.parse()
-                    .map_err(|e: spectra_core::error::SpectraBridgeError| {
-                        CliError::usage(e.to_string())
-                    })
-            })
-            .collect::<CliResult<_>>()?;
-        let api = args.api.unwrap_or_default();
-        Some(match args.replace {
-            Some(saved) => AppSettingUpdate::ReplaceCustomEndpoint {
-                chain_id: chains[0],
-                endpoint: saved,
-                api,
-                new_endpoint: url,
-                capabilities,
-            },
-            None => AppSettingUpdate::AddCustomEndpoint {
-                chain_id: chains[0],
-                api,
-                endpoint: url,
-                capabilities,
-            },
-        })
-    } else {
-        None
-    };
-    if let Some(update) = update {
-        let transition = ctx.apply(StateCommand::SetAppSetting { update })?;
-        if transition.events.contains(&StateEvent::AppSettingRejected) {
-            return Err(CliError::rejected(
-                "Invalid or duplicate endpoint, or unsupported/empty capabilities for this adapter",
-            ));
-        }
-        let settings = transition.state.settings;
-        return out.report(&CustomEndpointsReport {
-            custom_endpoints: settings.custom_endpoints,
-            custom_endpoints_only: settings.custom_endpoints_only,
-        });
-    }
-    if args.catalog {
-        return catalog(ctx, out, &chains, args.chain.is_some(), args.source);
-    }
+    })
+}
 
+pub fn endpoints(ctx: &Ctx, out: Out, command: EndpointsCommand) -> CliResult<()> {
+    let update = match command {
+        EndpointsCommand::Probe(args) => return probe(ctx, out, args.chain.as_deref()),
+        EndpointsCommand::List(args) => {
+            let named = args.chain.chain.as_deref();
+            let chains = chains_named(named)?;
+            return catalog(ctx, out, &chains, named.is_some(), args.source);
+        }
+        EndpointsCommand::Add(args) => {
+            let (chain_id, api, capabilities) = args.spec.resolve()?;
+            AppSettingUpdate::AddCustomEndpoint {
+                chain_id,
+                api,
+                endpoint: args.url,
+                capabilities,
+            }
+        }
+        EndpointsCommand::Replace(args) => {
+            let (chain_id, api, capabilities) = args.spec.resolve()?;
+            AppSettingUpdate::ReplaceCustomEndpoint {
+                chain_id,
+                endpoint: args.saved,
+                api,
+                new_endpoint: args.url,
+                capabilities,
+            }
+        }
+        EndpointsCommand::Remove(args) => AppSettingUpdate::RemoveCustomEndpoint {
+            chain_id: resolve_chain(&args.chain)?,
+            endpoint: args.url,
+        },
+        EndpointsCommand::CustomOnly(args) => AppSettingUpdate::CustomEndpointsOnly {
+            chain_id: resolve_chain(&args.chain)?,
+            value: args.value,
+        },
+    };
+    let transition = ctx.apply(StateCommand::SetAppSetting { update })?;
+    if transition.events.contains(&StateEvent::AppSettingRejected) {
+        return Err(CliError::rejected(
+            "Invalid or duplicate endpoint, or unsupported/empty capabilities for this adapter",
+        ));
+    }
+    let settings = transition.state.settings;
+    out.report(&CustomEndpointsReport {
+        custom_endpoints: settings.custom_endpoints,
+        custom_endpoints_only: settings.custom_endpoints_only,
+    })
+}
+
+fn probe(ctx: &Ctx, out: Out, chain: Option<&str>) -> CliResult<()> {
+    let chains = chains_named(chain)?;
     let service = ctx.service()?;
     // Probe each network once however many times the request names it.
     let mut probed = std::collections::HashSet::new();
@@ -708,7 +768,7 @@ impl Report for BalanceReport {
 }
 
 pub fn balance(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let chain = wallet.chain_id;
     let service = ctx.service()?;
 
@@ -874,7 +934,7 @@ impl Report for HistoryReport {
 }
 
 pub fn history(ctx: &Ctx, out: Out, args: HistoryArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let network = wallet.chain_id;
     let service = if let Some(endpoint) = &args.endpoint {
         ctx.service_with_endpoints(network, vec![endpoint.clone()])?

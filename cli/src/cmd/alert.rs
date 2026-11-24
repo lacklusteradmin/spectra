@@ -268,7 +268,10 @@ fn remove(ctx: &Ctx, out: Out, args: RemoveArgs) -> CliResult<()> {
         })
         .collect();
     if matches.is_empty() {
-        return Err(CliError::rejected("Alert not found"));
+        return Err(CliError::rejected(format!(
+            "no alert matching {:?}",
+            args.alert
+        )));
     }
     let count = matches.len();
     for alert in matches {

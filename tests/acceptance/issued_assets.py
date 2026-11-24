@@ -75,9 +75,9 @@ class IssuedAssetTests(unittest.TestCase):
         self.spectra = Spectra(self.enterContext(scratch('issued')))
 
     def endpoint(self, chain, api, path):
-        self.spectra.run('endpoints', '--chain', chain, '--api', api, '--capabilities',
-                         'balance,history,fee,broadcast,verification,token-balance', '--add', self.base + path)
-        self.spectra.run('endpoints', '--chain', chain, '--custom-only', 'true')
+        self.spectra.run('endpoints', 'add', '--chain', chain, '--api', api, '--capabilities',
+                         'balance,history,fee,broadcast,verification,token-balance', self.base + path)
+        self.spectra.run('endpoints', 'custom-only', '--chain', chain, 'true')
 
     def history_kinds(self):
         with sqlite3.connect(self.spectra.directory / 'spectra.sqlite') as db:
@@ -87,10 +87,7 @@ class IssuedAssetTests(unittest.TestCase):
         """Signs the reviewed transaction and broadcasts it: the node receives
         exactly the signed bytes, once."""
         before = len(self.submitted)
-        signed = self.spectra.run('send', 'sign', artifact['id'], '--review-digest', artifact['review_digest'],
-                                  '--endpoint', self.base + path)['artifact']
-        assert len(self.submitted) == before, 'signing broadcasts nothing'
-        self.spectra.run('send', 'broadcast-signed', signed['id'], '--endpoint', self.base + path, '--yes')
+        signed = self.spectra.sign_and_broadcast(artifact, self.base + path)
         assert self.submitted[before:] == [signed['signed_payload']], self.submitted
 
     def test_xrpl_trust_pay_and_remove(self):

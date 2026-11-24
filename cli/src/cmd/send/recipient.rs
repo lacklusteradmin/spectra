@@ -7,18 +7,18 @@ use spectra_core::registry::Chain;
 use spectra_core::service::{SendDestinationActivity, WalletService};
 
 use crate::cmd::resolve_chain;
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, WalletArg};
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Out, Report};
 
 #[derive(Args)]
 pub struct SelfCheckArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     #[arg(long)]
     holding: String,
     #[arg(long)]
-    destination: String,
+    to: String,
 }
 
 #[derive(Args)]
@@ -74,11 +74,11 @@ impl Report for SelfCheckReport {
 }
 
 pub fn self_check(ctx: &Ctx, out: Out, args: SelfCheckArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let own_address = ctx.rt.block_on(ctx.service()?.is_own_send_destination(
         wallet.id,
         args.holding,
-        args.destination,
+        args.to,
     ))?;
     out.report(&SelfCheckReport { own_address })
 }

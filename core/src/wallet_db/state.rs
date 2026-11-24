@@ -201,7 +201,7 @@ impl AppStateChanges {
                     .map_err(DbError::from)?;
                 }
                 tx.execute(
-                    "DELETE FROM history_records WHERE lower(wallet_id) = lower(?1)",
+                    "DELETE FROM history_records WHERE wallet_id = ?1",
                     params![id],
                 )
                 .map_err(DbError::from)?;

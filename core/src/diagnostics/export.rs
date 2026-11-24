@@ -138,13 +138,6 @@ pub fn diagnostics_bundle_to_json(payload: DiagnosticsBundlePayload) -> Option<S
     serde_json::to_string_pretty(&value).ok()
 }
 
-/// Parse a bundle JSON string back into a `DiagnosticsBundlePayload`. Returns
-/// `None` if the JSON is malformed or missing required fields.
-#[uniffi::export]
-pub fn diagnostics_bundle_from_json(json: String) -> Option<DiagnosticsBundlePayload> {
-    serde_json::from_str(&json).ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

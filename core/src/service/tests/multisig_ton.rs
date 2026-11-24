@@ -169,10 +169,7 @@ async fn wallets() -> (Arc<WalletService>, MockServer, Arc<Mutex<Toncenter>>) {
         endpoints: vec![server.uri()],
     }])
     .unwrap();
-    let db = std::env::temp_dir().join(format!(
-        "ton-multisig-{}.sqlite",
-        crate::store::new_event_id()
-    ));
+    let db = std::env::temp_dir().join(format!("ton-multisig-{}.sqlite", crate::store::new_id()));
     service
         .open_state(db.to_string_lossy().into())
         .await

@@ -46,64 +46,15 @@ impl WalletService {
         let eps = self
             .endpoints_for(Chain::Polkadot, &[EndpointCapability::Staking])
             .await;
-        crate::api::http::race(&eps,|endpoint|async move{
-            let client=SubstrateClient::new(Arc::new(vec![endpoint]));
-            let account=crate::derivation::polkadot::decode_ss58(owner).map_err(SpectraBridgeError::invalid)?;
-            let snapshot=client.nomination_pool_snapshot(&account).await?;
-            let at=&snapshot.context.block_hash;
-            let mut prerequisites=Vec::new();
-            if let Some(member)=snapshot.member.as_ref(){
-                if member.pool_needs_migration{prerequisites.push(PoolCall::MigratePool{pool_id:member.pool_id});}
-                if member.needs_migration||member.pool_needs_migration{
-                    let total=member.active_balance.checked_add(member.unbonding_balance).and_then(|n|n.checked_add(member.withdrawable_balance)).ok_or_else(||refusal("Nomination pool balance overflow"))?;
-                    if total<snapshot.context.runtime.existential_deposit{return Err(refusal("Nomination pool balance is below the delegation migration deposit"));}
-                    prerequisites.push(PoolCall::MigrateMember{member:account});
-                }
-                if member.pending_slash>=snapshot.context.runtime.existential_deposit{prerequisites.push(PoolCall::ApplySlash{member:account});}
-            }
-            let (call,spend)=match request.action{
-                StakingAction::Stake=>{
-                    let amount=action_amount(request)?;
-                    if let Some(member)=snapshot.member.as_ref(){
-                                            if request.validator_id.as_deref().is_some_and(|id|id!=member.pool_id.to_string()){
-                            return Err(refusal("Existing pool membership must be withdrawn before choosing another pool"));
-                        }
-                        (PoolCall::BondExtra{amount},amount)
-                    }else{
-                        let id=request.validator_id.as_deref().ok_or_else(||refusal("Nomination pool is required"))?;
-                        let pool=id.parse::<u32>().ok().filter(|pool|*pool>0&&pool.to_string()==id).ok_or_else(||refusal("Invalid nomination pool ID"))?;
-                        let pool=client.pool_at_snapshot(pool,at).await?;
-                        if !pool.is_open{return Err(refusal("Nomination pool is not open"));}
-                        if pool.needs_migration{prerequisites.push(PoolCall::MigratePool{pool_id:pool.id});}
-                        if amount<snapshot.minimum_join{return Err(refusal("Amount is below the current nomination pool minimum"));}
-                        (PoolCall::Join{amount,pool_id:pool.id},amount)
-                    }
-                }
-                StakingAction::Unstake=>{
-                    let member=owned_member(request,snapshot.member.as_ref())?;
-                    let amount=action_amount(request)?;
-                    if amount>member.active_balance{return Err(refusal("Amount exceeds the owned nomination pool stake"));}
-                    let points=if amount==member.active_balance{member.points}else{client.pool_points_for_balance(member.pool_id,amount,at).await?};
-                    if points==0||points>member.points{return Err(refusal("Invalid nomination pool unbonding points"));}
-                    (PoolCall::Unbond{member:account,points},0)
-                }
-                StakingAction::Withdraw=>{
-                    let member=owned_member(request,snapshot.member.as_ref())?;
-                    if member.withdrawable_balance==0{return Err(refusal("Nomination pool funds have not finished unbonding"));}
-                    (PoolCall::Withdraw{member:account,slashing_spans:0},0)
-                }
-                StakingAction::ClaimRewards=>{
-                    let member=owned_member(request,snapshot.member.as_ref())?;
-                    if member.pending_rewards==0{return Err(refusal("Nomination pool has no claimable rewards"));}
-                    (PoolCall::Claim,0)
-                }
-            };
-            let call=if prerequisites.is_empty(){call}else{prerequisites.push(call);PoolCall::BatchAll(prerequisites)};
-            let metadata=client.pool_call_metadata(at).await?;
-            let bytes=encode_pool_call(&metadata,&call)?;
-            let prepared=crate::send::polkadot::prepare_call(&client,Chain::Polkadot,owner,snapshot.context,bytes,spend).await?;
-            Ok(PreparedPayload::Substrate(prepared))
-        }).await
+        crate::api::http::race(&eps, |endpoint| async move {
+            prepare_pool_call(
+                SubstrateClient::new(Arc::new(vec![endpoint])),
+                request,
+                owner,
+            )
+            .await
+        })
+        .await
     }
     pub(super) async fn fetch_substrate_staking_positions(
         &self,
@@ -188,6 +139,151 @@ impl WalletService {
         }
         Ok(())
     }
+}
+
+/// The nomination-pool call a staking action makes for `owner`, with the
+/// migrations and slash its membership needs first, read at one snapshot.
+async fn prepare_pool_call(
+    client: SubstrateClient,
+    request: &StakingRequest,
+    owner: &str,
+) -> Result<PreparedPayload, SpectraBridgeError> {
+    let account =
+        crate::derivation::polkadot::decode_ss58(owner).map_err(SpectraBridgeError::invalid)?;
+    let snapshot = client.nomination_pool_snapshot(&account).await?;
+    let at = &snapshot.context.block_hash;
+    let mut prerequisites = Vec::new();
+    if let Some(member) = snapshot.member.as_ref() {
+        if member.pool_needs_migration {
+            prerequisites.push(PoolCall::MigratePool {
+                pool_id: member.pool_id,
+            });
+        }
+        if member.needs_migration || member.pool_needs_migration {
+            let total = member
+                .active_balance
+                .checked_add(member.unbonding_balance)
+                .and_then(|n| n.checked_add(member.withdrawable_balance))
+                .ok_or_else(|| refusal("Nomination pool balance overflow"))?;
+            if total < snapshot.context.runtime.existential_deposit {
+                return Err(refusal(
+                    "Nomination pool balance is below the delegation migration deposit",
+                ));
+            }
+            prerequisites.push(PoolCall::MigrateMember { member: account });
+        }
+        if member.pending_slash >= snapshot.context.runtime.existential_deposit {
+            prerequisites.push(PoolCall::ApplySlash { member: account });
+        }
+    }
+    let (call, spend) = match request.action {
+        StakingAction::Stake => {
+            let amount = action_amount(request)?;
+            if let Some(member) = snapshot.member.as_ref() {
+                if request
+                    .validator_id
+                    .as_deref()
+                    .is_some_and(|id| id != member.pool_id.to_string())
+                {
+                    return Err(refusal(
+                        "Existing pool membership must be withdrawn before choosing another pool",
+                    ));
+                }
+                (PoolCall::BondExtra { amount }, amount)
+            } else {
+                let id = request
+                    .validator_id
+                    .as_deref()
+                    .ok_or_else(|| refusal("Nomination pool is required"))?;
+                let pool = id
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|pool| *pool > 0 && pool.to_string() == id)
+                    .ok_or_else(|| refusal("Invalid nomination pool ID"))?;
+                let pool = client.pool_at_snapshot(pool, at).await?;
+                if !pool.is_open {
+                    return Err(refusal("Nomination pool is not open"));
+                }
+                if pool.needs_migration {
+                    prerequisites.push(PoolCall::MigratePool { pool_id: pool.id });
+                }
+                if amount < snapshot.minimum_join {
+                    return Err(refusal(
+                        "Amount is below the current nomination pool minimum",
+                    ));
+                }
+                (
+                    PoolCall::Join {
+                        amount,
+                        pool_id: pool.id,
+                    },
+                    amount,
+                )
+            }
+        }
+        StakingAction::Unstake => {
+            let member = owned_member(request, snapshot.member.as_ref())?;
+            let amount = action_amount(request)?;
+            if amount > member.active_balance {
+                return Err(refusal("Amount exceeds the owned nomination pool stake"));
+            }
+            let points = if amount == member.active_balance {
+                member.points
+            } else {
+                client
+                    .pool_points_for_balance(member.pool_id, amount, at)
+                    .await?
+            };
+            if points == 0 || points > member.points {
+                return Err(refusal("Invalid nomination pool unbonding points"));
+            }
+            (
+                PoolCall::Unbond {
+                    member: account,
+                    points,
+                },
+                0,
+            )
+        }
+        StakingAction::Withdraw => {
+            let member = owned_member(request, snapshot.member.as_ref())?;
+            if member.withdrawable_balance == 0 {
+                return Err(refusal("Nomination pool funds have not finished unbonding"));
+            }
+            (
+                PoolCall::Withdraw {
+                    member: account,
+                    slashing_spans: 0,
+                },
+                0,
+            )
+        }
+        StakingAction::ClaimRewards => {
+            let member = owned_member(request, snapshot.member.as_ref())?;
+            if member.pending_rewards == 0 {
+                return Err(refusal("Nomination pool has no claimable rewards"));
+            }
+            (PoolCall::Claim, 0)
+        }
+    };
+    let call = if prerequisites.is_empty() {
+        call
+    } else {
+        prerequisites.push(call);
+        PoolCall::BatchAll(prerequisites)
+    };
+    let metadata = client.pool_call_metadata(at).await?;
+    let bytes = encode_pool_call(&metadata, &call)?;
+    let prepared = crate::send::polkadot::prepare_call(
+        &client,
+        Chain::Polkadot,
+        owner,
+        snapshot.context,
+        bytes,
+        spend,
+    )
+    .await?;
+    Ok(PreparedPayload::Substrate(prepared))
 }
 
 #[cfg(test)]

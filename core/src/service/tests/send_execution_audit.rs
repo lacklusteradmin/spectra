@@ -130,10 +130,8 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             endpoints: vec![server.uri()],
         }])
         .unwrap();
-        let db = std::env::temp_dir().join(format!(
-            "send-record-{}.sqlite",
-            crate::store::new_event_id()
-        ));
+        let db =
+            std::env::temp_dir().join(format!("send-record-{}.sqlite", crate::store::new_id()));
         service
             .open_state(db.to_string_lossy().into())
             .await
@@ -337,7 +335,7 @@ async fn aptos_build_and_sign_bind_the_reviewed_total_gas_budget() {
         .unwrap();
         let db = std::env::temp_dir().join(format!(
             "aptos-gas-review-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(db.to_string_lossy().into())
@@ -430,10 +428,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     use std::sync::atomic::{AtomicBool, Ordering};
     let server = MockServer::start().await;
     let db = std::env::temp_dir()
-        .join(format!(
-            "audit-fix5-{}.sqlite",
-            crate::store::new_event_id()
-        ))
+        .join(format!("audit-fix5-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     let service = WalletService::new(vec![ChainEndpoints {
@@ -560,7 +555,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
         "rebroadcast reuses the existing record"
     );
     let mut competing = first.clone();
-    competing.id = crate::store::new_transaction_id();
+    competing.id = crate::store::new_id();
     let conflict = reopened
         .save_prepared_send_record(competing, true)
         .await
@@ -692,7 +687,7 @@ mod signed_world_chain_fee_budget {
         .unwrap();
         let db = std::env::temp_dir().join(format!(
             "world-signed-fee-budget-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(db.to_string_lossy().into())
@@ -836,7 +831,7 @@ mod owned_world_chain_nonce_rollover {
         .unwrap();
         let db = std::env::temp_dir().join(format!(
             "owned-preview-rollover-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ));
         service
             .open_state(db.to_string_lossy().into())

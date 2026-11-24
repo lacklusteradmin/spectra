@@ -28,8 +28,8 @@ with serve(Node, expected='', submitted=[]) as node, scratch('stages') as direct
     state, url = node.state, node.url
     spectra = Spectra(directory, SPECTRA_PASSWORD='stage-fixture-password', SPECTRA_SEED=ABANDON)
     spectra.run('wallet', 'import', '--chain', 'ethereum', '--name', 'Stages')
-    spectra.run('endpoints', '--chain', 'ethereum', '--api', 'evm-json-rpc',
-                '--capabilities', 'balance,fee,broadcast,verification,token-balance', '--add', url)
+    spectra.run('endpoints', 'add', '--chain', 'ethereum', '--api', 'evm-json-rpc',
+                '--capabilities', 'balance,fee,broadcast,verification,token-balance', url)
 
     def build():
         return spectra.run('send', 'build', 'Stages', '--to', '0x' + '22' * 20, '--amount', '0.01',

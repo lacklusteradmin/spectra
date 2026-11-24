@@ -77,7 +77,7 @@ async fn known_utxo_addresses_deduplicate_witness_addresses_by_their_canonical_c
         let root = context.derive(0).unwrap().0;
         let service = WalletService::new(Vec::new()).unwrap();
         let database = std::env::temp_dir()
-            .join(format!("utxo-case-{}.sqlite", crate::store::new_event_id()))
+            .join(format!("utxo-case-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .into_owned();
         service.open_state(database).await.unwrap();
@@ -115,7 +115,7 @@ async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
     }])
     .unwrap();
     let dir = std::env::temp_dir()
-        .join(format!("discovery-{}.sqlite", crate::store::new_event_id()))
+        .join(format!("discovery-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     service.open_state(dir.clone()).await.unwrap();
@@ -363,10 +363,7 @@ async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
             }])
             .unwrap();
             let database = std::env::temp_dir()
-                .join(format!(
-                    "ltc-discovery-{}.sqlite",
-                    crate::store::new_event_id()
-                ))
+                .join(format!("ltc-discovery-{}.sqlite", crate::store::new_id()))
                 .to_string_lossy()
                 .into_owned();
             service.open_state(database.clone()).await.unwrap();
@@ -522,10 +519,7 @@ async fn imported_litecoin_root_paths_raise_receive_and_change_floors() {
         }])
         .unwrap();
         let database = std::env::temp_dir()
-            .join(format!(
-                "ltc-root-floor-{}.sqlite",
-                crate::store::new_event_id()
-            ))
+            .join(format!("ltc-root-floor-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .into_owned();
         service.open_state(database).await.unwrap();
@@ -675,7 +669,7 @@ async fn protected_account_utxo_public_context_receives_after_restart_without_op
         let database = std::env::temp_dir()
             .join(format!(
                 "account-utxo-public-receive-{}.sqlite",
-                crate::store::new_event_id()
+                crate::store::new_id()
             ))
             .to_string_lossy()
             .into_owned();

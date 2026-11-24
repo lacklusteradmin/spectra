@@ -8,9 +8,15 @@ import subprocess
 import tempfile
 import unittest
 
-from source_scan import calls_only, exports, production_text, report, strip_comments, test_modules
+from source_scan import calls_only, exports, report, split_test_code, strip_comments, test_modules
 
 REPOSITORY = Path(__file__).resolve().parent.parent
+
+
+def production_text(path, declared_tests):
+    """A Rust file's text outside its tests, as the scans read it."""
+    text = path.read_text(errors='replace')
+    return ''.join(line for _, line in split_test_code(path, text, declared_tests)[0])
 
 
 class SourceSelectionTests(unittest.TestCase):

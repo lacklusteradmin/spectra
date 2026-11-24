@@ -18,6 +18,7 @@
 use secp256k1::{Message, PublicKey, Secp256k1, SecretKey, ecdsa::Signature};
 
 use crate::api::xrpl_json_rpc::XrpSignerList;
+use crate::derivation::primitives::ByteReader;
 use crate::derivation::xrp::{account_id_of_key, address_of_account_id, decode_xrp_address};
 use crate::send::error::SendError;
 use crate::send::xrp::{push_vl, sha512_half};
@@ -125,20 +126,7 @@ impl XrpPayment {
     }
 }
 
-struct Reader<'a> {
-    bytes: &'a [u8],
-}
-
-impl<'a> Reader<'a> {
-    fn take(&mut self, length: usize) -> Result<&'a [u8], SendError> {
-        if length > self.bytes.len() {
-            return Err(unread());
-        }
-        let (taken, rest) = self.bytes.split_at(length);
-        self.bytes = rest;
-        Ok(taken)
-    }
-
+impl<'a> ByteReader<'a, SendError> {
     fn vl(&mut self) -> Result<&'a [u8], SendError> {
         let first = self.take(1)?[0] as usize;
         let length = match first {
@@ -147,12 +135,6 @@ impl<'a> Reader<'a> {
             _ => return Err(unread()),
         };
         self.take(length)
-    }
-
-    fn u32(&mut self) -> Result<u32, SendError> {
-        Ok(u32::from_be_bytes(
-            self.take(4)?.try_into().expect("4 bytes"),
-        ))
     }
 
     fn drops(&mut self) -> Result<u64, SendError> {
@@ -174,7 +156,7 @@ impl<'a> Reader<'a> {
     }
 
     fn next_is(&self, bytes: &[u8]) -> bool {
-        self.bytes.starts_with(bytes)
+        self.rest().starts_with(bytes)
     }
 }
 
@@ -185,17 +167,17 @@ fn unread() -> SendError {
 /// `blob` as a multi-signed XRP payment and its signers, refused unless
 /// encoding them again gives `blob` byte for byte.
 pub(crate) fn decode(blob: &[u8]) -> Result<(XrpPayment, Vec<XrpSigner>), SendError> {
-    let mut reader = Reader { bytes: blob };
+    let mut reader = ByteReader::new(blob, |_| unread());
     reader.expect(&[0x12, 0x00, 0x00, 0x22, 0, 0, 0, 0, 0x24])?;
-    let sequence = reader.u32()?;
+    let sequence = reader.u32_be()?;
     let destination_tag = if reader.next_is(&[0x2e]) {
         reader.take(1)?;
-        Some(reader.u32()?)
+        Some(reader.u32_be()?)
     } else {
         None
     };
     reader.expect(&[0x20, 0x1b])?;
-    let last_ledger_sequence = reader.u32()?;
+    let last_ledger_sequence = reader.u32_be()?;
     reader.expect(&[0x61])?;
     let amount_drops = reader.drops()?;
     reader.expect(&[0x68])?;
@@ -224,7 +206,7 @@ pub(crate) fn decode(blob: &[u8]) -> Result<(XrpPayment, Vec<XrpSigner>), SendEr
         }
         reader.expect(&[0xf1])?;
     }
-    if !reader.bytes.is_empty() {
+    if !reader.is_empty() {
         return Err(unread());
     }
     let payment = XrpPayment {

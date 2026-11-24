@@ -38,8 +38,8 @@ class SendTests(unittest.TestCase):
                 serve(Node, store=directory / 'spectra.sqlite', submitted=[]) as node:
             submitted = node.state['submitted']
             spectra = Spectra(directory, SPECTRA_PASSWORD='fixture-wallet-password')
-            spectra.run('endpoints', '--chain', 'ethereum', '--api', 'evm-json-rpc',
-                        '--capabilities', 'balance,fee,broadcast,verification,token-balance', '--add', node.url)
+            spectra.run('endpoints', 'add', '--chain', 'ethereum', '--api', 'evm-json-rpc',
+                        '--capabilities', 'balance,fee,broadcast,verification,token-balance', node.url)
             spectra.run('wallet', 'import', '--chain', 'ethereum', '--name', 'Sealed', env={'SPECTRA_SEED': ABANDON})
             # The holding a balance refresh would have stored.
             with sqlite3.connect(directory / 'spectra.sqlite') as db:
@@ -49,7 +49,7 @@ class SendTests(unittest.TestCase):
                                            tokenStandard=None, contractAddress=None, amount='10')]
                 db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
             args = ('send', 'owned-broadcast', 'Sealed', '--holding', 'ethereum:native', '--amount', '1',
-                    '--destination', '0x' + '22' * 20)
+                    '--to', '0x' + '22' * 20)
             refused = spectra.fail(*args, code=2)
             assert '--yes' in refused['error'], refused
             assert not submitted, submitted

@@ -14,6 +14,7 @@ use bitcoin::hashes::Hash as _;
 use secp256k1::PublicKey;
 
 use crate::api::error::ApiError;
+use crate::derivation::primitives::ByteReader;
 
 fn malformed(what: &str) -> ApiError {
     ApiError::Decode(format!("Malformed MWEB data: {what}"))
@@ -31,58 +32,19 @@ pub(crate) const RANGE_PROOF_SIZE: usize = 675;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) struct Commitment(pub [u8; 33]);
 
-/// Reads protocol fields off a byte slice.
-pub(crate) struct Reader<'a>(pub &'a [u8]);
+/// Reads protocol fields off a byte slice; refusals read as malformed MWEB
+/// data.
+pub(crate) type Reader<'a> = ByteReader<'a, ApiError>;
 
-impl<'a> Reader<'a> {
-    pub(crate) fn take(&mut self, n: usize) -> Result<&'a [u8], ApiError> {
-        if self.0.len() < n {
-            return Err(malformed("truncated"));
-        }
-        let (head, tail) = self.0.split_at(n);
-        self.0 = tail;
-        Ok(head)
-    }
+pub(crate) fn wire_reader(bytes: &[u8]) -> Reader<'_> {
+    ByteReader::new(bytes, malformed)
+}
 
-    pub(crate) fn array<const N: usize>(&mut self) -> Result<[u8; N], ApiError> {
-        Ok(self.take(N)?.try_into().expect("N bytes"))
-    }
-
-    pub(crate) fn u8(&mut self) -> Result<u8, ApiError> {
-        Ok(self.take(1)?[0])
-    }
-
-    pub(crate) fn u16_le(&mut self) -> Result<u16, ApiError> {
-        Ok(u16::from_le_bytes(self.array()?))
-    }
-
-    pub(crate) fn u32_le(&mut self) -> Result<u32, ApiError> {
-        Ok(u32::from_le_bytes(self.array()?))
-    }
-
-    pub(crate) fn u64_le(&mut self) -> Result<u64, ApiError> {
-        Ok(u64::from_le_bytes(self.array()?))
-    }
-
-    /// Bitcoin's CompactSize, canonical only.
-    pub(crate) fn compact_size(&mut self) -> Result<u64, ApiError> {
-        let first = self.u8()?;
-        let (value, minimum) = match first {
-            0xfd => (u64::from(self.u16_le()?), 0xfd),
-            0xfe => (u64::from(self.u32_le()?), 0x1_0000),
-            0xff => (self.u64_le()?, 0x1_0000_0000),
-            small => return Ok(u64::from(small)),
-        };
-        if value < minimum {
-            return Err(malformed("a non-canonical length"));
-        }
-        Ok(value)
-    }
-
+impl ByteReader<'_, ApiError> {
     /// A length, bounded by what is left to read.
     pub(crate) fn length(&mut self, each: usize) -> Result<usize, ApiError> {
         let n = usize::try_from(self.compact_size()?).map_err(|_| malformed("a length"))?;
-        if n.saturating_mul(each.max(1)) > self.0.len() {
+        if n.saturating_mul(each.max(1)) > self.rest().len() {
             return Err(malformed("a length past the data"));
         }
         Ok(n)
@@ -121,14 +83,6 @@ impl<'a> Reader<'a> {
             return Err(malformed("a commitment"));
         }
         Ok(commitment)
-    }
-
-    pub(crate) fn finished(&self) -> Result<(), ApiError> {
-        if self.0.is_empty() {
-            Ok(())
-        } else {
-            Err(malformed("trailing bytes"))
-        }
     }
 }
 
@@ -670,7 +624,7 @@ impl ExtendedTransaction {
         if flag & 0x08 == 0 || flag & !0x09 != 0 {
             return Err(malformed("a transaction without the MWEB flag"));
         }
-        let mut cursor = reader.0;
+        let mut cursor = reader.rest();
         let mut input = Vec::<bitcoin::TxIn>::consensus_decode(&mut cursor)
             .map_err(|_| malformed("transaction inputs"))?;
         let output = Vec::<bitcoin::TxOut>::consensus_decode(&mut cursor)
@@ -681,7 +635,7 @@ impl ExtendedTransaction {
                     .map_err(|_| malformed("a witness"))?;
             }
         }
-        let used = reader.0.len() - cursor.len();
+        let used = reader.rest().len() - cursor.len();
         reader.take(used)?;
         let mweb = match reader.u8()? {
             0x00 => None,

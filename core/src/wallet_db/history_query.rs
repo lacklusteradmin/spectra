@@ -10,7 +10,7 @@ use crate::wallet_db::error::DbError;
 /// A row that moved an amount: one of nothing reads as neither sent nor
 /// received, as `transaction_amount_direction` reads it.
 const MOVED: &str = "CAST(json_extract(h.payload, '$.amount') AS REAL) != 0";
-const VISIBLE: &str = "EXISTS (SELECT 1 FROM wallets w WHERE lower(w.id) = h.wallet_id)
+const VISIBLE: &str = "EXISTS (SELECT 1 FROM wallets w WHERE w.id = h.wallet_id)
     AND h.id = (SELECT candidate.id FROM history_records candidate
         WHERE candidate.wallet_id = h.wallet_id AND candidate.chain_id = h.chain_id
           AND candidate.asset_key = h.asset_key AND candidate.hash_key = h.hash_key
@@ -55,7 +55,7 @@ fn decode_cursor(query: &HistoryQuery) -> Result<Option<Cursor>, DbError> {
 fn page_sql(query: &HistoryQuery) -> String {
     let order = if query.oldest_first { "ASC" } else { "DESC" };
     let wallet = if query.wallet_id.is_some() {
-        "h.wallet_id = lower(?1) AND"
+        "h.wallet_id = ?1 AND"
     } else {
         ""
     };
@@ -171,7 +171,7 @@ pub(crate) fn history_find(
     with_conn(database, |conn| {
         let json: Option<String> = conn
             .query_row(
-                "SELECT payload FROM history_records WHERE id = lower(?1)",
+                "SELECT payload FROM history_records WHERE id = ?1",
                 params![id],
                 |r| r.get(0),
             )

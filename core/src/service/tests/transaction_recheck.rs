@@ -23,10 +23,7 @@ async fn service(chain: Chain, server: &MockServer) -> (std::sync::Arc<WalletSer
     }])
     .unwrap();
     let path = std::env::temp_dir()
-        .join(format!(
-            "spectra-recheck-{}.sqlite",
-            crate::store::new_event_id()
-        ))
+        .join(format!("spectra-recheck-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     service.open_state(path.clone()).await.unwrap();
@@ -48,14 +45,14 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
         .mount(&server)
         .await;
     for previous in ["failed", "confirmed"] {
-        save(&service, record("TARGET", Chain::BitcoinTestnet4, previous)).await;
+        save(&service, record("target", Chain::BitcoinTestnet4, previous)).await;
         save(
             &service,
             record("unrelated", Chain::BitcoinTestnet4, "pending"),
         )
         .await;
         service
-            .record_status_poll("TARGET".into(), StatusPollOutcome::Confirmed)
+            .record_status_poll("target".into(), StatusPollOutcome::Confirmed)
             .await;
         let change = service
             .recheck_transaction_status("target".into())
@@ -72,10 +69,7 @@ async fn explicit_recheck_targets_failed_and_confirmed_records_on_the_stored_net
         let reopened = WalletService::new(vec![]).unwrap();
         reopened.open_state(path.clone()).await.unwrap();
         let rows = reopened.fetch_all_history_records().await.unwrap();
-        let target = rows
-            .iter()
-            .find(|r| r.id.eq_ignore_ascii_case("target"))
-            .unwrap();
+        let target = rows.iter().find(|r| r.id == "target").unwrap();
         assert_eq!(target.receipt_block_number, Some(123));
         assert_eq!(target.failure_reason, None);
         assert_eq!(target.created_at_unix, 1234.0);

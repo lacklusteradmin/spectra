@@ -27,32 +27,32 @@ with scratch("endpoints") as directory:
     spectra = Spectra(directory)
 
     def listed(source):
-        return spectra.run("endpoints", "--catalog", "--source", source)["endpoints"]
+        return spectra.run("endpoints", "list", "--source", source)["endpoints"]
 
     catalog = listed("built-in")
     assert catalog and all(row["isBuiltIn"] for row in catalog)
     url = "http://127.0.0.1:1/node"
-    spectra.run("endpoints", "--chain", "solana", "--api", "solana-json-rpc", "--capabilities", "broadcast",
-                "--add", url)
+    spectra.run("endpoints", "add", "--chain", "solana", "--api", "solana-json-rpc", "--capabilities", "broadcast",
+                url)
     custom = listed("custom")
     assert [(row["endpoint"], row["isBuiltIn"]) for row in custom] == [(url, False)], custom
     assert listed("built-in") == catalog
     print("The listing filters the catalog by source")
 
     # A network with no API configured is reported apart, and is not healthy.
-    health = spectra.run("endpoints", "--chain", "dash-testnet")
+    health = spectra.run("endpoints", "probe", "--chain", "dash-testnet")
     assert not health["ok"] and health["networksWithoutApis"] == ["dash-testnet"], health
     assert health["total"] == 0, health
 
     # One endpoint, answering as it should and then not.
     with serve(Node, fail=False) as node:
-        spectra.run("endpoints", "--chain", "dash-testnet", "--api", "blockbook", "--capabilities",
-                    "balance,fee,broadcast", "--add", node.url)
-        health = spectra.run("endpoints", "--chain", "dash-testnet")
+        spectra.run("endpoints", "add", "--chain", "dash-testnet", "--api", "blockbook", "--capabilities",
+                    "balance,fee,broadcast", node.url)
+        health = spectra.run("endpoints", "probe", "--chain", "dash-testnet")
         assert health["ok"] and health["networksWithoutApis"] == [], health
         assert (health["total"], health["unreachable"], health["uncheckedApis"]) == (1, 0, 0), health
         node.state["fail"] = True
-        health = spectra.run("endpoints", "--chain", "dash-testnet")
+        health = spectra.run("endpoints", "probe", "--chain", "dash-testnet")
         assert not health["ok"] and health["unreachable"] == 1, health
         assert health["endpoints"][0]["detail"], health
         print("The health verdict counts networks without APIs and unreachable endpoints")
@@ -60,8 +60,8 @@ with scratch("endpoints") as directory:
     # The catalog lists no endpoint for dash-testnet: its balance is read
     # from an endpoint added here.
     with serve(Node, fail=False) as node:
-        spectra.run("endpoints", "--chain", "dash-testnet", "--api", "blockbook", "--capabilities",
-                    "balance,history,utxo,verification", "--add", node.url)
+        spectra.run("endpoints", "add", "--chain", "dash-testnet", "--api", "blockbook", "--capabilities",
+                    "balance,history,utxo,verification", node.url)
         spectra.run("wallet", "import", "--chain", "dash-testnet", "--name", "Custom DASH",
                     env={"SPECTRA_SEED": LEGAL, "SPECTRA_PASSWORD": "fixture-password"})
         balance = spectra.run("balance", "Custom DASH")

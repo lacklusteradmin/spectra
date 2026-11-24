@@ -56,9 +56,9 @@ with serve(Node, submitted=[], expected='', branch='37a5165b', height=3500000,
     for chain, name in [('internet-computer', 'IcpStages'), ('zcash', 'ZecStages')]:
         spectra.run('wallet', 'import', '--chain', chain, '--name', name)
         icp = chain == 'internet-computer'
-        spectra.run('endpoints', '--chain', chain, '--api', 'icp-rosetta' if icp else 'blockbook',
+        spectra.run('endpoints', 'add', '--chain', chain, '--api', 'icp-rosetta' if icp else 'blockbook',
                     '--capabilities', 'balance,history,fee,broadcast,verification' + ('' if icp else ',utxo'),
-                    '--add', url)
+                    url)
         # Sending back to the derived account is a protocol fixture, no real network.
         destination = spectra.run('send', 'identity', name)['address']
         before = len(state['submitted'])

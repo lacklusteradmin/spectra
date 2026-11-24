@@ -1,16 +1,4 @@
-//! Artwork is catalog metadata, addressed by token or network identity.
-pub fn token_artwork_name(token_id: String) -> String {
-    crate::catalog::tokens::catalog()
-        .iter()
-        .find(|t| t.token_id == token_id)
-        .map(|t| t.artwork_name.clone())
-        .unwrap_or_default()
-}
-pub fn chain_artwork_name(chain_id: crate::registry::Chain) -> String {
-    Some(chain_id.entry())
-        .map(|c| c.artwork_name.clone())
-        .unwrap_or_default()
-}
+//! Artwork is catalog metadata, addressed by deployment identity.
 pub fn deployment_artwork_name(deployment_id: Option<String>) -> String {
     deployment_id
         .and_then(|id| {
@@ -29,10 +17,6 @@ mod tests {
     fn artwork_uses_identity_and_unknown_contracts_cannot_borrow_a_symbol() {
         for token in crate::catalog::tokens::catalog() {
             assert_eq!(
-                token_artwork_name(token.token_id.clone()),
-                token.artwork_name
-            );
-            assert_eq!(
                 deployment_artwork_name(Some(token.holding_template().deployment_id())),
                 token.artwork_name,
                 "{}",
@@ -46,8 +30,6 @@ mod tests {
             .holding_template();
         impostor.contract_address = Some("unknown-contract".into());
         assert_eq!(deployment_artwork_name(Some(impostor.deployment_id())), "");
-        assert_eq!(token_artwork_name("USDC".into()), "");
-        assert_eq!(chain_artwork_name(crate::registry::Chain::Base), "base");
     }
     #[test]
     fn every_named_mark_ships_a_file() {

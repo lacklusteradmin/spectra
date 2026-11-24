@@ -331,7 +331,7 @@ mod replaceable_tests {
         std::env::temp_dir()
             .join(format!(
                 "spectra-replaceable-{}.sqlite",
-                crate::store::new_event_id()
+                crate::store::new_id()
             ))
             .to_string_lossy()
             .into_owned()
@@ -436,10 +436,8 @@ mod read_failure_tests {
     async fn unreadable_history_is_not_an_empty_page() {
         let service = WalletService::new(vec![]).unwrap();
         assert!(service.history_page(Default::default()).await.is_err());
-        let path = std::env::temp_dir().join(format!(
-            "history-refusal-{}.sqlite",
-            crate::store::new_event_id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("history-refusal-{}.sqlite", crate::store::new_id()));
         service
             .open_state(path.to_string_lossy().into_owned())
             .await

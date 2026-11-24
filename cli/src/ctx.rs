@@ -62,17 +62,25 @@ impl SecretSource {
     }
 }
 
-/// Where a wallet's password comes from: one definition, flattened into every
-/// command that opens a sealed wallet, so each reads it the same way.
 /// The one wallet a command is about, named by its first argument. Every
-/// command about one wallet takes it this way; `--wallet` only narrows a
-/// command over many.
+/// command about one wallet flattens this; `--wallet` only narrows a command
+/// over many.
 #[derive(clap::Args)]
 pub struct WalletArg {
     /// Wallet id, name or address.
     pub wallet: String,
 }
 
+impl WalletArg {
+    /// The wallet the argument names, or a refusal when it names none or
+    /// several.
+    pub fn find(&self, ctx: &Ctx) -> CliResult<WalletState> {
+        ctx.find_wallet(&self.wallet)
+    }
+}
+
+/// Where a wallet's password comes from: one definition, flattened into every
+/// command that opens a sealed wallet, so each reads it the same way.
 #[derive(clap::Args, Debug, Clone)]
 pub struct PasswordArgs {
     /// Read the wallet password from this file; `-` means stdin.
@@ -226,7 +234,7 @@ impl Ctx {
             .filter(|w| wallet_matches(w, needle))
             .collect();
         match matches.as_slice() {
-            [] => Err(CliError::failure(format!("no wallet matching {needle:?}"))),
+            [] => Err(CliError::rejected(format!("no wallet matching {needle:?}"))),
             [one] => Ok((*one).clone()),
             many => {
                 let names: Vec<&str> = many.iter().map(|w| w.name.as_str()).collect();

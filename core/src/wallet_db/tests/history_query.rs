@@ -126,7 +126,7 @@ fn each_transaction_is_one_row_in_pages_searches_and_the_summary() {
     assert!(summary.replaceable.is_empty());
     assert_eq!(summary.earliest[0].earliest_created_at_unix, 1.0);
 
-    let found = history_find(&db, "TX-000").unwrap().unwrap();
+    let found = history_find(&db, "tx-000").unwrap().unwrap();
     assert_eq!(
         found.status,
         crate::store::wallet_domain::TransactionStatus::Confirmed

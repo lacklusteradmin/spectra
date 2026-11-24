@@ -17,8 +17,8 @@ use crate::out::{self, Out, Report};
 
 #[derive(Args)]
 pub struct RevokeArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The token contract.
     #[arg(long)]
     token: String,
@@ -29,8 +29,8 @@ pub struct RevokeArgs {
 
 #[derive(Args)]
 pub struct SendNftArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The collection's contract.
     #[arg(long)]
     contract: String,
@@ -47,8 +47,8 @@ pub struct SendNftArgs {
 
 #[derive(Args)]
 pub struct CloseArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The existing account that receives everything.
     #[arg(long)]
     to: String,
@@ -58,8 +58,8 @@ pub struct CloseArgs {
 
 #[derive(Args)]
 pub struct TrustArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The asset: `CODE.rIssuer` on the XRP Ledger, `CODE:ISSUER` on
     /// Stellar.
     #[arg(long)]
@@ -68,8 +68,8 @@ pub struct TrustArgs {
 
 #[derive(Args)]
 pub struct DeleteKeyArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The function-call key, as `ed25519:…`.
     #[arg(long)]
     key: String,
@@ -77,8 +77,8 @@ pub struct DeleteKeyArgs {
 
 #[derive(Args)]
 pub struct RefundStorageArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The token contract, such as `usdt.tether-token.near`.
     #[arg(long)]
     contract: String,
@@ -86,8 +86,8 @@ pub struct RefundStorageArgs {
 
 #[derive(Args)]
 pub struct MergeArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The coin type, such as `0x2::sui::SUI`.
     #[arg(long)]
     coin_type: String,
@@ -95,8 +95,8 @@ pub struct MergeArgs {
 
 #[derive(Args)]
 pub struct CloseTokenAccountsArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// A token account to close; repeat for several. None: every closable
     /// empty one.
     #[arg(long = "account")]
@@ -105,8 +105,8 @@ pub struct CloseTokenAccountsArgs {
 
 #[derive(Args)]
 pub struct ProvePaymentArgs {
-    /// Wallet id, name or address.
-    wallet: String,
+    #[command(flatten)]
+    wallet: WalletArg,
     /// The transaction's id.
     #[arg(long)]
     txid: String,
@@ -139,7 +139,7 @@ impl Report for AccountReport {
 }
 
 pub fn account(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let WalletNetworkAccount {
         symbol,
         account,
@@ -171,7 +171,7 @@ impl Report for EnsReport {
 }
 
 pub fn ens(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let name = ctx.rt.block_on(ctx.service()?.wallet_ens_name(wallet.id))?;
     out.report(&EnsReport { name })
 }
@@ -210,7 +210,7 @@ impl Report for ApprovalsReport {
 }
 
 pub fn approvals(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let approvals = ctx
         .rt
         .block_on(ctx.service()?.wallet_token_approvals(wallet.id))?;
@@ -248,7 +248,7 @@ impl Report for NftsReport {
 }
 
 pub fn nfts(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let nfts = ctx.rt.block_on(ctx.service()?.wallet_nfts(wallet.id))?;
     out.report(&NftsReport { nfts })
 }
@@ -278,7 +278,7 @@ impl Report for TrustLinesReport {
 }
 
 pub fn trust_lines(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let trust_lines = ctx
         .rt
         .block_on(ctx.service()?.wallet_trust_lines(wallet.id))?;
@@ -317,7 +317,7 @@ impl Report for KeysReport {
 }
 
 pub fn keys(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let keys = ctx
         .rt
         .block_on(ctx.service()?.wallet_access_keys(wallet.id))?;
@@ -350,7 +350,7 @@ impl Report for StorageReport {
 }
 
 pub fn token_storage(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let storage = ctx
         .rt
         .block_on(ctx.service()?.wallet_token_storage(wallet.id))?;
@@ -378,7 +378,7 @@ impl Report for ObjectsReport {
 }
 
 pub fn objects(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let types = ctx
         .rt
         .block_on(ctx.service()?.wallet_coin_objects(wallet.id))?;
@@ -414,7 +414,7 @@ impl Report for TokenAccountsReport {
 }
 
 pub fn token_accounts(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let empty = ctx
         .rt
         .block_on(ctx.service()?.wallet_empty_token_accounts(wallet.id))?;
@@ -447,7 +447,7 @@ impl Report for ProofReport {
 }
 
 pub fn prove_payment(ctx: &Ctx, out: Out, args: ProvePaymentArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let proof = ctx
         .rt
         .block_on(ctx.service()?.monero_payment_proof(wallet.id, args.txid))?
@@ -461,7 +461,7 @@ pub fn prove_payment(ctx: &Ctx, out: Out, args: ProvePaymentArgs) -> CliResult<(
 // ─── Operations ─────────────────────────────────────────────────────────────
 
 pub fn revoke(ctx: &Ctx, out: Out, args: RevokeArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx.rt.block_on(ctx.service()?.build_approval_revocation(
         wallet.id,
         args.token,
@@ -471,7 +471,7 @@ pub fn revoke(ctx: &Ctx, out: Out, args: RevokeArgs) -> CliResult<()> {
 }
 
 pub fn send_nft(ctx: &Ctx, out: Out, args: SendNftArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx.rt.block_on(ctx.service()?.build_nft_transfer(
         wallet.id,
         args.contract,
@@ -483,7 +483,7 @@ pub fn send_nft(ctx: &Ctx, out: Out, args: SendNftArgs) -> CliResult<()> {
 }
 
 pub fn close(ctx: &Ctx, out: Out, args: CloseArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx.rt.block_on(ctx.service()?.build_account_closing(
         wallet.id,
         args.to,
@@ -494,7 +494,7 @@ pub fn close(ctx: &Ctx, out: Out, args: CloseArgs) -> CliResult<()> {
 
 /// Build the trust line change `wallet trust` or `wallet untrust` asks for.
 pub fn trust(ctx: &Ctx, out: Out, args: TrustArgs, remove: bool) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let service = ctx.service()?;
     let artifact = ctx.rt.block_on(async {
         if remove {
@@ -507,7 +507,7 @@ pub fn trust(ctx: &Ctx, out: Out, args: TrustArgs, remove: bool) -> CliResult<()
 }
 
 pub fn delete_key(ctx: &Ctx, out: Out, args: DeleteKeyArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx.rt.block_on(
         ctx.service()?
             .build_access_key_deletion(wallet.id, args.key),
@@ -516,7 +516,7 @@ pub fn delete_key(ctx: &Ctx, out: Out, args: DeleteKeyArgs) -> CliResult<()> {
 }
 
 pub fn refund_storage(ctx: &Ctx, out: Out, args: RefundStorageArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx.rt.block_on(
         ctx.service()?
             .build_token_storage_refund(wallet.id, args.contract),
@@ -525,7 +525,7 @@ pub fn refund_storage(ctx: &Ctx, out: Out, args: RefundStorageArgs) -> CliResult
 }
 
 pub fn merge(ctx: &Ctx, out: Out, args: MergeArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx
         .rt
         .block_on(ctx.service()?.build_coin_merge(wallet.id, args.coin_type))?;
@@ -533,7 +533,7 @@ pub fn merge(ctx: &Ctx, out: Out, args: MergeArgs) -> CliResult<()> {
 }
 
 pub fn close_token_accounts(ctx: &Ctx, out: Out, args: CloseTokenAccountsArgs) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.wallet.find(ctx)?;
     let artifact = ctx.rt.block_on(
         ctx.service()?
             .build_token_account_closure(wallet.id, args.accounts),

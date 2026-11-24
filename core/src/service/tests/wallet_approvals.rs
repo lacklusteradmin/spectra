@@ -199,7 +199,7 @@ async fn standing_approvals_are_found_revoked_and_named() {
     service
         .open_state(
             std::env::temp_dir()
-                .join(format!("approvals-{}.sqlite", crate::store::new_event_id()))
+                .join(format!("approvals-{}.sqlite", crate::store::new_id()))
                 .to_string_lossy()
                 .into(),
         )

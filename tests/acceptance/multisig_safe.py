@@ -99,9 +99,9 @@ with serve(Node, submitted=[]) as node, scratch('safe') as directory:
     submitted = node.state['submitted']
 
     for owner, signer in enumerate([p0, p1]):
-        signer.run('endpoints', '--chain', 'ethereum-sepolia', '--api', 'evm-json-rpc', '--capabilities',
-                   'balance,fee,broadcast,verification', '--add', node.url)
-        signer.run('endpoints', '--chain', 'ethereum-sepolia', '--custom-only', 'true')
+        signer.run('endpoints', 'add', '--chain', 'ethereum-sepolia', '--api', 'evm-json-rpc', '--capabilities',
+                   'balance,fee,broadcast,verification', node.url)
+        signer.run('endpoints', 'custom-only', '--chain', 'ethereum-sepolia', 'true')
         signer.run('wallet', 'watch', '--chain', 'ethereum-sepolia', '--name', 'Safe', '--address', SAFE)
         signer.run('wallet', 'import', '--chain', 'ethereum-sepolia', '--name', 'Owner', '--no-password',
                    '--private-key-env', 'KEY', env={'KEY': FIXTURE['owners'][owner]['private_key'][2:]})

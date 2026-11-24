@@ -16,4 +16,4 @@ compares its public transaction prefix with the daemon-accepted transaction,
 and rejects changed recipient/amount, bad encryption keys, locked and spent
 inputs. The fixture is not a claim of mainnet inclusion or an independent audit
 of monero-wallet. The supported spend format is RingCT with HF16 CLSAG and
-Bulletproof+; legacy pre-RingCT outputs and subaddress discovery are not supported.
+Bulletproof+; legacy pre-RingCT outputs are not supported.

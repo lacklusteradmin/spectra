@@ -123,10 +123,7 @@ struct Store {
 impl Store {
     async fn new() -> Self {
         let database = std::env::temp_dir()
-            .join(format!(
-                "evm-stages-{}.sqlite",
-                crate::store::new_event_id()
-            ))
+            .join(format!("evm-stages-{}.sqlite", crate::store::new_id()))
             .to_string_lossy()
             .into_owned();
         let secrets = Arc::new(InMemorySecretStore::new());

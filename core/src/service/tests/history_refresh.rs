@@ -45,9 +45,8 @@ fn targets_are_the_chains_wallets_that_have_an_address() {
     assert_eq!(solana[0].address, "So1");
     assert_eq!(solana[0].wallet_name, "w1 wallet");
 
-    // Scoped to one wallet, case-insensitively — ids cross the boundary in
-    // whichever case the front end holds them.
-    assert!(targets(&state, Chain::Solana, &["W1".to_string()]).len() == 1);
+    // Scoped to one wallet.
+    assert!(targets(&state, Chain::Solana, &["w1".to_string()]).len() == 1);
     assert!(targets(&state, Chain::Solana, &["w3".to_string()]).is_empty());
 }
 
@@ -338,7 +337,7 @@ async fn a_chain_no_explorer_serves_counts_a_failure_and_reports_it() {
     let db = std::env::temp_dir()
         .join(format!(
             "spectra-evm-history-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ))
         .to_string_lossy()
         .into_owned();
@@ -372,7 +371,7 @@ async fn a_utxo_wallet_with_no_known_addresses_is_not_exhausted() {
     let db = std::env::temp_dir()
         .join(format!(
             "spectra-utxo-history-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ))
         .to_string_lossy()
         .into_owned();
@@ -436,7 +435,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
     let db = std::env::temp_dir()
         .join(format!(
             "spectra-utxo-fail-{}.sqlite",
-            crate::store::new_event_id()
+            crate::store::new_id()
         ))
         .to_string_lossy()
         .into_owned();
@@ -520,10 +519,8 @@ async fn owned_history_scope_and_failed_clock_are_core_decisions() {
             .await
             .is_err()
     );
-    let path = std::env::temp_dir().join(format!(
-        "history-owned-{}.sqlite",
-        crate::store::new_event_id()
-    ));
+    let path =
+        std::env::temp_dir().join(format!("history-owned-{}.sqlite", crate::store::new_id()));
     service
         .open_state(path.to_string_lossy().into())
         .await
@@ -611,10 +608,8 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
     use crate::service::HistoryRefreshScope;
     use crate::service::refresh_policy::HistoryRefreshKey;
     let service = WalletService::new(vec![]).unwrap();
-    let path = std::env::temp_dir().join(format!(
-        "history-clock-{}.sqlite",
-        crate::store::new_event_id()
-    ));
+    let path =
+        std::env::temp_dir().join(format!("history-clock-{}.sqlite", crate::store::new_id()));
     service
         .open_state(path.to_string_lossy().into())
         .await
@@ -634,14 +629,14 @@ async fn wallet_history_scope_does_not_consume_another_wallet_cooldown() {
     };
     assert!(
         service
-            .refresh_history(scope("A"), false, None, 3600.0)
+            .refresh_history(scope("a"), false, None, 3600.0)
             .await
             .unwrap()
             .is_empty()
     );
     for _ in 0..2 {
         let results = service
-            .refresh_history(scope("B"), false, None, 3600.0)
+            .refresh_history(scope("b"), false, None, 3600.0)
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -655,7 +650,7 @@ async fn history_identity_merges_sends_on_the_exact_network_and_rejects_deleted_
     let service = WalletService::new(vec![]).unwrap();
     let path = std::env::temp_dir().join(format!(
         "history-identity-{}.sqlite",
-        crate::store::new_event_id()
+        crate::store::new_id()
     ));
     let db = path.to_string_lossy().to_string();
     service.open_state(db.clone()).await.unwrap();
@@ -809,10 +804,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
 async fn opened(endpoints: Vec<crate::service::ChainEndpoints>) -> std::sync::Arc<WalletService> {
     let service = WalletService::new(endpoints).expect("service");
     let path = std::env::temp_dir()
-        .join(format!(
-            "history-paging-{}.sqlite",
-            crate::store::new_event_id()
-        ))
+        .join(format!("history-paging-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     service.open_state(path).await.expect("open");

@@ -66,7 +66,7 @@ impl Report for ShowReport {
 }
 
 pub fn show(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     out.report(&ShowReport {
         wallet: WalletView::from(&wallet),
     })
@@ -104,7 +104,7 @@ impl Report for ActionsReport {
 }
 
 pub fn actions(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let actions = ctx.rt.block_on(ctx.service()?.wallet_actions(wallet.id))?;
     out.report(&ActionsReport {
         name: wallet.name,
@@ -133,7 +133,7 @@ impl Report for ReceiveReport {
 /// UTXO indices and registers derived addresses as owned; repeated calls
 /// reuse the reserved index.
 pub fn receive(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let chain = wallet.chain_id;
     let address = ctx
         .rt
@@ -195,7 +195,7 @@ impl Report for CoinsReport {
 }
 
 pub fn coins(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = ctx.find_wallet(&args.wallet)?;
+    let wallet = args.find(ctx)?;
     let coins = ctx.rt.block_on(ctx.service()?.wallet_coins(wallet.id))?;
     out.report(&CoinsReport { coins })
 }

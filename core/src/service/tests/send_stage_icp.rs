@@ -43,10 +43,7 @@ async fn an_icp_transfer_is_built_only_at_the_ledger_fee_to_a_checksummed_accoun
     }])
     .unwrap();
     let database = std::env::temp_dir()
-        .join(format!(
-            "icp-stages-{}.sqlite",
-            crate::store::new_event_id()
-        ))
+        .join(format!("icp-stages-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     service.open_state(database).await.unwrap();

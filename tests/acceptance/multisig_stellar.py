@@ -72,9 +72,9 @@ with serve(Horizon, submitted=[]) as node, scratch('stellar-multisig') as direct
 
     a, b = spectra / 'a', spectra / 'b'
     for signer, name, key in [(a, 'Signer1', 'p1'), (b, 'Signer2', 'p2')]:
-        signer.run('endpoints', '--chain', 'stellar-testnet', '--api', 'horizon', '--capabilities',
-                   'balance,fee,verification,broadcast', '--add', node.url)
-        signer.run('endpoints', '--chain', 'stellar-testnet', '--custom-only', 'true')
+        signer.run('endpoints', 'add', '--chain', 'stellar-testnet', '--api', 'horizon', '--capabilities',
+                   'balance,fee,verification,broadcast', node.url)
+        signer.run('endpoints', 'custom-only', '--chain', 'stellar-testnet', 'true')
         signer.run('wallet', 'watch', '--chain', 'stellar-testnet', '--name', 'Account', '--address', ACCOUNT)
         signer.run('wallet', 'import', '--chain', 'stellar-testnet', '--name', name, '--no-password',
                    env={'SPECTRA_SEED': KEYS[key]['phrase']})

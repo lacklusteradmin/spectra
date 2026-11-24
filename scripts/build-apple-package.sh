@@ -85,7 +85,6 @@ PACKAGE="$(cd "$1" && pwd)"
 export CARGO_TARGET_DIR="${ROOT}/target/apple"
 mkdir -p "${CARGO_TARGET_DIR}"
 
-# From the checkout, so rustup takes the toolchain rust-toolchain.toml pins.
 cd "${ROOT}"
 
 LIBRARIES=()

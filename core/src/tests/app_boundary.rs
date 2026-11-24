@@ -30,7 +30,7 @@ fn reset_scopes_do_not_expand_to_unrelated_data() {
 }
 
 #[test]
-fn diagnostics_bundle_redacts_secrets_and_refuses_missing_fields() {
+fn diagnostics_bundle_redacts_secrets() {
     use diagnostics::export::*;
     let bundle=DiagnosticsBundlePayload {
         schema_version:1,generated_at:123.0,
@@ -40,11 +40,8 @@ fn diagnostics_bundle_redacts_secrets_and_refuses_missing_fields() {
     };
     let encoded = diagnostics_bundle_to_json(bundle).unwrap();
     assert!(!encoded.contains("abandon abandon"));
-    assert_eq!(
-        diagnostics_bundle_from_json(encoded).unwrap().generated_at,
-        123.0
-    );
-    assert!(diagnostics_bundle_from_json("{}".into()).is_none());
+    let parsed: DiagnosticsBundlePayload = serde_json::from_str(&encoded).unwrap();
+    assert_eq!(parsed.generated_at, 123.0);
 }
 
 /// The preview a front end shows is the reducer's answer: trimmed, bounded,
