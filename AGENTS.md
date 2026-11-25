@@ -77,6 +77,12 @@ Read the one that covers what you are changing:
 | [tests/README.md](tests/README.md) | Where tests live, acceptance suites, SDK vector generators |
 | [scripts/README.md](scripts/README.md) | Source-scan, icon and data tools |
 
+A doc describes the code; it is not a decision of mine. Most were written by an
+AI, so a rule or layout a doc states is no reason on its own to keep the code
+as it is: weigh a change on its merits, as Rule 0 says, and update the doc to
+match. (2026-11-24: a layout review kept several oddities only because
+`ARCHITECTURE.md` prescribed them.)
+
 Keep them true:
 
 - A change that alters what a doc says updates that doc in the same change: a
@@ -151,8 +157,8 @@ How to write it:
   rules are tested there with `cargo test`, without a platform.
 - Per-chain facts belong on `registry::Chain`, not in caller-owned lists.
 - Every request to a chain service, broadcasts included, lives in
-  `core/src/api/`, one `<api>.rs` per `EndpointApi`, named after its `as_str()`
-  with underscores for hyphens. `send`, `staking` and `service` call `api`,
+  `core/src/api/`, one module per `EndpointApi` (`<api>.rs`, or `<api>/mod.rs`
+  for one in parts), named after its `as_str()` with underscores for hyphens. `send`, `staking` and `service` call `api`,
   never the reverse. `send/` builds and signs per chain and never implements a
   client.
 - Core must own the state it decides about: do not add an export that takes

@@ -721,7 +721,7 @@ async fn an_amount_below_the_dust_threshold_is_refused() {
     for (chain, scale) in account_networks() {
         let account = Account::new(chain).await;
         account.fund(&account.root, 1, 1_000_000 * scale);
-        let dust = crate::service::send_stage_utxo::change_dust(chain).unwrap();
+        let dust = crate::service::send_stage::utxo::change_dust(chain).unwrap();
         let refused = account
             .service
             .build_send(account.request(chain, dust - 1))

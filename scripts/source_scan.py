@@ -124,13 +124,15 @@ def test_modules(paths):
             if not module:
                 continue
             # A path attribute can precede or follow cfg(test). Top-level
-            # explicit paths are relative to this file's containing directory.
+            # explicit paths are relative to this file's containing directory
+            # and may leave it with `..`, so they are normalized to match the
+            # listed path.
             start = i
             while start > 0 and SKIPPABLE.match(lines[start - 1]):
                 start -= 1
             explicit = re.search(r'#\[path\s*=\s*"([^"]+)"\]', '\n'.join(lines[start:j]))
             if explicit:
-                found.add(path.parent / explicit.group(1))
+                found.add(pathlib.Path(os.path.normpath(path.parent / explicit.group(1))))
             else:
                 # foo.rs owns foo/; lib.rs, main.rs and mod.rs already sit in
                 # their module directory. Both child-file layouts are legal.

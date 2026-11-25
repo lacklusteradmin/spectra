@@ -1,5 +1,62 @@
 # Changelog
 
+## Beta Commit 258
+
+- **A directory module's body is its `mod.rs`** (`api/litecoin_p2p/mod.rs`,
+  `api/substrate_json_rpc/mod.rs`, `api/substrate_json_rpc/metadata/mod.rs`;
+  before: `litecoin_p2p.rs`, `substrate_json_rpc.rs` and `metadata.rs` beside
+  their directories, while the domains and `send/litecoin_mweb/` used
+  `mod.rs`).
+- **Three out-of-line test modules follow the layout the others use**
+  - `derivation`'s own tests are `derivation/tests/mod.rs` (before:
+    `derivation/tests.rs` beside `derivation/tests/`).
+  - `substrate_json_rpc`'s and its `pools` module's are
+    `api/tests/substrate_json_rpc.rs` and
+    `api/tests/substrate_json_rpc_pools.rs` (before: `substrate_json_rpc/tests.rs`
+    and `substrate_json_rpc/pools/tests.rs`).
+  - The crate root's are `src/tests/mod.rs`, declared as `mod tests` (before:
+    `src/tests/app_boundary.rs`, declared as `app_boundary_tests` through
+    `#[path]`).
+- **The send stages and multisig are directories of `service/`**
+  (`service/send_stage/`, `service/multisig/`; before: 35 files directly in
+  `service/`)
+  - `send_stages.rs` is `send_stage/mod.rs`, `send_stage_protocols.rs` is
+    `send_stage/protocols.rs`, and each `send_stage_<protocol>.rs` and
+    `send_near.rs` is a child `send_stage/<protocol>.rs`; `multisig.rs` is
+    `multisig/mod.rs` and each `multisig_<scheme>.rs` is `multisig/<scheme>.rs`.
+  - 155 `pub(super)` items in the children reach only their group (before:
+    all of `service`); the 26 the rest of `service` calls are
+    `pub(in crate::service)`.
+  - Nine `pub(super)` helpers of the two `mod.rs` files only their children
+    call are private.
+  - The tests of `send_stages` and `send_near` are `service/tests/send_stage.rs`
+    and `service/tests/send_stage_near.rs`.
+- **`send/message/` holds one module per message-signing scheme**
+  (`send/message/mod.rs`, `stellar.rs`, `cardano.rs`, `kaspa.rs`, `monero.rs`;
+  before: `send/message.rs` and the four as inline modules of
+  `message_schemes.rs`, mounted through `#[path]`). Their functions are
+  `pub(super)` (before: `pub(in crate::send)`).
+- **The UniFFI bindgen binary is `spectra-uniffi-bindgen`**
+  (`tools/uniffi-bindgen/Cargo.toml`; before: `spectra_uniffi_bindgen`, the
+  one bin name with underscores).
+- **The source scans match a test module whose `#[path]` leaves its directory
+  with `..`** (`scripts/source_scan.py`; before: such a path did not equal the
+  listed file, and only a `tests/` directory in it marked the file as test
+  code).
+- **`README.md` "The CLI" says every operation is a command that `--help`
+  lists, with `--json` for scripts** (before: that `cargo run -p
+  spectra_cli` with no command opened the windowed interface, which Beta
+  Commit 254 deleted).
+- Docs: `README.md` ("The CLI"), `ARCHITECTURE.md` ("Signing and service
+  modules": the send stages; "Core module boundaries": directory groups and
+  their visibility, test placement, `api/`, multisig), `AGENTS.md` ("Docs": a
+  doc's rule is no reason on its own to keep code; "Architecture": one module
+  per `EndpointApi`).
+- Total: 55 .rs files changed (4 new, 1 deleted, 45 moved), +585 −642 lines;
+  config files: `scripts/source_scan.py`, `scripts/test-source-scan.py`,
+  `tools/uniffi-bindgen/Cargo.toml`; dependencies unchanged; `cargo test`
+  passing 1682 → 1682.
+
 ## Beta Commit 257
 
 - **Thirteen Cosmos SDK mainnets join the registry** (new

@@ -59,8 +59,8 @@ class SourceSelectionTests(unittest.TestCase):
                     self.assertEqual(declared, {parent.parent / 'fixture_file.rs'})
 
     def test_actual_substrate_tests_are_declared(self):
-        parent = REPOSITORY / 'core/src/api/substrate_json_rpc.rs'
-        child = REPOSITORY / 'core/src/api/substrate_json_rpc/tests.rs'
+        parent = REPOSITORY / 'core/src/api/substrate_json_rpc/mod.rs'
+        child = REPOSITORY / 'core/src/api/tests/substrate_json_rpc.rs'
         declared = test_modules([parent])
         self.assertIn(child, declared)
         self.assertEqual(production_text(child, declared), '')

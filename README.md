@@ -45,16 +45,8 @@ It builds with the current stable Rust, with rustfmt and clippy for
 ### The CLI
 
 The CLI is the front end with no platform under it. It needs nothing but a Rust
-toolchain:
-
-```sh
-cargo run -p spectra_cli
-```
-
-With no command, at a terminal, that opens tabs and windows in the manner of
-kitty, each window a prompt that runs the commands `--help` lists; `Tab`
-completes them and `Ctrl+B` then `?` lists the keys. The same commands work
-directly for scripts, with `--json` for a report to parse:
+toolchain. Every operation is a command, which `--help` lists; `--json` prints
+a command's report for scripts to parse:
 
 ```sh
 cargo run -p spectra_cli -- --help

@@ -324,7 +324,7 @@ impl WalletService {
                 .await
                 .map(|b| b.sun)
                 .map_err(SpectraBridgeError::from)?;
-            let fee_sun = super::send_stage_utxo::fee_or_static(Chain::Tron, None)?;
+            let fee_sun = super::send_stage::utxo::fee_or_static(Chain::Tron, None)?;
             let spendable = trx(u128::from(balance_sun.saturating_sub(fee_sun)));
             return Ok(SendPreview {
                 estimated_network_fee: trx(u128::from(fee_sun)),

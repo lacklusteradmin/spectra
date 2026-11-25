@@ -24,5 +24,4 @@ pub mod validation;
 pub mod wallet_db;
 
 #[cfg(test)]
-#[path = "tests/app_boundary.rs"]
-mod app_boundary_tests;
+mod tests;

@@ -354,4 +354,5 @@ impl SubstrateClient {
 }
 
 #[cfg(test)]
+#[path = "../tests/substrate_json_rpc_pools.rs"]
 pub(crate) mod tests;

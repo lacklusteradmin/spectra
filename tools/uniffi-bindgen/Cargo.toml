@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [[bin]]
-name = "spectra_uniffi_bindgen"
+name = "spectra-uniffi-bindgen"
 path = "src/main.rs"
 test = false
 

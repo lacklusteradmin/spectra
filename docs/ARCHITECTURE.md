@@ -195,11 +195,11 @@ mutations still use the same writer rather than creating per-file owners.
 The send service is split into `send_execution` (stored identity and exact
 amount conversion), `send_destination` (fresh resolution and review binding),
 `send_preflight` (eligibility and recipient warnings), `send_preview` (quotes),
-`send_stages` (durable build/sign/broadcast) and `send_broadcast`
-(rebroadcast). `send_stage_protocols` dispatches an account protocol's
-preparation, revalidation, signing and expiry to that protocol's own
-`send_stage_<protocol>` sibling (NEAR's in `send_near`); the UTXO family's
-live in `send_stage_utxo`, `send_stage_litecoin` and `send_stage_peercoin`.
+`send_stage` (durable build/sign/broadcast) and `send_broadcast`
+(rebroadcast). `send_stage::protocols` dispatches an account protocol's
+preparation, revalidation, signing and expiry to that protocol's own module
+under `send_stage/` (NEAR's in `near`); the UTXO family's live in `utxo`,
+`litecoin` and `peercoin`.
 Prepared content is typed Rust data, not caller-owned JSON.
 Secrets use redacted, zeroizing storage; an Ed25519 seed is a distinct type
 rather than an unlabelled 32/64-byte array.
@@ -213,9 +213,15 @@ boundaries; mock-node tests exercise the stored-wallet execution route.
 
 ## Core module boundaries
 
-Production source files normally sit at `core/src/<domain>/<topic>.rs`, with
-no further directory nesting; `api/litecoin_p2p/`, `api/substrate_json_rpc/`
-and `send/litecoin_mweb/` hold one large protocol's parts. `lib.rs` declares the
+Production source files normally sit at `core/src/<domain>/<topic>.rs`. A
+domain nests one directory further for a group whose helpers the rest of the
+domain should not see: one large protocol's parts (`api/litecoin_p2p/`,
+`api/substrate_json_rpc/`, `send/litecoin_mweb/`), one module per
+message-signing scheme (`send/message/`), or a dispatcher with one child per
+protocol or scheme (`service/send_stage/`, `service/multisig/`). A directory
+module's body is its `mod.rs`, a domain's and a group's alike. A helper only
+its group calls is private to the group's `mod.rs` or `pub(super)` in a child;
+one the rest of the domain calls is `pub(in crate::<domain>)`. `lib.rs` declares the
 domains and `error.rs` holds `SpectraBridgeError` and `LocalizableMessage`, and
 nothing else sits at the root. `registry/` is `Chain` with one `impl Chain` sibling per topic
 (`keys`, `address`, `endpoints`, `tokens`, `send`, `staking`, `utxo`,
@@ -239,18 +245,23 @@ storage; `store` owns resident state and wallet-domain rules; `secrets` owns
 what is sealed, not resident state.
 
 A module's unit tests sit in one place: inline when the block is small,
-otherwise in one file in their domain's `tests/` directory, the one exception
-to the depth rule, named after the module that hosts them:
+otherwise in one file in their domain's `tests/` directory, named after the
+module that hosts them:
 `service/tests/send_execution.rs`. Declare it as a child of that module with
 `#[cfg(test)]`, `#[path = "tests/send_execution.rs"]` and `mod tests;` so tests
 keep private access without widening production visibility. A module never
 keeps tests both inline and out of line, and a test sits with the module whose
-behaviour it exercises. A domain's root module keeps its own in `tests/mod.rs`,
-as `registry` and `send` do; where a domain's tests need only crate-visible
-items, that file groups them by domain in child files instead, as in
-`store/tests/` and `wallet_db/tests/`. The service fixtures other tests share
-(`loopback_service`, `send_stage_support`) are declared in `service/mod.rs`.
-Crate-root tests use `src/tests/`.
+behaviour it exercises. A module in a group's directory keeps its tests in the
+domain's `tests/` too, the file named after the group and then the module:
+`api/tests/substrate_json_rpc_pools.rs`, `service/tests/send_stage_evm.rs`; a
+group's `mod.rs` keeps its own in a file named after the group:
+`service/tests/send_stage.rs`. A domain's root module keeps
+its own in `tests/mod.rs`, as `derivation`, `registry` and `send` do; where a
+domain's tests need only crate-visible items, that file groups them by domain
+in child files instead, as in `store/tests/` and `wallet_db/tests/`. The
+service fixtures other tests share (`loopback_service`, `send_stage_support`)
+are declared in `service/mod.rs`. The crate root keeps its own in
+`src/tests/mod.rs`.
 Integration tests that need their own process sit in `core/tests/`, with shared
 test data in `core/tests/fixtures/`. The CLI acceptance suites and their shared
 harness live in `tests/acceptance/`, and the independent SDK generators for that
@@ -274,7 +285,7 @@ validated on first use and panic when broken, since a broken embedded file is a
 build defect.
 
 - `api/` owns every request to a chain service and the parsing of its answer:
-  one module per `EndpointApi` (`api/esplora.rs`, `api/substrate_json_rpc.rs`,
+  one module per `EndpointApi` (`api/esplora.rs`, `api/substrate_json_rpc/`,
   …), plus `utxo` (the UTXO family's client over several of them), the `http`
   and `json_rpc` transport, `tcp` (the connection `lightwalletd`'s `grpc`
   channel and Litecoin's peer-to-peer protocol `litecoin_p2p` dial, under the
@@ -333,10 +344,10 @@ build defect.
   defines the read model it returns (`SafeState`, `TronPermissions`,
   `XrpSignerList`, `StellarSigners`); `send` builds against it, never the
   other way round.
-  `service/multisig.rs` owns the records, the `multisig_sessions` table and
-  the dispatch; each scheme's rules are in its `service/multisig_<scheme>.rs`
-  sibling, which reads the network again before a signature or a
-  submission.
+  `service/multisig/mod.rs` owns the records, the `multisig_sessions` table
+  and the dispatch; each scheme's rules are in its
+  `service/multisig/<scheme>.rs` child, which reads the network again before
+  a signature or a submission.
 - `send/bitcoin_wire.rs` contains only Bitcoin-format serialization.
   Other UTXO protocols must establish byte compatibility before reusing it.
   Kaspa owns its own hash preimage encoding. Solana compiles a unique account

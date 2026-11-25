@@ -12,7 +12,7 @@
 //! | `network_balance`, `network_tokens`, `network_history`, `network_prices` | chain reads grouped by responsibility |
 //! | [`send_preflight`] | send eligibility, routing and recipient warnings |
 //! | [`send_preview`] | fee estimates and send previews |
-//! | [`send_stages`] | prepared/signed artifacts and explicit submission |
+//! | [`send_stage`] | prepared/signed artifacts and explicit submission, with one child per protocol |
 //! | [`send_broadcast`] | rebroadcast of signed payloads |
 //! | [`send_destination`] | resolution and review verification |
 //!
@@ -62,8 +62,6 @@ pub(crate) use tokio::sync::RwLock as AsyncRwLock;
 
 pub(crate) use serde::{Deserialize, Serialize};
 
-use crate::api::endpoint::EndpointApi;
-
 pub(crate) mod address_discovery;
 pub use address_discovery::WalletAddressDiscovery;
 mod balance_refresh;
@@ -111,7 +109,6 @@ mod send_broadcast;
 mod send_destination;
 mod send_execution;
 mod send_identity;
-mod send_near;
 mod send_preflight;
 mod send_preview;
 mod send_records;
@@ -300,30 +297,8 @@ pub mod app_refresh;
 mod owned_send;
 pub use owned_send::{OwnedReplacementDraft, OwnedSendPreview};
 pub mod send_review;
-mod send_stage_algorand;
-mod send_stage_aptos;
-mod send_stage_cardano;
-mod send_stage_cosmos;
-mod send_stage_evm;
-mod send_stage_filecoin;
-mod send_stage_hedera;
-mod send_stage_icp;
-mod send_stage_litecoin;
-mod send_stage_peercoin;
-mod send_stage_protocols;
-mod send_stage_solana;
-mod send_stage_starknet;
-mod send_stage_stellar;
-mod send_stage_substrate;
-mod send_stage_sui;
-mod send_stage_tezos;
-mod send_stage_ton;
-mod send_stage_tron;
-mod send_stage_utxo;
-mod send_stage_vechain;
-mod send_stage_xrp;
-mod send_stages;
-pub use send_stages::{SendNextStep, SendProgress};
+mod send_stage;
+pub use send_stage::{SendNextStep, SendProgress};
 mod send_utxo_sources;
 mod setup_summary;
 pub use setup_summary::{CapabilityCoverage, WalletSetupLimit, WalletSetupSummary};
@@ -342,13 +317,3 @@ mod monero_wallet;
 pub use monero_wallet::{MoneroPaymentProof, MoneroSyncStatus};
 mod multisig;
 pub use multisig::{MultisigAccount, MultisigSession, MultisigSigner, MultisigSpend};
-mod multisig_aptos;
-mod multisig_cardano;
-mod multisig_psbt;
-mod multisig_safe;
-mod multisig_stellar;
-mod multisig_substrate;
-mod multisig_sui;
-mod multisig_ton;
-mod multisig_tron;
-mod multisig_xrp;
