@@ -1,0 +1,444 @@
+{
+  "checked_at_utc": "2026-11-24",
+  "coingecko": {
+    "source": "https://api.coingecko.com/api/v3/coins/list?include_platform=true",
+    "matched": 243,
+    "differs_or_absent": 40,
+    "rows": [
+      {
+        "token_id": "ethereum",
+        "chain_id": "starknet",
+        "contract": "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+        "coingecko_platform": "starknet",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "bridged-wrapped-ether-starkgate"
+        ],
+        "resolution": "CoinGecko lists this contract as bridged-wrapped-ether-starkgate. It is StarkGate's ETH, Starknet's ETH balance, which the catalog lists under ETH."
+      },
+      {
+        "token_id": "bittorrent-old",
+        "chain_id": "tron",
+        "contract": "1002000",
+        "coingecko_platform": "tron",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "bittorrent-old"
+        ],
+        "resolution": "CoinGecko lists it as bittorrent-old; the catalog gives the legacy TRC-10 BTT no market identity on purpose, so it cannot borrow the current BTT price."
+      },
+      {
+        "token_id": "pancakeswap-token",
+        "chain_id": "monad",
+        "contract": "0xf59d81cd43f620e722e07f9cb3f6e41b031017a3",
+        "coingecko_platform": "monad",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "curve-dao-token",
+        "chain_id": "avalanche",
+        "contract": "0xeebc562d445f4bc13ac75c8caabb438dfae42a1b",
+        "coingecko_platform": "avalanche",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "curve-dao-token",
+        "chain_id": "bnb",
+        "contract": "0x9996d0276612d23b35f90c51ee935520b3d7355b",
+        "coingecko_platform": "binance-smart-chain",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "curve-dao-token",
+        "chain_id": "celo",
+        "contract": "0x75184c282e55a7393053f0b8f4f3e7beae067fdc",
+        "coingecko_platform": "celo",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "curve-dao-token",
+        "chain_id": "ink",
+        "contract": "0xac73671a1762fe835208fb93b7ae7490d1c2ccb3",
+        "coingecko_platform": "ink",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "curve-dao-token",
+        "chain_id": "mantle",
+        "contract": "0xe265fc71d45fd791c9ebf3ee0a53fbb220eb8f75",
+        "coingecko_platform": "mantle",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "curve-dao-token",
+        "chain_id": "sonic",
+        "contract": "0x5af79133999f7908953e94b7a5cf367740ebee35",
+        "coingecko_platform": "sonic",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "curve-dao-token",
+        "chain_id": "x-layer",
+        "contract": "0x3d5320821bfca19fb0b5428f2c79d63bd5246f89",
+        "coingecko_platform": "x-layer",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "base",
+        "contract": "0x50c5725949a6f0c72e6c4a641f24049a917db0cb",
+        "coingecko_platform": "base",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "l2-standard-bridged-dai-base"
+        ],
+        "resolution": "CoinGecko lists this contract as l2-standard-bridged-dai-base: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "polygon",
+        "contract": "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063",
+        "coingecko_platform": "polygon-pos",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "polygon-pos-bridged-dai-polygon-pos"
+        ],
+        "resolution": "CoinGecko lists this contract as polygon-pos-bridged-dai-polygon-pos: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "arbitrum",
+        "contract": "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1",
+        "coingecko_platform": "arbitrum-one",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "makerdao-arbitrum-bridged-dai-arbitrum-one"
+        ],
+        "resolution": "CoinGecko lists this contract as makerdao-arbitrum-bridged-dai-arbitrum-one: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "optimism",
+        "contract": "0xda10009cbd5d07dd0cecc66161fc93d7c9000da1",
+        "coingecko_platform": "optimistic-ethereum",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "makerdao-optimism-bridged-dai-optimism"
+        ],
+        "resolution": "CoinGecko lists this contract as makerdao-optimism-bridged-dai-optimism: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "avalanche",
+        "contract": "0xd586e7f844cea2f87f50152665bcbc2c279d8d70",
+        "coingecko_platform": "avalanche",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "avalanche-bridged-dai-avalanche"
+        ],
+        "resolution": "CoinGecko lists this contract as avalanche-bridged-dai-avalanche: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "linea",
+        "contract": "0x4af15ec2a0bd43db75dd04e62faa3b8ef36b00d5",
+        "coingecko_platform": "linea",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "bridged-dai-stablecoin-linea"
+        ],
+        "resolution": "CoinGecko lists this contract as bridged-dai-stablecoin-linea: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "scroll",
+        "contract": "0xca77eb3fefe3725dc33bccb54edefc3d9f764f97",
+        "coingecko_platform": "scroll",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "zksync-era",
+        "contract": "0x4b9eb6c0b6ea15176bbf62841c6b2a8a398cb656",
+        "coingecko_platform": "zksync",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "zksync-erc20-bridged-dai-zksync"
+        ],
+        "resolution": "CoinGecko lists this contract as zksync-erc20-bridged-dai-zksync: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "unichain",
+        "contract": "0x20cab320a855b39f724131c69424240519573f81",
+        "coingecko_platform": "unichain",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "dai",
+        "chain_id": "celo",
+        "contract": "0xac177de2439bd0c7659c61f373dbf247d1f41abe",
+        "coingecko_platform": "celo",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "ethena",
+        "chain_id": "ton",
+        "contract": "0:058591596327b4965b25efce4ecce246f504fa3d7c9851d9a20b853de6506e1e",
+        "coingecko_platform": "the-open-network",
+        "coingecko_lists": "EQAPh9RCprgg5kKumtJi8uB7nFKctPBwuRUu82JgTGmzklNV",
+        "contract_listed_as": [],
+        "resolution": "Ethena's key addresses name the catalog's jetton; CoinGecko's address is Ethena's LayerZero contract on TON, not a jetton (sources.json)."
+      },
+      {
+        "token_id": "ethena",
+        "chain_id": "bnb",
+        "contract": "0x58538e6a46e07434d7e7375bc268d3cb839c0133",
+        "coingecko_platform": "binance-smart-chain",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "ethena",
+        "chain_id": "linea",
+        "contract": "0x58538e6a46e07434d7e7375bc268d3cb839c0133",
+        "coingecko_platform": "linea",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "ethena",
+        "chain_id": "x-layer",
+        "contract": "0x58538e6a46e07434d7e7375bc268d3cb839c0133",
+        "coingecko_platform": "x-layer",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "ether-fi",
+        "chain_id": "optimism",
+        "contract": "0xe0080d2f853ecddbd81a643dc10da075df26fd3f",
+        "coingecko_platform": "optimistic-ethereum",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "kucoin-shares",
+        "chain_id": "ethereum",
+        "contract": "0xf34960d9d60be18cc1d5afc1a6f012a723a28811",
+        "coingecko_platform": "ethereum",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "chainlink",
+        "chain_id": "bnb",
+        "contract": "0x404460c6a5ede2d891e8297795264fde62adbb75",
+        "coingecko_platform": "binance-smart-chain",
+        "coingecko_lists": "0xf8a0bf9cf54bb92f17374d9e9a321e6a111a51bd",
+        "contract_listed_as": [],
+        "resolution": "Chainlink's LINK Token Contracts page names the catalog's contract; CoinGecko's is Binance-Peg LINK, which Chainlink says is not ERC-677 (sources.json)."
+      },
+      {
+        "token_id": "susds",
+        "chain_id": "avalanche",
+        "contract": "0xb94d9613c7aab11e548a327154cc80eca911b5c1",
+        "coingecko_platform": "avalanche",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "susds",
+        "chain_id": "unichain",
+        "contract": "0xa06b10db9f390990364a3984c04fadf1c13691b5",
+        "coingecko_platform": "unichain",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "usd1-wlfi",
+        "chain_id": "aptos",
+        "contract": "0x5fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2",
+        "coingecko_platform": "aptos",
+        "coingecko_lists": "0x05fabd1b12e39967a3c24e91b7b8f67719a6dacee74f3c8b9fb7d93e855437d2",
+        "contract_listed_as": [],
+        "resolution": "The same address, written with a leading zero."
+      },
+      {
+        "token_id": "usd-coin",
+        "chain_id": "linea",
+        "contract": "0x176211869ca2b568f2a7d4ee941e073a821ee1ff",
+        "coingecko_platform": "linea",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "bridged-usd-coin-linea"
+        ],
+        "resolution": "CoinGecko still lists it as bridged-usd-coin-linea, but Circle's USDC table names this address for Linea: it is Circle-native today (sources.json)."
+      },
+      {
+        "token_id": "usd-coin",
+        "chain_id": "scroll",
+        "contract": "0x06efdbff2a14a7c8e15944d1f4a48f9f95f663a4",
+        "coingecko_platform": "scroll",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "bridged-usd-coin-scroll"
+        ],
+        "resolution": "CoinGecko lists this contract as bridged-usd-coin-scroll: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "usd-coin",
+        "chain_id": "mantle",
+        "contract": "0x09bc4e0d864854c6afb6eb9a9cdf58ac190d0df9",
+        "coingecko_platform": "mantle",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "mantle-bridged-usdc-mantle"
+        ],
+        "resolution": "CoinGecko lists this contract as mantle-bridged-usdc-mantle: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "usd-coin",
+        "chain_id": "bnb",
+        "contract": "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d",
+        "coingecko_platform": "binance-smart-chain",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "binance-bridged-usdc-bnb-smart-chain"
+        ],
+        "resolution": "CoinGecko lists this contract as binance-bridged-usdc-bnb-smart-chain: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "usds",
+        "chain_id": "optimism",
+        "contract": "0x4f13a96ec5c4cf34e442b46bbd98a0791f20edc3",
+        "coingecko_platform": "optimistic-ethereum",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "usds",
+        "chain_id": "avalanche",
+        "contract": "0x86ff09db814ac346a7c6fe2cd648f27706d1d470",
+        "coingecko_platform": "avalanche",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "usds",
+        "chain_id": "unichain",
+        "contract": "0x7e10036acc4b56d4dfca3b77810356ce52313f9c",
+        "coingecko_platform": "unichain",
+        "coingecko_lists": null,
+        "contract_listed_as": [],
+        "resolution": "CoinGecko lists no deployment of this coin on this network; identity rests on the issuer or bridge source."
+      },
+      {
+        "token_id": "tether",
+        "chain_id": "bnb",
+        "contract": "0x55d398326f99059ff775485246999027b3197955",
+        "coingecko_platform": "binance-smart-chain",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "binance-bridged-usdt-bnb-smart-chain"
+        ],
+        "resolution": "CoinGecko lists this contract as binance-bridged-usdt-bnb-smart-chain: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "tether",
+        "chain_id": "opbnb",
+        "contract": "0x9e5aac1ba1a2e6aed6b32689dfcf62a509ca96f3",
+        "coingecko_platform": "opbnb",
+        "coingecko_lists": null,
+        "contract_listed_as": [
+          "bridged-tether-opbnb"
+        ],
+        "resolution": "CoinGecko lists this contract as bridged-tether-opbnb: a bridged copy, which the catalog keeps under the token it wraps."
+      },
+      {
+        "token_id": "vethor-token",
+        "chain_id": "vechain",
+        "contract": "0x0000000000000000000000000000456e65726779",
+        "coingecko_platform": "vechain",
+        "coingecko_lists": "",
+        "contract_listed_as": [],
+        "resolution": "VTHO is built into VeChainThor at this fixed address; CoinGecko lists it as a coin with no contract."
+      }
+    ]
+  },
+  "coinpaprika": {
+    "source": "https://api.coinpaprika.com/v1/coins (all ids); /v1/coins/{id} for contract overlap where the free quota allowed",
+    "rows": [
+      {
+        "token_id": "the-open-network",
+        "coinpaprika_id": "ton-tontoken",
+        "coinpaprika_entry": {
+          "name": "TONToken",
+          "symbol": "TON",
+          "rank": 3400,
+          "is_active": true
+        },
+        "resolution": "Wrong coin: ton-tontoken is an unrelated Ethereum token. Gram is toncoin-the-open-network (rank 36). Fixed."
+      },
+      {
+        "token_id": "honey-3",
+        "coinpaprika_id": "honey-honey1",
+        "coinpaprika_entry": {
+          "name": "Honey",
+          "symbol": "HONEY",
+          "rank": 886,
+          "is_active": true
+        },
+        "resolution": "Right coin under its old name: CoinPaprika still calls Bera USD \"Honey\", and its contract is the catalog's. Unchanged."
+      },
+      {
+        "token_id": "usdb",
+        "coinpaprika_id": "usdb-usdb",
+        "coinpaprika_entry": {
+          "name": "USDB",
+          "symbol": "USDB",
+          "rank": 0,
+          "is_active": false
+        },
+        "resolution": "Inactive on CoinPaprika, with no other USD Blast entry. Cleared."
+      },
+      {
+        "token_id": "dymension",
+        "coinpaprika_id": "dym-dymension",
+        "coinpaprika_entry": null,
+        "resolution": "No such id. CoinPaprika lists Dymension as dym-dymension-iou (rank 789, the only active DYM named Dymension). Fixed."
+      }
+    ]
+  }
+}

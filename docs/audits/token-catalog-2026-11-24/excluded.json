@@ -1,0 +1,935 @@
+{
+  "checked_at_utc": "2026-11-24",
+  "rows": [
+    {
+      "token_id": "euro-coin",
+      "chain_id": "optimism",
+      "identifier": "0xdcb612005417dc906ff72c87df732e5a90d49e11",
+      "reason": "Ether.fi LayerZero copy; Circle lists no Optimism EURC"
+    },
+    {
+      "token_id": "paypal-usd",
+      "chain_id": "ink",
+      "identifier": "0x142cdc44890978b506e745bb3bd11607b7f7faef",
+      "reason": "PYUSD0 LayerZero copy; Paxos lists no Ink PYUSD"
+    },
+    {
+      "token_id": "pax-gold",
+      "chain_id": "robinhood-chain",
+      "identifier": "0x121bbe58fe4684057fb66d2dd535a19e16b4f66f",
+      "reason": "LayerZero-only, supply 10; Paxos does not list it"
+    },
+    {
+      "token_id": "ethena-staked-usde",
+      "chain_id": "ton",
+      "identifier": "EQDQ5UUyPHrLcQJlPAczd_fjxn8SLrlNQwolBznxCdSlfQwr",
+      "reason": "tsUSDe, a TON staking token, not sUSDe"
+    },
+    {
+      "token_id": "ethena-usde",
+      "chain_id": "tron",
+      "identifier": "TVLXTLoVTPriin4BCkJqokzfoMQ45qLnsE",
+      "reason": "LayerZero-only, ~3.7 USDe supply; Ethena does not list Tron"
+    },
+    {
+      "token_id": "ethena-staked-usde",
+      "chain_id": "tron",
+      "identifier": "TRJXXjh9Tj7rnarawCL4xcmKBz25WUq9j6",
+      "reason": "LayerZero-only, ~0.1 sUSDe supply; Ethena does not list Tron"
+    },
+    {
+      "token_id": "wrapped-bitcoin",
+      "chain_id": "base",
+      "identifier": "0x0555e30da8f98308edb960aa94c0db47230d2b9c",
+      "reason": "named only by LayerZero metadata; wbtc.network does not list Base"
+    },
+    {
+      "token_id": "wrapped-bitcoin",
+      "chain_id": "zksync-era",
+      "identifier": "0xbbeb516fb02a01611cbbe0453fe3c580d7281011",
+      "reason": "unverified: Candidate from memory. No issuer or zkSync bridge token list naming it was found (wbtc.network does not list zkSync; matter-labs and zksync-association GitHub searches found nothing)."
+    },
+    {
+      "token_id": "wrapped-bitcoin",
+      "chain_id": "aptos",
+      "identifier": "0x68844a0d7f2587e726ad0579f3d640865bb4162c08a4589eeda3f9689ec52a3d",
+      "reason": "unverified: Sources name only the OFT object 0xef3a1c7d…4708e2 (LayerZero types it OFT_ADAPTER). On-chain, that object's oft_fa::OftImpl.metadata is 0x68844a0d…2a3d, an FA with symbol WBTC, 8 decimals, supply 7.26 WBTC; the FA address itself is derived, not named."
+    },
+    {
+      "token_id": "wrapped-bitcoin",
+      "chain_id": "sui",
+      "identifier": "0x0041f9f9344cac094454cd574e333c4fdb132d7bcc9379bcd4aab485b2a63942::wbtc::WBTC",
+      "reason": "unverified: wbtc.network (ecosystem, transparency, get-wbtc) names no Sui deployment; Sui appears only as a DEX network tag without an address."
+    },
+    {
+      "token_id": "wrapped-bitcoin",
+      "chain_id": "starknet",
+      "identifier": "0x069ac468d7ad7324c2807d9422630c650729a46121f023b11a647edf173562f9",
+      "reason": "the token wbtc.network names did not answer an ERC-20 read"
+    },
+    {
+      "token_id": "wrapped-bitcoin",
+      "chain_id": "starknet",
+      "identifier": "0x03fe2b97c1fd336e750087d68b9b867997fd64a2661ff3ca5a7c771641e8e7ac",
+      "reason": "the token wbtc.network names did not answer an ERC-20 read"
+    },
+    {
+      "token_id": "wrapped-bitcoin",
+      "chain_id": "xdc",
+      "identifier": "0xa7a612ae95e3464c7ecf90fbaf82bd91f62615ea",
+      "reason": "CCIP copy; wbtc.network does not list XDC"
+    },
+    {
+      "token_id": "coinbase-wrapped-btc",
+      "chain_id": "monad",
+      "identifier": "0xd18b7ec58cdf4876f6afebd3ed1730e4ce10414b",
+      "reason": "CCIP directory only; Coinbase's list could not be read"
+    },
+    {
+      "token_id": "coinbase-wrapped-btc",
+      "chain_id": "robinhood-chain",
+      "identifier": "0xcec185eb182c47d1ba1efc84e6959e18cd620be4",
+      "reason": "CCIP directory only; Coinbase's list could not be read"
+    },
+    {
+      "token_id": "coinbase-wrapped-btc",
+      "chain_id": "katana",
+      "identifier": "0x697d768e4203b216bde978707de10375c30fe039",
+      "reason": "CCIP directory only; Coinbase's list could not be read"
+    },
+    {
+      "token_id": "coinbase-wrapped-btc",
+      "chain_id": "aptos",
+      "identifier": "0x96fa6b39cc6f48dcabee1e5a841865566aa605bc2b3dac1f58daead822bd8ca7",
+      "reason": "CCIP directory only; supply 0.0002 cbBTC"
+    },
+    {
+      "token_id": "lombard-staked-btc",
+      "chain_id": "katana",
+      "identifier": "0xecac9c5f704e954931349da37f60e39f515c11c1",
+      "reason": "reject: Lombard deprecated this chain on 2026-09-16 (no native mint or redeem); holders must bridge to Ethereum by 2026-12-10."
+    },
+    {
+      "token_id": "lombard-staked-btc",
+      "chain_id": "berachain",
+      "identifier": "0xecac9c5f704e954931349da37f60e39f515c11c1",
+      "reason": "reject: Lombard deprecated this chain on 2026-09-16 (no native mint or redeem); holders must bridge to Ethereum by 2026-12-10."
+    },
+    {
+      "token_id": "lombard-staked-btc",
+      "chain_id": "sonic",
+      "identifier": "0xecac9c5f704e954931349da37f60e39f515c11c1",
+      "reason": "reject: Lombard deprecated this chain on 2026-09-16 (no native mint or redeem); holders must bridge to Ethereum by 2026-12-10."
+    },
+    {
+      "token_id": "lombard-staked-btc",
+      "chain_id": "starknet",
+      "identifier": "0x036834a40984312f7f7de8d31e3f6305b325389eaeea5b1c0664b2fb936461a4",
+      "reason": "Lombard marks Starknet deprecated since 2026-09-16"
+    },
+    {
+      "token_id": "weth",
+      "chain_id": "blast",
+      "identifier": "0x4300000000000000000000000000000000000004",
+      "reason": "rebasing WETH, not WETH9"
+    },
+    {
+      "token_id": "weth",
+      "chain_id": "starknet",
+      "identifier": "0x0059907104adaad5ab2cee1151028af1311ecd527063da87bdf9089025b7fd4e",
+      "reason": "Starknet ETH is already catalogued; bridged WETH is a separate, little-used token"
+    },
+    {
+      "token_id": "weth",
+      "chain_id": "megaeth",
+      "identifier": "0x4200000000000000000000000000000000000006",
+      "reason": "unverified: New candidate. Chainlink's CCIP directory lists it only as a fee token (feeTokenOnly); no chain doc or bridge list naming it was found."
+    },
+    {
+      "token_id": "weth",
+      "chain_id": "robinhood-chain",
+      "identifier": "0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+      "reason": "unverified: New candidate. Chainlink's CCIP directory lists it only as a fee token (feeTokenOnly); no chain doc or bridge list naming it was found."
+    },
+    {
+      "token_id": "weth",
+      "chain_id": "katana",
+      "identifier": "0xee7d8bcfb72bc1880d0cf19822eb0a2e6577ab62",
+      "reason": "unverified: New candidate. Chainlink's CCIP directory lists it only as a fee token (feeTokenOnly); no chain doc or bridge list naming it was found. CCIP names it 'Vault Bridge ETH' (vbETH), Katana's Agglayer vault-bridge ETH, which is not WETH9."
+    },
+    {
+      "token_id": "wrapped-steth",
+      "chain_id": "monad",
+      "identifier": "0x10aeaf63194db8d453d4d85a06e5efe1dd0b5417",
+      "reason": "CCIP copy not on Lido's deployed-contracts page"
+    },
+    {
+      "token_id": "wrapped-steth",
+      "chain_id": "megaeth",
+      "identifier": "0x601ac63637933d88285a025c685ac4e9a92a98da",
+      "reason": "CCIP copy not on Lido's deployed-contracts page"
+    },
+    {
+      "token_id": "wrapped-steth",
+      "chain_id": "robinhood-chain",
+      "identifier": "0x2dc99af320bc317c567f24ee95811dcbd5983dfd",
+      "reason": "CCIP copy not on Lido's deployed-contracts page"
+    },
+    {
+      "token_id": "wrapped-steth",
+      "chain_id": "0g",
+      "identifier": "0x161a128567bf0c005b58211757f7e46eed983f02",
+      "reason": "CCIP copy not on Lido's deployed-contracts page"
+    },
+    {
+      "token_id": "wrapped-steth",
+      "chain_id": "sei",
+      "identifier": "0xbe574b6219c6d985d08712e90c21a88fd55f1ae8",
+      "reason": "LayerZero copy not on Lido's deployed-contracts page"
+    },
+    {
+      "token_id": "rocket-pool-eth",
+      "chain_id": "monad",
+      "identifier": "0xc50f2e735edd9dcd8ccd41ecfe9894e679e3195f",
+      "reason": "CCIP copy not on Rocket Pool's contracts page"
+    },
+    {
+      "token_id": "rocket-pool-eth",
+      "chain_id": "plasma",
+      "identifier": "0xc61a178d9742775f3b741fe60f12659d853c66a1",
+      "reason": "CCIP copy not on Rocket Pool's contracts page"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "blast",
+      "identifier": "0x93202ec683288a9ea75bb829c6bacfb2bfea9013",
+      "reason": "no reachable Blast endpoint for a chain read"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "near",
+      "identifier": "",
+      "reason": "unverified: Chainlink's LINK Token Contracts page and CCIP directory list no NEAR deployment."
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "polygon",
+      "identifier": "0x53e0bca35ec356bd5dddfebbd1fc0fd03fabad39",
+      "reason": "reject: Polygon's mapping list names it as the PoS-bridged LINK, but Chainlink says bridged LINK on Polygon is not ERC-677 and names 0xb0897686… as the official token (convert via PegSwap)."
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "bnb",
+      "identifier": "0xf8a0bf9cf54bb92f17374d9e9a321e6a111a51bd",
+      "reason": "reject: Binance-Peg LINK per CoinGecko; no primary list naming it was read. Chainlink names 0x404460c6… for BNB Chain and says LINK from the BNB Chain Bridge is not ERC-677 (PegSwap converts it). Which token exchanges credit for 'LINK BEP-20' was not confirmed from a primary source."
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "celo",
+      "identifier": "0xf630876008a4ed9249fb4cac978ba16827f52e91",
+      "reason": "reject: Bridge copy that a chain token list names; Chainlink names a different LINK for this chain. Recorded so it is not added later."
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "unichain",
+      "identifier": "0x5a53b6d19d8edcb7923f0d840eebb3f09bbeefb7",
+      "reason": "reject: Bridge copy that a chain token list names; Chainlink names a different LINK for this chain. Recorded so it is not added later."
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "linea",
+      "identifier": "0x5b16228b94b68c7ce33af2acc5663ebde4dcfa2d",
+      "reason": "reject: Bridge copy that a chain token list names; Chainlink names a different LINK for this chain. Recorded so it is not added later."
+    },
+    {
+      "token_id": "uniswap",
+      "chain_id": "polygon",
+      "identifier": "0x06e8bde95be4ce5cb1134bd47ad18a79ffb35822",
+      "reason": "reject: Not in the Uniswap default list or Polygon's token list; both name 0xb33eaad8… for Polygon."
+    },
+    {
+      "token_id": "uniswap",
+      "chain_id": "world-chain",
+      "identifier": "",
+      "reason": "unverified: No UNI for this chain in the Uniswap default list (v22.34.0) and no bridge token list naming one was found; no candidate address."
+    },
+    {
+      "token_id": "uniswap",
+      "chain_id": "x-layer",
+      "identifier": "",
+      "reason": "unverified: No UNI for this chain in the Uniswap default list (v22.34.0) and no bridge token list naming one was found; no candidate address."
+    },
+    {
+      "token_id": "uniswap",
+      "chain_id": "zksync-era",
+      "identifier": "",
+      "reason": "unverified: No UNI for this chain in the Uniswap default list (v22.34.0) and no bridge token list naming one was found; no candidate address."
+    },
+    {
+      "token_id": "aave",
+      "chain_id": "bnb",
+      "identifier": "0xfb6115445bff7b52feb98650c87f44907e58f802",
+      "reason": "unverified: Not in the Aave address book token list or any Aave repo (GitHub code search of aave, aave-dao, bgd-labs found nothing)."
+    },
+    {
+      "token_id": "fetch-ai",
+      "chain_id": "bnb",
+      "identifier": "0x031b41e504677879370e9dbcf937283a8691fa7f",
+      "reason": "unverified: Tried fetch.ai / network.fetch.ai docs (token-bridge guide names no BSC token), superintelligence.io, fetchai GitHub code search, CCIP/LayerZero/Superchain lists. Only third parties (Uniswap bridge mapping, BitGo, MEW) name it. Contract reports FET, 18 decimals."
+    },
+    {
+      "token_id": "compound-governance-token",
+      "chain_id": "bnb",
+      "identifier": "0x52ce071bd9b1c4b00a0b92d298c512478cad67e8",
+      "reason": "unverified: Compound's comet repo has no BNB deployment and names no BNB COMP; no bridge-operator list found naming it (only the Uniswap list's bridge mapping)."
+    },
+    {
+      "token_id": "axie-infinity",
+      "chain_id": "ethereum",
+      "identifier": "0xf5d669627376ebd411e34b98f19c868c8aba5ada",
+      "reason": "reject: Old AXS, replaced in 2021; holders swap it via the tokenSwap contract 0x73b1714fb3bfaefa12f3707befcba3205f9a1162."
+    },
+    {
+      "token_id": "havven",
+      "chain_id": "base",
+      "identifier": "0x22e6966b799c4d5b13be962e1d117b56327fda66",
+      "reason": "Synthetix shut its Base deployment down and no longer lists it"
+    },
+    {
+      "token_id": "gala",
+      "chain_id": "ethereum",
+      "identifier": "0x15d4c048f83bd7e37d49ea4c83a07267ec4203da",
+      "reason": "reject: GALA v1 was replaced by v2 on 2023-05-15 (1:1 drop to v1 holders). Polygon PoS GALA 0x09e1943dd2a4e82032773594f50cf54453000b97 is bridged from v1 and also stale. Contract reports symbol GALA, 8 decimals."
+    },
+    {
+      "token_id": "gala",
+      "chain_id": "arbitrum",
+      "identifier": "0x2a676eead159c4c8e8593471c6d666f02827ff8c",
+      "reason": "Gala supports only Ethereum GALA v2 (and GalaChain)"
+    },
+    {
+      "token_id": "wrapped-eeth",
+      "chain_id": "scroll",
+      "identifier": "0x01f0a31698c4d065659b9bdc21b3610292a1c506",
+      "reason": "reject: Deprecated: ether.fi disabled weETH bridging on Scroll, Swell, Bera, zkSync, Mode, Blast, Morph and Sonic on 2026-06-30 (etherfi.gitbook.io/etherfi/archive/introduction/multichain-ecosystem/weeth-partial-bridge-deprecation); recovery only via support for 0.5 weETH. Address still listed on the deployed-contracts page."
+    },
+    {
+      "token_id": "wrapped-eeth",
+      "chain_id": "zksync-era",
+      "identifier": "0xc1fa6e2e8667d9be0ca938a54c7e0285e9df924a",
+      "reason": "reject: Deprecated: ether.fi disabled weETH bridging on Scroll, Swell, Bera, zkSync, Mode, Blast, Morph and Sonic on 2026-06-30 (etherfi.gitbook.io/etherfi/archive/introduction/multichain-ecosystem/weeth-partial-bridge-deprecation); recovery only via support for 0.5 weETH. Address still listed on the deployed-contracts page."
+    },
+    {
+      "token_id": "wrapped-eeth",
+      "chain_id": "blast",
+      "identifier": "0x04c0599ae5a44757c0af6f9ec3b93da8976c150a",
+      "reason": "reject: Deprecated: ether.fi disabled weETH bridging on Scroll, Swell, Bera, zkSync, Mode, Blast, Morph and Sonic on 2026-06-30 (etherfi.gitbook.io/etherfi/archive/introduction/multichain-ecosystem/weeth-partial-bridge-deprecation); recovery only via support for 0.5 weETH. Address still listed on the deployed-contracts page."
+    },
+    {
+      "token_id": "wrapped-eeth",
+      "chain_id": "berachain",
+      "identifier": "0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7",
+      "reason": "reject: Deprecated: ether.fi disabled weETH bridging on Scroll, Swell, Bera, zkSync, Mode, Blast, Morph and Sonic on 2026-06-30 (etherfi.gitbook.io/etherfi/archive/introduction/multichain-ecosystem/weeth-partial-bridge-deprecation); recovery only via support for 0.5 weETH. Address still listed on the deployed-contracts page."
+    },
+    {
+      "token_id": "wrapped-eeth",
+      "chain_id": "sonic",
+      "identifier": "0xa3d68b74bf0528fdd07263c60d6488749044914b",
+      "reason": "reject: Deprecated: ether.fi disabled weETH bridging on Scroll, Swell, Bera, zkSync, Mode, Blast, Morph and Sonic on 2026-06-30 (etherfi.gitbook.io/etherfi/archive/introduction/multichain-ecosystem/weeth-partial-bridge-deprecation); recovery only via support for 0.5 weETH. Address still listed on the deployed-contracts page."
+    },
+    {
+      "token_id": "eigenlayer",
+      "chain_id": "base",
+      "identifier": "0x2081ab0d9ec9e4303234ab26d86b20b3367946ee",
+      "reason": "unverified: Contract exists and reports EIGEN, 18 decimals, but no primary source names it. Tried EigenLayer contracts README (Base appears only as a multichain-verification destination, no EIGEN token), eigencloud docs, Superchain token list, LayerZero OFT metadata, Chainlink CCIP list."
+    },
+    {
+      "token_id": "virtual-protocol",
+      "chain_id": "bnb",
+      "identifier": "0x2d74207d0053cfaba39bd74c9e8ac07ff88f5dc7",
+      "reason": "CCIP directory only; Virtuals' address page does not list BNB"
+    },
+    {
+      "token_id": "floki",
+      "chain_id": "arbitrum",
+      "identifier": "0xa8c25fdc09763a176353cc6a76882e05b4905fae",
+      "reason": "FLOKI says it is only on Ethereum and BNB Chain"
+    },
+    {
+      "token_id": "floki",
+      "chain_id": "polygon",
+      "identifier": "0x853b41823905ab4d63558542b0f06748a5e345fe",
+      "reason": "FLOKI says it is only on Ethereum and BNB Chain"
+    },
+    {
+      "token_id": "sun-token",
+      "chain_id": "tron",
+      "identifier": "TKkeiboTkxXKJpbmVFbv4a8ov5rAfRDMf9",
+      "reason": "reject: Legacy SUNOLD: JustLend lists its jSUNOLD market as status \"legacy\" (underlying_symbol SUNOLD, 18 decimals). docs.sun.io/get-started/overview: \"the total supply was adjusted from 19,900,730 to 19,900,730,000 (a 1:1000 split). The old token was renamed SUNOLD\". On-chain it still reports symbol \"SUN\"; do not list it as SUN."
+    },
+    {
+      "token_id": "render-token",
+      "chain_id": "ethereum",
+      "identifier": "0x6de037ef9ad2725eb40118bb1702ebb27e4aeb24",
+      "reason": "reject: This is the legacy RNDR token (symbol RNDR, 18 decimals), not RENDER. Upgrade FAQ: \"the token will no longer be maintained by the Render Network Foundation and the token will not be able to be used on the Render Network\"; Ethereum governance is deprecated. It is not a bridge: the portal converts RNDR to RENDER (SOL) one way, 1:1, by burning. RNDR (POL) is also deprecated (no address read)."
+    },
+    {
+      "token_id": "bonk",
+      "chain_id": "ethereum",
+      "identifier": "0x1151cb3d861920e07a38e03eead12c32178567f6",
+      "reason": "Wormhole Portal wrapper; BONK lists no deployment beyond Solana"
+    },
+    {
+      "token_id": "bonk",
+      "chain_id": "bnb",
+      "identifier": "0xa697e272a73744b343528c3bc4702f2565b2f422",
+      "reason": "Wormhole Portal wrapper; BONK lists no deployment beyond Solana"
+    },
+    {
+      "token_id": "bonk",
+      "chain_id": "polygon",
+      "identifier": "0xe5b49820e5a1063f6f4ddf851327b5e8b2301048",
+      "reason": "Wormhole Portal wrapper; BONK lists no deployment beyond Solana"
+    },
+    {
+      "token_id": "bonk",
+      "chain_id": "avalanche",
+      "identifier": "0xc07c98a93591504584738e4569928ddb3b9f12a7",
+      "reason": "Wormhole Portal wrapper; BONK lists no deployment beyond Solana"
+    },
+    {
+      "token_id": "bonk",
+      "chain_id": "arbitrum",
+      "identifier": "0x09199d9a5f4448d0848e4395d065e1ad9c4a1f74",
+      "reason": "Wormhole Portal wrapper; BONK lists no deployment beyond Solana"
+    },
+    {
+      "token_id": "bonk",
+      "chain_id": "celo",
+      "identifier": "0x3fc50bc066ae2ee280876eeefadfdabf6ca02894",
+      "reason": "Wormhole Portal wrapper; BONK lists no deployment beyond Solana"
+    },
+    {
+      "token_id": "bonk",
+      "chain_id": "sui",
+      "identifier": "0x6907963ca849faff0957b9a8269a7a07065e3def2eef49cc33b50ab946ea5a9f::coin::COIN",
+      "reason": "Wormhole Portal wrapper; BONK lists no deployment beyond Solana"
+    },
+    {
+      "token_id": "bonk",
+      "chain_id": "aptos",
+      "identifier": "0x2a90fae71afc7460ee42b20ee49a9c9b29272905ad71fef92fbd8b3905a24b56::coin::T",
+      "reason": "Wormhole Portal wrapper; BONK lists no deployment beyond Solana"
+    },
+    {
+      "token_id": "dogwifcoin",
+      "chain_id": "bnb",
+      "identifier": "0x2dce707c47fd9c0f1833a281f45e3e41ace2725b",
+      "reason": "LayerZero copy named only by LayerZero's metadata; the issuer's site could not confirm it"
+    },
+    {
+      "token_id": "dogwifcoin",
+      "chain_id": "base",
+      "identifier": "0x1fba65de0a9cbd2d1df82d141897042d36bb6c86",
+      "reason": "LayerZero copy named only by LayerZero's metadata; the issuer's site could not confirm it"
+    },
+    {
+      "token_id": "dogwifcoin",
+      "chain_id": "tron",
+      "identifier": "TNSnUP15DW8B4E5mCNCdnuCJbHRwRNFAaB",
+      "reason": "LayerZero copy named only by LayerZero's metadata; the issuer's site could not confirm it"
+    },
+    {
+      "token_id": "official-trump",
+      "chain_id": "ethereum",
+      "identifier": "0xf7b4358d2c6b05a1bb98c947a56df64b5d6e6754",
+      "reason": "unverified: Conflict: the LayerZero OFT list names this copy, in a mesh separate from the TRON one (Solana OFT program 9MXzxxBeSiTByU8UagAKBS1eyhauFiJgdczKCGrNXi26), but gettrumpmemes.com says TRUMP exists only on Solana and TRON. Do not list without the issuer naming it."
+    },
+    {
+      "token_id": "official-trump",
+      "chain_id": "base",
+      "identifier": "0xe223ba1e03b10ae9f930fcc0de59248a1d7d8c15",
+      "reason": "unverified: Conflict: the LayerZero OFT list names this copy, in a mesh separate from the TRON one (Solana OFT program 9MXzxxBeSiTByU8UagAKBS1eyhauFiJgdczKCGrNXi26), but gettrumpmemes.com says TRUMP exists only on Solana and TRON. Do not list without the issuer naming it."
+    },
+    {
+      "token_id": "fartcoin",
+      "chain_id": "solana",
+      "identifier": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+      "reason": "unverified: No issuer source: the token has no team or entity. fart.dev lists the mint but is an anonymous community site (CoinGecko's homepage link is an infinitebackrooms.com page, not fart.dev), so it is not an issuer page. Secondary only: Jupiter tags it verified. On-chain: 6 decimals, mint and freeze authority null."
+    },
+    {
+      "token_id": "kamino",
+      "chain_id": "solana",
+      "identifier": "KMNo3nJsBXfcpJTVhZcXLW7RmTwTt4GVFE7suUBo9sS",
+      "reason": "unverified: No issuer page with the mint found. Tried: docs.kamino.com/kmno.md (token facts, no mint), docs.kamino.com/llms-full.txt (no occurrence), archived docs.kamino.finance/kmno/token-info (no mint), kamino.com blog (Cloudflare 403), Kamino-Finance GitHub and gov.kamino.finance search (no declaration). A @KaminoFdn X post reportedly gives it but X is unreadable here. Secondary only: Jupiter "
+    },
+    {
+      "token_id": "ripple-usd",
+      "chain_id": "ink",
+      "identifier": "0x8d58c0c60b8d6b88fa98b291a646db34d0f98258",
+      "reason": "verified, but about $139 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ripple-usd",
+      "chain_id": "optimism",
+      "identifier": "0x8d58c0c60b8d6b88fa98b291a646db34d0f98258",
+      "reason": "verified, but about $143 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ripple-usd",
+      "chain_id": "robinhood-chain",
+      "identifier": "0x8d58c0c60b8d6b88fa98b291a646db34d0f98258",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ripple-usd",
+      "chain_id": "unichain",
+      "identifier": "0x8d58c0c60b8d6b88fa98b291a646db34d0f98258",
+      "reason": "verified, but about $136 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "usd1-wlfi",
+      "chain_id": "x-layer",
+      "identifier": "0x111111d2bf19e43c34263401e0cad979ed1cdb61",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "gho",
+      "chain_id": "x-layer",
+      "identifier": "0xde6539018b095353a40753dc54c91c68c9487d4e",
+      "reason": "verified, but about $124 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena-usde",
+      "chain_id": "metis",
+      "identifier": "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34",
+      "reason": "verified, but about $372 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena-usde",
+      "chain_id": "kava-evm",
+      "identifier": "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34",
+      "reason": "verified, but about $140 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena-staked-usde",
+      "chain_id": "manta-pacific",
+      "identifier": "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2",
+      "reason": "verified, but about $35 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena-staked-usde",
+      "chain_id": "metis",
+      "identifier": "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2",
+      "reason": "verified, but about $16 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena-staked-usde",
+      "chain_id": "kava-evm",
+      "identifier": "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2",
+      "reason": "verified, but about $1 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena",
+      "chain_id": "manta-pacific",
+      "identifier": "0x58538e6a46e07434d7e7375bc268d3cb839c0133",
+      "reason": "verified, but about $11 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena",
+      "chain_id": "metis",
+      "identifier": "0x58538e6a46e07434d7e7375bc268d3cb839c0133",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena",
+      "chain_id": "kava-evm",
+      "identifier": "0x58538e6a46e07434d7e7375bc268d3cb839c0133",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena-staked-usde",
+      "chain_id": "ink",
+      "identifier": "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2",
+      "reason": "verified, but about $490 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena-staked-usde",
+      "chain_id": "robinhood-chain",
+      "identifier": "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2",
+      "reason": "verified, but about $57 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena-staked-usde",
+      "chain_id": "megaeth",
+      "identifier": "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2",
+      "reason": "verified, but about $78 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena",
+      "chain_id": "plasma",
+      "identifier": "0x58538e6a46e07434d7e7375bc268d3cb839c0133",
+      "reason": "verified, but about $327 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena",
+      "chain_id": "robinhood-chain",
+      "identifier": "0x58538e6a46e07434d7e7375bc268d3cb839c0133",
+      "reason": "verified, but about $147 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "ethena",
+      "chain_id": "monad",
+      "identifier": "0x58538e6a46e07434d7e7375bc268d3cb839c0133",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "lombard-staked-btc",
+      "chain_id": "stable",
+      "identifier": "0xecac9c5f704e954931349da37f60e39f515c11c1",
+      "reason": "verified, but about $549 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "lombard-staked-btc",
+      "chain_id": "megaeth",
+      "identifier": "0xecac9c5f704e954931349da37f60e39f515c11c1",
+      "reason": "verified, but about $415 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "rocket-pool-eth",
+      "chain_id": "ink",
+      "identifier": "0x94cac393f3444cef63a651ffc18497e7e8bd036a",
+      "reason": "verified, but about $17 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "rocket-pool-eth",
+      "chain_id": "celo",
+      "identifier": "0x55f3d16e6bd2b8b8e6599df6ef4593ce9dcae9ed",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "linea",
+      "identifier": "0xa18152629128738a5c081eb226335fed4b9c95e9",
+      "reason": "verified, but about $11 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "sonic",
+      "identifier": "0x71052bae71c25c78e37fd12e5ff1101a71d9018f",
+      "reason": "verified, but about $310 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "ink",
+      "identifier": "0x71052bae71c25c78e37fd12e5ff1101a71d9018f",
+      "reason": "verified, but about $41 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "unichain",
+      "identifier": "0xef66491eab4bbb582c57b14778afd8dfb70d8a1a",
+      "reason": "verified, but about $9 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "world-chain",
+      "identifier": "0x915b648e994d5f31059b38223b9fbe98ae185473",
+      "reason": "verified, but about $18 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "mantle",
+      "identifier": "0xfe36cf0b43aae49fbc5cfc5c0af22a623114e043",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "x-layer",
+      "identifier": "0x8af9711b44695a5a081f25ab9903ddb73acf8fa9",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "sei",
+      "identifier": "0x71052bae71c25c78e37fd12e5ff1101a71d9018f",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "berachain",
+      "identifier": "0x71052bae71c25c78e37fd12e5ff1101a71d9018f",
+      "reason": "verified, but about $20 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "monad",
+      "identifier": "0x76f257b1dda5cc71bee4ef637fbdde4c801310a9",
+      "reason": "verified, but about $25 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "plasma",
+      "identifier": "0x76a443768a5e3b8d1aed0105fc250877841deb40",
+      "reason": "verified, but about $61 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "megaeth",
+      "identifier": "0xee85aefb15b9489563a6a29891ebe0750aa1a7ae",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "kaia",
+      "identifier": "0x7311ded199cc28d80e58e81e8589aa160199fcd2",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "opbnb",
+      "identifier": "0x99f0d88b81b758ab07e22c7aba00e0121a882dea",
+      "reason": "verified, but about $245 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "cronos",
+      "identifier": "0x8c80a01f461f297df7f9da3a4f740d7297c8ac85",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "merlin",
+      "identifier": "0x71052bae71c25c78e37fd12e5ff1101a71d9018f",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "xdc",
+      "identifier": "0xe27dd9bf01b55ce6803c0d81386a04212c718b95",
+      "reason": "verified, but about $4 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "katana",
+      "identifier": "0xc2c447b04e0ed3476ddbdae8e9e39be7159d27b6",
+      "reason": "verified, but about $1 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "stable",
+      "identifier": "0x985fb0821eef0056ec26dd8b33dc61b9415b7f4b",
+      "reason": "verified, but about $3 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "arc",
+      "identifier": "0x76a443768a5e3b8d1aed0105fc250877841deb40",
+      "reason": "verified, but about $167 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "starknet",
+      "identifier": "0x060f47b96b525c1014fed595e87e98edc3ce0731627a0670e1804ee1a3ca0ee9",
+      "reason": "verified, but about $99 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "chainlink",
+      "chain_id": "aptos",
+      "identifier": "0x8c764993820ea735719f1ff7f1a0f80c022b18e7b5daefa35adf60a3a6556566",
+      "reason": "verified, but about $85 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "uniswap",
+      "chain_id": "mantle",
+      "identifier": "0x2db08783f13c4225a1963b2437f0d459a5bcb4d8",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "aave",
+      "chain_id": "celo",
+      "identifier": "0xf6a54aff8c97f7af3cc86dbaee88af6a7aab6288",
+      "reason": "verified, but about $29 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "aave",
+      "chain_id": "unichain",
+      "identifier": "0x02a24c380da560e4032dc6671d8164cfbeeaae1e",
+      "reason": "verified, but about $680 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "aave",
+      "chain_id": "scroll",
+      "identifier": "0x79379c0e09a41d7978f883a56246290ee9a8c4d3",
+      "reason": "verified, but about $204 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "layerzero",
+      "chain_id": "starknet",
+      "identifier": "0x01e77aec81ef65db5fb788a5a04fd9d23f6f4c860eb2fb0e99ace5c45b021071",
+      "reason": "verified, but about $113 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "pendle",
+      "chain_id": "polygon",
+      "identifier": "0x1d47e931f82bb9f8d967f0cc3288268449835806",
+      "reason": "verified, but about $16 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "pendle",
+      "chain_id": "starknet",
+      "identifier": "0x0224426a2edf5742ba932bd10d1649b907daee08c7c751aa7041d1df2149e0a8",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "fetch-ai",
+      "chain_id": "base",
+      "identifier": "0x74f804b4140ee70830b3eef4e690325841575f89",
+      "reason": "verified, but about $297 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "fetch-ai",
+      "chain_id": "arbitrum",
+      "identifier": "0x4be87c766a7ce11d5cc864b6c3abb7457dcc4cc9",
+      "reason": "verified, but about $287 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "the-graph",
+      "chain_id": "avalanche",
+      "identifier": "0x8a0cac13c7da965a312f08ea4229c37869e85cb9",
+      "reason": "verified, but about $608 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "the-graph",
+      "chain_id": "base",
+      "identifier": "0x0f4d237b09cb37d207ba60353dc254d4530d4df1",
+      "reason": "verified, but about $513 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "basic-attention-token",
+      "chain_id": "arbitrum",
+      "identifier": "0x3450687ef141dcd6110b77c2dc44b008616aee75",
+      "reason": "verified, but about $38 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "axie-infinity",
+      "chain_id": "arbitrum",
+      "identifier": "0xe88998fb579266628af6a03e3821d5983e5d0089",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "decentraland",
+      "chain_id": "arbitrum",
+      "identifier": "0x442d24578a564ef628a65e6a7e3e7be2a165e231",
+      "reason": "verified, but about $92 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "the-sandbox",
+      "chain_id": "arbitrum",
+      "identifier": "0xd1318eb19dbf2647743c720ed35174efd64e3dac",
+      "reason": "verified, but about $11 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "apecoin",
+      "chain_id": "monad",
+      "identifier": "0x6a7e3f839382fbb6a6131d4aae864aaeb362292d",
+      "reason": "verified, but about $377 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "spx6900",
+      "chain_id": "bnb",
+      "identifier": "0x7c6563b36b2144e7f3175c92977b0e19ce4966de",
+      "reason": "verified, but about $480 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "spx6900",
+      "chain_id": "arbitrum",
+      "identifier": "0x53e70cc1d527b524a1c46eaa892e4cb35d2ba901",
+      "reason": "verified, but about $27 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "1inch",
+      "chain_id": "optimism",
+      "identifier": "0xad42d013ac31486b73b6b059e748172994736426",
+      "reason": "verified, but about $407 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "1inch",
+      "chain_id": "arbitrum",
+      "identifier": "0x6314c31a7a1652ce482cffe247e9cb7c3f4bb9af",
+      "reason": "verified, but about $472 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "immutable-x",
+      "chain_id": "arbitrum",
+      "identifier": "0x3cfd99593a7f035f717142095a3898e3fca7783e",
+      "reason": "verified, but about $531 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "immutable-x",
+      "chain_id": "polygon",
+      "identifier": "0x183070c90b34a63292cc908ce1b263cb56d49a7f",
+      "reason": "verified, but about $44 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "havven",
+      "chain_id": "arbitrum",
+      "identifier": "0xcba56cd8216fcbbf3fa6df6137f3147cbca37d60",
+      "reason": "verified, but about $977 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "havven",
+      "chain_id": "avalanche",
+      "identifier": "0xbec243c995409e6520d7c41e404da5deba4b209b",
+      "reason": "verified, but about $124 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "crvusd",
+      "chain_id": "bnb",
+      "identifier": "0xe2fb3f127f5450dee44afe054385d74c392bdef4",
+      "reason": "verified, but about $604 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "crvusd",
+      "chain_id": "avalanche",
+      "identifier": "0xcb7c161602d04c4e8af1832046ee08aaf96d855d",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "crvusd",
+      "chain_id": "x-layer",
+      "identifier": "0xda8f4eb4503acf5dec5420523637bb5b33a846f6",
+      "reason": "verified, but about $39 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "crvusd",
+      "chain_id": "mantle",
+      "identifier": "0x0994206dfe8de6ec6920ff4d779b0d950605fb53",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "crvusd",
+      "chain_id": "kava-evm",
+      "identifier": "0x98b4029cabef7fd525a36b0bf8555ec1d42ec0b6",
+      "reason": "verified, but about $0 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "wrapped-eeth",
+      "chain_id": "arc",
+      "identifier": "0xa3d68b74bf0528fdd07263c60d6488749044914b",
+      "reason": "verified, but about $4 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "wrapped-eeth",
+      "chain_id": "robinhood-chain",
+      "identifier": "0xa3d68b74bf0528fdd07263c60d6488749044914b",
+      "reason": "verified, but about $708 in circulation there: left out below the $1,000 threshold"
+    },
+    {
+      "token_id": "virtual-protocol",
+      "chain_id": "arbitrum",
+      "identifier": "0x022cd1aed3f5cbfd7cf4481ac32847d62da746e6",
+      "reason": "verified, but about $20 in circulation there: left out below the $1,000 threshold"
+    }
+  ]
+}

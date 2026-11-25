@@ -422,7 +422,7 @@ threshold of one, cancelling a pending Substrate operation
 | Cardano | Native assets (`POLICY.NAME` in hex) |
 | Polkadot and Westend (Asset Hub) | `Assets` pallet assets (`Asset Hub Asset`, by asset ID) |
 | VeChainThor | VIP-180 (VTHO and tracked tokens), fees in VTHO |
-| Starknet | ERC-20 (STRK, the fee token, and ETH) |
+| Starknet | ERC-20, including STRK, the fee token |
 
 Token precision comes from validated metadata. TON master identity uses the raw
 account address, with friendly-address network flags checked first. Raw,

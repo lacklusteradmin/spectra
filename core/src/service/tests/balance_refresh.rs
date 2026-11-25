@@ -363,9 +363,18 @@ async fn requested_refresh_is_bounded_and_shares_overlapping_wallet_reads() {
             });
         }
     });
+    // A network the catalog lists no assets on: every read below is the
+    // coin's, and each wallet makes exactly one.
+    assert!(
+        crate::catalog::tokens::list_token_deployments(Some(
+            crate::registry::Chain::StellarTestnet
+        ))
+        .iter()
+        .all(|t| t.is_native())
+    );
     let service = WalletService::new(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
-        chain_id: crate::registry::Chain::Stellar,
+        chain_id: crate::registry::Chain::StellarTestnet,
         endpoints: vec![endpoint],
     }])
     .unwrap();
@@ -379,7 +388,7 @@ async fn requested_refresh_is_bounded_and_shares_overlapping_wallet_reads() {
             .upsert_wallet(WalletState::single_address(
                 format!("w{i}"),
                 "Concurrent",
-                crate::registry::Chain::Stellar,
+                crate::registry::Chain::StellarTestnet,
                 "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
                 None,
                 true,
@@ -392,7 +401,7 @@ async fn requested_refresh_is_bounded_and_shares_overlapping_wallet_reads() {
         requested
             .refresh_app(
                 AppRefreshIntent::AfterSend {
-                    chain_id: crate::registry::Chain::Stellar,
+                    chain_id: crate::registry::Chain::StellarTestnet,
                 },
                 crate::service::refresh_policy::DeviceConditions {
                     app_is_active: true,

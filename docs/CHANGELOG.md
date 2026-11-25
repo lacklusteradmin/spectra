@@ -1,5 +1,48 @@
 # Changelog
 
+## Beta Commit 259
+
+- **The token catalog lists 44 more tokens** (`core/data/tokens.toml`,
+  `crypto-wiki.toml`; `icons/crypto/`)
+  - QNT, JST, SUN, RENDER, NEXO, FET, GNO, GRT, COMP, TWT, BAT, AXS, MANA, SAND,
+    APE, SPX, GMX, 1INCH, IMX, SNX, CRVUSD, SAFE, GALA, HNT, CETUS, SNEK, CBETH,
+    WBETH, WEETH, EIGEN, VIRTUAL, FLOKI, JTO, W, NOT, WAL, DEEP, BONK, WIF,
+    PENGU, TRUMP, DOGS, ASTER and ORCA: 122 deployments on 25 networks, each
+    with a wiki row. SNEK is the catalog's first Cardano token.
+  - 37 icons: 27 from web3icons (MIT), and 10 from each project's own mark
+    (FET draws the ASI Alliance's). BONK, WIF, PENGU, TRUMP and DOGS publish
+    no vector mark, and Aster's and Orca's terms forbid altering theirs, so
+    these seven name no artwork and the apps draw their letter badge.
+- **Catalog tokens gain 130 deployments on more networks**
+  (`core/data/tokens.toml`)
+  - USDC on Stellar, the XRP Ledger and Starknet; EURC on Stellar and World
+    Chain; RLUSD on the XRP Ledger and Base; PYUSD on Stellar, Polygon, X Layer
+    and Stable. They are the catalog's first Stellar and XRP Ledger assets.
+  - WBTC, WETH, wstETH, rETH, LINK, UNI, AAVE, ZRO, PENDLE, MORPHO, CAKE and
+    LBTC on the networks their issuers or the networks' canonical bridges list
+    (WBTC on 18, WETH on 13).
+  - USDe, sUSDe, ENA, USDG, USD1, GHO, USDT0, XAUt0, USAT and PAXG on the
+    networks their issuers list.
+  - OKB, INJ, CHZ, METIS and STRK as their own ERC-20s on Ethereum.
+- **Three CoinPaprika ids are corrected** (`core/data/tokens.toml`)
+  - Gram is `toncoin-the-open-network` (before: `ton-tontoken`, an unrelated
+    Ethereum token).
+  - Dymension is `dym-dymension-iou` (before: `dym-dymension`, which
+    CoinPaprika does not list).
+  - USD Blast has none (before: `usdb-usdb`, inactive on CoinPaprika).
+- **The balance-refresh concurrency test runs on Stellar testnet**
+  (`service/tests/balance_refresh.rs`; before: Stellar, where the catalog's
+  assets now add a token read per wallet).
+- Measured: 2026-11-24, contract deployments read on chain at a fixed block:
+  existing 278 of 283 match (5 on Blast unreachable), added 252 of 252; all 40
+  differences from CoinGecko resolve in the catalog's favour
+  ([record](audits/token-catalog-2026-11-24/README.md)).
+- Docs: `CHAIN-SUPPORT.md` ("Fungible assets": the Starknet row); new audit
+  record `docs/audits/token-catalog-2026-11-24/`.
+- Total: 1 .rs file changed (0 new), +12 −3 lines; data files
+  `core/data/tokens.toml`, `core/data/crypto-wiki.toml`, `icons/crypto/` (37
+  new); dependencies unchanged; `cargo test` passing 1682 → 1682.
+
 ## Beta Commit 258
 
 - **A directory module's body is its `mod.rs`** (`api/litecoin_p2p/mod.rs`,

@@ -460,6 +460,182 @@ token_id = "pepe"
 comment = "A 2023 memecoin with no stated utility, no team allocation and no presale. It is among the most widely held tokens on Ethereum by holder count."
 
 [[assets]]
+token_id = "1inch"
+comment = "Governs 1inch, the exchange aggregator that splits a swap across many decentralized exchanges for a better price."
+
+[[assets]]
+token_id = "apecoin"
+comment = "Token of the ApeCoin DAO, created around the Bored Ape Yacht Club NFT collection, and the gas coin of ApeChain."
+
+[[assets]]
+token_id = "axie-infinity"
+comment = "Governs Axie Infinity, the creature-battling game on Ronin, and is spent there to breed new creatures."
+
+[[assets]]
+token_id = "basic-attention-token"
+comment = "Token of the Brave browser's advertising system: viewers who opt in to its ads are paid in BAT and can pass it on to sites and creators."
+
+[[assets]]
+token_id = "coinbase-wrapped-staked-eth"
+comment = "Coinbase's liquid staking token: ETH the exchange stakes on its customers' behalf, with rewards accruing to the token's value rather than its balance."
+
+[[assets]]
+token_id = "cetus-protocol"
+comment = "Governs Cetus, a concentrated-liquidity exchange that is one of the main venues for swapping on Sui."
+
+[[assets]]
+token_id = "compound-governance-token"
+comment = "Governs Compound, one of the first on-chain lending markets, including which assets it lists and their interest-rate models."
+
+[[assets]]
+token_id = "crvusd"
+comment = "Curve's dollar stablecoin, minted against crypto collateral whose loans are liquidated gradually rather than all at once."
+
+[[assets]]
+token_id = "deep"
+comment = "Pays trading fees and governs DeepBook, the order-book exchange built into Sui."
+
+[[assets]]
+token_id = "eigenlayer"
+comment = "Token of EigenCloud, formerly EigenLayer, the restaking protocol whose staked ETH secures other services. EIGEN can be slashed for faults that cannot be proven on-chain."
+
+[[assets]]
+token_id = "fetch-ai"
+comment = "Token of the Artificial Superintelligence Alliance, which merged Fetch.ai and SingularityNET's tokens into one in 2024. It keeps Fetch.ai's FET ticker and contract."
+
+[[assets]]
+token_id = "floki"
+comment = "A memecoin named after a dog, with a game and staking products built around it on Ethereum and BNB Chain."
+
+[[assets]]
+token_id = "gala"
+comment = "Currency of Gala Games, a publisher of blockchain games, and of the GalaChain network its games run on."
+
+[[assets]]
+token_id = "gmx"
+comment = "Governs GMX, a decentralized perpetuals exchange on Arbitrum and Avalanche, and is staked for a share of its trading fees."
+
+[[assets]]
+token_id = "gnosis"
+comment = "Governs GnosisDAO and is staked by the validators of Gnosis Chain, the network that grew out of the xDai sidechain."
+
+[[assets]]
+token_id = "the-graph"
+comment = "Pays the indexers that serve blockchain data through The Graph's query network, and is staked or delegated to them as security."
+
+[[assets]]
+token_id = "helium"
+comment = "Token of Helium, a network of independently run wireless hotspots. Data credits for using the network are made by burning HNT."
+
+[[assets]]
+token_id = "immutable-x"
+comment = "Pays fees and is staked on Immutable, the gaming network made of Immutable X and its zkEVM chain."
+
+[[assets]]
+token_id = "just"
+comment = "Governs JUST, a DeFi platform on Tron best known for the JustLend lending market."
+
+[[assets]]
+token_id = "jito-governance-token"
+comment = "Governs Jito, the Solana liquid-staking protocol behind JitoSOL and the block engine many validators run for MEV."
+
+[[assets]]
+token_id = "decentraland"
+comment = "Currency of Decentraland, a virtual world whose land parcels and wearables are NFTs bought and sold in MANA."
+
+[[assets]]
+token_id = "nexo"
+comment = "Token of Nexo, a centralized crypto lending platform. Holding it raises a customer's loyalty tier, and with it the rates Nexo offers."
+
+[[assets]]
+token_id = "notcoin"
+comment = "A TON memecoin that began as a Telegram tap-to-earn game, whose players received it at its 2024 launch."
+
+[[assets]]
+token_id = "quant-network"
+comment = "Token of Quant, whose Overledger software connects enterprise and bank systems to several blockchains. Licences to that software are paid for in QNT."
+
+[[assets]]
+token_id = "render-token"
+comment = "Pays for GPU rendering and AI compute on the Render Network, whose node operators are paid in it. It moved from Ethereum to Solana in 2023."
+
+[[assets]]
+token_id = "safe"
+comment = "Governs Safe, the multisignature smart-account standard that holds a large share of the assets kept by teams and treasuries on Ethereum."
+
+[[assets]]
+token_id = "the-sandbox"
+comment = "Currency and governance token of The Sandbox, a voxel game world where players own land and assets as NFTs."
+
+[[assets]]
+token_id = "snek"
+comment = "A community memecoin on Cardano, launched in 2023 without a presale, and one of the network's most widely held native tokens."
+
+[[assets]]
+token_id = "havven"
+comment = "Governs Synthetix, a derivatives protocol on Ethereum and Optimism whose synthetic assets SNX holders once backed by staking it as collateral."
+
+[[assets]]
+token_id = "spx6900"
+comment = "A memecoin named as a parody of the S&P 500 index, with no stated utility."
+
+[[assets]]
+token_id = "sun-token"
+comment = "Governs SUN.io, the Tron exchange and stablecoin-swap platform, and is staked there for a share of its revenue."
+
+[[assets]]
+token_id = "trust-wallet-token"
+comment = "Token of Trust Wallet, the self-custody wallet owned by Binance, used for its loyalty programme and fee discounts."
+
+[[assets]]
+token_id = "virtual-protocol"
+comment = "Token of Virtuals Protocol, a launchpad for AI-agent tokens on Base, each of which is paired against VIRTUAL."
+
+[[assets]]
+token_id = "wormhole"
+comment = "Governs Wormhole, a cross-chain messaging protocol, and exists natively on several chains at once rather than as bridged copies."
+
+[[assets]]
+token_id = "walrus-2"
+comment = "Pays for storage on Walrus, a decentralized storage network built on Sui, and is staked to its storage nodes."
+
+[[assets]]
+token_id = "bonk"
+comment = "A Solana memecoin airdropped to the network's users and builders at the end of 2022, now spent and burned across many Solana applications."
+
+[[assets]]
+token_id = "dogs-2"
+comment = "A TON memecoin built around Telegram's dog mascot, airdropped to Telegram users in 2024."
+
+[[assets]]
+token_id = "pudgy-penguins"
+comment = "The token of the Pudgy Penguins NFT brand, launched on Solana in 2024 and airdropped to its holders and community."
+
+[[assets]]
+token_id = "official-trump"
+comment = "A memecoin launched in January 2025 by companies affiliated with Donald Trump, which hold most of its supply under a multi-year unlock schedule."
+
+[[assets]]
+token_id = "dogwifcoin"
+comment = "A Solana memecoin whose mascot is a dog wearing a knitted hat, with no stated utility."
+
+[[assets]]
+token_id = "aster-2"
+comment = "Governs Aster, a decentralized perpetuals exchange on BNB Chain."
+
+[[assets]]
+token_id = "orca"
+comment = "Governs Orca, a concentrated-liquidity exchange on Solana."
+
+[[assets]]
+token_id = "wrapped-beacon-eth"
+comment = "Binance's liquid staking token for ETH staked through the exchange. Rewards accrue to the token's value, and redemption runs through Binance."
+
+[[assets]]
+token_id = "wrapped-eeth"
+comment = "The non-rebasing form of ether.fi's eETH, ETH restaked through EigenLayer. Rewards accrue to the token's value, and lending markets take it as collateral."
+
+[[assets]]
 token_id = "peercoin"
 comment = "The coin of an early proof-of-stake network launched in 2012. PPC pays transaction fees, which are burned, and can participate in coin-age-based minting through a compatible wallet."
 total_circulation_model = "No fixed lifetime supply cap. Proof-of-work and proof-of-stake create new PPC while transaction fees are destroyed."

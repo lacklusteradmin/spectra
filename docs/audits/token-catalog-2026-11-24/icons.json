@@ -1,0 +1,274 @@
+{
+  "checked_at_utc": "2026-11-24",
+  "icons": [
+    {
+      "artwork_name": "quant",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/QNT.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "97efde1e2893d2db9a69d033c7e0739ae1489c58e1bcbfa051b6a6139339ea08",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "just",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/JST.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "d3ce62097377bace7b56aea4080bf4f282ddad1d6cfd2095601822dea692bef5",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "sun",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/SUN.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "e0642294432841fd12cff3643d36ad674ce891e9d0d09f404892630e2cbb52f2",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "render",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/RNDR.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "98b10ae899d0630a12f3fd2f8302d591fd53344b50cd3932408e961aa9ffd1b0",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "nexo",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/NEXO.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "344f718ad1a04b6dfdb007364f7b133d9761f98f2d464723dd7563d5bb6959cf",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "gnosis",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/GNO.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "9219b1b73a42aa23760549670a7f99f68bd3df438f3ed97a21f0158d245b8ee5",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "thegraph",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/GRT.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "1e85be44bea45cc2b0a6dc75be5b7ef6b51361a20acee5bdfcb9abb5a9e15cf2",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "compound",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/COMP.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "843999de17d14cc29903b97d7b951744c19535dc87b22e6bd618846e80afbd3d",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "trustwallet",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/TWT.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "ef47a922b047fe54adbb71108791ed6fdacce613d922dc3b7a81a14fbae83af7",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "bat",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/BAT.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "d6762f6c52d9fe583fc55d294213e0037126d72f27229c7f39f0aaf8b8c147ae",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "axieinfinity",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/AXS.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "044782eeaa9373793289656f30c4065433ea50ec988e25cf81320e51e17c1360",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "decentraland",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/MANA.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "ac91e529d6df2dd91940ca22925a88ab1c2b6eccdf90f99dfa6091520558e287",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "sandbox",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/SAND.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "a464e87b27330476a0291d86f285b4ae8ead8b6d4cef49e3f9859e6741a171dc",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "apecoin",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/APE.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "97760471d8785e209d8401b3f5b7450ad5aa8f5da564217aadff061725655b9a",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged. The artwork is clipped to the disc."
+    },
+    {
+      "artwork_name": "spx6900",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/SPX.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "cfc282824214dc45ee8f65bb13c6a93ae2df8260f70f9c0518dddcd87945c6c4",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "gmx",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/GMX.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "eb537154b4d251be419d0e3d0dead99e874d665ea06ff29ac385c50319d7571b",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "1inch",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/1INCH.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "c65279d72a68a8b478f7338542eb622529fac7918543c3969958157e762333ed",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "immutable",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/IMX.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "37bee81dd7544076457ab919e248e4793e57e3a5671faed97192cd6fad4fcc2f",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "synthetix",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/SNX.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "180a582e51c6934231202057dbe4df63027a6fdb553a2b60388afc5bc7932c71",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "crvusd",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/CRVUSD.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "7da587841a7c90c4b2a56fb93da6a41518280f36cefe7a4722858be3117b3df9",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "safe",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/SAFE.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "b57c94c55a48c04841a3d3f0a1d3902556546b014835684971d221e3070f4d22",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "gala",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/GALA.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "15846566823c2f8114d17343fd00884b30b9ddcf4d5b74d1950b91b9a19e32d3",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "helium",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/HNT.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "cfbf59144263ff491a0c420a0ece561d3129d224e12ab83817be99593e11d690",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "cetus",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/CETUS.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "d673d07f3f6ea0a8e4e6e1f442ab599e1911cc2940ad9554a3973eb438fb4a87",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "snek",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/SNEK.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "2babb31c14c97d7374720295c60ebb0df12ad5b0df06ebd6c3354fd2df662be2",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "cbeth",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/CBETH.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "5a37dd2c270718b6443cad66d1408eb7cf8160c18392056374608046613fca34",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "wbeth",
+      "source": "https://raw.githubusercontent.com/0xa3k5/web3icons/172f57f38fca75007002a4d707e08f33d82ba3a5/raw-svgs/tokens/background/WBETH.svg",
+      "license": "MIT (web3icons)",
+      "source_sha256": "26c25ba6287b99f46dbb647b60211953e489936eaf9e830f7097f190f79422eb",
+      "layout": "The square backdrop becomes the disc in the same paint; the artwork is unchanged."
+    },
+    {
+      "artwork_name": "asi",
+      "source": "https://superintelligence.io/wp-content/uploads/2025/01/mobile-logo.svg",
+      "found_on": "https://superintelligence.io/",
+      "license": "not stated (no brand kit found)",
+      "source_sha256": "1c29d6ce9873b34471e7d0245779b9ff2dca90dca675bf73056f623f9604d0c1",
+      "layout": "The project's own mark, unrecoloured, centred on a disc."
+    },
+    {
+      "artwork_name": "deepbook",
+      "source": "https://firebasestorage.googleapis.com/v0/b/standards-site-beta.appspot.com/o/documents%2F39ccba157de%2Fbea13839d0a%2FDeepBook_Logos.zip?alt=media&token=968ee6d5-fa6c-4a5e-a284-ddb947fcb115",
+      "found_on": "https://live.standards.site/deepbook-media-kit (linked from https://deepbook.xyz/)",
+      "license": "not stated (kit lists don'ts: do not alter, stretch/squeeze, outline, add effects, recolour or create custom logos)",
+      "source_sha256": "9de533c480348312ea631d9f01564cdfed6b2cc3a562c86ab00b0af7f3afd2d3",
+      "layout": "The project's own mark, unrecoloured, centred on a disc."
+    },
+    {
+      "artwork_name": "eigen",
+      "source": "https://raw.githubusercontent.com/Layr-Labs/media-kit/0536e846b78d964e7d2ad38e3f7c683bd64fcd53/EigenLayer%20Logos/Logos%20SVG/Symbols/Set%20A%20-%20Symbol.svg",
+      "found_on": "https://github.com/Layr-Labs/media-kit",
+      "license": "not stated (repo has no license; README: 'EigenLayer Brand Guidelines and Media Kit.'; EigenLayer-Brand-Guidelines.pdf not reviewed)",
+      "source_sha256": "c06b67e09cb1ddad96adf86ab48d39adedfbbdaa2df2cc7e60a8c91df99d02ee",
+      "layout": "The project's own mark, unrecoloured, centred on a disc."
+    },
+    {
+      "artwork_name": "floki",
+      "source": "https://cdn.prod.website-files.com/62c5b02ab108966a252dfe8e/631797108d2470db4d67a646_floki-logo.svg",
+      "found_on": "https://floki.com/ (Webflow CDN asset referenced by the site)",
+      "license": "not stated (no media kit at floki.com)",
+      "source_sha256": "26700bc4a229314ae05f092406b83c85a38efc96031e0aa0287d7261a469e6ae",
+      "layout": "The project's own mark, unrecoloured, centred on a disc."
+    },
+    {
+      "artwork_name": "jito",
+      "source": "https://www.jito.network/jto-ds/JTO_icon.svg",
+      "found_on": "https://www.jito.network/jto/",
+      "license": "not stated (no brand kit found)",
+      "source_sha256": "3cd15657cfa12bf7e01e520297172f5bf12cc5b70b034f8e6d5a3a48f4048cd3",
+      "layout": "The project's own mark, unrecoloured, centred on a disc (its own disc icon, rescaled)."
+    },
+    {
+      "artwork_name": "notcoin",
+      "source": "https://cdn.joincommunity.xyz/explore/icons/notcoin-logo-rounded.svg",
+      "found_on": "https://notcoin.org/ (notco.in redirects here)",
+      "license": "not stated (no brand kit found)",
+      "source_sha256": "64bd7d95d79ff5bd7daaf6c4240df48c59a250caea208ebc96524acf942406b7",
+      "layout": "The project's own mark, unrecoloured, centred on a disc (its own disc icon, rescaled)."
+    },
+    {
+      "artwork_name": "virtuals",
+      "source": "https://www.virtuals.io/v2/logo.svg",
+      "found_on": "https://www.virtuals.io/",
+      "license": "not stated (no brand kit found)",
+      "source_sha256": "5aabeb54ec7c5e8c74ba70a3c46849650ce4b5ed2f22f0ffccca72ce00af550e",
+      "layout": "The project's own mark, unrecoloured, centred on a disc."
+    },
+    {
+      "artwork_name": "walrus",
+      "source": "https://raw.githubusercontent.com/MystenLabs/walrus/2bd352b6a668bf6d73416536f9b2ed9beed61e84/docs/site/static/img/logo.svg",
+      "found_on": "https://github.com/MystenLabs/walrus",
+      "license": "not stated (repo is Apache-2.0 for code; no brand terms; walrus.xyz/media/ is a press page without assets)",
+      "source_sha256": "a2582cb4f37767e618e799047e6fe15dd6a7880a410e61710699802d3ced5cc7",
+      "layout": "The project's own mark, unrecoloured, centred on a disc."
+    },
+    {
+      "artwork_name": "weeth",
+      "source": "https://raw.githubusercontent.com/etherfi-protocol/design_assets/e2f563b6c827dd1272b387d53c4e0413febea23a/logos/weETH.svg",
+      "found_on": "https://github.com/etherfi-protocol/design_assets",
+      "license": "not stated (repo README only links the ether.fi media kit on Notion, which did not render)",
+      "source_sha256": "91b19c9181a4e6ecc2e9e2096025fb35e7ba5ecbc30eca91c403de3cf81dcc2d",
+      "layout": "The project's own mark, unrecoloured, centred on a disc (its own disc icon, rescaled)."
+    },
+    {
+      "artwork_name": "wormhole",
+      "source": "https://static.wormhole.com/token.svg",
+      "found_on": "https://wormhole.com/brand-and-press",
+      "license": "Kit: follow the brand guidelines (clearspace etc.) when promoting Wormhole in marketing communications; no licence terms stated.",
+      "source_sha256": "6d85021a295686f16dd51bb211b655e5efc1ce3f035260ddf7e2ece1dbe17cc0",
+      "layout": "The project's own mark, unrecoloured, centred on a disc (its own disc icon, rescaled)."
+    }
+  ]
+}
