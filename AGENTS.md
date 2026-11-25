@@ -127,13 +127,14 @@ How to write it:
   states the result, with where in parentheses (files, exports, commands).
   Under it, one sub-item per change, in one or two sentences. A change is one
   thing `git diff` shows: a behaviour, a number or default, an export or file
-  that moved, whether stored data still loads. A change with only one such
-  thing is the headline alone, with no sub-items.
+  that moved, whether stored data still loads. Many changes, many sub-items; a
+  change with only one such thing is the headline alone, with no sub-items.
 - **No padding.** Leave out unchanged parts, unless a reader would think they
   changed; per-item visual or algorithm detail, which the docs and code
   comments hold; lists of functions and call sites; mechanical edits such as
   an added field or a rename; anything that repeats the headline. A refactor
-  that keeps behaviour is one line naming what moved where.
+  that keeps behaviour is one line naming what moved where; how that was shown
+  goes under `Measured:`.
 - **Names as they were.** A section names files and symbols as they were at
   that commit, even after they move or go.
 - **Measurements.** The record goes in `docs/audits/`; the CHANGELOG gives the

@@ -1,5 +1,15 @@
 # Changelog
 
+## Beta Commit 261
+
+- Docs: `AGENTS.md` "CHANGELOG" (many changes, many sub-items; how a
+  behaviour-keeping refactor was shown goes under `Measured:`);
+  `CHANGELOG.md` (every section checked against its commit: `+X −Y lines` in
+  `Total:` counts the .rs files' lines in every section, wrong names and
+  numbers corrected, missing changes added, packed entries split, undated
+  `Measured:` lines dated, docs-only commits' `Total:` "No code changed").
+- Total: No code changed.
+
 ## Beta Commit 260
 
 - **Sui is read and written through Sui GraphQL** (`api/sui_graphql.rs`,
@@ -97,9 +107,9 @@
   ([record](audits/token-catalog-2026-11-24/README.md)).
 - Docs: `CHAIN-SUPPORT.md` ("Fungible assets": the Starknet row); new audit
   record `docs/audits/token-catalog-2026-11-24/`.
-- Total: 1 .rs file changed (0 new), +12 −3 lines; data files
-  `core/data/tokens.toml`, `core/data/crypto-wiki.toml`, `icons/crypto/` (37
-  new); dependencies unchanged; `cargo test` passing 1682 → 1682.
+- Total: 1 .rs file changed, +12 −3 lines; data files `core/data/tokens.toml`,
+  `core/data/crypto-wiki.toml`, `icons/crypto/` (37 new); dependencies
+  unchanged; `cargo test` passing 1682 → 1682.
 
 ## Beta Commit 258
 
@@ -108,13 +118,14 @@
   before: `litecoin_p2p.rs`, `substrate_json_rpc.rs` and `metadata.rs` beside
   their directories, while the domains and `send/litecoin_mweb/` used
   `mod.rs`).
-- **Three out-of-line test modules follow the layout the others use**
+- **Four out-of-line test modules follow the layout the others use**
+  (`derivation/tests/mod.rs`, `api/tests/`, `src/tests/mod.rs`)
   - `derivation`'s own tests are `derivation/tests/mod.rs` (before:
     `derivation/tests.rs` beside `derivation/tests/`).
   - `substrate_json_rpc`'s and its `pools` module's are
     `api/tests/substrate_json_rpc.rs` and
-    `api/tests/substrate_json_rpc_pools.rs` (before: `substrate_json_rpc/tests.rs`
-    and `substrate_json_rpc/pools/tests.rs`).
+    `api/tests/substrate_json_rpc_pools.rs` (before:
+    `substrate_json_rpc/tests.rs` and `substrate_json_rpc/pools/tests.rs`).
   - The crate root's are `src/tests/mod.rs`, declared as `mod tests` (before:
     `src/tests/app_boundary.rs`, declared as `app_boundary_tests` through
     `#[path]`).
@@ -124,14 +135,15 @@
   - `send_stages.rs` is `send_stage/mod.rs`, `send_stage_protocols.rs` is
     `send_stage/protocols.rs`, and each `send_stage_<protocol>.rs` and
     `send_near.rs` is a child `send_stage/<protocol>.rs`; `multisig.rs` is
-    `multisig/mod.rs` and each `multisig_<scheme>.rs` is `multisig/<scheme>.rs`.
+    `multisig/mod.rs` and each `multisig_<scheme>.rs` is
+    `multisig/<scheme>.rs`.
   - 155 `pub(super)` items in the children reach only their group (before:
     all of `service`); the 26 the rest of `service` calls are
     `pub(in crate::service)`.
   - Nine `pub(super)` helpers of the two `mod.rs` files only their children
     call are private.
-  - The tests of `send_stages` and `send_near` are `service/tests/send_stage.rs`
-    and `service/tests/send_stage_near.rs`.
+  - The tests of `send_stages` and `send_near` are
+    `service/tests/send_stage.rs` and `service/tests/send_stage_near.rs`.
 - **`send/message/` holds one module per message-signing scheme**
   (`send/message/mod.rs`, `stellar.rs`, `cardano.rs`, `kaspa.rs`, `monero.rs`;
   before: `send/message.rs` and the four as inline modules of
@@ -162,9 +174,9 @@
 
 - **Thirteen Cosmos SDK mainnets join the registry** (new
   `registry/cosmos.rs`, `derivation/cosmos.rs`, `send/cosmos.rs`,
-  `api/cosmos_rest.rs`, `service/send_stage_cosmos.rs`; `core/data/chains.toml`,
-  `tokens.toml`, `endpoints.toml`, `explorers.toml`, `chain-wiki.toml`,
-  `crypto-wiki.toml`; `icons/crypto/`)
+  `api/cosmos_rest.rs`, `service/send_stage_cosmos.rs`;
+  `core/data/chains.toml`, `tokens.toml`, `endpoints.toml`, `explorers.toml`,
+  `chain-wiki.toml`, `crypto-wiki.toml`; `icons/crypto/`)
   - Cosmos Hub, Celestia, dYdX Chain, Terra, Kava, Injective, Akash, Babylon
     Genesis, Osmosis, Dymension, Saga, Allora and BandChain: receive, balance,
     history, a native `MsgSend` with a memo (build, sign, broadcast, status),
@@ -182,8 +194,8 @@
     amount, a memo over the network's limit, an address of another prefix,
     case or length, and at signing a changed sequence or a passed timeout
     height.
-  - New tokens ATOM, TIA, DYDX, LUNA, INJ, AKT, BABY, OSMO, DYM, SAGA, ALLO and
-    BAND; KAVA gains its Cosmos-side deployment (6 decimals).
+  - New tokens ATOM, TIA, DYDX, LUNA, INJ, AKT, BABY, OSMO, DYM, SAGA, ALLO
+    and BAND; KAVA gains its Cosmos-side deployment (6 decimals).
   - 35 keyless `cosmos-rest` endpoints from two to four operators per network,
     with Mintscan, ezstaking.app (Dymension) and Allora explorers.
   - Twelve icons: seven from web3icons (MIT), and Babylon's, Dymension's,
@@ -239,11 +251,10 @@
     (`api/esplora.rs`).
   - A scanned code with another network's BIP-21 scheme is refused on every
     network.
-  - `legacy_change_dust` is `Chain::relay_dust_threshold`, which also holds
-    the change dust `service/send_stage_utxo.rs` kept for Bitcoin, Zcash,
-    Decred and Kaspa; `peercoin_generated_output_maturity` is
-    `generated_output_maturity`, and `fetch_peercoin_outputs` is
-    `fetch_verified_outputs` on Blockbook and `UtxoClient`.
+  - The change dust `service/send_stage_utxo.rs` kept for Bitcoin, Zcash,
+    Decred and Kaspa is on `Chain::relay_dust_threshold` with every other
+    network's (before: `legacy_change_dust`, the legacy-format networks'
+    alone).
   - New tokens QTUM, FB, XEC (2 decimals) and DGB; nine endpoints (Blockbook,
     Esplora, Chronik, UniSat) and an explorer each.
 - **Algorand joins the registry** (new `registry/algorand.rs`,
@@ -323,8 +334,9 @@
     price; a deployment reserves nonce 0.
   - Refused: a deployed account of another class, with a guardian or a
     changed owner, and memos.
-  - The Stark public key is recorded at import (`WalletState.starknet_public_key`);
-    an undeployed wallet without it cannot send.
+  - The Stark public key is recorded at import
+    (`WalletState.starknet_public_key`); an undeployed wallet without it
+    cannot send.
   - New token STRK (18 decimals); two `starknet-json-rpc` endpoints; Voyager
     explorer.
   - `tags_agree_with_the_registry` no longer requires a layer 2 to be EVM
@@ -354,9 +366,12 @@
 - **The 25 networks take popular ranks 67 to 91** (`core/data/chains.toml`),
   with 24 new icons from each project's own marks and web3icons (Kava shares
   Kava EVM's) and VTHO's.
-- **A health check proves each new API's network** (`api/health.rs`):
-  algod's and Thor's genesis, Lotus's network name and genesis, and a Cosmos
-  gateway's `node_info` where it claims verification, with its latest block.
+- **A health check proves the network of each new API but Filfox and
+  UniSat** (`api/health.rs`): the genesis on algod, the Algorand indexer,
+  Thor and Hedera's mirror and address book, Lotus's network name and
+  genesis, the chain id on Tezos nodes, TzKT and Starknet, Chronik's identity
+  block, and a Cosmos gateway's `node_info` where it claims verification,
+  with its latest block.
 - **A text memo is a network's own length** (`PaymentMemoKind::MemoText`,
   `PaymentMemo::text`, `Chain::memo_text_limit`; `send/payment_memo.rs`):
   Stellar's 28 bytes, a Cosmos network's `max_memo_characters` (512 on Cosmos
@@ -392,14 +407,15 @@
 - Measured: 2026-11-24, Kusama Asset Hub and Astar endpoints
   ([substrate-mainnets-2026-11-24](audits/substrate-mainnets-2026-11-24/README.md)):
   genesis and metadata (statemine spec 2005003, Astar spec 2500) answered by
-  every catalogued endpoint; Dwellir's Astar node served other metadata and
-  is not catalogued; a transfer quoted about 0.000059 KSM and 0.0397 ASTR.
-- Measured: 2026-11-24, Tezos mainnet nodes ([tezos-2026-11-24](audits/tezos-2026-11-24.md)):
-  three nodes on protocol Ushuaia; three included operations forged again by
-  Taquito 25.1.1 to their chain hashes.
-- Measured: 2026-11-24, Starknet nodes ([starknet-2026-11-24](audits/starknet-2026-11-24.md)):
-  two keyless nodes (spec 0.10.3 and 0.9.0) on `SN_MAIN`; no keyless history
-  source.
+  every catalogued endpoint; Dwellir's Astar node served other metadata and is
+  not catalogued; a transfer quoted about 0.000059 KSM and 0.0397 ASTR.
+- Measured: 2026-11-24, Tezos mainnet nodes
+  ([tezos-2026-11-24](audits/tezos-2026-11-24.md)): three nodes on protocol
+  Ushuaia; three included operations forged again by Taquito 25.1.1 to their
+  chain hashes.
+- Measured: 2026-11-24, Starknet nodes
+  ([starknet-2026-11-24](audits/starknet-2026-11-24.md)): two keyless nodes
+  (spec 0.10.3 and 0.9.0) on `SN_MAIN`; no keyless history source.
 - Tests: 194 new
   - Cosmos 16: addresses or signed `MsgSend`s diverging from CosmJS and
     ethers.js; a gateway answer misread (coins, accounts, gas prices, history
@@ -479,8 +495,9 @@
     forward payload by reference; up to 123 bytes, one cell (before: TON
     payments carried none, so an exchange deposit that needs one could not be
     sent).
-  - A TON multisig order carries the spend's comment (`service/multisig_ton.rs`;
-    before: `comment: None` whatever the spend named).
+  - A TON multisig order carries the spend's comment
+    (`service/multisig_ton.rs`; before: `comment: None` whatever the spend
+    named).
   - A scanned `ton://transfer` code's `text` comes back as the comment, and a
     code with a `bin` body or `init` state is refused; a receive request
     writes the comment as `text` (`send/scanned_payment.rs`; before: `text`
@@ -508,8 +525,11 @@
     adapter now offers on a network that hosts tokens
     (`core/data/endpoints.toml`, `api/endpoint.rs`).
 - **A storage key covers maps of several keys** (`metadata/pools.rs`
-  `storage_key`), and the runtime-metadata and storage reads the pools used
-  are the Substrate client's (`runtime_metadata`, `storage_value`).
+  `storage_key`; before: a plain value or a map of one key).
+- **The pools' runtime-metadata and storage reads are the Substrate
+  client's** (`api/substrate_json_rpc.rs` `runtime_metadata`,
+  `storage_value`; before: `pools_metadata` and `pool_storage` in
+  `pools.rs`).
 - **Sixteen EVM mainnets join the registry** (`registry/mod.rs`,
   `registry/evm.rs`; `core/data/chains.toml`, `endpoints.toml`,
   `explorers.toml`, `tokens.toml`, `chain-wiki.toml`, `crypto-wiki.toml`;
@@ -603,10 +623,11 @@
 
 ## Beta Commit 255
 
-- **A change here is finished when the apps match it** (`AGENTS.md`): the
-  same task checks spectra-apple and spectra-android for what depends on the
-  change and updates them, and spectra-apple's checks run on the one
-  simulator its `AGENTS.md` names.
+- **A change here is finished when the apps match it** (`AGENTS.md`
+  "Repositories"): the same task checks spectra-apple and spectra-android for
+  what depends on the change and updates them.
+- **spectra-apple's checks run on the one simulator its `AGENTS.md` names**
+  (`AGENTS.md` "Verification").
 - **Every report's verdict sets the CLI's exit code** (`cli/src/out.rs`
   `Report::failure`): a report that found a failure — an unreachable
   endpoint, a failed self-test, a wallet that did not refresh, failed pending
@@ -633,9 +654,10 @@
   (`staking/` `fetch_validators`; `StakingError` and the six one-method
   `*StakingClient` types are deleted): the dispatcher answers `None` for a
   chain that does not stake, which the service refuses.
-- **The explorer lookup is a catalog function** (`catalog::explorers::explorer`;
-  before: an `impl Chain` outside `registry/`), and the unused
-  `From<reqwest::Error> for SpectraBridgeError` is deleted.
+- **The explorer lookup is a catalog function**
+  (`catalog::explorers::explorer`; before: an `impl Chain` outside
+  `registry/`), and the unused `From<reqwest::Error> for SpectraBridgeError`
+  is deleted.
 - **Fields, derives and defaults nothing reads are removed**.
   - `ChainEntry.supports_staking`, `ChainSelfTestResult.chain_label` and
     `DiagnosticsBundlePayload.schema_version` leave the FFI records.
@@ -644,8 +666,6 @@
   - The price-alert evaluation types and `PriceAlertNotification` no longer
     derive `Deserialize`, and neither it nor the history cursor fills a
     missing field with a default.
-  - Two orphaned doc lines in `store/settings.rs` are gone, and
-    `payment_memo_kinds`' doc comment is back on it (`registry/send.rs`).
 - **One parser reads Solana token accounts** (`api/solana_json_rpc.rs`
   `sum_token_accounts`; `fetch_spl_balance` takes one mint).
   - The holdings listing refuses an answer without its account list and an
@@ -734,7 +754,7 @@
     `service/mod.rs`'s `app_boundary` loaded tests of other modules, under
     other names).
   - Inline test modules move out of line wherever the module also had a test
-    file, in 13 modules, `balance_refresh`'s 560 lines among them.
+    file, in 13 modules, `balance_refresh`'s 540 lines among them.
   - The tests of wallet deletion, status-tracker pruning, UTXO discovery and
     `Chain::history_family` move to `service::state`, `service::transactions`,
     `service::address_discovery` and `registry`.
@@ -782,9 +802,9 @@
     `page`, `recheck`, `refresh-pending`, `maintenance`, `poll` and
     `replaceable`; `price` `spot`, `stored` and `refresh`; `portfolio` `live`,
     `stored`, `pins`, `set-pins` and `unpin`; `currency` `show`, `set`,
-    `rates` and `refresh-rates`. `portfolio set-pins` and
-    `unpin` report the pins after the change (before: a pin flag alone fell
-    through to a live valuation).
+    `rates` and `refresh-rates`.
+  - `portfolio set-pins` and `unpin` report the pins after the change
+    (before: a pin flag alone fell through to a live valuation).
   - `portfolio`'s `--skip-unreachable`, which defaulted to true and could not
     be turned off, is removed with its unreachable stop-on-error branch.
   - The 28 argument structs that declared the "Wallet id, name or address"
@@ -809,7 +829,7 @@
   (`service/staking_protocols.rs` `prepare_solana_staking`,
   `prepare_sui_staking`, `prepare_aptos_staking`, `prepare_near_staking`;
   `service/staking_substrate.rs` `prepare_pool_call`),
-  which rustfmt formats (before: statements of up to 300 characters inside one
+  which rustfmt formats (before: lines of up to 227 characters inside one
   closure that rustfmt left alone); a NEAR pool call's method, arguments and
   deposit come from `near_staking_call`, which the build and its recheck share.
 - **One bounded byte reader decodes every encoded transaction and wire
@@ -817,8 +837,8 @@
   Sui and BCH PSBT multisig decoders and the Litecoin wire codec), each
   refusing with its own error; protocol-specific reads stay in each module
   (before: five readers, each with its own `take`, integers and end check).
-  - A BCH PSBT whose CompactSize is longer than its value needs is refused
-    (before: the reader accepted it).
+  A BCH PSBT whose CompactSize is longer than its value needs is refused
+  (before: the reader accepted it).
 - **Token balance reads share one shape** (`service/network_tokens.rs`): Sui,
   Aptos and NEAR read balance and decimals through `own_decimals_balances`,
   every catalog token's row comes from `TokenBalanceResult::known`, and
@@ -829,14 +849,14 @@
   sign-then-broadcast from the harness** (`tests/acceptance/harness.py`
   `b58encode`, `b58decode`, `scale_compact`, `block_hash`,
   `Spectra.sign_and_broadcast`; before: copies in six suites, one SCALE copy
-  without the big-integer mode).
-  - `__main__.py` no longer checks that `send owned-broadcast` needs `--yes`,
-    which `send.py` checks.
+  without the big-integer mode). `__main__.py` no longer checks that
+  `send owned-broadcast` needs `--yes`, which `send.py` checks.
 - **Stale notes and vestigial code are corrected**.
   - `core/tests/fixtures/monero-local.md` no longer says subaddress discovery
     is unsupported, which `CHAIN-SUPPORT.md` contradicts.
-  - README's `make lint` row names the source-scan tests, and `Cargo.toml`
-    names `scripts/build-apple-package.sh` as what runs the bindgen.
+  - README's `make lint` row names the source-scan tests.
+  - `Cargo.toml` names `scripts/build-apple-package.sh` as what runs the
+    bindgen.
   - `production_text` moves from `scripts/source_scan.py` into the one file
     that calls it, `scripts/test-source-scan.py`.
   - The CLI's tokio drops the unused `macros` feature (`cli/Cargo.toml`).
@@ -963,10 +983,10 @@
   as plain Rust** (`docs/FFI-BOUNDARY.md` "Callers and coverage")
   - 37 functions and methods only the CLI called are no longer exported,
     among them `build_send`, `review_owned_send`, `execute_owned_send`,
-    `multisig_session`, `finalize_multisig`, `refresh_now`, `wallet_derived_state`,
-    `send_affordability`, `self_tests_run_all`, `list_token_deployments` and
-    the three artwork-name functions; the methods sit in `impl` blocks without
-    `#[uniffi::export]`.
+    `multisig_session`, `finalize_multisig`, `refresh_now`,
+    `wallet_derived_state`, `send_affordability`, `self_tests_run_all`,
+    `list_token_deployments` and the three artwork-name functions; the
+    methods sit in `impl` blocks without `#[uniffi::export]`.
   - `tor_status` stays exported for the app's Tor test, which has no other
     reading of the status.
   - 30 types no export reaches lose their UniFFI derives, among them
@@ -1020,7 +1040,8 @@
     a front end (before: the `to_wallet_view`/`to_wallet_state`
     conversions).
   - Import builds `WalletState` directly, and `WalletImportOutcome` and
-    `PortfolioSnapshot` carry it; `ChainEntry.address_slot` is removed.
+    `PortfolioSnapshot` carry it.
+  - `ChainEntry.address_slot` is removed.
   - A stored wallet row in the earlier shape (`addresses`) does not load.
   - The CLI's wallet report drops `addresses`; `address` carries the one.
 - **Aptos and Tron sign and submit the bytes they built; the hand-written
@@ -1052,14 +1073,13 @@
     the current height (before: each front end asked
     `new_wallet_restore_height`, now no longer exported).
   - `chain_matches_search` matches a chain's name, symbol, search keywords
-    and tags; the CLI's filter reads it (before: name and symbol only) and
-    the app adds the localized name and tag titles.
+    and tags; the CLI's filter reads it (before: name and symbol only).
   - `AddCustomToken` and `UpdateCustomToken` take `decimals: Option<u32>`:
     the protocol's fixed places, else the ones given, else
     `TokenPreferenceRejection::DecimalsRequired` (before: the CLI looked up
-    the chain's standards to pick a number, sending 0 as a placeholder);
-    the CLI exits 3, rejected, without the places such a token needs
-    (before: 2, usage).
+    the chain's standards to pick a number, sending 0 as a placeholder).
+  - The CLI's `token add` and `edit` exit 3, rejected, without the places
+    such a token needs (before: 2, usage).
 - **A staged transaction's status is core's: `SendProgress.status`**
   (`service/send_stages.rs` `SendStatus`): awaiting signature, signed,
   rejected, uncertain, awaiting confirmation, confirmed or failed, read from
@@ -1115,9 +1135,10 @@
   `secrets::wallet::write_material`, `read_material`)
   - Every blob, the salt and scan key included, passes through the device seal
     on the way to the store (before: only the seed and private key), and that
-    seal tells a wrong password from changed data; an envelope that does not
-    open under the device key is `WalletSecretError::Corrupt` rather than a
-    backend error (`secrets/device_key.rs`).
+    seal tells a wrong password from changed data.
+  - An envelope that does not open under the device key is
+    `WalletSecretError::Corrupt` rather than a backend error
+    (`secrets/device_key.rs`).
   - Whether a wallet is sealed is read from its salt (before: from its
     verifier).
   - The Monero view key and the Litecoin MWEB scan secret are kept through
@@ -1201,8 +1222,8 @@
   overrides sealed beside the phrase) and "Core module boundaries"
   (`wallet_db::scan_cache`: scan key device-sealed); `tests/README.md`
   `endpoints.py` row.
-- Total: 97 .rs files changed (0 new, 3 deleted), +10787 −1657 lines; data and
-  config files: `core/Cargo.toml`, `tests/acceptance/__main__.py`,
+- Total: 97 .rs files changed (3 deleted), +1423 −1643 lines; data and config
+  files: `core/Cargo.toml`, `tests/acceptance/__main__.py`,
   `tests/acceptance/endpoints.py`; dependencies: none added or removed,
   `serde_json` gains the `raw_value` feature (`core/Cargo.toml`); `#[test]`
   functions 1574 → 1572, `cargo test` 1572 passing.
@@ -1221,9 +1242,9 @@
   package paragraph; `scripts/README.md` `make apple` and the
   `build-apple-package.sh` row (an unchanged FFI recompiles no app Swift only
   when the copy keeps modification times).
-- Total: no .rs files changed, +35 −16 lines; data and config files: `Makefile`,
-  `scripts/build-apple-package.sh`; dependencies unchanged; `#[test]` functions
-  unchanged at 1574.
+- Total: no .rs files changed; data and config files: `Makefile`,
+  `scripts/build-apple-package.sh`; dependencies unchanged; `#[test]`
+  functions unchanged at 1574.
 
 ## Beta Commit 250
 
@@ -1247,10 +1268,10 @@
   CI badge removed; `ARCHITECTURE.md` intro and the Apple build paragraph;
   `FFI-BOUNDARY.md` intro and scans; `scripts/README.md` "Apple package" (new)
   and svgo 4.1.0; `tests/README.md` generators note.
-- Total: no .rs files changed, +234 −111 lines; data and config files:
+- Total: no .rs files changed; data and config files:
   `.github/workflows/ci.yml`, `Makefile`, `rust-toolchain.toml`,
-  `scripts/build-apple-package.sh`; dependencies unchanged; `#[test]` functions
-  unchanged at 1574.
+  `scripts/build-apple-package.sh`; dependencies unchanged; `#[test]`
+  functions unchanged at 1574.
 
 ## Split repo
 
@@ -1261,31 +1282,33 @@
     spectra-android is not started. An FFI change is checked with
     spectra-apple's checks and the change in its `spectra/` checkout.
   - The Swift conventions, resources rules and app-icon export leave
-    `AGENTS.md`; `.gitignore` drops the Xcode and `swift/generated/` entries;
-    `README.md`'s CI badge points at the new repository.
+    `AGENTS.md`, and the app's build section leaves `README.md`.
+  - `.gitignore` drops the Xcode and `swift/generated/` entries.
+  - `README.md`'s CI badge points at the new repository.
 - **Four verification targets: `make lint`, `test`, `test-cli` and
   `check-icons`** (`Makefile`; `.github/workflows/ci.yml`)
   - `check-icons` runs `scripts/normalize-icons.sh --check` (before: `check-ui`,
-    with the design-token check); `test-ios`, `test-mac` and the `ios`, `iosr`,
-    `mac`, `macr` builds are gone, as is `clean`'s removal of
-    `swift/generated/`.
+    with the design-token check).
+  - `test-ios`, `test-mac` and the `ios`, `iosr`, `mac`, `macr` builds are
+    gone, as is `clean`'s removal of `swift/generated/`.
   - CI runs all four; its UI job is now "Icon library".
 - **`make lint` runs one source scan, `uncalled-core-fns.py`, on Rust alone**
   (`scripts/source_scan.py`, `scripts/uncalled-core-fns.py`): a Swift mention no
-  longer counts as a caller, and `source_scan.exports` lists core's UniFFI
-  exports from the Rust source; the export, string and Swift-literal scans are
-  spectra-apple's.
+  longer counts as a caller, and the scan skips core's UniFFI exports, which
+  `source_scan.exports` lists from the Rust source; the export, string and
+  Swift-literal scans are spectra-apple's.
 - Docs: `AGENTS.md` (Repositories new, docs table, Architecture, Funds and keys,
   Verification, Platform constraints, Icons); `README.md`; `ARCHITECTURE.md`
   intro, module table and the Apple build paragraph; `FFI-BOUNDARY.md` intro,
-  string tables and scans ("Regenerating bindings" and its troubleshooting table
-  removed, now spectra-apple's `docs/SWIFT-BINDINGS.md`); `OPEN-ITEMS.md` (the
-  two Mac app items leave); `scripts/README.md`; `tests/README.md`
-  (`swift/tests/` row removed); `scripts/normalize-icons.sh` comment.
-- Total: no .rs files changed, +193 −358 lines; data and config files:
-  `scripts/` (4), `.github/workflows/` (1), `.gitignore`, `Cargo.toml`,
-  `Makefile`, `rust-toolchain.toml`; dependencies unchanged; `#[test]` functions
-  unchanged at 1574.
+  string tables and scans ("Regenerating bindings" and the Swift rows of
+  "Common errors" removed, now spectra-apple's `docs/SWIFT-BINDINGS.md`);
+  `OPEN-ITEMS.md` (the two Mac app items leave); `scripts/README.md`;
+  `tests/README.md` (`swift/tests/` row removed); `scripts/normalize-icons.sh`
+  comment.
+- Total: no .rs files changed; data and config files: `scripts/` (4),
+  `.github/workflows/` (1), `.gitignore`, `Cargo.toml`, `Makefile`,
+  `rust-toolchain.toml`; dependencies unchanged; `#[test]` functions unchanged
+  at 1574.
 
 ## Beta Commit 249
 
@@ -1294,9 +1317,9 @@
   `check-ui`, `test-ios` and `test-mac`, and the AGENTS.md table says which a
   change needs.
 - Docs: `AGENTS.md` "Funds and keys" and "Verification"; `README.md` targets;
-  `OPEN-ITEMS.md` intro; `scripts/README.md`; `tests/README.md`
+  `OPEN-ITEMS.md` endpoint-audit item; `scripts/README.md`; `tests/README.md`
   `monero_regtest.py` row and the suite's docstring.
-- Total: no .rs files changed, +24 −27 lines; data and config files: `Makefile`,
+- Total: no .rs files changed; data and config files: `Makefile`,
   `tests/acceptance/monero_regtest.py`; dependencies unchanged; `#[test]`
   functions unchanged at 1574.
 
@@ -1318,7 +1341,7 @@
   `ARCHITECTURE.md` intro, module table and the Mac app paragraph;
   `FFI-BOUNDARY.md` regenerating bindings; `OPEN-ITEMS.md`; `scripts/README.md`
   build and icon rows; `tests/README.md`.
-- Total: no .rs files changed, +90 −40 lines; data and config files:
+- Total: no .rs files changed; data and config files:
   `.github/workflows/ci.yml`, `Cargo.toml`, `Makefile`, `rust-toolchain.toml`;
   dependencies unchanged; `#[test]` functions unchanged at 1574.
 
@@ -1340,8 +1363,8 @@
     `--all-targets` to share `cargo test`'s dependency build.
   - The bindgen binary is named `spectra_uniffi_bindgen`; the bindgen and
     fixtures build no test target, and core no doc tests.
-- **An endpoint health retry waits 600 ms, and none under test**
-  (`core/src/api/health.rs`).
+- **An endpoint health retry does not wait under test**
+  (`core/src/api/health.rs`; before: 600 ms there too).
 - **`make test-ios` boots the first available iPhone simulator by UDID before
   testing and leaves it running** (`Makefile` `IOS_TEST_SIM` replaces
   `IOS_TEST_DEST`).
@@ -1349,7 +1372,7 @@
   without funds, keys or FFI: `make lint test`, plus `test-cli`; `cargo test
   <filter>`); `README.md` targets table; `FFI-BOUNDARY.md` scans;
   `scripts/README.md`.
-- Total: 1 .rs files changed, +113 −820 lines; data and config files: `scripts/`
+- Total: 1 .rs file changed, +3 −1 lines; data and config files: `scripts/`
   (4), `tests/acceptance/` (2), `.github/workflows/` (1), `Cargo.lock`,
   `Cargo.toml`, `Makefile`, `core/` (1), `tools/litecoin-mweb-fixture/` (1),
   `tools/uniffi-bindgen/` (1), `tools/zcash-fixture/` (1); dependencies
@@ -1399,11 +1422,11 @@
   asset presentation; `CHAIN-SUPPORT.md` (Peercoin account-key versions, Bitcoin
   Cash REST v2); `FFI-BOUNDARY.md`; `OPEN-ITEMS.md` intro; `scripts/README.md`;
   `tests/README.md` (where tests live, `tui.py`).
-- Total: 24 .rs files changed (10 new), +5015 −315 lines; data and config files:
-  `tests/acceptance/` (2), `.github/workflows/` (1), `Cargo.lock`, `Makefile`,
-  `cli/` (1), `scripts/` (1); dependencies: added base64 0.23.1, portable-pty
-  0.9.0, ratatui 0.30.2, unicode-width 0.2.3, vt100 0.18.1 (`cli/Cargo.toml`);
-  `#[test]` functions 1482 → 1574.
+- Total: 24 .rs files changed (10 new), +3884 −127 lines; data and config
+  files: `tests/acceptance/` (2), `.github/workflows/` (1), `Cargo.lock`,
+  `Makefile`, `cli/` (1), `scripts/` (1); dependencies: added base64 0.23.1,
+  portable-pty 0.9.0, ratatui 0.30.2, unicode-width 0.2.3, vt100 0.18.1
+  (`cli/Cargo.toml`); `#[test]` functions 1482 → 1574.
 
 ## Beta Commit 245
 
@@ -1443,8 +1466,8 @@
 - Docs: `ARCHITECTURE.md` (provisional quote, review list and fee,
   `send_progress`); `OPEN-ITEMS.md` ("Technical debt" and its iOS items
   removed).
-- Total: 37 .rs files changed (1 new), +1035 −487 lines; data and config files:
-  `tests/acceptance/litecoin_mweb.py`, `tests/acceptance/staking.py`,
+- Total: 37 .rs files changed (1 new), +1008 −455 lines; data and config
+  files: `tests/acceptance/litecoin_mweb.py`, `tests/acceptance/staking.py`,
   `tests/acceptance/zcash_shielded.py`; dependencies unchanged; `#[test]`
   functions 1473 → 1482.
 
@@ -1481,12 +1504,13 @@
   the CLI report paragraph and test locations; `FFI-BOUNDARY.md` scan names;
   `OPEN-ITEMS.md` ("CLI and tests" items removed); `scripts/README.md`;
   `tests/README.md`.
-- Total: 51 .rs files changed (14 new), +16258 −9401 lines; data and config
-  files: `tests/vectors/` (46), `tests/acceptance/` (28), `core/tests/` (23),
-  `tests/` (22), `scripts/` (8), `.github/workflows/` (1), `.gitignore`,
+- Total: 51 .rs files changed (14 new, 2 deleted), +8047 −5629 lines; data and
+  config files: `tests/vectors/` (46), `tests/acceptance/` (28), `core/tests/`
+  (23), `tests/` (22), `scripts/` (8), `.github/workflows/` (1), `.gitignore`,
   `Cargo.lock`, `Cargo.toml`, `Makefile`, `cli/` (1),
-  `tools/litecoin-mweb-fixture/` (1), `tools/zcash-fixture/` (1); dependencies:
-  added serde 1 (`cli/Cargo.toml`); `#[test]` functions unchanged at 1473.
+  `tools/litecoin-mweb-fixture/` (1), `tools/zcash-fixture/` (1);
+  dependencies: added serde 1 (`cli/Cargo.toml`); `#[test]` functions
+  unchanged at 1473.
 
 ## Beta Commit 243
 
@@ -1535,8 +1559,8 @@
 - Docs: `ARCHITECTURE.md` (one implementation per primitive, history rows, send
   records); `FFI-BOUNDARY.md` timestamps; `OPEN-ITEMS.md` (duplicated
   primitives, grab-bag modules, storage leftovers, dead paths removed).
-- Total: 143 .rs files changed (3 new), +2517 −3542 lines; data and config
-  files: `Cargo.lock`, `core/Cargo.toml`; dependencies: removed blake2
+- Total: 143 .rs files changed (3 new, 3 deleted), +2503 −3505 lines; data and
+  config files: `Cargo.lock`, `core/Cargo.toml`; dependencies: removed blake2
   (`core/Cargo.toml`); `#[test]` functions 1475 → 1473.
 
 ## Beta Commit 242
@@ -1562,7 +1586,7 @@
   only when its text changed; the script is not in this repository's history),
   `emit-mir.sh`; `OPEN-ITEMS.md` ("`api` depends on `send`" removed);
   `tests/README.md` `cli-acceptance.sh` row.
-- Total: 16 .rs files changed, +453 −391 lines; data and config files:
+- Total: 16 .rs files changed, +346 −345 lines; data and config files:
   `Cargo.toml`, `scripts/emit-mir.sh`, `scripts/unwritten-record-fields.sh`,
   `tests/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions
   unchanged at 1475.
@@ -1580,7 +1604,8 @@
 - **`wallet_actions::offers` is the one gate for what a wallet does**
   (`service/wallet_actions.rs` `WalletAction::ALL`, `action_wallet`): each
   account operation behind the page fetches its wallet through `action_wallet`,
-  which asks again (before: five `*_owner` helpers gated by name).
+  which asks again (before: four `*_owner` helpers and `near_account`, each
+  checking the network itself).
 - **Staking dispatches once on `registry::StakingModel`**
   (`registry/staking.rs`; `service/staking.rs`; `staking/service.rs` and its
   `StakingService` deleted): delegation (Solana, Sui, Aptos, NEAR), nomination
@@ -1590,8 +1615,8 @@
   (`service/multisig.rs`; before: a chain list of its own).
 - Docs: `ARCHITECTURE.md` (token decimals, `offers`, staking); `OPEN-ITEMS.md`
   ("One fact, two readers" removed).
-- Total: 31 .rs files changed, +697 −959 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 1475.
+- Total: 31 .rs files changed (1 deleted), +686 −948 lines; data and config
+  files: none; dependencies unchanged; `#[test]` functions unchanged at 1475.
 
 ## Beta Commit 240
 
@@ -1600,28 +1625,31 @@
   see `ARCHITECTURE.md`)
   - Fourteen standards, spelled by name (`"ERC-20"`) in the catalogs and the
     store; a holding's `token_standard` is `None` for the coin (before: the
-    string `"Native"`), and `kind = "native"` and `TokenKind` are gone from
-    `tokens.toml` and `testnet-tokens.toml`.
+    string `"Native"`).
+  - `tokens.toml` and `testnet-tokens.toml` drop every `kind` line
+    (`"native"`, `"token"`): a deployment with a `standard` and `contract` is
+    a token; `catalog::tokens::TokenKind` is removed.
   - `catalog::tokens::deployment_id` is the one place a deployment id is spelled
     (`ethereum:native`, `ethereum:erc-20:0x…`).
   - `TokenStandard::fixed_decimals` replaces `fixed_token_decimals`;
     `token_standard_name` names a standard for a front end.
 - Docs: `ARCHITECTURE.md` token standards; `OPEN-ITEMS.md` ("Token standards are
   strings" removed).
-- Total: 44 .rs files changed, +706 −908 lines; data and config files:
-  `core/data/testnet-tokens.toml`, `core/data/tokens.toml`, `tests/cli-send.py`;
-  dependencies unchanged; `#[test]` functions unchanged at 1475.
+- Total: 44 .rs files changed, +698 −528 lines; data and config files:
+  `core/data/testnet-tokens.toml`, `core/data/tokens.toml`,
+  `tests/cli-send.py`; dependencies unchanged; `#[test]` functions unchanged
+  at 1475.
 
 ## Beta Commit 239
 
 - **`send_stage_protocols.rs` dispatches each account protocol to its own
-  module** (new `service/send_stage_aptos.rs`, `cardano`, `icp`, `solana`,
-  `stellar`, `substrate`, `sui`, `ton`, `tron`, `xrp`; NEAR's in `send_near.rs`,
-  EVM's in `send_stage_evm.rs`): preparation, revalidation, signing and expiry
-  per protocol; behaviour unchanged.
+  module** (new `service/send_stage_aptos.rs`, `cardano`, `evm`, `icp`,
+  `solana`, `stellar`, `substrate`, `sui`, `ton`, `tron`, `xrp`; NEAR's in
+  `send_near.rs`): preparation, revalidation, signing and expiry per protocol;
+  behaviour unchanged.
 - Docs: `ARCHITECTURE.md` persistent send stages; `OPEN-ITEMS.md` ("four chain
   ladders" removed).
-- Total: 14 .rs files changed (11 new), +2328 −1642 lines; data and config
+- Total: 14 .rs files changed (11 new), +2323 −1636 lines; data and config
   files: none; dependencies unchanged; `#[test]` functions unchanged at 1475.
 
 ## Beta Commit 238
@@ -1638,7 +1666,7 @@
     `eth_getTransactionCount`, `eth_chainId`) are client methods.
 - Docs: `ARCHITECTURE.md` (`api/network.rs`, `api/health.rs`); `OPEN-ITEMS.md`
   ("Network identity checks are rewritten per call site" removed).
-- Total: 13 .rs files changed (1 new), +315 −215 lines; data and config files:
+- Total: 13 .rs files changed (1 new), +307 −205 lines; data and config files:
   none; dependencies unchanged; `#[test]` functions unchanged at 1475.
 
 ## Beta Commit 237
@@ -1663,8 +1691,8 @@
 - Docs: `AGENTS.md` (`api`'s callers); `ARCHITECTURE.md` (module paths, history
   adapters, `price`); `OPEN-ITEMS.md` ("History round-trips through a JSON
   string" removed).
-- Total: 56 .rs files changed (1 new), +1084 −1108 lines; data and config files:
-  none; dependencies unchanged; `#[test]` functions 1476 → 1475.
+- Total: 56 .rs files changed (1 new, 3 deleted), +1068 −1091 lines; data and
+  config files: none; dependencies unchanged; `#[test]` functions 1476 → 1475.
 
 ## Beta Commit 236
 
@@ -1695,12 +1723,14 @@
   removed** (`service/send_execution.rs`; `cli/src/cmd/tx.rs`): front ends send
   through the owned flow (`send owned-broadcast`) or the separate stages; `send
   owned-broadcast` without `--yes` exits 2, a usage error (before: 3, rejected).
-- **The Android build scripts and Make targets are removed**
-  (`scripts/build-android.sh`, `bindgen-android.sh`; `Makefile` `android`,
-  `androidr`, `bindgen-android`; `.gitignore` Kotlin entries).
+- **The Android Make targets are removed** (`Makefile` `android`, `androidr`,
+  `bindgen-android`, which ran `scripts/build-android.sh` and
+  `bindgen-android.sh`; `.gitignore` Kotlin and Gradle entries).
 - **CI runs `make lint`, `make test` and `make test-cli`**
   (`.github/workflows/ci.yml`; before: the same commands spelled out in the
-  workflow); `make test-ios` picks the first available iPhone simulator.
+  workflow).
+- **`make test-ios` picks the first available iPhone simulator** (`Makefile`
+  `IOS_TEST_DEST`; before: iPhone 17 Pro).
 - **A technical-debt list from the 2026-10-26 code audit** (`docs/OPEN-ITEMS.md`
   "Technical debt": core, CLI and tests, iOS app).
 - Tests: 1 new, 4 removed
@@ -1712,18 +1742,18 @@
   `ARCHITECTURE.md` module table, chain rules, module boundaries, `api`, send
   stages; `FFI-BOUNDARY.md`; `OPEN-ITEMS.md` "Technical debt" (new);
   `scripts/README.md` build rows.
-- Total: 284 .rs files changed (15 new), +4992 −5863 lines; data and config
-  files: `scripts/` (5), `tests/` (2), `.github/workflows/` (1), `.gitignore`,
-  `Cargo.lock`, `Cargo.toml`, `Makefile`, `core/data/` (1), `docs/audits/` (1),
-  `ffi/` (1); dependencies: removed spectra_core (`ffi/Cargo.toml`, with the
-  crate); `#[test]` functions 1479 → 1476.
+- Total: 284 .rs files changed (15 new, 2 deleted), +4780 −5565 lines; data
+  and config files: `scripts/` (5), `tests/` (2), `.github/workflows/` (1),
+  `.gitignore`, `Cargo.lock`, `Cargo.toml`, `Makefile`, `core/data/` (1),
+  `docs/audits/` (1), `ffi/` (1); dependencies: removed spectra_core
+  (`ffi/Cargo.toml`, with the crate); `#[test]` functions 1479 → 1476.
 
 ## Beta Commit 235
 
 - **Internet Computer keys are the BIP-32 secp256k1 key at
   `m/44'/223'/{account}'/0/0`, as quill, dfx and DFINITY's agent libraries
   derive them** (`derivation/icp.rs`, `private_key.rs`, `import.rs`;
-  `registry.rs` key scheme; new `send/keys.rs` `Secp256k1Key`;
+  `registry.rs` key scheme; `send/keys.rs` new `Secp256k1Key`;
   `send/icp_stages.rs`, `icp_staking.rs`)
   - The principal is the self-authenticating one of the key's DER encoding with
     the uncompressed point, and every ingress is signed with ECDSA over SHA-256
@@ -1755,7 +1785,7 @@
 - Docs: `CHAIN-SUPPORT.md` derivation paths (the Internet Computer) and fees
   (dust thresholds, Kaspa storage mass); `tests/README.md` ICP staking generator
   row.
-- Total: 17 .rs files changed, +458 −180 lines; data and config files:
+- Total: 17 .rs files changed, +372 −110 lines; data and config files:
   `core/data/` (3), `core/tests/` (2), `tests/` (2); dependencies unchanged;
   `#[test]` functions 1475 → 1479.
 
@@ -1798,8 +1828,9 @@
   - Removed: the wire record's round-trip and status tests with the record,
     `a_bad_txid_is_refused` and the JSON field extractor's test.
 - Docs: `ARCHITECTURE.md` persistent send stages (reservations).
-- Total: 101 .rs files changed (2 new), +2097 −2168 lines; data and config
-  files: `tests/` (8); dependencies unchanged; `#[test]` functions 1474 → 1475.
+- Total: 101 .rs files changed (2 new), +2012 −2143 lines; data and config
+  files: `tests/` (8); dependencies unchanged; `#[test]` functions 1474 →
+  1475.
 
 ## Beta Commit 233
 
@@ -1842,9 +1873,9 @@
 - **`--json` prints its error object only when the command printed nothing**
   (`cli/src/out.rs` `emitted`; `CliError::reported` and `already_emitted`
   removed).
-- Two per-request loopback checks are removed from `api/http.rs` and
-  `icp_replica.rs`; the client's proxy refuses a non-loopback target under the
-  guard.
+- **Two per-request loopback checks are removed** (`api/http.rs`,
+  `icp_replica.rs`): the client's proxy refuses a non-loopback target under
+  the guard.
 - Tests: 2 new, 24 removed
   - CLI definitions 1: a subcommand's arguments inconsistent while it is never
     parsed (clap's `debug_assert`).
@@ -1852,15 +1883,15 @@
   - Removed: the per-chain preview decoders and their fallbacks, the rebroadcast
     dispatch and payload preparation, `quoted_send_amount` and the EVM JSON
     preview's tests, with the code.
-- Total: 61 .rs files changed, +983 −2654 lines; data and config files:
-  `tests/cli-icp-staking.py`; dependencies unchanged; `#[test]` functions 1496 →
-  1474.
+- Total: 61 .rs files changed (1 deleted), +982 −2651 lines; data and config
+  files: `tests/cli-icp-staking.py`; dependencies unchanged; `#[test]`
+  functions 1496 → 1474.
 
 ## Beta Commit 232
 
 - **Cardano's icon mark redrawn** (`icons/crypto/cardano.svg`): a new white path
   on the same blue disc.
-- Total: no .rs files changed, +1 −1 lines; data and config files:
+- Total: no .rs files changed; data and config files:
   `icons/crypto/cardano.svg`; dependencies unchanged; `#[test]` functions
   unchanged at 1496.
 
@@ -1886,7 +1917,7 @@
   paragraph; `OPEN-ITEMS.md`; `scripts/README.md`; `tests/README.md` (new);
   `docs/audits/` paths in `peercoin-2026-10-04.md`,
   `token-verification-2026-10-04/README.md` and two evidence files.
-- Total: 28 .rs files changed, +281 −9299 lines; data and config files: `tests/`
+- Total: 28 .rs files changed, +38 −114 lines; data and config files: `tests/`
   (73), `core/tests/` (11), `docs/audits/` (2), `.github/workflows/` (1),
   `Makefile`, `tools/litecoin-mweb-fixture/` (1), `tools/zcash-fixture/` (1);
   dependencies unchanged; `#[test]` functions unchanged at 1496.
@@ -1907,8 +1938,8 @@
   named from the catalog whenever an included wallet on one of its networks had
   read balances).
 - **Price refresh asks for held assets and price alerts only**
-  (`service/network_prices.rs`; `spectra market` help): a pin held nowhere is
-  not quoted.
+  (`service/network_prices.rs`; `spectra price --refresh` help): a pin held
+  nowhere is not quoted.
 - **The asset wiki no longer lists where a coin lives** (`core/src/wiki.rs`;
   `AssetWikiEntry.lives_on` and `AssetWikiPlace` removed): Known Tokens shows a
   token's deployments.
@@ -1919,7 +1950,7 @@
 - Docs: `BEHAVIOUR-CHANGES.md` three 2026-10-12 entries (wallet breakdown,
   "Lives On" dropped, pinned assets held nowhere); `AGENTS.md` Git rule
   shortened to "Do not git commit or push unless I said so."
-- Total: 7 .rs files changed, +265 −303 lines; data and config files: none;
+- Total: 7 .rs files changed, +181 −298 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions 1497 → 1496.
 
 ## Beta Commit 229
@@ -1947,7 +1978,7 @@
     used them.
 - **`spectra staking build --action` is a clap `ValueEnum`**
   (`cli/src/cmd/staking.rs`; before: a string list matched by hand).
-- Two refusals moved into functions the tests call (`api/lightwalletd.rs`
+- **Two refusals moved into functions the tests call** (`api/lightwalletd.rs`
   `serves_network`, `send/zcash_shielded.rs` `shielding_error`); behaviour
   unchanged.
 - Measured: 2026-10-10, `make test-cli` against a prebuilt binary: 61 checks in
@@ -1979,7 +2010,7 @@
   binary shows" and "Dead code removed from core, the app and the scripts" (the
   latter recording Beta Commit 228); `scripts/README.md` suite table and runner
   note.
-- Total: 100 .rs files changed (33 new), +15471 −9061 lines; data and config
+- Total: 100 .rs files changed (33 new), +14066 −115 lines; data and config
   files: `scripts/` (44); dependencies unchanged; `#[test]` functions 1328 →
   1497.
 
@@ -1999,27 +2030,26 @@
   - Operational log entries lose their `wallet_id` and `metadata` fields, and
     `DiagnosticCommand::Reset` and the per-wallet log pruning that read them are
     deleted (`service/diagnostic_state.rs`).
-  - Crate-root and `service` re-exports nothing used are removed
-    (`DonationDestination`, `SendTokenIdentity`, `FundsScan`,
+  - Crate-root, `send`, `staking` and `service` re-exports nothing used are
+    removed (`DonationDestination`, `SendTokenIdentity`, `FundsScan`,
     `PortfolioSnapshot`, `WalletActions`, `MoneroSyncStatus` and others).
-- **`UI-FIX.md` deleted, and `OPEN-ITEMS.md` keeps only open items**: the ticked
-  single-wallet setup, wallet details, transfer correctness, asset protocol,
-  wallet import and multisig items are removed; the endpoint audit, CIP-113,
-  multisig signer sets, multisig tokens, Substrate multisig cancel, history
-  providers and staking coverage remain.
 - **Fiat icons dropped from the icon tooling and rules**
   (`scripts/normalize-icons.sh`, `scripts/svgo.config.mjs`, `AGENTS.md`): only
   `icons/crypto/` is normalized.
 - **Python bytecode removed from the tree and ignored** (`scripts/__pycache__/`,
-  `.gitignore`); `make clean` no longer removes `build/`; the Zcash fixture
-  drops its unused `blake2b_simd` and `prost` dependencies.
-- Tests: 2 removed (a history-store reset of one entry and a token-preference
-  identity check, with the code they covered).
-- Docs: `OPEN-ITEMS.md` (done items removed); `AGENTS.md` "Icons", "Platform
+  `.gitignore`).
+- **`make clean` no longer removes `build/`** (`Makefile`).
+- **The Zcash fixture drops its unused `blake2b_simd` and `prost`
+  dependencies** (`tools/zcash-fixture/Cargo.toml`).
+- Tests: 0 new, 2 removed (a history-store reset of one entry and a
+  token-preference identity check, with the code they covered).
+- Docs: `UI-FIX.md` deleted; `OPEN-ITEMS.md` keeps only open items (the ticked
+  single-wallet setup, wallet details, transfer correctness, asset protocol,
+  wallet import and multisig items removed); `AGENTS.md` "Icons", "Platform
   constraints"; `README.md` "Verification" (four targets, `make check-ui` by
   hand); `ARCHITECTURE.md` "Chain rules" file name; `FFI-BOUNDARY.md` "Callers
   and coverage" (`RefreshObserver`); `scripts/README.md` "Icons".
-- Total: 35 .rs files changed, +80 −1137 lines; data and config files:
+- Total: 35 .rs files changed, +57 −305 lines; data and config files:
   `scripts/__pycache__/` (4), `scripts/` (2), `.gitignore`, `Cargo.lock`,
   `Makefile`, `tools/zcash-fixture/` (1); dependencies: removed blake2b_simd,
   prost (`tools/zcash-fixture/Cargo.toml`); `#[test]` functions 1330 → 1328.
@@ -2042,7 +2072,7 @@
 - Docs: `BEHAVIOUR-CHANGES.md` three entries (custom token standard; two
   app-only: Show Seed Phrase after Face ID, Reset Wallet as a Settings page);
   `UI-FIX.md` items 104–106.
-- Total: 4 .rs files changed, +368 −122 lines; data and config files:
+- Total: 4 .rs files changed, +272 −121 lines; data and config files:
   `scripts/cli-token-preferences.py`; dependencies unchanged; `#[test]`
   functions unchanged at 1330.
 
@@ -2054,8 +2084,7 @@
   logo until core has read the store.
 - Docs: `BEHAVIOUR-CHANGES.md` three 2026-10-09 entries; `UI-FIX.md` sections
   8–10.
-- Total: no .rs files changed, +80 −0 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 1330.
+- Total: No code changed.
 
 ## Beta Commit 225
 
@@ -2115,10 +2144,12 @@
   - `transaction_amount_direction` makes a zero-amount transfer neutral;
     `spectra txs` uses it.
 - **New exports for display and seed entry** (`formatting.rs`,
-  `send/prepared_fields.rs`, `validation/mod.rs`): `display_address` writes EVM
-  addresses in EIP-55; `prepared_fields` flattens prepared transaction details
-  into named rows with byte strings as `0x` hex; `seed_word_suggestions`,
-  `seed_phrase_words_from_text` and `default_wallet_name`.
+  `send/prepared_fields.rs`, `validation/mod.rs`, `service/wallet_import.rs`)
+  - `display_address` writes EVM addresses in EIP-55.
+  - `prepared_fields` flattens prepared transaction details into named rows
+    with byte strings as `0x` hex.
+  - `seed_word_suggestions`, `seed_phrase_words_from_text` and
+    `default_wallet_name`.
 - **`UI-FIX.md` added**: the 2026-10-09 UI review checklist, items ticked as
   landed.
 - Tests: 30 new, 5 removed
@@ -2133,11 +2164,13 @@
   - Custom endpoints 2: an edit losing "only mine", removal leaving a network
     with nothing to ask.
   - Seed entry 2: prefix suggestions, numbered or comma-separated pastes.
-  - Send total, EIP-55 display and zero-amount direction 3.
+  - Send total, EIP-55 display and zero-amount direction 3: the fee added to
+    a token send's total, an EVM address shown unchecksummed, a zero transfer
+    shown as moving.
 - Docs: `BEHAVIOUR-CHANGES.md` 37 entries dated 2026-10-09 from the UI review
   (most app-only); `UI-FIX.md` (new).
-- Total: 56 .rs files changed (2 new), +3359 −404 lines; data and config files:
-  `scripts/cli-acceptance.sh`, `scripts/cli-portfolio.py`,
+- Total: 56 .rs files changed (2 new), +2486 −401 lines; data and config
+  files: `scripts/cli-acceptance.sh`, `scripts/cli-portfolio.py`,
   `scripts/cli-send.py`, `scripts/cli-transport.py`, `scripts/cli-wallets.py`;
   dependencies unchanged; `#[test]` functions 1305 → 1330.
 
@@ -2147,8 +2180,7 @@
   (`docs/BEHAVIOUR-CHANGES.md`): backing out of a new wallet's phrase page no
   longer crashes, since each setup form gets its own draft.
 - Docs: `BEHAVIOUR-CHANGES.md` one 2026-10-08 entry.
-- Total: no .rs files changed, +26 −0 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 1305.
+- Total: No code changed.
 
 ## Beta Commit 223
 
@@ -2206,10 +2238,10 @@
   module boundaries" (multisig modules); `OPEN-ITEMS.md` "Multisig accounts"
   (three done, three open: signer sets, tokens, Substrate cancel);
   `scripts/README.md` ten multisig CLI suites and vector generators.
-- Total: 103 .rs files changed (40 new), +23332 −1086 lines; data and config
-  files: `scripts/` (22), `core/tests/` (12), `Cargo.lock`, `core/` (1);
-  dependencies: added p256 0.13 (`core/Cargo.toml`); `#[test]` functions 1274 →
-  1305.
+- Total: 103 .rs files changed (40 new, 2 deleted), +15078 −1009 lines; data
+  and config files: `scripts/` (22), `core/tests/` (12), `Cargo.lock`, `core/`
+  (1); dependencies: added p256 0.13 (`core/Cargo.toml`); `#[test]` functions
+  1274 → 1305.
 
 ## Beta Commit 222
 
@@ -2286,9 +2318,9 @@
 - Docs: `BEHAVIOUR-CHANGES.md` six 2026-10-08 entries; `CHAIN-SUPPORT.md`
   "Wallets and transfers"; `ARCHITECTURE.md` "Core module boundaries";
   `OPEN-ITEMS.md` six wallet-import items ticked.
-- Total: 114 .rs files changed (18 new), +9875 −4493 lines; data and config
-  files: `scripts/` (14), `core/tests/` (5); dependencies unchanged; `#[test]`
-  functions 1265 → 1274.
+- Total: 114 .rs files changed (18 new, 9 deleted), +7237 −4462 lines; data
+  and config files: `scripts/` (14), `core/tests/` (5); dependencies
+  unchanged; `#[test]` functions 1265 → 1274.
 
 ## Beta Commit 221
 
@@ -2318,13 +2350,13 @@
 - Docs: `BEHAVIOUR-CHANGES.md` two 2026-10-08 entries; `CHAIN-SUPPORT.md`
   "Wallets and transfers", "Staking positions and execution"; `OPEN-ITEMS.md`
   two wallet-details items ticked; `scripts/README.md`.
-- Total: 26 .rs files changed (3 new), +1786 −87 lines; data and config files:
+- Total: 26 .rs files changed (3 new), +1354 −81 lines; data and config files:
   `core/tests/fixtures/cardano-stake-addresses.json`,
   `core/tests/fixtures/near-storage-unregister.json`,
   `scripts/cli-wallet-operations.py`,
   `scripts/generate-cardano-stake-address-vectors.cjs`,
-  `scripts/generate-near-storage-unregister-vector.cjs`; dependencies unchanged;
-  `#[test]` functions 1260 → 1265.
+  `scripts/generate-near-storage-unregister-vector.cjs`; dependencies
+  unchanged; `#[test]` functions 1260 → 1265.
 
 ## Beta Commit 220
 
@@ -2367,8 +2399,8 @@
   "Wallets and transfers", "Staking positions and execution"; `OPEN-ITEMS.md`
   four items ticked, Cardano stake address added; `scripts/README.md`
   `cli-payment-memos.py`.
-- Total: 52 .rs files changed (2 new), +2700 −406 lines; data and config files:
-  `scripts/` (11), `core/tests/` (3); dependencies unchanged; `#[test]`
+- Total: 52 .rs files changed (2 new), +1706 −362 lines; data and config
+  files: `scripts/` (11), `core/tests/` (3); dependencies unchanged; `#[test]`
   functions 1249 → 1260.
 
 ## Beta Commit 219
@@ -2478,26 +2510,27 @@
   `wallet_db::zcash`, `scan_cache`); `OPEN-ITEMS.md` six asset and privacy items
   ticked, NEAR storage and CIP-113 added; `scripts/README.md` new suites and
   generators.
-- Total: 127 .rs files changed (47 new), +32033 −1813 lines; data and config
-  files: `scripts/` (18), `core/tests/` (7), `docs/audits/` (5), `core/data/`
-  (2), `.github/workflows/` (1), `Cargo.lock`, `Cargo.toml`, `core/` (1),
-  `tools/litecoin-mweb-fixture/` (1), `tools/zcash-fixture/` (1); dependencies:
-  arti-client 0.22 → 0.41, tor-rtcompat 0.22 → 0.41, rusqlite 0.31 → 0.37; added
-  blake3 1, bls12_381 0.8, grin_secp256k1zkp 0.8, http 1, hyper-util 0.1, jubjub
-  0.10, orchard 0.15, prost 0.14, rustls 0.23, sapling-crypto 0.7, scrypt 0.11,
-  secrecy 0.8, tokio-rustls 0.26, tonic 0.14, tower 0.5, webpki-roots 1,
-  zcash_client_backend 0.24, zcash_client_sqlite 0.22, zcash_keys 0.16,
-  zcash_primitives 0.30, zcash_proofs 0.30, zcash_protocol 0.10, zcash_script
-  0.4, zcash_transparent 0.10, zip32 0.2 (`core/Cargo.toml`); new manifests
-  `tools/litecoin-mweb-fixture/Cargo.toml` (bip39 2, blake3 1, grin_secp256k1zkp
-  0.8, hex 0.4, litecoin =0.32.8-rc.1, num-bigint 0.4, rand 0.8, secp256k1 0.29,
-  serde_json 1, sha2 0.10, tokio 1) and `tools/zcash-fixture/Cargo.toml` (bip39
-  2, blake2b_simd 1.0, bls12_381 0.8, futures 0.3, hex 0.4, http 1,
-  incrementalmerkletree 0.8, jubjub 0.10, orchard 0.15, prost 0.14, rand 0.8,
-  sapling-crypto 0.7, secp256k1 0.29, serde_json 1, tokio 1, tokio-stream 0.1,
-  tonic 0.14, tonic-prost 0.14, tower 0.5, zcash_client_backend 0.24, zcash_keys
-  0.16, zcash_primitives 0.30, zcash_protocol 0.10, zcash_script 0.4,
-  zcash_transparent 0.10, zip32 0.2); `#[test]` functions 1170 → 1249.
+- Total: 127 .rs files changed (47 new, 2 deleted), +21681 −1189 lines; data
+  and config files: `scripts/` (18), `core/tests/` (7), `docs/audits/` (5),
+  `core/data/` (2), `.github/workflows/` (1), `Cargo.lock`, `Cargo.toml`,
+  `core/` (1), `tools/litecoin-mweb-fixture/` (1), `tools/zcash-fixture/` (1);
+  dependencies: arti-client 0.22 → 0.41, tor-rtcompat 0.22 → 0.41, rusqlite
+  0.31 → 0.37; added blake3 1, bls12_381 0.8, grin_secp256k1zkp 0.8, http 1,
+  hyper-util 0.1, jubjub 0.10, orchard 0.15, prost 0.14, rustls 0.23,
+  sapling-crypto 0.7, scrypt 0.11, secrecy 0.8, tokio-rustls 0.26, tonic 0.14,
+  tower 0.5, webpki-roots 1, zcash_client_backend 0.24, zcash_client_sqlite
+  0.22, zcash_keys 0.16, zcash_primitives 0.30, zcash_proofs 0.30,
+  zcash_protocol 0.10, zcash_script 0.4, zcash_transparent 0.10, zip32 0.2
+  (`core/Cargo.toml`); new manifests `tools/litecoin-mweb-fixture/Cargo.toml`
+  (bip39 2, blake3 1, grin_secp256k1zkp 0.8, hex 0.4, litecoin =0.32.8-rc.1,
+  num-bigint 0.4, rand 0.8, secp256k1 0.29, serde_json 1, sha2 0.10, tokio 1)
+  and `tools/zcash-fixture/Cargo.toml` (bip39 2, blake2b_simd 1.0, bls12_381
+  0.8, futures 0.3, hex 0.4, http 1, incrementalmerkletree 0.8, jubjub 0.10,
+  orchard 0.15, prost 0.14, rand 0.8, sapling-crypto 0.7, secp256k1 0.29,
+  serde_json 1, tokio 1, tokio-stream 0.1, tonic 0.14, tonic-prost 0.14, tower
+  0.5, zcash_client_backend 0.24, zcash_keys 0.16, zcash_primitives 0.30,
+  zcash_protocol 0.10, zcash_script 0.4, zcash_transparent 0.10, zip32 0.2);
+  `#[test]` functions 1170 → 1249.
 
 ## Beta Commit 218
 
@@ -2577,7 +2610,7 @@
   "Wallet details" (new, items ticked as done; Cardano base addresses and
   XRP/Stellar tags added); `scripts/README.md` `cli-wallet-operations.py` and
   generators.
-- Total: 91 .rs files changed (22 new), +13043 −247 lines; data and config
+- Total: 91 .rs files changed (22 new), +9898 −240 lines; data and config
   files: `scripts/` (13), `core/tests/` (7), `core/data/` (2), `docs/audits/`
   (2); dependencies unchanged; `#[test]` functions 1119 → 1170.
 
@@ -2602,8 +2635,9 @@
   Polyseed, the app password and wallet sealing use `ring::pbkdf2`; the `pbkdf2`
   crate is removed. Output unchanged.
 - **Dependencies are optimized in dev and test builds** (`Cargo.toml`
-  `[profile.dev.package."*"] opt-level = 3`); `make test-ios` skips test
-  diagnostics collection.
+  `[profile.dev.package."*"] opt-level = 3`).
+- **`make test-ios` skips test diagnostics collection** (`Makefile`
+  `-collect-test-diagnostics never`).
 - Tests: 4 new, 4 removed
   - TON W5 2: jetton transfers against @ton/ton for both versions (replacing the
     v4R2-only test), the used-account scan reading each version.
@@ -2613,7 +2647,7 @@
 - Docs: `BEHAVIOUR-CHANGES.md` three 2026-10-07 entries (one app-only);
   `CHAIN-SUPPORT.md` "Wallets and transfers" (TON versions); `OPEN-ITEMS.md` TON
   version item ticked; `scripts/README.md` `generate-ton-w5-vectors.cjs`.
-- Total: 26 .rs files changed (1 new), +1227 −382 lines; data and config files:
+- Total: 26 .rs files changed (1 new), +854 −355 lines; data and config files:
   `scripts/` (4), `Cargo.lock`, `Cargo.toml`, `Makefile`, `core/` (1),
   `core/tests/` (1); dependencies: removed pbkdf2, added ring 0.17
   (`core/Cargo.toml`); `#[test]` functions unchanged at 1119.
@@ -2709,7 +2743,7 @@
   seed-phrase copy); `CHAIN-SUPPORT.md` "Wallets and transfers" (phrase formats,
   profiles, key encodings, NEAR, reserves); `OPEN-ITEMS.md` "Single-wallet
   setup" (new, items ticked; TON version open).
-- Total: 59 .rs files changed (9 new), +51717 −4441 lines; data and config
+- Total: 59 .rs files changed (9 new), +5874 −4375 lines; data and config
   files: `core/data/` (25), `scripts/` (16), `core/tests/` (4); dependencies
   unchanged; `#[test]` functions 1091 → 1119.
 
@@ -2723,8 +2757,7 @@
 - Docs: `ARCHITECTURE.md` "Native flow lifetimes and display precision";
   `BEHAVIOUR-CHANGES.md` one 2026-10-06 entry; `OPEN-ITEMS.md` `AppState` item
   removed.
-- Total: no .rs files changed, +38 −25 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 1091.
+- Total: No code changed.
 
 ## Beta Commit 214
 
@@ -2750,13 +2783,14 @@
   `CoreTransactionRecord` → `FetchedTransactionRecord`,
   `PriceAlertEvaluationAlert` → `PriceAlertRule`, `CoreResetPlan` → `ResetPlan`,
   and `Core*` dropped from the rest. No behaviour change.
-- Tests: 1 removed (it pinned account-model previews dropping UTXO-only fields).
+- Tests: 0 new, 1 removed (it pinned account-model previews dropping UTXO-only
+  fields).
 - Docs: `BEHAVIOUR-CHANGES.md` one 2026-10-06 entry; `FFI-BOUNDARY.md` "Export
   shapes" (name a type once), "Callers and coverage" (the new scan), "Runtime
   and storage traps", "Common errors"; `ARCHITECTURE.md` "Ownership"
   (`ResidentState`); `OPEN-ITEMS.md` both items removed; `scripts/README.md`
   "Code and resource checks".
-- Total: 99 .rs files changed, +1439 −857 lines; data and config files:
+- Total: 99 .rs files changed, +618 −824 lines; data and config files:
   `.github/workflows/ci.yml`, `Makefile`, `scripts/cli-icp-staking.py`,
   `scripts/record_writers.py`, `scripts/test-record-writers.py`,
   `scripts/unwritten-record-fields.sh`; dependencies unchanged; `#[test]`
@@ -2786,9 +2820,9 @@
   "Verification"; `README.md` "The CLI", "Verification"; `FFI-BOUNDARY.md`
   "Callers and coverage"; `scripts/README.md` "CLI tests", "Code and resource
   checks".
-- Total: 14 .rs files changed, +325 −1961 lines; data and config files:
-  `scripts/` (7), `.github/workflows/` (1), `Makefile`; dependencies unchanged;
-  `#[test]` functions 1097 → 1092.
+- Total: 14 .rs files changed, +98 −165 lines; data and config files:
+  `scripts/` (7), `.github/workflows/` (1), `Makefile`; dependencies
+  unchanged; `#[test]` functions 1097 → 1092.
 
 ## Beta Commit 212
 
@@ -2800,7 +2834,7 @@
     (it had no reader).
   - `spectra token catalog --json` lists each deployment's `tags`.
 - Docs: `BEHAVIOUR-CHANGES.md` one 2026-10-05 entry.
-- Total: 10 .rs files changed, +95 −45 lines; data and config files:
+- Total: 10 .rs files changed, +54 −45 lines; data and config files:
   `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions
   unchanged at 1097.
 
@@ -2809,8 +2843,7 @@
 - **Network rules and presentation share one `chains.toml` row**
   (`core/data/chains.toml`, `core/data/chain-ui.toml` deleted,
   `core/src/chains.rs`): search keywords, rank, tags, color, artwork and address
-  hints move onto the network row; testnets inherit rank and tags; duplicate ids
-  and unknown mainnet families fail at load.
+  hints move onto the network row; testnets inherit rank and tags.
 - **The chain wiki and picker share one tag classification**
   (`ChainWikiEntry.tags` as `ChainTag`; `core/data/chain-wiki.toml`; `spectra
   chains --wiki`)
@@ -2823,10 +2856,10 @@
     (replaces the presentation-join row-order test).
 - Docs: `BEHAVIOUR-CHANGES.md` two 2026-10-05 entries; `ARCHITECTURE.md` "Chain
   rules".
-- Total: 3 .rs files changed, +631 −900 lines; data and config files:
+- Total: 3 .rs files changed, +103 −123 lines; data and config files:
   `core/data/chain-ui.toml`, `core/data/chain-wiki.toml`,
-  `core/data/chains.toml`, `scripts/cli-acceptance.sh`; dependencies unchanged;
-  `#[test]` functions unchanged at 1097.
+  `core/data/chains.toml`, `scripts/cli-acceptance.sh`; dependencies
+  unchanged; `#[test]` functions unchanged at 1097.
 
 ## Beta Commit 210
 
@@ -2893,8 +2926,9 @@
   "Fungible assets" (reactivation); `OPEN-ITEMS.md` endpoint audit task and the
   2026-10-04 code review gaps (transfer correctness, asset and privacy
   protocols, wallet import, history and providers, staking), replacing the three
-  scope items.
-- Total: 46 .rs files changed (10 new), +10961 −1210 lines; data and config
+  scope items; new records `docs/audits/peercoin-2026-10-04.md` and
+  `docs/audits/token-verification-2026-10-04/README.md`.
+- Total: 46 .rs files changed (10 new), +3632 −366 lines; data and config
   files: `docs/audits/` (13), `core/data/` (8), `scripts/` (2); dependencies
   unchanged; `#[test]` functions 1064 → 1097.
 
@@ -2969,7 +3003,7 @@
   come from live metadata, with genesis, runtime and fees validated at every
   stage.
 - **NEAR fees, validity and hashes follow the protocol**
-  (`api/near_json_rpc.rs`, new `service/send_near.rs`, `send/near.rs`)
+  (`api/near_json_rpc.rs`, `send/near.rs`, new `service/send_near.rs`)
   - Native, NEP-141 and staking budgets use live protocol fees, implicit-account
     creation and the minimum prepaid-gas price; the static token reserve is
     removed.
@@ -2979,10 +3013,11 @@
     pending retries; the local hash is kept and a foreign submission identity
     rejected.
 - **Raw private-key import on 48 mainnets and their test networks** (new
-  `derivation/private_key.rs`, `derivation/dispatch.rs`): a test network derives
-  its own address (before: six UTXO testnets derived mainnet); Bitcoin account
-  xpubs keep their concrete network; Stellar receive addresses are canonical
-  uppercase.
+  `derivation/private_key.rs`; `derivation/dispatch.rs`)
+  - A test network derives its own address (before: six UTXO testnets derived
+    mainnet).
+  - Bitcoin account xpubs keep their concrete network.
+  - Stellar receive addresses are canonical uppercase.
 - **History pagination persisted, with Sui, Aptos, TON and NEAR token activity**
   (new `wallet_db/history_pagination.rs`, `api/history_page.rs`,
   `api/aptos_indexer.rs`; `spectra history --save --load-more`)
@@ -2996,8 +3031,9 @@
   execution, L1 data and operator charge from the oracle at the mined block; a
   missing component leaves the total unknown.
 - **Monero defaults are eligible for local scanning and Avalanche defaults read
-  ERC-20** (`core/data/endpoints.toml`); ICP replica health reads and validates
-  the CBOR status.
+  ERC-20** (`core/data/endpoints.toml`).
+- **ICP replica health reads and validates the CBOR status**
+  (`api/icp_replica.rs`, `service/endpoint_health.rs`).
 - **CLI help and results describe current behaviour**
   (`cli/src/cmd/settings.rs`, `wallet.rs`, `ctx.rs`, `main.rs`)
   - `settings reset --scope` accepts only core's scopes (exit 2 otherwise);
@@ -3010,10 +3046,12 @@
 - **`Chain::is_testnet` reads the network declaration**
   (`core/src/registry.rs`): loading the token catalog no longer deadlocks on the
   joined chain catalog.
-- **Unused exports and resources removed**: nine internal types stop being
-  UniFFI exports; the four fiat icons are deleted (`icons/fiat/`); Monad's icon
-  drops its shadow filter; source scans count production code only (new
-  `scripts/source_scan.py`).
+- **Unused exports and resources removed** (`icons/fiat/`,
+  `icons/crypto/monad.svg`, new `scripts/source_scan.py`)
+  - Nine internal types stop being UniFFI exports.
+  - The four fiat icons are deleted.
+  - Monad's icon drops its shadow filter.
+  - Source scans count production code only.
 - Measured: 2026-10-04, read-only evidence under
   `docs/audits/chain-support-2026-10-04/` (endpoint probes, network identities,
   OP Stack fork configurations, TON Center, NEAR receipts, TRC-10 metadata and
@@ -3047,12 +3085,12 @@
   staking-adapter items removed, "Known limitations" replaced by "Supported
   chain scope"; `scripts/README.md` new CLI suites, vector generators and
   source-scan files.
-- Total: 175 .rs files changed (18 new), +29600 −4852 lines; data and config
-  files: `scripts/` (26), `docs/audits/` (25), `core/tests/` (12), `core/data/`
-  (5), `icons/fiat/` (4), `Cargo.lock`, `core/` (1), `icons/crypto/` (1);
-  dependencies: added candid 0.10, ic-cbor 3.2.0, ic-certificate-verification
-  3.2.0, ic-certification 3.2.0, num-bigint 0.4, xxhash-rust 0.8
-  (`core/Cargo.toml`); `#[test]` functions 984 → 1064.
+- Total: 175 .rs files changed (18 new, 1 deleted), +19154 −3657 lines; data
+  and config files: `scripts/` (26), `docs/audits/` (25), `core/tests/` (12),
+  `core/data/` (5), `icons/fiat/` (4), `Cargo.lock`, `core/` (1),
+  `icons/crypto/` (1); dependencies: added candid 0.10, ic-cbor 3.2.0,
+  ic-certificate-verification 3.2.0, ic-certification 3.2.0, num-bigint 0.4,
+  xxhash-rust 0.8 (`core/Cargo.toml`); `#[test]` functions 984 → 1064.
 
 ## Beta Commit 208
 
@@ -3176,9 +3214,10 @@
   testnet uses its own token descriptors, and a page ends only when both raw
   provider lists are short, so filtering unknown contracts no longer stops
   pagination.
-- New CLI suites `scripts/cli-litecoin.py`, `cli-send-polkadot.py` and
-  `cli-send-xrp.py`, with Asset Hub metadata fixtures in `core/tests/fixtures/`;
-  four `scripts/__pycache__/*.pyc` files are committed alongside.
+- **Litecoin, Polkadot and XRP sends get CLI suites**
+  (`scripts/cli-litecoin.py`, `cli-send-polkadot.py`, `cli-send-xrp.py`), with
+  Asset Hub metadata fixtures in `core/tests/fixtures/`.
+- **Four `scripts/__pycache__/*.pyc` files are committed.**
 - Tests: 68 new, 4 removed
   - Litecoin 30: derivation, signing and quoting disagreeing on inputs, scripts,
     dust or fees; unowned, stale, duplicate or out-of-range inputs reaching
@@ -3206,11 +3245,11 @@
   history, and an app entry on cancelled native reads); `OPEN-ITEMS.md` adds OP
   Stack receipt fee decoding and Monad history and discovery, and drops the
   Plasma and Monad support items.
-- Total: 75 .rs files changed (9 new), +8916 −1471 lines; data and config files:
-  `scripts/` (9), `core/data/` (7), `core/tests/` (4), `scripts/__pycache__/`
-  (4), `Cargo.lock`, `core/` (1); dependencies: added frame-metadata 23,
-  parity-scale-codec 3, scale-info 2, removed blake3, secp256k1zkp
-  (`core/Cargo.toml`); `#[test]` functions 920 → 984.
+- Total: 75 .rs files changed (9 new, 1 deleted), +7236 −1327 lines; data and
+  config files: `scripts/` (9), `core/data/` (7), `core/tests/` (4),
+  `scripts/__pycache__/` (4), `Cargo.lock`, `core/` (1); dependencies: added
+  frame-metadata 23, parity-scale-codec 3, scale-info 2, removed blake3,
+  secp256k1zkp (`core/Cargo.toml`); `#[test]` functions 920 → 984.
 
 ## Beta Commit 207
 
@@ -3288,13 +3327,13 @@
   token standards per deployment; `OPEN-ITEMS.md` adds certifying the 59 token
   contract identities (with the provenance table), canonical TON jetton master
   identity, and the TRC-10 execution limitation.
-- Total: 41 .rs files changed (1 new), +2157 −455 lines; data and config files:
-  `core/data/` (5), `icons/crypto/` (2), `scripts/` (2); dependencies unchanged;
-  `#[test]` functions 903 → 920.
+- Total: 41 .rs files changed (1 new), +1656 −423 lines; data and config
+  files: `core/data/` (5), `icons/crypto/` (2), `scripts/` (2); dependencies
+  unchanged; `#[test]` functions 903 → 920.
 
 ## Beta Commit 206
 
-- **Eleven tokens gain deployments on more chains** (`core/data/tokens.toml`);
+- **Twelve tokens gain deployments on more chains** (`core/data/tokens.toml`);
   each shares its token's identity, artwork and price-provider ids
   - AAVE on Base, Optimism and Polygon; CRV on Avalanche C, BNB, Celo, Ink,
     Mantle, Polygon, Sonic and X Layer; CAKE on Arbitrum, Linea, opBNB, ZKsync
@@ -3314,8 +3353,7 @@
   Avalanche Fuji C, BNB Smart Chain Testnet, Cronos EVM Testnet, HyperEVM
   Testnet, ZKsync Era Sepolia.
 - **Provider-id tests no longer keep per-token lists** (`core/src/tokens.rs`):
-  nonempty listing ids must be unique, lowercase and trimmed; which tokens may
-  lack a CoinPaprika id is decided by the catalog alone.
+  which tokens may lack a CoinPaprika id is decided by the catalog alone.
 - Measured: 2026-10-03, read-only RPC reads of the added contracts
   (`docs/BEHAVIOUR-CHANGES.md` entries of that date): chain ids, symbols and
   decimals matched the catalog; the supplied Avalanche sUSDS address had no
@@ -3326,9 +3364,10 @@
   tsUSDe removal, USDe/sUSDe, ENA, DAI, USDS/sUSDS, CRV, CAKE, AAVE, two on
   concrete network names); `OPEN-ITEMS.md` adds Plasma (EURC, USDC) and Monad
   (CAKE) support with their contracts.
-- Total: 2 .rs files changed, +893 −56 lines; data and config files:
-  `core/data/chains.toml`, `core/data/tokens.toml`, `scripts/cli-acceptance.sh`;
-  dependencies unchanged; `#[test]` functions 905 → 903.
+- Total: 2 .rs files changed, +2 −35 lines; data and config files:
+  `core/data/chains.toml`, `core/data/tokens.toml`,
+  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 905
+  → 903.
 
 ## Beta Commit 205
 
@@ -3365,13 +3404,17 @@
   wallet's own network instead of its mainnet.
 - **ICP and Zcash one-shot send paths removed** (`core/src/send/icp.rs`,
   `send/zcash.rs`, `api/blockbook.rs`): Rosetta `sign_and_submit` and
-  `sign_zcash_and_broadcast` with their test-only helpers; `IcpStakingClient`
-  and `PolkadotStakingClient` drop endpoint lists they never read.
-- **Icons** (`icons/crypto/`): `monad.svg` and `plasma.svg` added (Monad in
-  direct 64×64 coordinates, no transform); the sUSDS disc loses its outer
-  gradient stroke; the Raydium mark is enlarged.
-- New CLI suites `scripts/cli-send-utxo.py` and
-  `scripts/cli-wallet-deletion.py`.
+  `sign_zcash_and_broadcast` with their test-only helpers.
+- **`IcpStakingClient` and `PolkadotStakingClient` drop endpoint lists they
+  never read** (`core/src/staking/icp.rs`, `staking/polkadot.rs`).
+- **Monad and Plasma get icons; sUSDS and Raydium are redrawn**
+  (`icons/crypto/`)
+  - `monad.svg` and `plasma.svg` are added, Monad in direct 64×64 coordinates
+    with no transform.
+  - The sUSDS disc loses its outer gradient stroke.
+  - The Raydium mark is enlarged.
+- **UTXO sends and wallet deletion get CLI suites**
+  (`scripts/cli-send-utxo.py`, `scripts/cli-wallet-deletion.py`).
 - Tests: 10 new, 10 removed
   - UTXO outputs 5: a signer paying a different script type than the address
     names, CashAddr and legacy diverging, unsupported witness versions or
@@ -3386,10 +3429,10 @@
   artwork, wallet removal, token queries on the concrete network, UTXO recipient
   scripts, and app entries on late seed reads and Monero scan cancellation);
   `OPEN-ITEMS.md` staking item no longer asks to drop ICP and Polkadot endpoint
-  fields; `Makefile` comment on `verify`.
-- Total: 60 .rs files changed (4 new), +1697 −1333 lines; data and config files:
-  `icons/crypto/` (4), `scripts/` (4), `Makefile`; dependencies unchanged;
-  `#[test]` functions unchanged at 905.
+  fields.
+- Total: 60 .rs files changed (4 new, 1 deleted), +1227 −1320 lines; data and
+  config files: `icons/crypto/` (4), `scripts/` (4), `Makefile`; dependencies
+  unchanged; `#[test]` functions unchanged at 905.
 
 ## Beta Commit 204
 
@@ -3398,15 +3441,16 @@
   `rocketpooleth.svg`; `core/data/tokens.toml`): Lombard Staked Bitcoin, Pyth
   Network, Raydium and Rocket Pool ETH name new artwork (before: an empty
   `artwork_name`); Lombard's colour orange → green.
-- `icons/crypto/peercoin.svg` is added (no catalog entry names it); `pepe.svg`
-  is redrawn.
+- **Peercoin gets an icon and PEPE's is redrawn** (`icons/crypto/`)
+  - `peercoin.svg` is added; no catalog entry names it.
+  - `pepe.svg` is redrawn.
 - **Icon normalization rescales correctly around paint servers**
   (`scripts/svgo.config.mjs`): `<defs>`, `<clipPath>`, `<mask>` and paint
   servers are skipped, and a shape filled or stroked with `url(…)` is not
   rescaled by its attributes.
-- Total: no .rs files changed, +108 −28 lines; data and config files:
-  `icons/crypto/` (6), `core/data/` (1), `scripts/` (1); dependencies unchanged;
-  `#[test]` functions unchanged at 905.
+- Total: no .rs files changed; data and config files: `icons/crypto/` (6),
+  `core/data/` (1), `scripts/` (1); dependencies unchanged; `#[test]`
+  functions unchanged at 905.
 
 ## Beta Commit 203: Migration done
 
@@ -3419,16 +3463,18 @@
   (`core/src/validation/mod.rs`): `TooShort { min_chars }`; `spectra wallet
   check-password` prints `{"tooShort":{"minChars":4}}` (before: a bare
   `tooShort`).
-- Registry guard test messages say to record a widening in
-  `BEHAVIOUR-CHANGES.md` rather than `PLAN.md`
-  (`core/src/derivation/dispatch.rs`, `staking/service.rs`).
-- Docs: `AGENTS.md` "Rule 0" and "Architecture"; `ARCHITECTURE.md` ownership;
-  `OPEN-ITEMS.md` adds "Android front end"; `BEHAVIOUR-CHANGES.md`
-  password-minimum entry and an app entry on token and diagnostics-import
-  failures; `README.md`, `FFI-BOUNDARY.md`, `FUTURE_PLANS.md` links.
-- Total: 4 .rs files changed, +144 −184 lines; data and config files:
-  `scripts/cli-acceptance.sh`, `scripts/cli-wallets.py`; dependencies unchanged;
-  `#[test]` functions unchanged at 905.
+- **Registry guard test messages say to record a widening in
+  `BEHAVIOUR-CHANGES.md`** (`core/src/derivation/dispatch.rs`,
+  `staking/service.rs`; before: `PLAN.md`).
+- Docs: `AGENTS.md` "Rule 0" and "Architecture"; `ARCHITECTURE.md`
+  introduction and "Boundary design"; `FUTURE_PLANS.md` links and a new
+  "Android front end" item; `OPEN-ITEMS.md` introduction and `AppState` item;
+  `BEHAVIOUR-CHANGES.md` password-minimum entry and an app entry on token and
+  diagnostics-import failures; `README.md`, `FFI-BOUNDARY.md` links; `PLAN.md`
+  deleted.
+- Total: 4 .rs files changed, +25 −16 lines; data and config files:
+  `scripts/cli-acceptance.sh`, `scripts/cli-wallets.py`; dependencies
+  unchanged; `#[test]` functions unchanged at 905.
 
 ## Beta Commit 202
 
@@ -3482,8 +3528,8 @@
     stored without its address.
   - Messages 1: values not rendered into a template.
   - Revalue 1: a new display currency not revalued by core.
-  - Chain wiki 1: chains out of name order. Input bounds 1: a control offering a
-    bound the reducer refuses.
+  - Chain wiki 1: chains out of name order.
+  - Input bounds 1: a control offering a bound the reducer refuses.
 - Docs: `OPEN-ITEMS.md` new, holding the open items formerly in `PLAN.md` (FFI
   record fields with no writer, staking execution, staking reads through
   adapters, FFI type names, `AppState` domains); `PLAN.md` loses "Known open
@@ -3492,7 +3538,7 @@
   shape and translated refusals, quote failures, display-currency revaluation
   and setting, Funds Finder errors, Crypto Wiki, and app entries on decimal
   separators and saving a recipient).
-- Total: 75 .rs files changed, +1269 −554 lines; data and config files:
+- Total: 75 .rs files changed, +949 −404 lines; data and config files:
   `scripts/cli-acceptance.sh`, `scripts/cli-diagnostics.py`; dependencies
   unchanged; `#[test]` functions 897 → 905.
 
@@ -3560,7 +3606,7 @@
 - **`verify_send_destination` is no longer an FFI export**
   (`core/src/service/send_destination.rs`); the CLI and the review call it in
   Rust.
-- `scripts/count-exports.sh` is deleted.
+- **The FFI export counter is deleted** (`scripts/count-exports.sh`).
 - Tests: 11 new, 7 removed
   - Device key 4: a second mint, an unreadable key replaced, opening that mints,
     unpassworded material stored unsealed.
@@ -3576,8 +3622,9 @@
   history page cap, device key, and app entries on error sentences, secret
   entry, appearance and the send network card); `FFI-BOUNDARY.md` and `PLAN.md`
   drop `count-exports.sh`; `scripts/README.md` file count 31 → 30.
-- Total: 53 .rs files changed (1 new), +1487 −1237 lines; data and config files:
-  `scripts/` (7); dependencies unchanged; `#[test]` functions 893 → 897.
+- Total: 53 .rs files changed (1 new, 1 deleted), +1119 −1123 lines; data and
+  config files: `scripts/` (7); dependencies unchanged; `#[test]` functions
+  893 → 897.
 
 ## Beta Commit 200
 
@@ -3597,9 +3644,9 @@
 - Docs: `BEHAVIOUR-CHANGES.md` entries dated 2026-10-02 (BIP-39 lengths and
   typed problem, staking facts, and app entries on EVM layer-2 watch imports,
   the funds finder grid and the risk summary's locale).
-- Total: 6 .rs files changed, +394 −72 lines; data and config files:
-  `core/data/staking.toml`, `scripts/cli-acceptance.sh`; dependencies unchanged;
-  `#[test]` functions 891 → 893.
+- Total: 6 .rs files changed, +229 −70 lines; data and config files:
+  `core/data/staking.toml`, `scripts/cli-acceptance.sh`; dependencies
+  unchanged; `#[test]` functions 891 → 893.
 
 ## Beta Commit 199
 
@@ -3608,7 +3655,7 @@
   Coin"), and loading refuses a testnet token whose name does not start with
   "Test " (before: the mainnet token's name).
 - Docs: `BEHAVIOUR-CHANGES.md` "Testnet tokens are named as test coins".
-- Total: 3 .rs files changed, +79 −53 lines; data and config files:
+- Total: 3 .rs files changed, +13 −12 lines; data and config files:
   `core/data/testnet-tokens.toml`, `scripts/cli-acceptance.sh`; dependencies
   unchanged; `#[test]` functions unchanged at 891.
 
@@ -3617,8 +3664,7 @@
 - **No code changed in this repository**: `BEHAVIOUR-CHANGES.md` records an app
   change, the backdrop's drifting colour clouds.
 - Docs: `BEHAVIOUR-CHANGES.md` "The backdrop's colour clouds drift".
-- Total: no .rs files changed, +20 −0 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 891.
+- Total: No code changed.
 
 ## Beta Commit 197
 
@@ -3666,9 +3712,9 @@
 - Docs: `BEHAVIOUR-CHANGES.md` entries dated 2026-10-01 (Aptos view functions,
   one listing per wallet, every known token read, and an app entry on pushed
   setup pages).
-- Total: 24 .rs files changed, +1239 −1239 lines; data and config files:
-  `core/data/` (4), `scripts/` (3); dependencies unchanged; `#[test]` functions
-  888 → 891.
+- Total: 24 .rs files changed, +1018 −872 lines; data and config files:
+  `core/data/` (4), `scripts/` (3); dependencies unchanged; `#[test]`
+  functions 888 → 891.
 
 ## Beta Commit 196
 
@@ -3708,7 +3754,7 @@
 - Docs: `BEHAVIOUR-CHANGES.md` entries dated 2026-10-01 (Cardano/Substrate
   wordlists, inferred length and wordlist, ranked chain picker, and an app entry
   on choosing the import method first).
-- Total: 8 .rs files changed, +925 −219 lines; data and config files:
+- Total: 8 .rs files changed, +659 −124 lines; data and config files:
   `core/data/chain-ui.toml`, `scripts/cli-acceptance.sh`; dependencies
   unchanged; `#[test]` functions 874 → 888.
 
@@ -3720,8 +3766,7 @@
   typealiases; give `AppState`'s domains their own observable state).
 - Docs: `AGENTS.md` Swift tests; `BEHAVIOUR-CHANGES.md` "Launch reads once;
   balance ticks no longer re-run unrelated work"; `PLAN.md` open items.
-- Total: no .rs files changed, +75 −2 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 874.
+- Total: No code changed.
 
 ## Beta Commit 194
 
@@ -3776,8 +3821,8 @@
   password, typed errors, and app entries on the display locale, refresh-event
   order, notification failures, app lock, pasted seed phrases and the history
   diagnostic deadline).
-- Total: 188 .rs files changed (6 new), +4858 −3348 lines; data and config
-  files: `scripts/` (4), `core/tests/` (2), `Cargo.lock`, `core/` (1);
+- Total: 188 .rs files changed (6 new, 1 deleted), +4534 −3326 lines; data and
+  config files: `scripts/` (4), `core/tests/` (2), `Cargo.lock`, `core/` (1);
   dependencies: added ciborium 0.2, removed serde_cbor (`core/Cargo.toml`);
   `#[test]` functions 869 → 874.
 
@@ -3796,7 +3841,7 @@
   `testnet_native_symbols_are_visibly_distinct_from_mainnet`.
 - Docs: `BEHAVIOUR-CHANGES.md` entries dated 2026-09-30 (Signet sBTC, testnet
   stablecoin symbols, testnet, Solana and Sui explorers).
-- Total: 2 .rs files changed, +263 −30 lines; data and config files:
+- Total: 2 .rs files changed, +7 −16 lines; data and config files:
   `core/data/chain-ui.toml`, `core/data/explorers.toml`,
   `core/data/testnet-tokens.toml`, `scripts/cli-acceptance.sh`; dependencies
   unchanged; `#[test]` functions 870 → 869.
@@ -3835,7 +3880,7 @@
   program admitted, unlisted extensions admitted, wrong instruction layouts.
 - Docs: `BEHAVIOUR-CHANGES.md` entries dated 2026-09-30 (Token-2022 extensions,
   testnet tokens and networks).
-- Total: 7 .rs files changed, +966 −57 lines; data and config files:
+- Total: 7 .rs files changed, +333 −41 lines; data and config files:
   `core/data/chain-ui.toml`, `core/data/chains.toml`,
   `core/data/endpoints.toml`, `core/data/testnet-tokens.toml`; dependencies
   unchanged; `#[test]` functions 865 → 870.
@@ -3908,10 +3953,10 @@
   float on the send path, `Chain` at every boundary, exact token balances, one
   send rule, Zcash/Bitcoin Gold/testnet providers, providers on every chain they
   serve).
-- Total: 164 .rs files changed, +5145 −5332 lines; data and config files:
-  `core/data/endpoints.toml`, `scripts/cli-acceptance.sh`,
-  `scripts/cli-endpoints.py`, `scripts/cli-history.py`; dependencies unchanged;
-  `#[test]` functions 880 → 865.
+- Total: 164 .rs files changed (1 deleted), +4396 −5306 lines; data and config
+  files: `core/data/endpoints.toml`, `scripts/cli-acceptance.sh`,
+  `scripts/cli-endpoints.py`, `scripts/cli-history.py`; dependencies
+  unchanged; `#[test]` functions 880 → 865.
 
 ## Beta Commit 190
 
@@ -3919,16 +3964,16 @@
   `core/src/tor.rs`, `service/endpoint_directory.rs`;
   `scripts/cli-acceptance.sh`, `cli-endpoints.py`)
   - When `SPECTRA_LOOPBACK_ONLY` names a journal file, endpoint selection leaves
-    out remote endpoints, every other remote request and an embedded Tor
-    bootstrap go to a dead proxy, and each is journaled with its host and
-    command line; unset, nothing changes.
+    out remote endpoints, every other remote request goes to a dead proxy, an
+    embedded Tor bootstrap is refused, and each is journaled with its target
+    and command line; unset, nothing changes.
   - The acceptance script sets it for the whole run except `cli-transport.py`,
     fails on a non-empty journal, and first proves with a canary that a health
     probe of the built-in Bitcoin providers is caught (before: `cli-send.py`
     read Ethereum mainnet and sent its signed transaction to public nodes).
 - Tests: 1 new — loopback 1: a non-local host treated as loopback.
 - Docs: `BEHAVIOUR-CHANGES.md` "CLI acceptance is confined to loopback".
-- Total: 3 .rs files changed, +180 −14 lines; data and config files:
+- Total: 3 .rs files changed, +105 −2 lines; data and config files:
   `scripts/cli-acceptance.sh`, `scripts/cli-endpoints.py`; dependencies
   unchanged; `#[test]` functions 879 → 880.
 
@@ -3944,8 +3989,9 @@
     `json_rpc`), shared answer types and `time`.
   - `send/` builds and signs, its fetch-then-build flows taking a client
     (before: eighteen `send/` files added methods to fetch clients).
-  - `fetch/polkadot.rs` and `fetch/bittensor.rs` become one `SubstrateClient`;
-    NEAR history races every Nearblocks endpoint.
+  - `fetch/polkadot.rs` and `fetch/bittensor.rs` become one `SubstrateClient`.
+  - NEAR history races every Nearblocks endpoint (before: only the first was
+    asked).
 - **Every endpoint is asked at once, in every API a chain speaks**
   (`core/src/api/http.rs`, new `api/utxo.rs`, `registry.rs`
   `Chain::endpoint_apis()`)
@@ -3958,20 +4004,24 @@
   - `UtxoClient` answers in one set of types: confirmed balance plus mempool
     delta, UTXOs including the mempool's, one newest-first history shape; only
     Esplora continues history past the first page.
-  - BlockCypher broadcasts to `/txs/push` and quotes fees; broadcasts, the
-    user's selected ones included, go to every endpoint together;
-    `NativeBalanceSummary.utxo_count` and `utxoCount` in `spectra balance` are
+  - BlockCypher broadcasts to `/txs/push` and quotes fees.
+  - Broadcasts, the user's selected ones included, go to every endpoint
+    together.
+  - `NativeBalanceSummary.utxo_count` and `utxoCount` in `spectra balance` are
     removed.
 - **Polkadot and Bittensor read balances from `System.Account` storage**
   (`core/src/api/substrate_json_rpc.rs`, `registry.rs`
-  `substrate_balance_bytes`): decoded at u128 for Polkadot and u64 for
-  subtensor, any other length refused; the balance is `free` less what `frozen`
-  holds beyond `reserved`; their catalog rows declare `balance`; history stays
-  unavailable.
+  `substrate_balance_bytes`, `core/data/endpoints.toml`)
+  - The record is decoded at u128 for Polkadot and u64 for subtensor; any
+    other length is refused.
+  - The balance is `free` less what `frozen` holds beyond `reserved`.
+  - Their catalog rows declare `balance`; history stays unavailable.
 - **Bitcoin Cash has an indexer** (new `core/src/api/bch_rest_v2.rs`;
-  `core/data/endpoints.toml`): `https://rest.bch.actorforth.org/v2` serves
-  balance, history, UTXOs, status and broadcast through `UtxoClient`, without a
-  fee quote; the Litecoin/BCH preview uses 1 sat/B when no endpoint quotes one.
+  `core/data/endpoints.toml`, `service/send_preview.rs`)
+  - `https://rest.bch.actorforth.org/v2` serves balance, history, UTXOs,
+    status and broadcast through `UtxoClient`, without a fee quote.
+  - The Litecoin/BCH preview uses 1 sat/B when no endpoint quotes one (before:
+    it refused with "No fee endpoint configured").
 - **Tron gains `https://tron-rpc.publicnode.com`** as a second node HTTP
   endpoint (`core/data/endpoints.toml`).
 - **The Arbitrum mark is drawn smaller inside its disc**
@@ -3988,8 +4038,11 @@
     returned as an empty list.
   - Bitcoin Cash adapter 3: BCH read as satoshis wrongly, history not netted, a
     node refusal read as a txid.
-  - Race 1, endpoint APIs per chain 1, Solana associated token accounts against
-    SPL vectors 1.
+  - Race 1: a slow or dead endpoint holding up one that answers.
+  - Endpoint APIs per chain 1: a chain speaking several APIs without a client
+    that answers in all of them.
+  - Solana associated token accounts 1: addresses differing from the SPL
+    vectors.
   - Removed: `balances_render_with_trailing_zeros_trimmed` and the two stub
     clients' `missing_sources_are_errors_not_empty_wallets`.
 - Docs: `AGENTS.md` one `api/<api>.rs` per `EndpointApi`; `ARCHITECTURE.md`
@@ -3997,26 +4050,29 @@
   item) and the Polkadot/Bittensor status; `BEHAVIOUR-CHANGES.md` entries dated
   2026-09-29 (Substrate balances and BCH indexer, one adapter per API, every
   endpoint asked at once).
-- Total: 98 .rs files changed (11 new), +5443 −4582 lines; data and config
-  files: `core/data/endpoints.toml`, `icons/crypto/arbitrum.svg`,
+- Total: 98 .rs files changed (11 new, 3 deleted), +5269 −4558 lines; data and
+  config files: `core/data/endpoints.toml`, `icons/crypto/arbitrum.svg`,
   `scripts/cli-acceptance.sh`, `scripts/cli-transport.py`; dependencies
   unchanged; `#[test]` functions 868 → 879.
 
 ## Beta Commit 188
 
 - **Donation addresses are a core catalog** (new `core/data/donations.toml`,
-  `core/src/donations.rs`; `spectra donations`): `donation_destinations()`;
-  loading refuses an unknown or test network, a second address for a network,
-  and any address not already valid and normalized.
+  `core/src/donations.rs`; `cli/src/cmd/chain.rs`)
+  - `donation_destinations()` and new `spectra donations` give one address
+    per network.
+  - Loading refuses an unknown or test network, a second address for a
+    network, and any address not already valid and normalized.
 - **The endpoint catalog claims only what an adapter implements**
   (`core/src/endpoint_api.rs`, `core/data/endpoints.toml`)
   - A row claiming a capability outside `endpoint_capability_options` for its
     API is refused at load.
   - Eight adapter-less APIs (Blockchair, blockchain.info, BCH REST v2, SoChain
     v2, XRPScan, Substrate Sidecar, Tron JSON-RPC, Tronscan), their 12 rows,
-    health checks and `probe_url` are removed; TON v3 declares token balance and
-    discovery, TronGrid v1 history, token history and token discovery; Bitcoin
-    Cash is left with no endpoint.
+    health checks and `probe_url` are removed; Bitcoin Cash is left with no
+    endpoint.
+  - TON v3 declares only token balance and discovery, TronGrid v1 only
+    history, token history and token discovery.
 - **Endpoint slots and capability strings become types**
   (`core/src/registry.rs`, `endpoint_api.rs`, `app_core.rs`,
   `service/endpoint_directory.rs`, `service/mod.rs`; `cli/src/cmd/chain.rs`)
@@ -4025,17 +4081,20 @@
     capabilities)`, custom endpoints first.
   - `EndpointCapability` is an enum with the same kebab-case names, used by
     catalog, records, custom endpoints, probes, overrides and `spectra endpoints
-    --capabilities`; the `ENDPOINT_CAPABILITY_*` bitmasks are removed; custom
-    endpoints store capabilities in declaration order; `endpoint_capability_id`
-    is exported for localization.
-  - `ChainEndpoints` refuses an unknown network; `spectra endpoints --catalog`
-    reports one `configured` row per chain.
-- **Tron history reads TronGrid** (`core/src/fetch/tron.rs`): `/transactions`
-  and `/transactions/trc20` (confirmed only), keeping successful TRX transfers
-  and TRC-20 `Transfer` events with base58check addresses and exact token
-  amounts; a failed read is an error (before: history needed a Tronscan endpoint
-  the catalog no longer had, and Tronscan's client returned an empty history on
-  failure). The Tronscan client is removed.
+    --capabilities`; the `ENDPOINT_CAPABILITY_*` bitmasks are removed.
+  - Custom endpoints store capabilities in declaration order (before: sorted
+    alphabetically).
+  - `endpoint_capability_id` is exported for localization.
+  - `ChainEndpoints` refuses an unknown network.
+  - `spectra endpoints --catalog` reports one `configured` row per chain.
+- **Tron history reads TronGrid** (`core/src/fetch/tron.rs`)
+  - `/transactions` and `/transactions/trc20` (confirmed only) give successful
+    TRX transfers and TRC-20 `Transfer` events with base58check addresses and
+    exact token amounts (before: history needed a Tronscan endpoint the
+    catalog no longer had).
+  - A failed read is an error (before: Tronscan's client returned an empty
+    history on failure).
+  - The Tronscan client is removed.
 - Tests: 6 new, 2 removed
   - TronGrid history 3: TRX and TRC-20 transfers unmerged or unordered, a failed
     read returned as empty, inexact token amounts.
@@ -4046,10 +4105,10 @@
 - Docs: `BEHAVIOUR-CHANGES.md` entries dated 2026-09-28/29 (donation addresses,
   adapter-backed catalog, TronGrid history, endpoint slots and capability
   strings).
-- Total: 50 .rs files changed (1 new), +1343 −1251 lines; data and config files:
-  `core/data/donations.toml`, `core/data/endpoints.toml`,
-  `scripts/cli-acceptance.sh`, `scripts/cli-history.py`; dependencies unchanged;
-  `#[test]` functions 864 → 868.
+- Total: 50 .rs files changed (1 new), +1152 −1105 lines; data and config
+  files: `core/data/donations.toml`, `core/data/endpoints.toml`,
+  `scripts/cli-acceptance.sh`, `scripts/cli-history.py`; dependencies
+  unchanged; `#[test]` functions 864 → 868.
 
 ## Beta Commit 187
 
@@ -4072,10 +4131,10 @@
   explorer-link tests of the old catalog are removed.
 - Docs: `BEHAVIOUR-CHANGES.md` "Transaction explorers moved out of the endpoint
   catalog".
-- Total: 16 .rs files changed (1 new), +552 −488 lines; data and config files:
+- Total: 16 .rs files changed (1 new), +263 −170 lines; data and config files:
   `core/data/endpoints.toml`, `core/data/explorers.toml`,
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 863 →
-  864.
+  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 863
+  → 864.
 
 ## Beta Commit 186
 
@@ -4091,80 +4150,87 @@
     endpoint declaring either is refused.
 - Tests: 0 new, 1 removed — `sends_are_signed_on_device`.
 - Docs: `BEHAVIOUR-CHANGES.md` "Monero's wallet-RPC remnants are gone".
-- Total: 13 .rs files changed, +35 −281 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 864 →
-  863.
+- Total: 13 .rs files changed (2 deleted), +5 −276 lines; data and config
+  files: `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]`
+  functions 864 → 863.
 
 ## Beta Commit 185
 
 - **Fee priority is removed** (`core/src/store/state.rs`, `app_core.rs`,
   `send/preview_decode.rs`, `send/preview_types.rs`, `service/owned_send.rs`,
-  `service/send_preview.rs`; `cli/src/cmd/settings.rs`):
-  `AppSettings.fee_priority_by_chain`, its reducer case, `FeePriority`, the CLI
-  `fee-priority.*` keys, Dogecoin's `feePriority` preview field and
-  `AppCoreChainEndpoints.bitcoin_esplora` are removed, and a stored
-  `feePriorityByChain` is refused as an unknown setting (no build, sign or
-  estimate read it).
+  `service/send_preview.rs`; `cli/src/cmd/settings.rs`)
+  - `AppSettings.fee_priority_by_chain`, its reducer case, `FeePriority`, the
+    CLI `fee-priority.*` keys and Dogecoin's `feePriority` preview field are
+    removed (no build, sign or estimate read them).
+  - A stored `feePriorityByChain` is refused as an unknown setting.
+  - `AppCoreChainEndpoints.bitcoin_esplora` is removed.
 - **Core records chain diagnostics and builds the bundle**
   (`core/src/diagnostics/registry.rs`, `diagnostics/export.rs`,
   `service/diagnostic_state.rs`; `cli/src/cmd/diagnostics.rs`)
   - Core records history rows, the history-run time, endpoint probes and the
-    check time; `WalletService.chain_diagnostics` answers for a family on its
-    selected network, and `diagnostics_bundle` (schema 2) builds the bundle from
-    core state plus the platform's version, OS, locale and time zone.
-  - The document names `chainId` and `network`, gives `null` times before a run
-    and marks unprobeable endpoints `checked: false`; `lastRunAt` for self-tests
-    and rescans is removed.
+    check time.
+  - `WalletService.chain_diagnostics` answers for a family on its selected
+    network.
+  - `diagnostics_bundle` (schema 2) builds the bundle from core state plus the
+    platform's version, OS, locale and time zone.
+  - The document names `chainId` and `network`, gives `null` times before a
+    run and marks unprobeable endpoints `checked: false`.
+  - `lastRunAt` for self-tests and rescans is removed.
   - `spectra diagnostics show` reads `chain_diagnostics` (before: empty
-    endpoints and no times); new `spectra diagnostics bundle`.
+    endpoints and no times).
+  - New `spectra diagnostics bundle`.
 - **"Last checked" is core's clock; balances land per wallet**
-  (`core/src/service/app_refresh.rs`, `fetch/refresh_engine.rs`):
-  `AppRefreshResult.pending_checked_at_unix` carries
-  `refresh_clock.pending_transactions_at`, stamped only by a failure-free check,
-  and the engine reports each wallet as its balances commit (before: after every
-  wallet).
+  (`core/src/service/app_refresh.rs`, `fetch/refresh_engine.rs`)
+  - `AppRefreshResult.pending_checked_at_unix` carries
+    `refresh_clock.pending_transactions_at`, stamped only by a failure-free
+    check.
+  - The engine reports each wallet as its balances commit (before: after every
+    wallet).
 - Tests: 1 new, 5 removed — chain diagnostics 1: a bundle reading the wrong
   network; removed: four fee-priority tests and the per-chain document test.
 - Docs: `ARCHITECTURE.md` per-wallet balance reports and diagnostics ownership;
   `BEHAVIOUR-CHANGES.md` entries dated 2026-09-28 (fee priority, chain
   diagnostics, last-checked clock, and an app entry on the keychain service
   name).
-- Total: 19 .rs files changed, +598 −535 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 868 →
-  864.
+- Total: 19 .rs files changed, +488 −516 lines; data and config files:
+  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 868
+  → 864.
 
 ## Beta Commit 184
 
 - **Unwired send options are removed** (`core/src/send/bitcoin.rs`,
-  `send/mod.rs`, `send/flow.rs`, `send/evm_overrides.rs`; `cli/src/cmd/tx.rs`):
-  Bitcoin extra outputs (`BitcoinExtraOutput`, the `extra_output_overhead_bytes`
-  export), the coin-selection strategy (`CoinSelectionStrategy`) and both
-  `sign_only` fields; `spectra send overrides` loses `--sign-only` and
-  `signOnly` (`send broadcast --sign-only` is unchanged).
-- **Dead core code is removed**: the `SendResult` methods `submission_id`,
-  `signed_payload`, `signed_payload_format` and `SignedPayloadFormat`;
-  `wallet_db` load and delete helpers for wallets, addresses, keypool and
-  history, `delete_wallet_data` and `history_replace_all`;
+  `send/mod.rs`, `send/flow.rs`, `send/evm_overrides.rs`; `cli/src/cmd/tx.rs`)
+  - Bitcoin extra outputs (`BitcoinExtraOutput`, the
+    `extra_output_overhead_bytes` export).
+  - The coin-selection strategy (`CoinSelectionStrategy`).
+  - Both `sign_only` fields; `spectra send overrides` loses `--sign-only` and
+    `signOnly` (`send broadcast --sign-only` is unchanged).
+- **Dead core code is removed**: the `SignedSubmission` trait
+  (`submission_id`, `signed_payload`, `signed_payload_format`) and
+  `SignedPayloadFormat`; `wallet_db` load and delete helpers for wallets,
+  addresses and the keypool, `delete_wallet_data` and `history_replace_all`;
   `Chain::rpc_health_method` and `Chain::testnets`;
   `SendExecutionShape.fee_decimals` and `supports_private_key`;
-  `verification_notice_for_status`, `register_owned_address`, the
-  `fetch_fee_rate` stubs, Monero `create_account`, `is_private_key_backed` and
-  `has_signing_material`.
-- Comments across core, the CLI and `scripts/cli-acceptance.sh` lose their
-  migration history; `scripts/README.md` loses the "Former test files" table;
-  `service/state_performance_tests.rs` is renamed `address_discovery_tests.rs`.
+  `CoreSendVerificationStatus::Verified`, `register_owned_address`, the
+  `fetch_fee_rate` stubs and Monero `create_account`. `is_private_key_backed`
+  and `has_signing_material` become test helpers.
+- **Comments lose their migration history** (core, the CLI,
+  `scripts/cli-acceptance.sh`).
+- **`service/state_performance_tests.rs` is renamed
+  `address_discovery_tests.rs`.**
 - Tests: 3 new, 11 removed
-  - Send review 1: a changed destination signing under an old review. Built-in
-    tokens 1: a built-in removed, or toggled on one network only. Keypool 1: an
-    out-of-range baseline reserving addresses.
+  - Send review 1: a changed destination signing under an old review.
+  - Built-in tokens 1: a built-in removed, or toggled on one network only.
+  - Keypool 1: an out-of-range baseline reserving addresses.
   - Removed with the deleted code: extra-output and coin-selection tests,
     fee-decimals and testnet send-shape tests, the verification-notice test and
     four `wallet_db` delete-helper tests.
 - Docs: `BEHAVIOUR-CHANGES.md` "`send overrides` no longer echoes
-  `--sign-only`"; `scripts/README.md` test organisation.
-- Total: 118 .rs files changed, +836 −2648 lines; data and config files:
-  `scripts/cli-acceptance.sh`, `scripts/uncalled-core-fns.sh`; dependencies
-  unchanged; `#[test]` functions 876 → 868.
+  `--sign-only`"; `scripts/README.md` test organisation ("Former test files"
+  table removed).
+- Total: 118 .rs files changed (1 deleted), +736 −2487 lines; data and config
+  files: `scripts/cli-acceptance.sh`, `scripts/uncalled-core-fns.sh`;
+  dependencies unchanged; `#[test]` functions 876 → 868.
 
 ## Beta Commit 183
 
@@ -4175,7 +4241,7 @@
   disc), instead of the mainnet `bitcoin` mark.
 - Docs: `BEHAVIOUR-CHANGES.md` app entries (deleting a wallet asks once;
   holdings and chain-breakdown headers drop their counts).
-- Total: no .rs files changed, +44 −6 lines; data and config files:
+- Total: no .rs files changed; data and config files:
   `core/data/chain-ui.toml`, `core/data/testnet-tokens.toml`,
   `icons/crypto/bitcoinsignet.svg`, `icons/crypto/bitcointestnet.svg`;
   dependencies unchanged; `#[test]` functions unchanged at 876.
@@ -4186,16 +4252,16 @@
   changes to the receive flow (no page header; no bottom action bar or step
   indicator).
 - Docs: `BEHAVIOUR-CHANGES.md` entries dated 2026-09-27 on the receive pages.
-- Total: no .rs files changed, +49 −0 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 876.
+- Total: No code changed.
 
 ## Beta Commit 181
 
 - **Undated unconfirmed transactions sort first**
-  (`core/src/wallet_db/history.rs`, `wallet_db/history_query.rs`): the history
-  index sorts an undated pending record as 9999-12-31, first newest-first and
-  last oldest-first, while its stored time stays unknown; a wallet's earliest
-  transaction ignores undated rows (before: sorted as the oldest).
+  (`core/src/wallet_db/history.rs`, `wallet_db/history_query.rs`)
+  - The history index sorts an undated pending record as 9999-12-31, first
+    newest-first and last oldest-first, while its stored time stays unknown
+    (before: sorted as the oldest).
+  - A wallet's earliest transaction ignores undated rows.
 - **A missing time is unknown for an unconfirmed transaction and an error for a
   confirmed one** (`core/src/fetch/*.rs`, `fetch/history.rs`, `fetch/mod.rs`,
   `service/history_refresh.rs`)
@@ -4205,57 +4271,66 @@
   - A confirmed transaction without a readable time fails the fetch, naming it;
     sources that list only confirmed transactions require one.
   - Normalization reads `null` as undated and refuses anything else that is not
-    a positive number; Stellar and Dogecoin parse RFC 3339 with the shared
-    strict parser; an undated record is stored with the unknown sentinel.
-- **Dogecoin nets each transaction's refs into one entry**
-  (`core/src/fetch/dogecoin.rs`) and includes `unconfirmed_txrefs` as undated
-  pending entries (before: the first ref of each transaction only).
+    a positive number.
+  - Stellar and Dogecoin parse RFC 3339 with the shared strict parser.
+  - An undated record is stored with the unknown sentinel.
+- **Dogecoin history nets each transaction and includes unconfirmed ones**
+  (`core/src/fetch/dogecoin.rs`)
+  - Each transaction's refs net into one entry (before: the first ref of each
+    transaction only).
+  - `unconfirmed_txrefs` are included as undated pending entries.
 - Tests: 4 new — history times 4: Dogecoin legs not netted, an uncheckpointed
   Sui block dated, an undated entry stored as 1970, undated pending rows sorting
   last.
 - Docs: `BEHAVIOUR-CHANGES.md` entries dated 2026-09-27 (unconfirmed first and
   Dogecoin netting; undated transactions and misread dates).
-- Total: 22 .rs files changed, +641 −240 lines; data and config files:
+- Total: 22 .rs files changed, +578 −237 lines; data and config files:
   `scripts/cli-history.py`; dependencies unchanged; `#[test]` functions 872 →
   876.
 
 ## Beta Commit 180
 
 - **History can hide small amounts** (`core/src/service/history_query.rs`,
-  `wallet_db/history_query.rs`; `cli/src/cmd/tx.rs`):
-  `HistoryQuery.hide_small_amounts` leaves out transfers below
-  `HISTORY_SMALL_AMOUNT_THRESHOLD` (0.00001 of the row's asset), exported as
-  `history_small_amount_threshold()`; a cursor carries the setting and is
-  refused by a query with the other; `spectra txs --page --hide-small-amounts`.
+  `wallet_db/history_query.rs`; `cli/src/cmd/tx.rs`)
+  - `HistoryQuery.hide_small_amounts` leaves out transfers below
+    `HISTORY_SMALL_AMOUNT_THRESHOLD` (0.00001 of the row's asset), exported as
+    `history_small_amount_threshold()`.
+  - A cursor carries the setting and is refused by a query with the other.
+  - New `spectra txs --page --hide-small-amounts`.
 - **History clients report what each transaction moved for the address, fee
   excluded on account chains, and drop transactions that moved nothing**
   (`core/src/fetch/*.rs`)
   - Sui reads the address's SUI balance change as sender and recipient (before:
-    every row a 0 SUI receipt); TON drops external messages (before: a 0 TON
-    receipt beside every send).
+    every row a 0 SUI receipt).
+  - TON drops external messages (before: a 0 TON receipt beside every send).
   - XRP reads the account's `AccountRoot` change and only successful payments
     (before: issued currencies as 0 XRP, partial payments at their ceiling,
-    failures as transfers); Stellar reads `create_account` and issued-asset
-    payments by their own fields.
+    failures as transfers).
+  - Stellar reads `create_account` and issued-asset payments by their own
+    fields.
   - NEAR reads Nearblocks' `/account/{id}/txns` (before: a 404 path, so no NEAR
-    history); Solana reads lookup-table addresses, fee-only transactions and
-    closed token accounts correctly, and the dead `fetch_history` is removed.
-  - Aptos counts only the framework's successful APT transfers; ICP nets
-    transfers, mints and burns; Cardano and Blockbook take the address's net
-    (before: the total output); Kaspa reads the API's snake_case fields and
-    input addresses, and Kaspa and Decred gain a normalization shape.
+    history).
+  - Solana reads lookup-table addresses, fee-only transactions and closed
+    token accounts correctly; the dead `fetch_history` is removed.
+  - Aptos counts only the framework's successful APT transfers.
+  - ICP nets transfers, mints and burns.
+  - Cardano and Blockbook take the address's net (before: the total output).
+  - Kaspa reads the API's snake_case fields and input addresses.
+  - Kaspa and Decred gain a normalization shape.
   - Bitcoin SV matches inputs against the address's own outputs, and an
     unreadable transaction fails the refresh.
-  - Across normalized chains an unreadable amount refuses the row (before: 0),
-    whole base units convert exactly, and EVM native ends compare lowercased.
-- Tests: 15 new — history clients 14: zero or wrong amounts from each provider's
-  shapes (Sui, TON, XRP, Stellar, NEAR, Solana, Aptos, ICP, Cardano, Kaspa, BSV,
-  Blockbook, exact unit conversion); small amounts 1: the filter keeping dust or
-  dropping the threshold.
+  - Across normalized chains an unreadable amount refuses the row (before: 0).
+  - Whole base units convert exactly.
+  - EVM native ends compare lowercased.
+- Tests: 15 new
+  - History clients 14: zero or wrong amounts from each provider's shapes
+    (Sui, TON, XRP, Stellar, NEAR, Solana, Aptos, ICP, Cardano, Kaspa, BSV,
+    Blockbook, exact unit conversion).
+  - Small amounts 1: the filter keeping dust or dropping the threshold.
 - Docs: `BEHAVIOUR-CHANGES.md` entries dated 2026-09-27 (hide small amounts,
   chain history amounts, and app entries on the portfolio card's wallet count
   and partial totals).
-- Total: 20 .rs files changed, +1773 −812 lines; data and config files:
+- Total: 20 .rs files changed, +1639 −811 lines; data and config files:
   `scripts/cli-history.py`; dependencies unchanged; `#[test]` functions 857 →
   872.
 
@@ -4269,8 +4344,8 @@
     that network's address-book entries, in the chain's normal form; `isMine` is
     unchanged.
   - New export `address_holder(wallet_id, chain_id, address)` and `spectra
-    address holder --wallet <w> <address>`; `spectra txs --endpoints` prints the
-    holder.
+    address holder --wallet <w> <address>`.
+  - `spectra txs --endpoints` prints the holder.
 - Tests: 4 new — endpoint holders 4: wrong precedence between wallet and
   contact, case-sensitive matching, a holder for an unknown address, the JSON
   shape.
@@ -4278,8 +4353,9 @@
   holders, and app entries on the send review, status badge, transaction detail,
   app cover, history reload and asset detail); `scripts/README.md` `cli-send.py`
   row.
-- Total: 4 .rs files changed, +449 −12 lines; data and config files:
-  `scripts/cli-send.py`; dependencies unchanged; `#[test]` functions 853 → 857.
+- Total: 4 .rs files changed, +275 −9 lines; data and config files:
+  `scripts/cli-send.py`; dependencies unchanged; `#[test]` functions 853 →
+  857.
 
 ## Beta Commit 178
 
@@ -4288,8 +4364,7 @@
   and Broadcast stay three actions.
 - Docs: `BEHAVIOUR-CHANGES.md` "Exported async methods run on core's own
   runtime".
-- Total: no .rs files changed, +9 −9 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 853.
+- Total: No code changed.
 
 ## Beta Commit 177
 
@@ -4302,9 +4377,9 @@
     thread, a 512 KiB stack on iOS).
   - `WalletService`, `RefreshEngine` and `FundsScan` are cheap `Clone`s for
     this.
-- **Send amount shortcuts are core's list** (`core/src/service/owned_send.rs`):
-  new export `send_amount_shortcut_percentages()` (25, 50, 75, 100); a share is
-  cut to the asset's display precision and the maximum stays exact.
+- **Send amount shortcuts are core's list** (`core/src/service/owned_send.rs`)
+  - New export `send_amount_shortcut_percentages()` (25, 50, 75, 100).
+  - A share is cut to the asset's display precision; the maximum stays exact.
 - **The recipient check knows funded and own addresses**
   (`core/src/service/owned_send.rs`, `send_destination.rs`, `send_preflight.rs`)
   - `RecipientCheck` is a record with optional `activity` and `is_own_address`
@@ -4318,8 +4393,8 @@
     when history fails, a self-send warned as a new destination.
 - Docs: `BEHAVIOUR-CHANGES.md` "Exported async methods run on core's own
   runtime; one-action Send".
-- Total: 37 .rs files changed (1 new), +3034 −2353 lines; data and config files:
-  none; dependencies unchanged; `#[test]` functions 847 → 853.
+- Total: 37 .rs files changed (1 new), +2993 −2353 lines; data and config
+  files: none; dependencies unchanged; `#[test]` functions 847 → 853.
 
 ## Beta Commit 176
 
@@ -4328,9 +4403,9 @@
   are removed; `build/` leaves `.gitignore`; behaviour unchanged.
 - Docs: `ARCHITECTURE.md` — Xcode builds the Rust core into its own DerivedData
   (`spectra-rust/cargo-target`), not the workspace `target/`.
-- Total: no .rs files changed, +6 −49 lines; data and config files:
-  `.gitignore`, `cli/Cargo.toml`, `core/Cargo.toml`, `ffi/Cargo.toml`;
-  dependencies unchanged; `#[test]` functions unchanged at 847.
+- Total: no .rs files changed; data and config files: `.gitignore`,
+  `cli/Cargo.toml`, `core/Cargo.toml`, `ffi/Cargo.toml`; dependencies
+  unchanged; `#[test]` functions unchanged at 847.
 
 ## Beta Commit 175
 
@@ -4342,15 +4417,14 @@
   overflow-check profile, CI, `scripts/cli-acceptance.sh` and `README.md`
   following; the profile's comment is shortened.
 - **The Makefile drops `check`, `ios-artifacts`, `ios-artifacts-release`,
-  `bindgen-ios` and `clean-generated`**; `clean` removes the generated bindings
-  itself. Xcode's "Build Rust Core" phase runs `scripts/build-ios.sh`, which
-  builds the library and generates the Swift bindings, so a fresh clone needs no
-  separate step.
+  `bindgen-ios` and `clean-generated`** (`Makefile`; Xcode's "Build Rust Core"
+  phase runs `scripts/build-ios.sh`, which builds the library and generates
+  the Swift bindings); `clean` removes the generated bindings itself.
 - Docs: `README.md` "The iOS app"; `FFI-BOUNDARY.md` "Regenerating bindings";
   `scripts/README.md` build scripts (`bindgen-ios.sh` row removed).
-- Total: 9 .rs files changed, +57 −105 lines; data and config files:
-  `.github/workflows/` (1), `Cargo.lock`, `Cargo.toml`, `Makefile`, `cli/` (1),
-  `rust-toolchain.toml`, `scripts/` (1), `tools/uniffi-bindgen/` (1);
+- Total: 9 .rs files changed, +17 −23 lines; data and config files:
+  `.github/workflows/` (1), `Cargo.lock`, `Cargo.toml`, `Makefile`, `cli/`
+  (1), `rust-toolchain.toml`, `scripts/` (1), `tools/uniffi-bindgen/` (1);
   dependencies unchanged; `#[test]` functions unchanged at 847.
 
 ## Beta Commit 174
@@ -4359,10 +4433,10 @@
   "2024"` in `core`, `cli`, `ffi`, `tools/uniffi-bindgen`): rustfmt's 2024
   import order and `assert!` layout across 165 files, and twelve nested `if
   let`s collapsed into let chains; behaviour unchanged.
-- Total: 165 .rs files changed, +1606 −1287 lines; data and config files:
+- Total: 165 .rs files changed, +1601 −1282 lines; data and config files:
   `Cargo.toml`, `cli/Cargo.toml`, `core/Cargo.toml`, `ffi/Cargo.toml`,
-  `tools/uniffi-bindgen/Cargo.toml`; dependencies unchanged; `#[test]` functions
-  unchanged at 847.
+  `tools/uniffi-bindgen/Cargo.toml`; dependencies unchanged; `#[test]`
+  functions unchanged at 847.
 
 ## Beta Commit 173
 
@@ -4378,10 +4452,11 @@
 - Docs: `BEHAVIOUR-CHANGES.md` entries (dead code the scans missed, and an app
   entry on one wallet setup with advanced options); `scripts/README.md` lists
   the seven newer CLI suites and the file count (24 → 31).
-- Total: 1 .rs files changed, +88 −71 lines; data and config files:
+- Total: 1 .rs file changed, +0 −46 lines; data and config files:
   `Cargo.lock`, `cli/Cargo.toml`, `ffi/Cargo.toml`,
-  `scripts/uncalled-core-fns.sh`; dependencies: removed uuid (`cli/Cargo.toml`),
-  uniffi (`ffi/Cargo.toml`); `#[test]` functions unchanged at 847.
+  `scripts/uncalled-core-fns.sh`; dependencies: removed uuid
+  (`cli/Cargo.toml`), uniffi (`ffi/Cargo.toml`); `#[test]` functions unchanged
+  at 847.
 
 ## Beta Commit 172
 
@@ -4390,46 +4465,54 @@
   `registry.rs`)
   - A history row's contract or mint gives its deployment; a row without one is
     the network's own coin (Tron token rows need a contract, Solana SPL rows
-    without a mint are skipped), and a contract that does not normalize refuses
-    the row; a token row is named from the catalog entry for its deployment, or
-    shown as its contract (before: native-ness and names were decided by ticker,
-    `token_name_on_chain`).
+    without a mint are skipped) (before: native-ness was decided by ticker).
+  - A contract that does not normalize refuses the row.
+  - A token row is named from the catalog entry for its deployment, or shown
+    as its contract (before: by ticker, `token_name_on_chain`).
   - Transaction merges compare deployment ids only; the
     `merge_identity_includes_symbol` registry flag is removed.
   - `EvmSendAssemblyInput` carries `deployment_id` instead of `symbol`: the
     native deployment is a value transfer with no contract, and any other must
     carry the contract that derives exactly that deployment.
-  - `history_deployment` becomes `tokens::deployment_id_for`.
 - **The wiki looks up coins by token id** (`core/data/crypto-wiki.toml`,
-  `core/src/wiki.rs`): rows use `token_id` instead of `asset = "<ticker>"`,
-  unknown keys are refused, and the text shown is unchanged.
+  `core/src/wiki.rs`)
+  - Rows use `token_id` instead of `asset = "<ticker>"`; the text shown is
+    unchanged.
+  - Unknown keys are refused.
 - **Core runs the maintenance loop and logs its own events**
   (`fetch/refresh_engine.rs`, `service/app_refresh.rs`,
   `service/operational_events.rs`, `service/transaction_recheck.rs`,
   `service/send_stages.rs`, `service/diagnostic_state.rs`)
-  - `BalanceRefreshEngine` / `BalanceObserver` become `RefreshEngine` /
-    `RefreshObserver`; given `DeviceConditions`, core runs the balance sweep and
-    the maintenance tick while the app is active and a wallet has something to
-    fetch, and hands each `AppRefreshResult` to `on_refresh_complete`.
+  - Given `DeviceConditions`, core runs the balance sweep and the maintenance
+    tick while the app is active and a wallet has something to fetch, and
+    hands each `AppRefreshResult` to `on_refresh_complete`
+    (`BalanceRefreshEngine` / `BalanceObserver` become `RefreshEngine` /
+    `RefreshObserver`).
   - `AppRefreshResult` reports `transactions_changed` and `diagnostics_changed`.
   - Core writes English operational-log lines with `source: core` for status
     changes, broadcast outcomes, rescans, self-tests, refresh and pending
-    failures and failed rechecks; appended lines are trimmed and capped at 800.
+    failures and failed rechecks.
 - **Core pushes Tor status and history paging state** (`core/src/tor.rs`,
-  `service/history_cursor.rs`, `service/history_query.rs`): every Tor state
-  change and bootstrap step is forwarded through `on_tor_status_changed`;
-  `TransactionSnapshot.wallets_with_more_history` replaces the exported
-  `history_cursor`.
+  `service/history_cursor.rs`, `service/history_query.rs`)
+  - Every Tor state change and bootstrap step is forwarded through
+    `on_tor_status_changed`.
+  - `TransactionSnapshot.wallets_with_more_history` replaces the exported
+    `history_cursor`.
 - **`preview_owned_send` checks the recipient beside the quote**
-  (`service/owned_send.rs`, `send_preview.rs`): it returns `recipient`
-  (`checked` with activity, or `unavailable`), and a failed recipient read
-  leaves the quote standing; CLI `send preview` prints it.
+  (`service/owned_send.rs`, `send_preview.rs`; `cli/src/cmd/tx.rs`)
+  - It returns `recipient` (`checked` with activity, or `unavailable`), and a
+    failed recipient read leaves the quote standing.
+  - CLI `send preview` prints it.
 - **`Chain::accepts_account_xpub`** (Bitcoin only) replaces a chain comparison
   in the import planner.
-- **Smaller removals**: the `providerState` reset scope (`settings reset --scope
-  providerState` is refused), `CoreSeedDerivationPaths.is_custom_enabled` (never
-  read), the `normalized_send_address` export; the chain catalog's `category` is
-  a typed `ChainCategory`, so a misspelt category fails at load.
+- **Smaller removals** (`core/src/store/state.rs`, `store/wallet_domain.rs`,
+  `send/flow.rs`)
+  - The `providerState` reset scope (`settings reset --scope providerState` is
+    refused).
+  - `CoreSeedDerivationPaths.is_custom_enabled` (never read).
+  - The `normalized_send_address` export.
+- **The chain catalog's `category` is a typed `ChainCategory`**
+  (`core/src/chains.rs`), so a misspelt category fails at load.
 - Tests: 6 new, 1 removed
   - Deployment identity 3: a history row borrowing another asset's identity
     through its ticker, two tokens sharing a ticker merged, an EVM assembly with
@@ -4445,10 +4528,10 @@
   log, pushed changes, bridge, account xpub fact, Secure Enclave–wrapped master
   key, smaller removals, one string table); `AGENTS.md` "Resources" examples;
   `docs/PLAN.md` stage 3 row.
-- Total: 39 .rs files changed, +1374 −389 lines; data and config files:
+- Total: 39 .rs files changed, +1033 −275 lines; data and config files:
   `core/data/crypto-wiki.toml`, `scripts/cli-acceptance.sh`,
-  `scripts/cli-diagnostics.py`; dependencies unchanged; `#[test]` functions 842
-  → 847.
+  `scripts/cli-diagnostics.py`; dependencies unchanged; `#[test]` functions
+  842 → 847.
 
 ## Beta Commit 171
 
@@ -4465,14 +4548,15 @@
     floats, skipped tokens, stored nothing, and fell back to USD when the rate
     failed).
   - `spectra price <chain>` prints core's `native_spot_price` converted with the
-    stored rate; a missing rate or a testnet coin gives `null` (shown as `—`)
-    instead of another currency's figure or zero, and the fixed "via CoinGecko"
-    line is removed.
+    stored rate.
+  - A missing rate or a testnet coin gives `null` (shown as `—`) instead of
+    another currency's figure or zero.
+  - The fixed "via CoinGecko" line is removed.
   - The CLI-only `service::fetch_prices` and `service::fetch_fiat_rates` are
     removed.
 - Docs: `docs/BEHAVIOUR-CHANGES.md` 2026-09-24 "The CLI's live portfolio and
   spot price are core's valuation".
-- Total: 4 .rs files changed, +232 −193 lines; data and config files:
+- Total: 4 .rs files changed, +167 −193 lines; data and config files:
   `scripts/cli-portfolio.py`; dependencies unchanged; `#[test]` functions
   unchanged at 842.
 
@@ -4482,75 +4566,86 @@
   `formatting.rs`, `send/amount_input.rs`, `store/wallet_domain.rs`,
   `service/valuation.rs`)
   - Holdings, transaction amounts, receipt and confirmed fees, preview details
-    and affordability use canonical decimal strings instead of `f64`; core sums
-    dashboard totals (`CoreDashboardAssetGroup.total_amount`) and compares
-    affordability exactly.
+    and affordability use canonical decimal strings instead of `f64`, and
+    affordability compares exactly.
+  - Core sums dashboard totals (`CoreDashboardAssetGroup.total_amount`).
   - `format_asset_amount` truncates to the displayed places and flags
     `below_threshold` (before: rounding to nearest, so `0.999999999` BTC read
-    `1`); `is_valid_amount_input` replaces `parse_amount_input`.
-  - `send_amount_shortcut` takes the exact balance; fee-adjusted preview maxima
-    stay on floats with one ULP reserved. CLI `send shortcut`.
-  - Price-alert targets are text parsed by core; `price_usd` on holdings and
-    `fee_priority_raw` on records are removed.
+    `1`).
+  - `is_valid_amount_input` replaces `parse_amount_input`.
+  - `send_amount_shortcut` and CLI `send shortcut` take the exact balance;
+    fee-adjusted preview maxima stay on floats with one ULP reserved.
+  - Price-alert targets are text parsed by core.
+  - `price_usd` on holdings and `fee_priority_raw` on records are removed.
 - **Core values everything in the display currency** (`service/valuation.rs`,
   `service/app_refresh.rs`, `service/owned_send.rs`)
   - `PortfolioValuation` carries per-holding values, unit prices and alert
-    targets; dashboard groups carry `total_value` and `price`;
-    `OwnedSendPreview` carries `network_fee`, `network_fee_value`,
-    `amount_value` and the quoted `amount`; notifications carry their
-    `currency`.
+    targets; dashboard groups carry `total_value` and `price`.
+  - `OwnedSendPreview` carries `network_fee`, `network_fee_value`,
+    `amount_value` and the quoted `amount`.
+  - Notifications carry their `currency`.
   - `refresh_app` returns the price-alert and movement notifications it
-    evaluated; `unpriced_chain_ids` and `refresh_owned_prices` are removed; a
-    testnet holding has no value.
+    evaluated.
+  - `unpriced_chain_names` is removed.
+  - A testnet holding has no value.
 - **Chains cross the boundary by id** (`store/state.rs`,
   `store/wallet_domain.rs`, `registry.rs`, every record and command)
   - Wallets, holdings, transactions, contacts, token commands, fee-priority
     settings, diagnostics, wiki places, funds-finder candidates and endpoint
     probes carry `chain_id` instead of a display name; names are derived where
-    text is drawn (`Chain::display_name_for_id`); CLI `--json` prints `chainId`.
+    text is drawn (`Chain::display_name_for_id`).
+  - CLI `--json` prints `chainId`.
   - `WalletState` stores the id once; a wallet's family is
     `WalletState::family()`.
   - `CoreTokenHostingChain`, `evm_seed_derivation_chain` and the unused identity
     fields `token_hosting_chain`, `send_execution_shape`, `rpc_health_method`,
-    `pending_status_poll`, `seed_derivation_chain` are removed;
-    `Chain::hosts_tokens()` replaces the hosting list.
+    `pending_status_poll`, `seed_derivation_chain` are removed.
+  - `Chain::hosts_tokens()` replaces the hosting list.
 - **A wallet's signing kind is stored, and phrase reveal is one typed call**
-  (`store/state.rs` `WalletSigning`, `store/wallet_secrets.rs`
+  (`store/state.rs` `WalletSigning`, `service/wallet_import.rs`
   `reveal_seed_phrase`)
   - `WalletState.signing` is `watchOnly`, `seedPhrase { passwordProtected }` or
     `privateKey { passwordProtected }`, written at import (before:
     `is_watch_only` plus Keychain queries on each render).
   - `reveal_seed_phrase(wallet_id, password)` answers `phrase`, `notStored`,
-    `passwordRequired`, `incorrectPassword` or `passwordNotRequired`;
-    `wallet_secret_state`, `wallet_seed_phrase` and both secret-material
-    descriptors are removed. CLI `wallet export` uses it.
+    `passwordRequired`, `incorrectPassword` or `passwordNotRequired`; CLI
+    `wallet export` uses it.
+  - `wallet_secret_state`, `wallet_seed_phrase` and both secret-material
+    descriptors are removed.
 - **Failures and degradations are typed** (`store/persistence_models.rs`
-  `TransactionFailure`, `ChainDegradation`): `stuckAfterRetries`,
-  `submissionOutcomeUnknown`, `rebroadcastOutcomeUnknown`, `reported { message
-  }` and `historyRefreshFailed`, `historyPartiallyLoaded`, `failed { message }`
-  replace stored English sentences; `core/src/diagnostics/degraded.rs` is
-  deleted.
-- **One self-send check** (`send/flow.rs` `is_own_address`): ownership compares
-  in the chain's normal form (all-caps bech32 lowercased);
-  `self_send_confirmation` and its records are removed. CLI `send self-check`
-  prints `{"ownAddress": bool}`.
+  `TransactionFailure`, `service/diagnostic_state.rs` `ChainDegradation`)
+  - `stuckAfterRetries`, `submissionOutcomeUnknown`,
+    `rebroadcastOutcomeUnknown`, `reported { message }` and
+    `historyRefreshFailed`, `historyPartiallyLoaded`, `failed { message }`
+    replace stored English sentences.
+  - `core/src/diagnostics/degraded.rs` is deleted.
+- **One self-send check** (`service/owned_send.rs`
+  `is_own_send_destination`, `send/flow.rs`; `cli/src/cmd/tx.rs`)
+  - Ownership compares in the chain's normal form (all-caps bech32
+    lowercased).
+  - `self_send_confirmation` and its records are removed.
+  - CLI `send self-check` prints `{"ownAddress": bool}`.
 - **Address-book contacts get core-minted ids, and duplicates are exact**
-  (`store/state.rs`): duplicates compare normalized addresses exactly, so base58
-  addresses differing only in case are distinct (before: case-insensitive).
+  (`store/state.rs`; `cli/src/cmd/address.rs`)
+  - Core mints a contact's id, named by `AddressBookEntryAdded` (before: the
+    caller supplied it).
+  - Duplicates compare normalized addresses exactly, so base58 addresses
+    differing only in case are distinct (before: case-insensitive).
 - **`transaction_endpoints(id)` reports each side of a transfer and whether it
-  is the user's** (`service/history_query.rs`; CLI `txs --endpoints <id>`);
-  unread projections `resolved_addresses_by_wallet_id`,
-  `merge_built_in_token_preferences`, `endpoint_tag`, `WalletHoldingRef` and
-  `GroupedPortfolioHolding` are removed.
+  is the user's** (`service/history_query.rs`; CLI `txs --endpoints <id>`).
+- **Unread projections are removed**: `resolved_addresses_by_wallet_id`, the
+  `merge_built_in_token_preferences` export, `endpoint_tag`,
+  `WalletHoldingRef` and `GroupedPortfolioHolding`.
 - Tests: 12 new, 15 removed
   - Decimals 5: non-unique canonical spellings, digits lost to floats, inexact
     sums, truncation rounding up, floats not arriving in shortest form.
-  - Formatting 1, shortcuts 1: a large balance losing digits or dust shown
-    without its flag; a shortcut computed through a float.
+  - Formatting 1: a large balance losing digits or dust shown without its
+    flag.
+  - Shortcuts 1: a shortcut computed through a float.
   - Transaction endpoints 3: a send's direction reversed, a receive not ending
     at the wallet regardless of case, a self-send naming its address twice.
-  - Valuation 1, address book 1: a testnet holding valued; case-distinct base58
-    addresses merged.
+  - Valuation 1: a testnet holding valued.
+  - Address book 1: case-distinct base58 addresses merged.
   - Removed: eight degraded-sentence tests with `degraded.rs`, four
     token-hosting and descriptor tests, two endpoint-tag tests, one testnet
     pricing boundary test.
@@ -4558,8 +4653,8 @@
   signing, exact amounts, display-currency valuation, send preview store and
   self-send, typed failures, address-book ids, colours and transaction
   endpoints).
-- Total: 131 .rs files changed (1 new), +3599 −3481 lines; data and config
-  files: `scripts/cli-acceptance.sh`, `scripts/cli-diagnostics.py`,
+- Total: 131 .rs files changed (1 new, 1 deleted), +3314 −3405 lines; data and
+  config files: `scripts/cli-acceptance.sh`, `scripts/cli-diagnostics.py`,
   `scripts/cli-history.py`, `scripts/cli-portfolio.py`, `scripts/cli-send.py`;
   dependencies unchanged; `#[test]` functions 845 → 842.
 
@@ -4575,9 +4670,10 @@
     built-in API, and custom nodes can still be added.
   - Tron PublicNode uses `/jsonrpc`.
   - EVM history sources live in the shared directory with only implemented
-    capabilities; Routescan uses its `/etherscan` path, testnets no longer
-    inherit mainnet history, and Berachain, Cronos and X Layer have no built-in
-    history source.
+    capabilities.
+  - Routescan uses its `/etherscan` path.
+  - Testnets no longer inherit mainnet history.
+  - Berachain, Cronos and X Layer have no built-in history source.
   - Probes run on the endpoint's own origin and check JSON or API responses, EVM
     chain identity plus block and balance reads, history API errors and the
     Esplora and Monero protocol paths; every built-in API has a probe, and
@@ -4594,11 +4690,12 @@
   so a superseded pending row or an orphaned wallet's row no longer appears or
   offers replacement.
 - **Automatic status polling covers pending transactions only**
-  (`service/pending_status.rs`, `transaction_recheck.rs`, `service/state.rs`):
-  Dogecoin's polling of confirmed sends up to 12 confirmations, its in-memory
-  stop flag and finality event are removed; a Dogecoin send stops at its first
-  confirmation, also after restart; an explicit recheck still works and resumes
-  polling on a reorg; an unresolved read schedules another check.
+  (`service/pending_status.rs`, `transaction_recheck.rs`, `service/state.rs`)
+  - Dogecoin's polling of confirmed sends up to 12 confirmations, its
+    in-memory stop flag and finality event are removed; a Dogecoin send stops
+    at its first confirmation, also after restart.
+  - An explicit recheck resumes polling on a reorg.
+  - An unresolved read schedules another check.
 - **Send preparation and history writes are scoped and atomic**
   (`wallet_db/sends.rs`, `wallet_db/history.rs`, `service/monero_wallet.rs`)
   - EVM nonce preparation and Monero input selection read only the chain and
@@ -4607,10 +4704,13 @@
     still refuses.
   - History batches reuse one prepared statement inside an immediate RAII
     transaction, so a failed insert, delete or commit rolls back.
-- **Smaller core changes**: pin options list pinned assets first; the portfolio
-  snapshot carries a precision catalog per deployment, and the caller-fed
-  precision helper is removed; the whole-holding artwork export is removed in
-  favour of `token artwork --deployment-id`.
+- **Smaller core changes** (`service/state.rs`, `formatting.rs`, `tokens.rs`,
+  `store/artwork.rs`)
+  - Pin options list pinned assets first.
+  - The portfolio snapshot carries a precision catalog per deployment.
+  - The caller-fed `token_display_decimals` is no longer exported.
+  - The whole-holding artwork export (`holding_artwork_name`) is removed in
+    favour of `token artwork --deployment-id`.
 - Measured: 2026-09-23 live endpoint audit; the 14 failing built-in provider
   records above were removed rather than kept as fallbacks (`docs/PLAN.md`
   "Endpoint availability and redundancy").
@@ -4635,11 +4735,11 @@
   isolation and precision projections); `docs/ARCHITECTURE.md` "Native flow
   lifetimes and display precision"; `docs/PLAN.md` stage 3 row, endpoint
   availability and EVM history availability.
-- Total: 30 .rs files changed (2 new), +1781 −749 lines; data and config files:
-  `core/data/endpoints.toml`, `scripts/cli-acceptance.sh`,
+- Total: 30 .rs files changed (2 new), +1205 −612 lines; data and config
+  files: `core/data/endpoints.toml`, `scripts/cli-acceptance.sh`,
   `scripts/cli-endpoints.py`, `scripts/cli-history.py`,
-  `scripts/cli-portfolio.py`; dependencies unchanged; `#[test]` functions 835 →
-  845.
+  `scripts/cli-portfolio.py`; dependencies unchanged; `#[test]` functions 835
+  → 845.
 
 ## Beta Commit 168
 
@@ -4648,29 +4748,28 @@
   `service/network*.rs`, `send_preview.rs`, `send_stage_protocols.rs`,
   `staking.rs`, `core/data/endpoints.toml`)
   - A custom endpoint stores its own non-empty, canonical capability set (CLI
-    `endpoints --add` requires `--capabilities`); unknown capabilities and
-    operations the adapter does not implement are refused, and custom records no
-    longer copy a built-in provider's metadata.
+    `endpoints --add` requires `--capabilities`).
+  - Unknown capabilities and operations the adapter does not implement are
+    refused.
+  - Custom records no longer copy a built-in provider's metadata.
   - Balance, fees, token reads, history, UTXOs, verification and staking pick
     only providers declaring that operation, and fallbacks keep the requirement;
     an operation needing several capabilities requires all of them.
   - EVM previews and builds read balance, fee, nonce and token metadata from
-    separately selected nodes; native and token history pick their sources
-    independently.
+    separately selected nodes.
+  - Native and token history pick their sources independently.
   - Broadcast candidates must declare `broadcast`, checked again before
     verification and submission; an explicit submission cannot use an undeclared
     URL or bypass a saved endpoint's restriction.
-  - `staking` is its own capability, and built-in rows used for context
-    verification, staking, Cardano UTXOs and TON token metadata now declare
-    those purposes.
+  - `staking` is its own capability.
+  - Built-in rows used for context verification, staking, Cardano UTXOs and
+    TON token metadata now declare those purposes.
   - WhatsOnChain declares broadcast on its base URL and its operation-path rows
     are removed, so `/tx/raw` is not appended twice.
   - A failed automatic Bitcoin fee preview no longer reports a fabricated 5
     sat/vB quote.
 - **Nine icons redrawn without transforms or negative space** (`icons/crypto/`):
-  ethfi (solid `#302a92` disc, outer ring removed, clipping fixed), ink, leo
-  (mark 20% larger), ondo (10% smaller), polkadot (8% smaller), polygon (5%
-  larger), sei, sonic and wrappedbitcoin (explicit background discs).
+  ethfi, ink, leo, ondo, polkadot, polygon, sei, sonic and wrappedbitcoin.
 - Tests: 5 new
   - Endpoint routing 5: same-API endpoints sharing capabilities or requests,
     custom capabilities unvalidated or non-canonical, EVM preview reads sent to
@@ -4679,9 +4778,9 @@
 - Docs: `docs/BEHAVIOUR-CHANGES.md` 2026-09-23 entries (large-movement threshold
   entry, alert copy removals, ETHFI, INK, LEO, ONDO, Polkadot and Polygon, SEI,
   Sonic and Wrapped Bitcoin icon changes, custom endpoint capabilities).
-- Total: 45 .rs files changed, +1540 −430 lines; data and config files:
-  `icons/crypto/` (9), `scripts/` (9), `core/data/` (1); dependencies unchanged;
-  `#[test]` functions 830 → 835.
+- Total: 45 .rs files changed, +1150 −246 lines; data and config files:
+  `icons/crypto/` (9), `scripts/` (9), `core/data/` (1); dependencies
+  unchanged; `#[test]` functions 830 → 835.
 
 ## Beta Commit 167
 
@@ -4691,15 +4790,15 @@
   - A custom endpoint is a network, an `api` from `endpoints.toml` and a URL;
     invalid, duplicate and incompatible entries leave state unchanged.
   - Custom URLs feed the matching API clients and health probes, newest first
-    and before built-in nodes, isolated per network; Blockscout history accepts
-    custom sources, and TronGrid token discovery uses its own typed account
-    URLs.
+    and before built-in nodes, isolated per network.
+  - Blockscout history accepts custom sources.
+  - TronGrid token discovery uses its own typed account URLs.
   - The separate `rpc_endpoint_by_chain`, Bitcoin Esplora and Monero backend
     settings are removed (before: the Esplora and Monero values were stored but
     not used for node selection); CLI `settings` loses `rpc-endpoint.*`,
     `bitcoin-esplora-endpoints` and `monero-backend-url`.
-  - CLI `endpoints --chain <network> --api <api> --add <url>` and `endpoints
-    --catalog --source built-in|custom`.
+  - New CLI `endpoints --chain <network> --api <api> --add <url>`.
+  - CLI `endpoints --catalog` takes `--source built-in|custom`.
 - **The `strict-rpc-only` setting is removed**: it was stored and exposed but
   read by no operation; `settings get/set strict-rpc-only` is now refused.
 - **Verification guidance scales with the change** (`AGENTS.md`,
@@ -4716,8 +4815,9 @@
   directory, Report a Problem intro, strict RPC removal, recipient icon, pricing
   and endpoints intros); `AGENTS.md` "Verification"; `docs/PLAN.md`
   verification.
-- Total: 19 .rs files changed (1 new), +850 −461 lines; data and config files:
-  `scripts/` (9); dependencies unchanged; `#[test]` functions unchanged at 830.
+- Total: 19 .rs files changed (1 new), +687 −420 lines; data and config files:
+  `scripts/` (9); dependencies unchanged; `#[test]` functions unchanged at
+  830.
 
 ## Beta Commit 166
 
@@ -4732,17 +4832,19 @@
   (`store/state.rs`, `fetch/price.rs`, `service/network_prices.rs`; CLI `token
   edit`, `token add --coinpaprika-id`)
   - Name, symbol, precision and optional CoinGecko and CoinPaprika ids can be
-    added or edited; network and contract cannot; provider ids are validated
-    before storage and URLs are refused; a metadata change clears that
-    deployment's cached price; built-ins stay read-only.
+    added or edited; network and contract cannot; built-ins stay read-only.
+  - Provider ids are validated before storage and URLs are refused.
+  - A metadata change clears that deployment's cached price.
   - CoinPaprika quotes come from the token's own CoinPaprika id, never inferred
-    from its CoinGecko id; the test-only provider-to-provider lookup is deleted.
+    from its CoinGecko id.
+  - The test-only provider-to-provider lookup is deleted.
   - `spectra --json token list` shows identities, choices and both provider ids.
 - **Token history labels come from deployment identity**
-  (`core/src/fetch/history.rs`): names and tickers resolve by network and
-  case-sensitive mint or contract, so Solana SPL history shows USDC/USDT instead
-  of the mint address; unknown contracts keep their address, and stored records
-  are relabelled on refresh.
+  (`core/src/fetch/history.rs`)
+  - Names and tickers resolve by network and case-sensitive mint or contract,
+    so Solana SPL history shows USDC/USDT instead of the mint address; unknown
+    contracts keep their address.
+  - Stored records are relabelled on refresh.
 - Tests: 6 new, 4 removed
   - Token discovery 1: a new network deployment ignoring the token's saved
     choice.
@@ -4757,7 +4859,7 @@
   (token history labels, history capability label, diagnostics actions,
   token-wide discovery and token management, provider lookup removal, Known
   Tokens filters and switches).
-- Total: 13 .rs files changed, +620 −231 lines; data and config files:
+- Total: 13 .rs files changed, +394 −231 lines; data and config files:
   `scripts/cli-acceptance.sh`, `scripts/cli-history.py`,
   `scripts/cli-token-preferences.py`; dependencies unchanged; `#[test]`
   functions 828 → 830.
@@ -4774,12 +4876,13 @@
     with no unselected fallback (before: an in-memory review expired after 120
     seconds and the next action signed and submitted).
   - Signing rechecks nonce or sequence, selected inputs or objects and protocol
-    expiry; SQLite compare-and-swap and input reservations stop conflicting
-    concurrent signs; expiry is checked again before submission.
-  - Retries reuse the same signed bytes and keep a result per endpoint; a lost
-    or malformed response stays uncertain; node acceptance is recorded apart
-    from on-chain status, and a confirmed record cannot be reset by
-    rebroadcasting.
+    expiry, and expiry is checked again before submission.
+  - SQLite compare-and-swap and input reservations stop conflicting concurrent
+    signs.
+  - Retries reuse the same signed bytes and keep a result per endpoint.
+  - A lost or malformed response stays uncertain.
+  - Node acceptance is recorded apart from on-chain status, and a confirmed
+    record cannot be reset by rebroadcasting.
   - `build_owned_send` builds from a tracked holding and stores typed build-time
     advisories (recipient, first-use, self-send) in the review digest; reopening
     returns the same review.
@@ -4803,34 +4906,42 @@
     daemons receive public queries and the signed bytes, never spend or view
     keys (before: a remote wallet RPC).
   - A network-scoped AES-GCM encrypted scan cache and frozen signing plan are
-    persisted; the view key lives in `SecretStore`; signed artifacts reserve key
-    images; restart resumes scanning and a reorg restarts from the restore
-    height.
-  - Local unlocked balance and scanned history replace wallet-RPC reads; HF16 is
-    required, unknown hard forks refuse, and pre-RingCT outputs and subaddresses
-    are not supported.
+    persisted; the view key lives in `SecretStore`.
+  - Signed artifacts reserve key images.
+  - Restart resumes scanning and a reorg restarts from the restore height.
+  - Local unlocked balance and scanned history replace wallet-RPC reads.
+  - HF16 is required and unknown hard forks refuse; pre-RingCT outputs and
+    subaddresses are not supported.
+  - The catalog's three Edge `monero-light-wallet` rows are replaced by
+    `monero-daemon-rpc` rows: Cake Wallet on mainnet, Exan on stagenet
+    (`core/data/endpoints.toml`).
   - CLI `send sync-monero --from <wallet> [--restore-height H] [--once]` and
     `send monero-status`.
 - **ICP derives ledger account ids and signs locally** (`derivation/icp.rs`, new
-  `send/icp_stages.rs`): CRC32/SHA-224 account identifiers from the DER Ed25519
-  principal; protobuf ledger arguments, signed call and read-state envelopes and
-  the ledger hash are built locally, and Rosetta supplies metadata and submits;
-  ICP wallets from the old derivation must be re-imported, and their addresses
-  are refused.
+  `send/icp_stages.rs`)
+  - Account identifiers are CRC32/SHA-224 of the DER Ed25519 principal.
+  - Protobuf ledger arguments, signed call and read-state envelopes and the
+    ledger hash are built locally; Rosetta supplies metadata and submits.
+  - ICP wallets from the old derivation must be re-imported, and their
+    addresses are refused.
 - **Zcash transparent sends use ZIP-244 signing** (`send/zcash.rs`, new
-  `send/zcash_stages.rs`): genesis, consensus branch (upgrades through NU6.2),
-  unspent inputs, ZIP-317 fees and expiry are checked; unknown future branches
-  refuse; shielded sends are not supported; testnet P2SH validation is
-  corrected; the preview fee floor is 10,000 zatoshis; Blockbook broadcast
-  parses its JSON `result` txid (before: a fixed NU5 branch and an incorrect
-  signature preimage).
+  `send/zcash_stages.rs`, `derivation/zcash.rs`, `registry.rs`)
+  - Genesis, consensus branch (upgrades through NU6.2), unspent inputs,
+    ZIP-317 fees and expiry are checked; unknown future branches refuse;
+    shielded sends are not supported (before: a fixed NU5 branch and an
+    incorrect signature preimage).
+  - Testnet P2SH validation is corrected.
+  - The preview fee floor is 10,000 zatoshis (before: 1,000).
+  - Blockbook broadcast parses its JSON `result` txid.
 - **State responses carry a committed revision** (`service/state.rs`,
   `CoreAppState.revision`): assigned only when committed state is published, not
   advanced by failed or no-op commands, not persisted.
-- **Transaction actions come from core** (new `service/transaction_actions.rs`):
-  history pages, snapshots and record reads include recheck and rebroadcast
-  availability with reasons, checked again before execution; confirmed UTXO
-  records can be rechecked; `txs --record` and `txs --page` print `actions`.
+- **Transaction actions come from core** (new
+  `service/transaction_actions.rs`)
+  - History pages, snapshots and record reads include recheck and rebroadcast
+    availability with reasons, checked again before execution.
+  - Confirmed UTXO records can be rechecked.
+  - `txs --record` and `txs --page` print `actions`.
 - **Transaction timestamps are Unix seconds everywhere**
   (`store/persistence_models.rs` `createdAtUnix`; before: the payload used the
   2001 epoch), with fractional seconds and no migration.
@@ -4839,9 +4950,9 @@
   storage slots, so EVM chains are no longer merged before core sees them.
 - **Maestro's Bitcoin Esplora and TronScan's `accountv2` endpoints removed**
   (`core/data/endpoints.toml`).
-- Measured: Monero v0.18.5.1 `monerod` (regtest, offline) accepted a transaction
-  Spectra built and signed locally, without wallet RPC; the public fixture and
-  its notes are `core/tests/fixtures/monero-local.json` and
+- Measured: 2026-09-22, Monero v0.18.5.1 `monerod` (regtest, offline) accepted
+  a transaction Spectra built and signed locally, without wallet RPC; the
+  public fixture and its notes are `core/tests/fixtures/monero-local.json` and
   `core/tests/fixtures/monero-local.md`.
 - Tests: 10 new, 20 removed
   - Staged sends 2: an invalid exact amount or fee reaching storage or keys; a
@@ -4864,24 +4975,29 @@
   `docs/ARCHITECTURE.md`; `docs/FFI-BOUNDARY.md` timestamps and versions;
   `docs/PLAN.md` staged sends, configured endpoints and local Monero/ICP/Zcash
   marked done; new `core/tests/fixtures/monero-local.md`.
-- Total: 100 .rs files changed (11 new), +6308 −3805 lines; data and config
-  files: `scripts/` (7), `Cargo.lock`, `core/` (1), `core/data/` (1),
-  `core/tests/` (1); dependencies: added monero-daemon-rpc 0.2, monero-wallet
-  0.2, serde_cbor 0.11 (`core/Cargo.toml`); `#[test]` functions 838 → 828.
+- Total: 100 .rs files changed (11 new, 3 deleted), +5255 −3729 lines; data
+  and config files: `scripts/` (7), `Cargo.lock`, `core/` (1), `core/data/`
+  (1), `core/tests/` (1); dependencies: added monero-daemon-rpc 0.2,
+  monero-wallet 0.2, serde_cbor 0.11 (`core/Cargo.toml`); `#[test]` functions
+  838 → 828.
 
 ## Beta Commit 164
 
 - **Documentation consolidated; no code changed**
   - `PLAN.md` and `FUTURE_PLANS.md` move into `docs/`; links in `AGENTS.md`,
-    `README.md`, `docs/ARCHITECTURE.md`, `docs/FFI-BOUNDARY.md` and
-    `core/data/endpoints.toml` follow.
+    `README.md`, `docs/ARCHITECTURE.md` and `docs/FFI-BOUNDARY.md` follow.
   - `docs/DUPLICATION-AUDIT.md`, `ENDPOINT-APIS.md`, `ENDPOINT-CAPABILITIES.md`,
-    `NAMING.md` and `TEST-AUDIT.md` are deleted, and `docs/BEHAVIOUR-CHANGES.md`
-    drops its recorded entries again.
+    `NAMING.md` and `TEST-AUDIT.md` are deleted, with the links to them in
+    `docs/ARCHITECTURE.md` and `core/data/endpoints.toml`.
+  - `docs/BEHAVIOUR-CHANGES.md` drops its recorded entries again.
   - `AGENTS.md` "Icons" is shortened to the export rule, the house-style bullets
     and the `appicon/` exception.
-- Docs: as above.
-- Total: no .rs files changed, +23 −1056 lines; data and config files:
+- Docs: `AGENTS.md` (PLAN link, "Icons"); `README.md`, `docs/ARCHITECTURE.md`
+  and `docs/FFI-BOUNDARY.md` (links); `docs/PLAN.md` and
+  `docs/FUTURE_PLANS.md` (moved); `docs/BEHAVIOUR-CHANGES.md` (entries
+  dropped); `docs/DUPLICATION-AUDIT.md`, `ENDPOINT-APIS.md`,
+  `ENDPOINT-CAPABILITIES.md`, `NAMING.md` and `TEST-AUDIT.md` (deleted).
+- Total: no .rs files changed; data and config files:
   `core/data/endpoints.toml`; dependencies unchanged; `#[test]` functions
   unchanged at 838.
 
@@ -4901,7 +5017,7 @@
   shared code).
 - Docs: `docs/BEHAVIOUR-CHANGES.md` 2026-09-21 "Share cross-chain primitives and
   remove an unused error type"; new `docs/DUPLICATION-AUDIT.md`.
-- Total: 21 .rs files changed, +227 −578 lines; data and config files: none;
+- Total: 21 .rs files changed, +151 −578 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions 841 → 838.
 
 ## Beta Commit 162
@@ -4919,10 +5035,11 @@
     have the exact current version and work factor.
 - **API keys and authenticated providers removed** (`core/data/endpoints.toml`,
   `fetch/`, `store/state.rs`)
-  - Endpoint records and settings have no API-key fields; the Monero backend
-    key, Etherscan key, Taostats, Subscan and Ethplorer adapters and catalog
-    rows are deleted; CLI `settings set etherscan-api-key` and
-    `monero-backend-api-key` are refused.
+  - Endpoint records and settings have no API-key fields, so the Monero
+    backend key and the Etherscan key are gone.
+  - The Taostats, Subscan and Ethplorer adapters and catalog rows are deleted.
+  - CLI `settings set etherscan-api-key` and `monero-backend-api-key` are
+    refused.
   - BNB Chain, Sonic, opBNB, Sei, Linea and Hyperliquid have no history source
     (`spectra --json chains` reports `historySource: "none"`, without
     `needsApiKey`); their history fails before any request.
@@ -4931,19 +5048,25 @@
   - TON requests are unauthenticated.
   - The supplemental-explorer slots are removed; pending polling uses every
     configured slot for the network.
-- **Cardano broadcasts raw CBOR to Koios** (`send/cardano.rs`): `POST
-  /submittx`, HTTP 202 and a 64-hex transaction id required (before: a
-  Blockfrost-shaped request); the empty Cardano staking queries are removed.
+- **Cardano broadcasts raw CBOR to Koios** (`send/cardano.rs`,
+  `staking/chains/cardano.rs`)
+  - `POST /submittx`, HTTP 202 and a 64-hex transaction id are required
+    (before: a Blockfrost-shaped request).
+  - The empty Cardano staking queries are removed.
 - **Balance refresh shares in-flight reads** (`service/balance_refresh.rs`,
-  `fetch/refresh_engine.rs`): requested and automatic refreshes share reads by
-  wallet, network and address, at most eight at once; a commit rechecks the
-  address and network under the state writer, persists only that wallet and
-  publishes after it is stored (before: requested refresh ran wallets one at a
-  time and every commit rebuilt the refresh list and cloned state).
+  `fetch/refresh_engine.rs`)
+  - Requested and automatic refreshes share reads by wallet, network and
+    address, at most eight at once (before: requested refresh ran wallets one
+    at a time).
+  - A commit rechecks the address and network under the state writer,
+    persists only that wallet and publishes after it is stored (before: every
+    commit rebuilt the refresh list and cloned state).
 - **History pages use indexes** (`wallet_db/history_query.rs`,
-  `wallet_db/connection.rs`): SQLite refuses invalid identity, kind or status on
-  write, and generated identity and precedence columns let each row seek its
-  winning record without a temporary sort; snapshot merging uses an id set.
+  `wallet_db/connection.rs`)
+  - SQLite refuses invalid identity, kind or status on write.
+  - Generated identity and precedence columns let each row seek its winning
+    record without a temporary sort.
+  - Snapshot merging uses an id set.
 - **Module layout flattened; behaviour unchanged**: `derivation/chains/`,
   `fetch/chains/`, `send/chains/` and `staking/chains/` files become siblings in
   their domain (`ton/cell.rs` → `ton_cell.rs`, `tron/metadata_cache.rs` →
@@ -4968,10 +5091,10 @@
   new `docs/TEST-AUDIT.md`; `docs/ARCHITECTURE.md` module layout;
   `docs/ENDPOINT-CAPABILITIES.md`; `PLAN.md` known open items (EVM history
   availability, keyless provider policy).
-- Total: 201 .rs files changed (2 new), +1973 −2695 lines; data and config
-  files: `core/Cargo.toml`, `core/data/endpoints.toml`,
-  `scripts/cli-acceptance.sh`, `scripts/cli-history.py`; dependencies unchanged;
-  `#[test]` functions 852 → 841.
+- Total: 201 .rs files changed (2 new, 10 deleted), +1641 −2600 lines; data
+  and config files: `core/Cargo.toml`, `core/data/endpoints.toml`,
+  `scripts/cli-acceptance.sh`, `scripts/cli-history.py`; dependencies
+  unchanged; `#[test]` functions 852 → 841.
 
 ## Beta Commit 161
 
@@ -4980,15 +5103,16 @@
   new `docs/ENDPOINT-APIS.md`)
   - Every API row declares a validated `api` enum (for example `esplora`,
     `evm-json-rpc`, `monero-light-wallet`); browser links omit it and declare no
-    capabilities, and `explorer_label` enables a transaction link.
+    capabilities.
+  - `explorer_label` enables a transaction link.
   - Each service slot selects bases whose API its client speaks and which carry
     `balance` (before: primary lists mixed incompatible APIs, and Bitcoin
     Esplora and TON v3 were picked by row id).
   - Litecoin and Bitcoin Cash (Blockbook) and Monero wallet-RPC have no
     compatible catalog URLs, so those primary lists are empty instead of sending
     incompatible requests.
-  - The endpoint `kind`, its category masks and `provider_id` are removed;
-    `native-history` is renamed back to `history` (native coin only;
+  - The endpoint `kind`, its category masks and `provider_id` are removed.
+  - `native-history` is renamed back to `history` (native coin only;
     `token-history` stays separate).
   - A custom URL matching a catalog row with an incompatible API or an
     operation-only path is refused before it is stored.
@@ -4999,20 +5123,23 @@
   - Eight JSON-RPC clients share request, error and fallback handling, keeping
     XRPL's envelope and Monero's and NEAR's string ids; a null `error` with a
     result is accepted, a malformed result still fails.
-  - Nine REST readers share base-path GET and fallback; balance, history, status
-    and rebroadcast pick their adapter from the endpoint's API.
+  - Nine REST readers share base-path GET and fallback.
+  - Balance, history, status and rebroadcast pick their adapter from the
+    endpoint's API.
   - The five Blockbook marker types and files become one client carrying its
-    network; Bitcoin Gold, Dash and Zcash history is now normalized (before:
-    fetched and dropped).
+    network.
+  - Bitcoin Gold, Dash and Zcash history is now normalized (before: fetched
+    and dropped).
   - Native balance summaries format smallest units once with registry decimals,
     so sub-micro amounts are no longer truncated.
 - **Core owns the Tor runtime** (`core/src/tor.rs`, new `service/transport.rs`;
   CLI `tor [--reconnect]`)
   - Registering the platform cache directory starts it; committed setting
     changes and resets reconcile it, and reconnect reads stored settings.
-  - Stopped or replaced bootstraps cannot publish a late completion; the
-    embedded listener binds a free port before reporting ready; client selection
-    shares the transport-switch lock with the kill-switch check.
+  - Stopped or replaced bootstraps cannot publish a late completion.
+  - The embedded listener binds a free port before reporting ready.
+  - Client selection shares the transport-switch lock with the kill-switch
+    check.
   - CLI network commands apply stored routing and wait up to 120 s for
     bootstrap; settings editing stays offline.
 - **Owned send previews carry identity, details and amount shortcuts**
@@ -5032,8 +5159,8 @@
   - Endpoint APIs 1: a known incompatible URL accepted into configuration.
   - JSON-RPC 2: protocol errors not retried or dialects changed; malformed or
     XRPL error responses read as success.
-  - Blockbook and balances 2: one adapter mishandling a network or BCH address
-    rules; a sub-micro native amount shown as zero.
+  - Blockbook 1: one adapter mishandling a network or BCH address rules.
+  - Balances 1: a sub-micro native amount shown as zero.
   - Send preview 2: a native-fee quote claiming a token balance or maximum; an
     unused address confused with an emptied one.
   - Transport 2: a late bootstrap completion published; committed settings or
@@ -5047,30 +5174,33 @@
   `provider_id`, `history` rename); new `docs/ENDPOINT-APIS.md`;
   `docs/ARCHITECTURE.md`, `docs/ENDPOINT-CAPABILITIES.md`, `docs/NAMING.md`;
   `PLAN.md` stage 3 row.
-- Total: 61 .rs files changed (4 new), +2083 −1923 lines; data and config files:
-  `core/data/endpoints.toml`, `scripts/cli-acceptance.sh`,
+- Total: 61 .rs files changed (4 new, 5 deleted), +1480 −1501 lines; data and
+  config files: `core/data/endpoints.toml`, `scripts/cli-acceptance.sh`,
   `scripts/cli-history.py`, `scripts/cli-send.py`, `scripts/cli-transport.py`;
   dependencies unchanged; `#[test]` functions 850 → 852.
 
 ## Beta Commit 160
 
-- **`Chain::evm_chain_id` refuses non-EVM chains** (`core/src/registry.rs`;
-  before: Ethereum's `1` for every non-EVM chain), and the error is raised
-  before an EVM client is built; `spectra send assemble --chain Bitcoin …` exits
-  3. The unused `EvmChain` wrapper is removed.
+- **`Chain::evm_chain_id` refuses non-EVM chains** (`core/src/registry.rs`)
+  - The error is raised before an EVM client is built (before: Ethereum's `1`
+    for every non-EVM chain); `spectra send assemble --chain Bitcoin …` exits
+    3.
+  - The unused `EvmChain` wrapper is removed.
 - **Wallet views refuse an identity that does not resolve**
-  (`core/src/store/wallet_domain.rs`): `WalletView.selectedChain` becomes
-  `familyName`, and conversion refuses unknown networks, unknown families and
-  family/network mismatches instead of substituting the family mainnet; the
-  primary address comes from the actual network.
+  (`core/src/store/wallet_domain.rs`)
+  - `WalletView.selectedChain` becomes `familyName`.
+  - Conversion refuses unknown networks, unknown families and family/network
+    mismatches instead of substituting the family mainnet.
+  - The primary address comes from the actual network.
 - **The endpoint `read` capability is removed** from 110 catalog rows and the
   vocabulary (`core/data/endpoints.toml`, `core/src/app_core.rs`); nine
   capabilities remain.
-- **Settings show core's whole endpoint directory** (`app_core.rs`):
-  `settings_visible` and its lookup argument are removed, so explorer links and
-  auxiliary APIs are listed, deduplicated and grouped by network; transport
-  selection still uses kinds and capabilities. CLI `endpoints --catalog --chain
-  <chain>` includes `settingsGroups`.
+- **Settings show core's whole endpoint directory** (`app_core.rs`;
+  `cli/src/cmd/chain.rs`)
+  - `settings_visible` and its lookup argument are removed, so explorer links
+    and auxiliary APIs are listed, deduplicated and grouped by network;
+    transport selection still uses kinds and capabilities.
+  - CLI `endpoints --catalog --chain <chain>` includes `settingsGroups`.
 - **Send checks and submission moved to their own modules**: preflight from
   `service/maintenance.rs` to new `service/send_preflight.rs`, `send_signing.rs`
   renamed `send_submission.rs`; helpers renamed after their operations and
@@ -5085,7 +5215,7 @@
   full settings directory, EIP-155 identity, `familyName`, naming and ownership
   cleanup); `docs/ARCHITECTURE.md`; `docs/ENDPOINT-CAPABILITIES.md` drops
   `read`.
-- Total: 39 .rs files changed (1 new), +1099 −1162 lines; data and config files:
+- Total: 39 .rs files changed (1 new), +902 −936 lines; data and config files:
   `core/data/endpoints.toml`, `scripts/cli-acceptance.sh`; dependencies
   unchanged; `#[test]` functions 847 → 850.
 
@@ -5104,10 +5234,11 @@
     `[[networks]]`).
   - Free functions drop the `core_` and `app_core_` prefixes, structured
     functions drop `_typed`, and raw preview functions end in `_json`; artwork
-    lookup is `--chain-id` (CLI) and `core_chain_artwork_name`.
+    lookup is `--chain-id` (CLI) and `chain_artwork_name` (before:
+    `--network-id` and `core_network_artwork_name`).
   - Endpoint kind and capability constants (`ENDPOINT_KIND_*`,
-    `ENDPOINT_CAPABILITY_*`) come from core instead of the CLI, and the obsolete
-    `rpc` / `explorer` filter aliases are refused.
+    `ENDPOINT_CAPABILITY_*`) come from core instead of the CLI.
+  - The obsolete `rpc` / `explorer` filter aliases are refused.
 - **Built-in tokens resolve for chains whose id differs from their name**
   (`core/src/tokens.rs`): the hosting lookup resolves the id through `Chain`
   first, so ids such as `bnb-chain` no longer omit their built-in tokens.
@@ -5117,9 +5248,9 @@
   obsolete naming layers" with the `chain_id` and `[[chains]]` entries; new
   `docs/NAMING.md`; `docs/ARCHITECTURE.md` and `docs/ENDPOINT-CAPABILITIES.md`
   use the new names.
-- Total: 93 .rs files changed, +1720 −1697 lines; data and config files:
-  `core/data/` (5), `scripts/` (3); dependencies unchanged; `#[test]` functions
-  unchanged at 847.
+- Total: 93 .rs files changed, +930 −1001 lines; data and config files:
+  `core/data/` (5), `scripts/` (3); dependencies unchanged; `#[test]`
+  functions unchanged at 847.
 
 ## Beta Commit 158
 
@@ -5131,34 +5262,41 @@
     and Dash testnets use hardened coin type 1 (Bitcoin Testnet4:
     `m/84'/1'/0'/0/0`); other testnets keep their chain's path; Monero stays
     pathless (before: testnets had no paths and used their mainnet's).
-  - Default and custom paths are keyed by network id; import stores the actual
-    path beside each derived address, and signing, discovery, network switching
-    and wallet detail read that recorded path. Partial overrides are completed
-    before derivation; existing wallet paths are not rewritten.
+  - Default and custom paths are keyed by network id.
+  - Import stores the actual path beside each derived address, and signing,
+    discovery, network switching and wallet detail read that recorded path.
+  - Partial overrides are completed before derivation; existing wallet paths
+    are not rewritten.
   - A wallet with no address on the selected testnet no longer falls back to its
-    mainnet address, and the CLI wallet summary shows the active network's
-    address.
+    mainnet address.
+  - The CLI wallet summary shows the active network's address.
   - A pathless network is derived with an empty path instead of being skipped at
     import.
-- **Chain presentation moved to new `core/data/chain-ui.toml`**: search terms,
-  category, colour, artwork, popular rank and address examples, joined to
-  `chains.toml` by `network_id`; missing, duplicate or unknown references and
-  fields in the wrong file are refused. `chains.toml` keeps identity, name,
-  family, environment, token standard, holdings capability and derivation paths.
+- **Chain presentation moved to new `core/data/chain-ui.toml`**
+  (`core/data/chains.toml`, `core/src/chains.rs`)
+  - Search terms, category, colour, artwork, popular rank and address examples
+    move there, joined to `chains.toml` by `network_id`; `chains.toml` keeps
+    identity, name, family, environment, token standard, holdings capability
+    and derivation paths.
+  - Missing, duplicate or unknown references and fields in the wrong file are
+    refused.
 - **EVM membership is defined in Rust** (`registry.rs` `Chain::is_evm`): the
   `is_evm` TOML flag is removed and refused; display categories cannot change
   it; the exported catalog still reports `isEvm`.
 - **`native_deployment` removed from `chains.toml`**: core resolves
   `<network_id>:native` and still rejects a missing native deployment.
 - **Token files use flat, id-referenced tables** (`core/data/tokens.toml`,
-  `testnet-tokens.toml`, `core/src/tokens.rs`): independent `[[tokens]]` and
-  `[[deployments]]`, each deployment naming `token_id` and `network_id` (before:
-  nested `[[tokens.deployments]]` with `network`); dangling references, tokens
-  without deployments, unknown fields and the nested shape are refused.
-- **Testnet token ids drop `-native`** (`bitcoin-testnet-native` →
-  `bitcoin-testnet`, all 32), and testnet native symbols carry a `t` prefix
-  (`tBTC`, `tETH`, `tSUI`, `tAPT`, …); mainnet symbols and deployment ids are
-  unchanged.
+  `testnet-tokens.toml`, `core/src/tokens.rs`)
+  - Independent `[[tokens]]` and `[[deployments]]`, each deployment naming
+    `token_id` and `network_id` (before: nested `[[tokens.deployments]]` with
+    `network`).
+  - Dangling references, tokens without deployments, unknown fields and the
+    nested shape are refused.
+- **Testnet token ids and native symbols change**
+  (`core/data/testnet-tokens.toml`)
+  - Ids drop `-native` (`bitcoin-testnet-native` → `bitcoin-testnet`, all 32).
+  - Testnet native symbols carry a `t` prefix (`tBTC`, `tETH`, `tSUI`, `tAPT`,
+    …); mainnet symbols and deployment ids are unchanged.
 - Tests: 13 new
   - Chain presentation 6: a join depending on row order, display categories
     changing EVM membership, duplicate, missing or unknown presentation
@@ -5174,33 +5312,36 @@
   testnet derivation paths, testnet symbols, EVM membership in Rust,
   `chain-ui.toml`, derived native deployment, flat token tables);
   `docs/ARCHITECTURE.md` on presentation and EVM membership.
-- Total: 23 .rs files changed, +3958 −2786 lines; data and config files:
+- Total: 23 .rs files changed, +584 −227 lines; data and config files:
   `core/data/chain-ui.toml`, `core/data/chains.toml`,
   `core/data/testnet-tokens.toml`, `core/data/tokens.toml`,
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 834 →
-  847.
+  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 834
+  → 847.
 
 ## Beta Commit 157
 
 - **Endpoints belong to a concrete network id** (`core/data/endpoints.toml`,
   `core/src/app_core.rs`)
   - Each row names `network_id` from `chains.toml` instead of repeating
-    `chain_name` with testnet ownership in `group_title`; unknown ids and the
-    old fields are refused at load, without aliases.
+    `chain_name` with testnet ownership in `group_title`.
+  - Unknown ids and the old fields are refused at load, without aliases.
   - One network-id index serves lookups; a testnet request gets only that
-    testnet's endpoints, while a mainnet settings group includes its family,
-    with titles derived from the registry.
+    testnet's endpoints.
+  - A mainnet settings group includes its family, with titles derived from the
+    registry.
   - EVM diagnostics list the selected network's catalog endpoints.
 - **Endpoint capabilities split** (`core/data/endpoints.toml`; new
   `docs/ENDPOINT-CAPABILITIES.md`)
-  - `history` is replaced by `native-history` and `token-history`;
-    `token-discovery` and `token-balance` are added, each with its own mask bit;
-    `balance` means the native coin.
+  - `history` is replaced by `native-history` and `token-history`.
+  - `token-discovery` and `token-balance` are added, each with its own mask
+    bit.
+  - `balance` means the native coin.
   - NEAR RPC rows lose their incorrect history claim and keep token balance.
   - An unknown capability name fails the catalog load.
 - **CLI `endpoints --catalog [--chain <network>]` lists catalog rows offline**
-  with `networkId`, kind and capabilities; live probe output also reports
-  `networkId`.
+  (`cli/src/cmd/chain.rs`)
+  - Rows carry `networkId`, kind and capabilities.
+  - Live probe output also reports `networkId`.
 - **Long historical doc comments trimmed** across core (`registry.rs`,
   `store/state.rs` and others); behaviour unchanged.
 - **`make test-ios` accepts `IOS_TEST_DERIVED_DATA`** for a separate
@@ -5217,7 +5358,7 @@
 - Docs: `docs/BEHAVIOUR-CHANGES.md` "2026-09-20 — Endpoint ownership references
   concrete network IDs" and the capability split; new
   `docs/ENDPOINT-CAPABILITIES.md`.
-- Total: 37 .rs files changed, +851 −928 lines; data and config files:
+- Total: 37 .rs files changed, +382 −643 lines; data and config files:
   `Makefile`, `core/data/endpoints.toml`, `scripts/cli-acceptance.sh`;
   dependencies unchanged; `#[test]` functions 831 → 834.
 
@@ -5233,8 +5374,7 @@
     `make verify`.
   - `scripts/README.md` is rewritten in English.
 - Docs: `PLAN.md`, `docs/BEHAVIOUR-CHANGES.md`, `scripts/README.md`, as above.
-- Total: no .rs files changed, +103 −5462 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 831.
+- Total: No code changed.
 
 ## Beta Commit 155
 
@@ -5250,7 +5390,7 @@
 - **CLI integration fixtures regrouped into five domain suites**
   (`scripts/cli-wallets.py`, `cli-portfolio.py`, `cli-history.py`,
   `cli-send.py`, `cli-diagnostics.py`, run by `cli-acceptance.sh`), replacing
-  fourteen per-change scripts (`cli-balance-refresh.py`,
+  thirteen per-change scripts (`cli-balance-refresh.py`,
   `cli-bitcoin-history.py`, `cli-owned-send.py`, `cli-shell-*.py`,
   `cli-stage3*.sh` and others); new `scripts/README.md` (in Chinese) describes
   each script.
@@ -5258,11 +5398,10 @@
   - Persistence 1: a stored timestamp changing bits on reopen.
 - Docs: `docs/BEHAVIOUR-CHANGES.md` entries dated 2026-09-19 (native press
   handling, Known Tokens chain names, float round-trip, wallet details, two-line
-  history rows, automatic refresh without a frequency setting); new
-  `scripts/README.md`.
-- Total: 7 .rs files changed, +1184 −808 lines; data and config files:
-  `scripts/` (19), `core/` (1); dependencies unchanged; `#[test]` functions 830
-  → 831.
+  history rows, automatic refresh without a frequency setting, CLI suites by
+  feature); new `scripts/README.md`.
+- Total: 7 .rs files changed, +38 −59 lines; data and config files: `scripts/`
+  (19), `core/` (1); dependencies unchanged; `#[test]` functions 830 → 831.
 
 ## Beta Commit 154
 
@@ -5294,15 +5433,16 @@
     --summary`, `txs --record <id>`; `rusqlite` gains the `functions` feature.
 - **Owned sends unlock password-protected wallets**
   (`core/src/service/send_review.rs`, `cli/src/cmd/tx.rs`): the review reports
-  whether the wallet needs a password and `execute_owned_send` takes it; a
-  missing or wrong password never broadcasts and the review must be redone. The
-  CLI reads the password from its file, environment or prompt source.
+  whether the wallet needs a password (`requires_wallet_password`), and the
+  CLI passes one to `execute_owned_send` from its file, environment or prompt
+  source (before: no password was passed); a missing or wrong password never
+  broadcasts and the review must be redone.
 - **Configured self-tests follow the selected network**
   (`service/diagnostic_state.rs` `run_configured_self_tests`; CLI `diagnostics
   configured --chain <chain>`): the family resolves through the stored network
   selection (an explicit testnet stays explicit), runs that network's offline
-  tests and probes its first effective RPC, naming the network and endpoint; a
-  failure does not fall back to another endpoint.
+  tests and, on an EVM network, probes its first effective RPC, naming the
+  network and endpoint; a failure does not fall back to another endpoint.
 - **Password validation returns reasons** (`core/src/validation/mod.rs`):
   `TooShort` or `ConfirmationMismatch` instead of English sentences, and the
   four-character minimum counts Unicode scalars (before: UTF-8 bytes); blank is
@@ -5327,11 +5467,11 @@
   entry point); `docs/ARCHITECTURE.md` snapshot revisions, bounded history and
   committed settings; `PLAN.md` new "Swift shell projection boundary follow-up
   (2026-09-19)" and "Swift shell: five audit fixes (2026-09-19)".
-- Total: 26 .rs files changed (3 new), +1691 −935 lines; data and config files:
-  `core/Cargo.toml`, `scripts/cli-acceptance.sh`,
+- Total: 26 .rs files changed (3 new), +1256 −931 lines; data and config
+  files: `core/Cargo.toml`, `scripts/cli-acceptance.sh`,
   `scripts/cli-history-corruption.py`, `scripts/cli-projection-boundary.py`,
-  `scripts/cli-shell-five-fixes.py`; dependencies unchanged; `#[test]` functions
-  828 → 830.
+  `scripts/cli-shell-five-fixes.py`; dependencies unchanged; `#[test]`
+  functions 828 → 830.
 
 ## Beta Commit 153
 
@@ -5361,7 +5501,7 @@
   are none", "A holding template names its chain the way a stored holding does",
   "A dashboard asset row no longer names a chain", "The transaction detail and
   About carry the backdrop, and copy buttons are their own".
-- Total: 4 .rs files changed, +1356 −40 lines; data and config files:
+- Total: 4 .rs files changed, +126 −26 lines; data and config files:
   `icons/crypto/` (12), `scripts/` (2), `core/data/` (1); dependencies
   unchanged; `#[test]` functions 825 → 828.
 
@@ -5379,7 +5519,7 @@
   contacts, not a form with a list under it", "One bottom action bar for the
   setup, send and receive flows", "A receive address has one producer, and the
   wallet step has a selection".
-- Total: 2 .rs files changed, +159 −27 lines; data and config files:
+- Total: 2 .rs files changed, +34 −24 lines; data and config files:
   `scripts/cli-acceptance.sh`, `scripts/cli-shell-ownership.py`; dependencies
   unchanged; `#[test]` functions unchanged at 825.
 
@@ -5395,8 +5535,6 @@
   - `wallet_secret_state` fails on a store failure; `wallet_derived_state`
     treats unreadable material as unable to sign, so no send is offered while
     the portfolio still renders.
-  - Private keys are stored in the same envelope as seeds; a key stored before
-    this change reads as a backend error until the wallet is re-imported.
   - `SecretStore::list_keys` is removed from the trait and every store; the
     `wallet_private_key` export is deleted.
 - **Imports are planned from the form, not from caller answers**
@@ -5409,7 +5547,7 @@
   - `core_validate_wallet_import_draft` takes `WalletImportDraftInput` (mode,
     chains, name, phrase words and language, key text, backup-quiz result,
     watch-only entries) and checks the phrase checksum, key and addresses itself
-    (before: eleven booleans the caller computed).
+    (before: nine booleans the caller computed).
   - `WalletView.network_chain_id` is a `String`, no longer optional.
 - **Settings updates validated and exposed as a pure rule**
   (`core/src/store/state.rs`)
@@ -5454,13 +5592,16 @@
   owned-address row and path recorded when the reserved index was handed out;
   `spectra --json pool show` includes `reservedReceiveAddress` and
   `reservedReceivePath`.
-- **Smaller boundary changes**: `known_wallet_addresses` merges a wallet's
-  addresses with its owned rows; the post-send notice comes from the stored
-  record (`verification_notice_for_last_sent`) and the "verified" status export
-  is deleted; `owned_addresses_for_wallet` and `keypool_state` are internal;
-  `fiat_currency_code` is removed, and `append_chain_operational_event`,
-  `clear_operational_events` and `fetch_all_history_records_typed` are deleted
-  or internal.
+- **Smaller boundary changes**
+  - `known_wallet_addresses` merges a wallet's addresses with its owned rows.
+  - The post-send notice comes from the stored record (new
+    `WalletService::send_verification_notice`);
+    `verification_notice_for_status` and `verification_notice_for_last_sent`
+    are no longer exported.
+  - `owned_addresses_for_wallet` and `keypool_state` are internal.
+  - `fiat_currency_code` is removed; `append_chain_operational_event`,
+    `clear_operational_events` and `fetch_all_history_records_typed` are
+    internal.
 - Tests: 17 new, 2 removed
   - Import form 4: a seed import with a bad checksum, a backup check required
     outside creation, a private key on an unsupported chain or with non-hex
@@ -5487,9 +5628,9 @@
   unreachable-export gate); `PLAN.md` new "Swift shell: correctness follow-up
   (2026-09-16)", "Swift shell: what was not shrunk enough (2026-09-17)", "Swift
   shell: hollow, reversed and untidy (2026-09-17)".
-- Total: 78 .rs files changed (1 new), +3138 −1521 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 810 →
-  825.
+- Total: 78 .rs files changed (1 new), +2569 −1517 lines; data and config
+  files: `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]`
+  functions 810 → 825.
 
 ## Beta Commit 150
 
@@ -5512,8 +5653,7 @@
 - **Per-chain facts added to the registry** (`core/src/registry.rs`,
   `chains.rs`)
   - `needs_etherscan_api_key` marks the six chains whose history reads Etherscan
-    (BNB Chain, Hyperliquid, Linea, Sei, opBNB, Sonic); `spectra --json chains`
-    reports it.
+    (BNB Chain, Hyperliquid, Linea, Sei, opBNB, Sonic).
   - `SendBroadcastMode` (`SignsAndBroadcasts`, or `PreparesWithBackend` for
     Monero and its stagenet); `spectra --json chains` reports
     `sendBroadcastMode`.
@@ -5590,10 +5730,10 @@
   and `README.md` link `docs/IOS-UI.md`; `docs/APP-BOUNDARY-COVERAGE.md`,
   `KNOWN-OPEN-AUDIT.md`, `STAGE3-C2-CLOSURE.md`, `STAGE3-C2-FOLLOWUP.md` and
   `SEPOLIA-BROADCAST-PROOF.json` deleted.
-- Total: 56 .rs files changed, +2036 −1570 lines; data and config files:
+- Total: 56 .rs files changed, +1304 −1174 lines; data and config files:
   `docs/SEPOLIA-BROADCAST-PROOF.json`, `scripts/cli-acceptance.sh`,
-  `scripts/cli-history-source.py`, `scripts/uncalled-core-fns.sh`; dependencies
-  unchanged; `#[test]` functions 802 → 810.
+  `scripts/cli-history-source.py`, `scripts/uncalled-core-fns.sh`;
+  dependencies unchanged; `#[test]` functions 802 → 810.
 
 ## Beta Commit 149
 
@@ -5626,7 +5766,7 @@
   marks draw their facets in solid colour", "CoinLore is no longer a price
   provider", "Six letter badges become marks, and Mantle's mark becomes the
   official one".
-- Total: 2 .rs files changed, +3358 −3760 lines; data and config files:
+- Total: 2 .rs files changed, +125 −168 lines; data and config files:
   `icons/crypto/` (9), `core/data/` (3); dependencies unchanged; `#[test]`
   functions unchanged at 802.
 
@@ -5674,7 +5814,7 @@
   the unreadable wallet row); `PLAN.md` Rule 0 "Silence" and a known open item
   (the CLI cannot show the endpoint table it uses); `README.md` CI badge, the
   CLI, the iOS app, verification and license.
-- Total: 42 .rs files changed, +4856 −7352 lines; data and config files:
+- Total: 42 .rs files changed, +574 −290 lines; data and config files:
   `.github/workflows/` (1), `.gitignore`, `LICENSE`, `Makefile`, `core/` (1),
   `rust-toolchain.toml`, `scripts/` (1), `tools/uniffi-bindgen/` (1);
   dependencies unchanged; `#[test]` functions 799 → 802.
@@ -5685,7 +5825,7 @@
   `icons/fiaticon/` → `icons/fiat/` (4)**; `scripts/normalize-icons.sh`,
   `scripts/svgo.config.mjs` and the `every_named_mark_ships_a_file` test follow;
   artwork unchanged.
-- Total: 1 .rs files changed, +4 −4 lines; data and config files:
+- Total: 1 .rs file changed, +1 −1 lines; data and config files:
   `icons/crypto/` (78), `icons/fiat/` (4), `scripts/` (2); dependencies
   unchanged; `#[test]` functions unchanged at 799.
 
@@ -5713,9 +5853,10 @@
   send-diagnostic notice, the catalog rank, the performance-sample buffer, the
   send Live Activity and `app_core_resolve_derivation_path`;
   `docs/STAGE3-C2-CLOSURE.md` "Residue sweep (2026-09-14)".
-- Total: 10 .rs files changed, +271 −114 lines; data and config files:
-  `core/data/chains.toml`, `scripts/cli-acceptance.sh`, `scripts/cli-stage3.sh`;
-  dependencies unchanged; `#[test]` functions 798 → 799.
+- Total: 10 .rs files changed, +58 −113 lines; data and config files:
+  `core/data/chains.toml`, `scripts/cli-acceptance.sh`,
+  `scripts/cli-stage3.sh`; dependencies unchanged; `#[test]` functions 798 →
+  799.
 
 ## Beta Commit 145
 
@@ -5741,8 +5882,8 @@
 - Tests: 0 new, 37 removed (with the deleted code they covered).
 - Docs: `PLAN.md` "Behaviour changed on purpose": "UniFFI floor moves to
   0.31.2"; `docs/FFI-BOUNDARY.md` opening line and "Regenerating bindings".
-- Total: 44 .rs files changed, +98 −2027 lines; data and config files:
-  `Cargo.lock`, `core/Cargo.toml`, `icons/fiaticon/rub.svg`,
+- Total: 44 .rs files changed (1 deleted), +46 −2000 lines; data and config
+  files: `Cargo.lock`, `core/Cargo.toml`, `icons/fiaticon/rub.svg`,
   `tools/uniffi-bindgen/Cargo.toml`; dependencies: uniffi 0.31 → 0.31.2
   (`core/Cargo.toml`, `tools/uniffi-bindgen/Cargo.toml`); `#[test]` functions
   835 → 798.
@@ -5833,7 +5974,7 @@
 - Docs: `PLAN.md` "Behaviour changed on purpose": "Test gate cleanup", "Deep
   rescan and import boundary cleanup", "Remaining Swift boundary rewrite",
   "Domain and boundary names describe the values they carry".
-- Total: 100 .rs files changed (3 new), +2077 −1009 lines; data and config
+- Total: 100 .rs files changed (3 new), +1525 −677 lines; data and config
   files: `scripts/` (8), `core/data/` (2); dependencies unchanged; `#[test]`
   functions 828 → 835.
 
@@ -5897,8 +6038,9 @@
     to pending.
 - **Opening state publishes only after seeding commits** (`open_state`,
   `core/src/service/state.rs`): a failed first open stays unbound and a failed
-  rebind keeps the previous state. Derived wallet maps read one `CoreAppState`
-  snapshot.
+  rebind keeps the previous state.
+- **Derived wallet maps read one `CoreAppState` snapshot**
+  (`core/src/service/state.rs`).
 - **The service passes its `WalletDatabase` handle directly**
   (`core/src/store/wallet_db/`): the weak path index and the second key/value
   connection pool are removed.
@@ -5906,16 +6048,19 @@
   `core/src/store/artwork.rs`, replacing `core/src/store/chain_aliases.rs`;
   `spectra token artwork --token-id | --network-id | --deployment-id`): an
   unknown contract cannot borrow a symbol's mark, and the identifier-string
-  exports are removed. `normalize_token_identifier` accepts registry ids as well
-  as display names, so SPL, TON and TRC-20 identifiers keep their case.
+  exports are removed.
+- **`normalize_token_identifier` accepts registry ids as well as display
+  names** (`core/src/tokens.rs`), so SPL, TON and TRC-20 identifiers keep
+  their case.
 - **Dead code removed**: Stellar issued-asset signing (the native XLM payment
   remains), the Ethereum error classifier and its enum, the portfolio
   composition signature, `Chain::as_evm`, `Chain::has_network_choice`,
   `probe_endpoints`, `SolanaClient::account_exists`,
   `CoreImportedWallet::total_balance` and `plan_append_chain_operational_event`.
 - **Export scripts count exported `pub(crate)` methods**
-  (`scripts/count-exports.sh`); internal secret, history and recipient methods
-  leave the FFI. The closure audit records 145 callable exports.
+  (`scripts/count-exports.sh`).
+- **Internal secret, history and recipient methods leave the FFI**; the
+  closure audit records 145 callable exports.
 - **CLI acceptance: new fixtures** (new `scripts/cli-owned-send.py`,
   `scripts/cli-shell-ownership.py`; `scripts/cli-acceptance.sh`,
   `scripts/cli-stage3-followup.sh`).
@@ -5953,11 +6098,11 @@
   "Finish Swift-owned send and alert decisions (2026-09-12)";
   `docs/STAGE3-C2-CLOSURE.md` new "Swift ownership follow-up", "Final gate
   results (2026-09-12)" and "Subsequent shell audit (2026-09-13)".
-- Total: 87 .rs files changed (6 new), +3686 −3586 lines; data and config files:
-  `scripts/cli-acceptance.sh`, `scripts/cli-owned-send.py`,
+- Total: 87 .rs files changed (6 new, 2 deleted), +3092 −3569 lines; data and
+  config files: `scripts/cli-acceptance.sh`, `scripts/cli-owned-send.py`,
   `scripts/cli-shell-ownership.py`, `scripts/cli-stage3-followup.sh`,
-  `scripts/count-exports.sh`; dependencies unchanged; `#[test]` functions 849 →
-  828.
+  `scripts/count-exports.sh`; dependencies unchanged; `#[test]` functions 849
+  → 828.
 
 ## Beta Commit 142
 
@@ -6056,10 +6201,11 @@
   status commits and indexed lookups", "Explicit networks and token
   deployments", "Close history, reset, receive, quote and transport ownership";
   new `docs/STAGE3-C2-CLOSURE.md`.
-- Total: 74 .rs files changed (3 new), +6455 −2974 lines; data and config files:
-  `core/data/chains.toml`, `core/data/tokens.toml`, `scripts/cli-acceptance.sh`,
-  `scripts/cli-network-token-identity.py`, `scripts/cli-stage3-followup.sh`;
-  dependencies unchanged; `#[test]` functions 835 → 849.
+- Total: 74 .rs files changed (3 new), +2947 −1551 lines; data and config
+  files: `core/data/chains.toml`, `core/data/tokens.toml`,
+  `scripts/cli-acceptance.sh`, `scripts/cli-network-token-identity.py`,
+  `scripts/cli-stage3-followup.sh`; dependencies unchanged; `#[test]`
+  functions 835 → 849.
 
 ## Beta Commit 141
 
@@ -6076,7 +6222,7 @@
     trackers unchanged.
   - An unconfirmed read clears old block, finality and fee data and resumes
     tracking; failed-to-confirmed clears the failure reason.
-    `reset_status_tracker` is no longer exported.
+  - The exported `reset_status_tracker` is deleted.
 - **Core runs the whole pending-maintenance sweep**
   (`WalletService::refresh_pending_transactions`,
   `core/src/service/pending_status.rs`; `spectra txs --refresh-pending`): scope
@@ -6094,9 +6240,12 @@
 - **An unreadable balance or fee is an error** (`summary_display_balance` in
   `core/src/service/helpers.rs`, the simple-chain preview): before, an unknown
   chain or unparsable amount read as 0.0.
-- **Aptos identifier normalization refuses non-ASCII**
-  (`core/src/validation/address.rs`) instead of re-encoding bytes as Latin-1;
-  `make_string_result` merged into `make_result`.
+- **Two helpers simplified; behaviour unchanged**
+  - `make_string_result` merged into `make_result`
+    (`core/src/validation/address.rs`).
+  - `normalize_aptos_token_identifier` (`core/src/tokens.rs`) copies string
+    slices instead of casting bytes to `char`; non-ASCII input was already
+    returned untouched.
 - **Service state restructured; behaviour unchanged**
   (`core/src/service/mod.rs`, `keypool.rs`, `state.rs`)
   - `keypool` and `owned_addresses` are one `Keypool` under one lock with
@@ -6132,8 +6281,8 @@
   on the test HTTP pool, service methods, the keypool type, the database
   binding, address normal forms, keypool indices, unreadable balances and
   validator helpers.
-- Total: 25 .rs files changed (2 new), +1817 −484 lines; data and config files:
-  `scripts/cli-acceptance.sh`, `scripts/cli-stage3-followup.sh`,
+- Total: 25 .rs files changed (2 new), +1489 −484 lines; data and config
+  files: `scripts/cli-acceptance.sh`, `scripts/cli-stage3-followup.sh`,
   `scripts/cli-transaction-recheck.py`; dependencies unchanged; `#[test]`
   functions 820 → 835.
 
@@ -6172,17 +6321,18 @@
   balance, and a result for a deleted wallet or changed network cannot
   overwrite. `spectra refresh --wallet <id> [--endpoint]`.
 - **Wallet deletion and network changes are transactional**
-  (`core/src/service/balance_refresh.rs`, `core/src/store/`): deleting a wallet
-  removes its history, addresses and keypool in the wallet's transaction after
-  deleting secrets; network selection clears the whole family's derivation
-  tables inside the settings transaction, and re-selecting the same network is a
-  no-op.
+  (`core/src/service/balance_refresh.rs`, `core/src/store/`)
+  - Deleting a wallet removes its history, addresses and keypool in the
+    wallet's transaction after deleting secrets.
+  - Network selection clears the whole family's derivation tables inside the
+    settings transaction, and re-selecting the same network is a no-op.
 - **Wallet import commits all wallets together after storing secrets**
   (`core/src/service/wallet_import.rs`): a secret or database failure leaves no
-  committed import and cleans partial secrets. Rename and inclusion are field
-  intents against the latest stored wallet (`RenameWallet`; new `spectra wallet
-  inclusion`), and new `spectra wallet derived` prints core-derived portfolio
-  and signing capabilities.
+  committed import and cleans partial secrets.
+- **Rename and inclusion are field intents against the latest stored wallet**
+  (`RenameWallet`; new `spectra wallet inclusion`).
+- **New `spectra wallet derived`** prints core-derived portfolio and signing
+  capabilities.
 - **Funds Finder is a core scan session** (new
   `core/src/service/funds_scan.rs`): batches of four, with funded, zero and
   failed reads told apart by exact smallest-unit digits; `spectra rescan
@@ -6197,23 +6347,30 @@
   value, the cache survives restart, and scheduled refreshes obey a persisted
   cooldown. `spectra price --stored`, `--refresh`.
 - **EVM preview for an owned wallet** (`preview_owned_evm_send`; `spectra send
-  preview`, `send review`): core resolves the wallet's network, sender, token
-  and exact amount; UTXO and Dogecoin quoting no longer reads the seed. New
-  `pending_maintenance_chains` (`spectra txs --maintenance`) and `spectra
-  diagnostics maintenance` (refresh policy under given device conditions).
+  preview`, `send review`)
+  - Core resolves the wallet's network, sender, token and exact amount.
+  - UTXO and Dogecoin quoting no longer reads the seed.
+- **Maintenance is readable without network**
+  - New `pending_maintenance_chains` (`spectra txs --maintenance`) lists the
+    chains whose stored transactions still need polling.
+  - New `spectra diagnostics maintenance` prints the refresh policy under
+    given device conditions.
 - **FFI changes**: removed `fetch_prices_typed`, `fetch_fiat_rates_typed`,
   `refresh_fiat_rates`, `price_merge_live_updates`, `store_wallet_seed_phrase`,
   `store_wallet_private_key`, `fetch_evm_send_preview_typed`; added the four
   operations above.
-- **Endpoint probes corrected** (`core/src/service/network.rs`): ICP Rosetta is
-  probed with POST and must list a network, an explicit probe equal to its
-  endpoint is honoured (Bitcoin SV), and diagnostics report method and HTTP
-  status. Base history is reclassified as keyless `Open`.
+- **Endpoint probes corrected** (`core/src/service/network.rs`)
+  - ICP Rosetta is probed with POST and must list a network.
+  - An explicit probe equal to its endpoint is honoured (Bitcoin SV).
+  - Diagnostics report method and HTTP status.
+- **Base history is reclassified as keyless `Open`** (`core/src/registry.rs`;
+  before: `EtherscanV2`).
 - **Boundary rules fixed by the app-boundary audit** (new
-  `core/src/app_boundary_tests.rs`, `core/src/service/app_boundary_tests.rs`):
-  Bitcoin preview and status accept Bitcoin testnets; derivation path indices
-  must be below 2^31; negative or non-finite movement observations cannot alert;
-  portfolio signatures use unambiguous key boundaries.
+  `core/src/app_boundary_tests.rs`, `core/src/service/app_boundary_tests.rs`)
+  - Bitcoin preview and status accept Bitcoin testnets.
+  - Derivation path indices must be below 2^31.
+  - Negative or non-finite movement observations cannot alert.
+  - Portfolio signatures use unambiguous key boundaries.
 - **CLI acceptance runs new fixtures** (`scripts/cli-acceptance.sh`; new
   `scripts/cli-stage3.sh`, `scripts/cli-stage3-followup.sh`,
   `scripts/cli-balance-refresh.py`).
@@ -6256,8 +6413,8 @@
   slices", "Wiki headers use the original coin artwork once"; new
   `FUTURE_PLANS.md` (product plans), `docs/APP-BOUNDARY-COVERAGE.md`,
   `docs/KNOWN-OPEN-AUDIT.md`, `docs/STAGE3-C2-FOLLOWUP.md`.
-- Total: 78 .rs files changed (6 new), +4733 −761 lines; data and config files:
-  `docs/SEPOLIA-BROADCAST-PROOF.json`, `scripts/cli-acceptance.sh`,
+- Total: 78 .rs files changed (6 new), +4001 −735 lines; data and config
+  files: `docs/SEPOLIA-BROADCAST-PROOF.json`, `scripts/cli-acceptance.sh`,
   `scripts/cli-balance-refresh.py`, `scripts/cli-stage3-followup.sh`,
   `scripts/cli-stage3.sh`; dependencies unchanged; `#[test]` functions 781 →
   820.
@@ -6340,17 +6497,21 @@
   (`reset_chain_derivation_state`, replacing `delete_keypool_for_chain` and
   `delete_owned_addresses_for_chain`); `spectra network set` performs it and
   reports `clearedDerivationState`.
-- **Pending-status pruning keeps every poll shape's trackers and backoff**
-  (`core/src/service/pending_status.rs`): before, pruning erased EVM and history
-  schedules; storage read failures propagate, and `spectra txs --poll-chain
-  <chain>` drives a poll.
+- **Pending-status polling keeps its schedules and reports storage failures**
+  (`core/src/service/pending_status.rs`; `spectra txs --poll-chain <chain>`
+  drives a poll)
+  - Pruning keeps every poll shape's trackers and backoff (before: it erased
+    EVM and history schedules).
+  - A failed storage read fails the poll (before: a pruning error was ignored
+    and an unreadable store read as no records).
 - **Password verifier envelopes are bounded**
   (`core/src/store/password_verifier.rs`): rounds between `MINIMUM_ROUNDS` and
   `MAXIMUM_ROUNDS`, and salt and digest lengths checked.
 - **Send amount shortcuts come from core** (`core/src/send/amount_input.rs`, new
   `spectra send shortcut --maximum --decimals [--percentage]`): the fee-adjusted
-  maximum floored to the asset's precision, never above the quote;
-  `parse_amount_input` uses the bounded exact parser.
+  maximum floored to the asset's precision, never above the quote.
+- **`parse_amount_input` uses the bounded exact parser**
+  (`core/src/send/amount_input.rs` `parse_raw_amount`).
 - **Integer overflow panics in release** for `spectra_core`, `spectra_core_ffi`
   and `spectra-cli` (`[profile.release.package.*] overflow-checks = true` in
   `Cargo.toml`).
@@ -6406,19 +6567,19 @@
   tracked-token list is edited by intent, not replaced wholesale", "Remove the
   redundant Asset Hub card"; `docs/ARCHITECTURE.md` new "Signing and service
   modules" and "Core module boundaries".
-- Total: 138 .rs files changed (63 new), +17698 −14486 lines; data and config
-  files: `scripts/` (5), `core/testdata/` (2), `Cargo.toml`, `Makefile`;
-  dependencies unchanged; `#[test]` functions 735 → 781.
+- Total: 138 .rs files changed (63 new, 3 deleted), +16851 −14473 lines; data
+  and config files: `scripts/` (5), `core/testdata/` (2), `Cargo.toml`,
+  `Makefile`; dependencies unchanged; `#[test]` functions 735 → 781.
 
 ## Beta Commit 138
 
 - **The EVM assembler takes the typed amount string and converts it exactly**
-  (`EvmSendAssemblyInput.amount: String`, `parse_raw_amount` in
-  `core/src/send/ethereum.rs`): before, it took an `f64`, so `1.1` assembled
-  1100000000000000089 wei in the preview's gas estimate, ERC-20 calldata and
-  `spectra send assemble`. The assembler now refuses what signing refuses
-  (`1e3`, excess precision); `amount_to_smallest_unit` and `u128_str_to_hex` are
-  removed.
+  (`EvmSendAssemblyInput.amount: String`, `core/src/send/ethereum.rs`):
+  before, it took an `f64`, so `1.1` assembled 1100000000000000089 wei in the
+  preview's gas estimate, ERC-20 calldata and `spectra send assemble`. The
+  assembler now refuses what signing refuses (`1e3`, excess precision);
+  `amount_to_smallest_unit` converts through `parse_raw_amount`, and
+  `u128_str_to_hex` is removed.
 - **A Bitcoin transaction never pays out more than it spends**
   (`build_unsigned_spend`, `core/src/send/chains/bitcoin.rs`): extra outputs are
   part of the selection target on both the selected and pinned branches, change
@@ -6496,7 +6657,12 @@
 - **CLI acceptance: new assertions** (`scripts/cli-acceptance.sh`): destination
   normalization and refusals (`.eth` on Arbitrum, Base, Polygon and Bitcoin),
   probe refusals for a missing wallet, unheld asset and unknown chain, and exact
-  `send assemble` amounts. `scripts/svgo.config.mjs` extended.
+  `send assemble` amounts.
+- **Icon normalization fits exported artwork to the library**
+  (`scripts/svgo.config.mjs`)
+  - A square viewBox of another size is rescaled onto `0 0 64 64`.
+  - Exporter `data-*` attributes are removed.
+  - Inlined styles become presentation attributes (`convertStyleToAttrs`).
 - Tests: 33 new
   - Send amounts and previews 9: a typed decimal not converting exactly, an
     18-decimal smallest unit lost, the preview accepting what the send refuses,
@@ -6528,7 +6694,7 @@
   "Held assets: wrapped, staked and protocol tokens", "The catalog names an
   asset and the registry answers for a chain", "The receive screen asks where an
   address comes from, not which chain it is".
-- Total: 28 .rs files changed, +4096 −697 lines; data and config files:
+- Total: 28 .rs files changed, +2165 −628 lines; data and config files:
   `icons/cryptoicon/` (4), `core/data/` (3), `scripts/` (2); dependencies
   unchanged; `#[test]` functions 702 → 735.
 
@@ -6603,17 +6769,16 @@
 - Docs: `PLAN.md` section "Refuse malformed signing data and failed history
   reads", entries for private-key import derivation and the seed-phrase verdict,
   and the verification note on flaky concurrent tests.
-- Total: 24 .rs files changed, +1651 −769 lines; data and config files:
-  `icons/cryptoicon/` (67), `icons/fiaticon/` (5), `scripts/` (4), `core/data/`
-  (1); dependencies unchanged; `#[test]` functions 683 → 702.
+- Total: 24 .rs files changed, +954 −303 lines; data and config files:
+  `icons/cryptoicon/` (67), `icons/fiaticon/` (5), `scripts/` (4),
+  `core/data/` (1); dependencies unchanged; `#[test]` functions 683 → 702.
 
 ## Beta Commit 136
 
 - **Core mints the ids of the wallets an import creates**
   (`core/src/derivation/import.rs`): an empty id plan is filled by core, and a
   supplied plan must still match the planned count (before: the caller had to
-  predict the count). A private-key import fills the Ethereum and Ethereum
-  Classic slots from the wallet's own address in both directions.
+  predict the count).
 - **`spectra wallet watch` takes `--address` more than once**, creating one
   wallet per address (`cli/src/cmd/wallet.rs`).
 - **The send preflight names the token a send moves** (`token_contract_address`,
@@ -6628,28 +6793,23 @@
   `core/src/send/preview_decode.rs`): Litecoin MWEB peg-in bytes are priced at
   the previewed rate and reduce what is sendable, stopping at zero;
   `extra_output_overhead_bytes` is no longer exported.
-- **A chain that computes its own fee can send without a preview estimate**
-  (`core/src/send/flow.rs`, `core/src/service/send.rs`): the generic submit
-  requires an estimate or fallback only when `SendFeeField` is not `None`, so
-  Stellar, XRP and Internet Computer are no longer blocked when no preview
-  loaded.
 - **Icon library moved from `resources/` to `icons/`** (`icons/cryptoicon/`,
   `icons/fiaticon/`), with the artwork test's path in
   `core/src/store/chain_aliases.rs` updated.
 - **CLI acceptance: one new assertion** (`scripts/cli-acceptance.sh`): a
   two-address watch import creates two wallets.
 - Tests: 6 new
-  - Wallet ids 2: a wallet filed under an id nothing else knows, and a
-    mismatched supplied plan accepted.
+  - Wallet ids 2: an empty id plan not minted, and a mismatched supplied plan
+    accepted, filing a wallet under an id nothing else knows.
   - Extra output bytes 3: overhead not priced at the preview rate, a zero
     overhead changing the preview, and sendable going below zero.
   - Token identity 1: a token sent at the wrong decimals or a native asset given
     token identity.
 - Docs: `PLAN.md` entries for minted wallet ids, extra output pricing, Tron
   preview routing, the token a send moves and fee-free generic submit.
-- Total: 9 .rs files changed, +429 −17 lines; data and config files:
-  `icons/cryptoicon/` (75), `icons/fiaticon/` (5), `scripts/` (1); dependencies
-  unchanged; `#[test]` functions 677 → 683.
+- Total: 9 .rs files changed, +367 −17 lines; data and config files:
+  `icons/cryptoicon/` (75), `icons/fiaticon/` (5), `scripts/` (1);
+  dependencies unchanged; `#[test]` functions 677 → 683.
 
 ## Beta Commit 135
 
@@ -6721,9 +6881,9 @@
   network-following fetches, network-following sends, sign-only, Bitcoin and
   multi-address history, previews priced on the wallet's network and the bounded
   Bitcoin diagnostics run; the testnet-balance open item removed.
-- Total: 21 .rs files changed (1 new), +2215 −440 lines; data and config files:
-  `resources/cryptoicon/` (75), `core/data/` (1), `scripts/` (1); dependencies
-  unchanged; `#[test]` functions 669 → 677.
+- Total: 21 .rs files changed (1 new), +2013 −415 lines; data and config
+  files: `resources/cryptoicon/` (75), `core/data/` (1), `scripts/` (1);
+  dependencies unchanged; `#[test]` functions 669 → 677.
 
 ## Beta Commit 134
 
@@ -6824,15 +6984,19 @@
   - `bootstrap_tor` applies the SOCKS proxy before publishing `Running`.
 - **The display currency is one of twelve codes** (`FIAT_CURRENCY_CODES` in
   `core/src/store/state.rs`): `SetFiatCurrency` refuses any other with an event,
-  and the CLI exits 3. A settings update core cannot store now reports the
-  refusal.
+  and the CLI exits 3.
+- **A settings update core cannot store reports the refusal**
+  (`appSettingRejected`, `core/src/store/state.rs`).
 - **Fiat cross-rates are core state** (`CoreAppState::fiat_rates_from_usd` with
   its own row; `refresh_fiat_rates`; new `spectra currency --rates` and
   `--refresh-rates`): a provider failure leaves stored rates alone;
   `price_merge_fiat_rate_updates` is removed.
-- **Diagnostics**: `self_tests_run_evm_rpc` checks any EVM chain's node against
-  `Chain::evm_chain_id` and refuses a non-EVM chain (replacing the Ethereum-only
-  probe); `core_diagnostics_json_shape_ok` is removed.
+- **The RPC self-test covers any EVM chain** (`self_tests_run_evm_rpc` in
+  `core/src/diagnostics/self_tests.rs`, replacing the Ethereum-only
+  `self_tests_run_ethereum_rpc`): it checks the node against
+  `Chain::evm_chain_id` and refuses a non-EVM chain.
+- **`core_diagnostics_json_shape_ok` export removed**
+  (`core/src/diagnostics/export.rs`).
 - **CLI acceptance: new sections** (`scripts/cli-acceptance.sh`): checked fee
   units, addresses per network, replaceable sends and Tor routing.
 - Tests: 70 new
@@ -6865,7 +7029,7 @@
   per-network addresses, address-resolution columns, EVM and normalized history
   refresh, balance-refresh entries, replaceable sends and EVM composer controls;
   a "Testnet balances query mainnet endpoints" open item added.
-- Total: 112 .rs files changed (4 new), +7190 −4012 lines; data and config
+- Total: 112 .rs files changed (4 new), +6676 −4012 lines; data and config
   files: `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]`
   functions 599 → 669.
 
@@ -6938,9 +7102,9 @@
 - Docs: `PLAN.md` sections "Keypool history projections and TRC-20 read
   metadata", "Bounded discovery and incremental state writes", "Stored send
   identity and database connection ownership".
-- Total: 28 .rs files changed (4 new), +2045 −433 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 577 →
-  599.
+- Total: 28 .rs files changed (4 new), +1915 −432 lines; data and config
+  files: `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]`
+  functions 577 → 599.
 
 ## Beta Commit 132
 
@@ -6964,8 +7128,8 @@
   - Zero stays allowed for native EVM sends; other transfers require a positive
     amount.
   - New `spectra send amount --chain <c> --amount <n>` prints the raw units;
-    `decimal_str_to_raw_units_exact` in `core/src/send/preview_decode.rs` is
-    removed.
+    `decimal_str_to_raw_units` and `amount_to_raw_units_string` in
+    `core/src/send/preview_decode.rs` are removed.
 - **Receive-address advancement compares and reserves atomically**
   (`core/src/service/state.rs`): a probe result for an index that is no longer
   current does nothing, and the successor skips addresses discovered while the
@@ -6975,10 +7139,10 @@
   `core_ethereum_manual_nonce_validation` and
   `EthereumManualNonceValidationCode`)
   - The range is the signed i64 of the preview and FFI fields (before: Int32 in
-    Swift); signed, fractional, hexadecimal and overflowing text is refused, and
-    previews refuse a negative nonce from the caller or the RPC.
+    Swift); signed, fractional, hexadecimal and overflowing text is refused.
+  - Previews refuse a negative nonce from the caller or the RPC.
 - **CLI acceptance: new assertions** (`scripts/cli-acceptance.sh`) for exact
-  amounts, the nonce range and currency persisting across processes.
+  amounts and the nonce range.
 - Tests: 14 new, 2 removed
   - State writes 5: concurrent commands and events disagreeing with the reopened
     database, a failed commit publishing or not retrying, failed keypool or
@@ -6991,13 +7155,13 @@
     overflow at the builder.
   - EVM nonce 3: a valid nonce across the FFI range refused, a negative nonce
     reaching a preview, and malformed or overflowing input accepted.
-  - Removed: the old exact-decimal and simple-chain default-fee tests in
-    `preview_decode.rs`.
+  - Removed: the float and exact decimal-to-raw-units tests in
+    `preview_decode.rs`, with the helpers they covered.
 - Docs: `PLAN.md` section "Atomic writes, exact send amounts and receive
   advancement", and the manual EVM nonce entry.
-- Total: 12 .rs files changed (1 new), +1177 −586 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 565 →
-  577.
+- Total: 12 .rs files changed (1 new), +1118 −586 lines; data and config
+  files: `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]`
+  functions 565 → 577.
 
 ## Beta Commit 131
 
@@ -7036,9 +7200,9 @@
     reaching keys or the network.
 - Docs: `PLAN.md` entries for EVM override validation, custom EVM fees and the
   presentation catalog (Swift); two open items removed.
-- Total: 6 .rs files changed (1 new), +577 −116 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 556 →
-  565.
+- Total: 6 .rs files changed (1 new), +492 −108 lines; data and config files:
+  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 556
+  → 565.
 
 ## Beta Commit 130
 
@@ -7048,9 +7212,10 @@
     plan and docs, and the CLI help command (before: long ethos, "what Spectra
     is and is not" and security-philosophy sections).
   - `docs/ARCHITECTURE.md` reorganised into "Workspace", "Ownership", "Chain
-    rules", "Boundary design" and "Export shapes".
+    rules" and "Boundary design".
   - `docs/FFI-BOUNDARY.md` reorganised: "What crosses, and how" and "Traps"
-    become "Runtime and storage traps" and "Callers and coverage".
+    become "Export shapes", "Runtime and storage traps" and "Callers and
+    coverage".
   - `PLAN.md` condensed (+259 −3910).
 - **`.gitignore` trimmed**: the cloud-sync, DerivedData and Xcode per-user,
   Swift Package Manager, per-assistant (all but `AGENTS.md` and `CLAUDE.md`),
@@ -7058,8 +7223,8 @@
   `target/`; `.gradle/` added.
 - Docs: `README.md`, `docs/ARCHITECTURE.md`, `docs/FFI-BOUNDARY.md`, `PLAN.md`,
   as above.
-- Total: no .rs files changed, +433 −4278 lines; data and config files:
-  `.gitignore`; dependencies unchanged; `#[test]` functions unchanged at 556.
+- Total: no .rs files changed; data and config files: `.gitignore`;
+  dependencies unchanged; `#[test]` functions unchanged at 556.
 
 ## Beta Commit 129
 
@@ -7085,8 +7250,6 @@
   unchanged.
 - **`core_evm_chain_context_tag` export removed** with its four tests
   (`core/src/send/flow.rs`).
-- Comment-only edits in `core/Cargo.toml` (dependency groups reworded;
-  dependencies unchanged), `cli/src/cmd/tx.rs` and `core/src/fetch/refresh/`.
 - Tests: 11 new, 4 removed
   - Send addresses 2: a Sui address without its prefix judged differently by the
     composer and the store, and any mainnet answering differently before and
@@ -7103,7 +7266,7 @@
   post-send refresh (Swift), and the derivation duplicates;
   `docs/FFI-BOUNDARY.md` on checking an export is unused (`with_foreign` traits)
   and on exports with no Rust coverage.
-- Total: 29 .rs files changed, +1214 −6068 lines; data and config files:
+- Total: 29 .rs files changed, +556 −1131 lines; data and config files:
   `core/Cargo.toml`, `resources/coinicon/usdb.svg`; dependencies unchanged;
   `#[test]` functions 549 → 556.
 
@@ -7120,13 +7283,13 @@
     is ignored, and a URL the catalog does not list has no tag.
 - **Bittensor sends are routable** (`route_send_asset` in
   `core/src/send/mod.rs`, `Chain::uses_generic_send_submit`,
-  `SendPreview::Bittensor` in `core/src/send/flow.rs` and `preview_decode.rs`)
-  - It routes to `"bittensor"` and takes the shared submit path with a
-    `SimpleChain` preview shape under its own preview tag; no chain is left
-    without a send route.
+  `SendPreview::Bittensor` in `core/src/send/flow.rs` and
+  `preview_decode.rs`): it routes to `"bittensor"` and takes the shared submit
+  path with a `SimpleChain` preview shape under its own preview tag; no chain
+  is left without a send route.
 - **`simple_chain_default_fee_raw` removed**
   (`core/src/send/preview_decode.rs`): a second static-fee table with no caller,
-  which disagreed with `Chain::static_fee_units` on eight of twelve chains.
+  which disagreed with `Chain::static_fee_units` on eight of its eleven rows.
 - Tests: 3 new
   - Endpoint tags 3: a catalog endpoint reporting the wrong kind or
     capabilities, a trailing slash treated as a different endpoint, and an
@@ -7134,7 +7297,7 @@
 - Docs: `PLAN.md` entries for unread Swift root declarations, Bittensor sends,
   the dead static-fee table and the TOML endpoint directory; the Bittensor open
   item marked fixed; metrics table.
-- Total: 6 .rs files changed, +1925 −2848 lines; data and config files:
+- Total: 6 .rs files changed, +190 −36 lines; data and config files:
   `core/data/AppEndpointDirectory.json`, `core/data/endpoints.toml`;
   dependencies unchanged; `#[test]` functions 546 → 549.
 
@@ -7175,9 +7338,9 @@
 - **The UTXO address walk and receive-address reservation run in core**
   (`known_utxo_addresses`, `discover_utxo_addresses`, `utxo_receive_address`,
   `advance_used_utxo_reservations` in `core/src/service/state.rs`; new `spectra
-  pool discover`)
-  - Activity is one question for all twelve deep-discovery chains (any balance,
-    UTXO or history), and the UTXO testnets are walked like their mainnets.
+  pool discover`): activity is one question for all twelve deep-discovery
+  chains (any balance, UTXO or history), and the UTXO testnets are walked like
+  their mainnets.
 - **A wallet can be stored without a password**
   (`core/src/store/wallet_secrets.rs`: `store_seed_phrase`, `store_private_key`,
   `load_seed_phrase`, `load_private_key`, `has_signing_material`;
@@ -7189,16 +7352,22 @@
     stored in the clear.
   - `spectra wallet import --no-password` stores an unsealed seed; it conflicts
     with `--password-file`.
+  - The secret store keys are core's: the descriptors'
+    `seed_phrase_store_key`, `password_store_key` and `private_key_store_key`
+    and the `create_password_verifier` and `verify_password_verifier` exports
+    are removed.
 - **Send affordability counts the fee in core** (`send_affordability`,
   `SendAffordabilityInput`, `SendAffordability` in `core/src/send/mod.rs`; new
-  `spectra send affordability`)
-  - Verdicts: affordable, amount exceeds balance, amount plus fee exceeds a
-    native balance, or fee exceeds the gas balance for a token send; the gas
-    asset and fee decimals come from the registry.
+  `spectra send affordability`): the verdicts are affordable, amount exceeds
+  balance, amount plus fee exceeds a native balance, or fee exceeds the gas
+  balance for a token send; the gas asset and fee decimals come from the
+  registry.
 - **The recipient check is one core call returning two booleans**
   (`WalletService::send_destination_risk`, replacing `fetch_evm_address_probe`;
-  new `spectra send probe`); the sentence is built by the front end. New
-  `evm_transaction_status`.
+  new `spectra send probe`); the sentence is built by the front end.
+- **New export `evm_transaction_status`** (`core/src/service/network.rs`)
+  reads a broadcast EVM transaction's receipt: `None` while pending, otherwise
+  confirmed and whether it reverted.
 - **CLI acceptance: new sections** (`scripts/cli-acceptance.sh`): endpoint
   kinds, EVM history source, UTXO address discovery, wallets with no password,
   send affordability and the destination probe.
@@ -7223,16 +7392,17 @@
   keyless EVM history, receive reservation and the address walk in core, the
   single secret layout, the EVM pending-refresh recursion (Swift), send
   affordability and the recipient check.
-- Total: 21 .rs files changed, +3666 −1114 lines; data and config files:
+- Total: 21 .rs files changed, +2082 −206 lines; data and config files:
   `core/data/AppEndpointDirectory.json`, `scripts/cli-acceptance.sh`;
   dependencies unchanged; `#[test]` functions 522 → 546.
 
 ## Beta Commit 126
 
 - **`execute_send` builds typed send parameters in one match instead of a JSON
-  string parsed back by a second match** (`build_send_params` and
-  `sign_and_broadcast_send` in `core/src/service/send_execution.rs`;
-  `SendParams`, `SendTokenParams` in `core/src/service/send_params.rs`)
+  string parsed back by a second match** (`build_send_params` in
+  `core/src/service/send_execution.rs`; `sign_and_broadcast_send` in
+  `core/src/service/send.rs`; `SendParams`, `SendTokenParams` in
+  `core/src/service/send_params.rs`)
   - `execute_send` resolves the `Chain` once and passes it to both steps; each
     chain's amount arithmetic is unchanged, including Tron and Solana token
     amounts staying on the f64-scaled path and EVM and NEAR on the string-exact
@@ -7281,18 +7451,17 @@
   (Swift), one-chain wallets in receive and history, the single receive screen
   (Swift), the balance and fee dispatches, and three structures found by a cold
   read.
-- Total: 25 .rs files changed, +2422 −2059 lines; data and config files: none;
+- Total: 25 .rs files changed, +1820 −2053 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions 512 → 522.
 
 ## Beta Commit 125
 
 - **The chain wiki's editorial fields moved out of the chain catalog** (new
   `core/data/chain-wiki.toml`; `ChainWikiEntry`, `list_chain_wiki()` in
-  `core/src/chains.rs`)
-  - `tags`, `comment`, `family`, `consensus` and `state_model` are one row per
-    chain in their own file, joined by `chain`, and reachable only through
-    `list_chain_wiki()`; `ChainEntry` drops from 24 fields to 18 and
-    `list_all_chains()` no longer carries them.
+  `core/src/chains.rs`): `tags`, `comment`, `family`, `consensus` and
+  `state_model` are one row per chain in their own file, joined by `chain`,
+  and reachable only through `list_chain_wiki()`; `ChainEntry` drops from 23
+  fields to 17 and `list_all_chains()` no longer carries them.
 - **A wiki indexed by coin** (new `core/src/wiki.rs`, `list_asset_wiki()`,
   `AssetWikiEntry`, `AssetWikiPlace`; new `core/data/crypto-wiki.toml`)
   - One row per coin, 66 in all: the distinct coins the chains run on plus the
@@ -7326,10 +7495,10 @@
 - Docs: `PLAN.md` entries for the chain wiki split, an unread Swift revision
   counter, the coin-indexed wiki, the crypto wiki, CRO's market-data id, the
   renamed-wallet resurrection (Swift) and the per-asset dashboard row.
-- Total: 11 .rs files changed (1 new), +1750 −513 lines; data and config files:
+- Total: 11 .rs files changed (1 new), +664 −181 lines; data and config files:
   `core/data/chain-wiki.toml`, `core/data/chains.toml`,
-  `core/data/crypto-wiki.toml`, `core/data/tokens.toml`; dependencies unchanged;
-  `#[test]` functions 504 → 512.
+  `core/data/crypto-wiki.toml`, `core/data/tokens.toml`; dependencies
+  unchanged; `#[test]` functions 504 → 512.
 
 ## Beta Commit 124
 
@@ -7376,7 +7545,7 @@
 - Docs: `PLAN.md` entries for the two-table chain catalog, the dashboard row,
   the launch-time wallet merge (Swift), balance decimals and supplemental
   endpoint slots; two "Known open items" marked fixed.
-- Total: 12 .rs files changed, +1180 −1246 lines; data and config files:
+- Total: 12 .rs files changed, +701 −246 lines; data and config files:
   `core/data/chains.toml`; dependencies unchanged; `#[test]` functions 492 →
   504.
 
@@ -7482,10 +7651,10 @@
   address and string validation, tracker pruning, the staking export, holding
   records and self-tests, diagnostics records, merged price providers, the
   chain-list sweep and stablecoin pins.
-- Total: 39 .rs files changed, +3443 −3227 lines; data and config files:
+- Total: 39 .rs files changed, +2241 −2362 lines; data and config files:
   `core/data/tokens.toml`, `scripts/cli-acceptance.sh`,
-  `scripts/count-exports.sh`; dependencies unchanged; `#[test]` functions 474 →
-  492.
+  `scripts/count-exports.sh`; dependencies unchanged; `#[test]` functions 474
+  → 492.
 
 ## Beta Commit 122
 
@@ -7522,26 +7691,27 @@
   - `CoreTokenTrackingChain` is renamed `CoreTokenHostingChain`, and the
     identity column `token_tracking_chain` is `token_hosting_chain`.
 - **A token send reads its decimals from the contract before signing**
-  (`token_contract_decimals` in `core/src/service/send_execution.rs`)
-  - EVM tokens use `fetch_erc20_metadata` and Tron tokens
-    `fetch_trc20_metadata`; the caller's `token_decimals` is the fallback, and a
-    token with neither is refused (before: `req.token_decimals.unwrap_or(6)`).
+  (`token_contract_decimals` in `core/src/service/send_execution.rs`): EVM
+  tokens use `fetch_erc20_metadata` and Tron tokens `fetch_trc20_metadata`;
+  the caller's `token_decimals` is the fallback, and a token with neither is
+  refused (before: `req.token_decimals.unwrap_or(6)`).
 - **EVM addresses with mixed case must match their EIP-55 checksum**
   (`core/src/validation/address.rs`; before: any 40 hex digits passed).
   All-lower and all-upper addresses are still accepted.
 - **Zcash, Bitcoin Gold, Decred, Kaspa and Dash sends are routable**
   (`route_send_asset` in `core/src/send/mod.rs`; `Chain::send_execution_shape`
-  in `core/src/registry.rs`)
-  - Each routes to its existing `execute_send` arm with a fee fallback (0.00001
-    for Zcash, Bitcoin Gold and Kaspa; 0.00002 for Decred and Dash) and
-    private-key support (before: the preflight answered that transfers were not
-    enabled). Bittensor remains the only chain without a send route.
+  in `core/src/registry.rs`): each routes to its existing `execute_send` arm
+  with a fee fallback (0.00001 for Zcash, Bitcoin Gold and Kaspa; 0.00002 for
+  Decred and Dash) and private-key support (before: the preflight answered
+  that transfers were not enabled). Bittensor remains the only chain without a
+  send route.
 - **Exports removed**: `core_transaction_explorer_url` (the Aptos
   `?network=mainnet` suffix is a `txSuffix` field on the explorer record in
   `core/data/AppEndpointDirectory.json`),
   `core_supported_private_key_chain_names` (now the `derives_from_private_key`
   identity column), and `core_simple_chain_risk_probe_config`.
-- `EthereumSendPreview` is renamed `EvmSendPreview`.
+- **`EthereumSendPreview` is renamed `EvmSendPreview`**
+  (`core/src/send/preview_types.rs`).
 - **CLI acceptance: new assertions** (`scripts/cli-acceptance.sh`): EIP-55
   accept and refuse, amount formatting for small, large, 18-decimal and dust
   amounts, and discovery refused on a chain with no enumerating RPC.
@@ -7561,10 +7731,10 @@
   the EVM zero-amount rule, export classification against the C2 target, the
   destination-risk gate, private-key chains, the five unroutable chains, EIP-55,
   the UTXO preview refresh and tracked-token balances.
-- Total: 38 .rs files changed, +2214 −424 lines; data and config files:
+- Total: 38 .rs files changed, +1385 −371 lines; data and config files:
   `core/data/AppEndpointDirectory.json`, `core/data/chains.toml`,
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 465 →
-  474.
+  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 465
+  → 474.
 
 ## Beta Commit 121
 
@@ -7621,8 +7791,8 @@
   superseded by `core_chain_identities`), the exports
   `fetch_erc20_balance_typed` and `core_has_wallet_for_chain`, and
   `wallet_secret_index_from_observations`.
-- `SWIFT_REFERENCE_EPOCH_OFFSET_SECS` is defined once in
-  `core/src/store/persistence_models.rs` (before: privately in
+- **`SWIFT_REFERENCE_EPOCH_OFFSET_SECS` is defined once**
+  (`core/src/store/persistence_models.rs`; before: privately in
   `fetch/transactions.rs` and `store/wallet_db.rs`).
 - **CLI acceptance: 4 new assertions** (`scripts/cli-acceptance.sh`, 140 → 144):
   a three-chain import derives each chain's address, and `wallet new` refuses
@@ -7638,9 +7808,9 @@
   unified derivation loop, nine leftover `core_*` functions, dead Swift
   functions, the status-poll apply, `stale_pending_failure_ids` and
   `fetch_history_summary`.
-- Total: 15 .rs files changed, +1148 −246 lines; data and config files:
-  `core/data/chains.toml`, `scripts/cli-acceptance.sh`; dependencies unchanged;
-  `#[test]` functions 462 → 465.
+- Total: 15 .rs files changed, +616 −239 lines; data and config files:
+  `core/data/chains.toml`, `scripts/cli-acceptance.sh`; dependencies
+  unchanged; `#[test]` functions 462 → 465.
 
 ## Beta Commit 120
 
@@ -7650,17 +7820,17 @@
   `send/flow.rs`, `cli/src/out.rs`); no code changed.
 - Docs: `PLAN.md` entries for the comment sweep and for the multi-line
   chain-list sweep (Swift); metrics tables.
-- Total: 33 .rs files changed, +139 −186 lines; data and config files: none;
+- Total: 33 .rs files changed, +3 −183 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions unchanged at 462.
 
 ## Beta Commit 119
 
 - **`spectra network list` and `spectra network set <chain-id>` read and select
-  which network of a family a chain is on** (new `cli/src/cmd/network.rs`)
-  - `list` prints every mainnet that has a network choice, the chain it is on,
-    whether that is a testnet and its choices; `set` takes a registry id,
-    refuses one the registry does not know, and a family's own id selects its
-    mainnet (before: `network_chain_by_family` had no CLI command).
+  which network of a family a chain is on** (new `cli/src/cmd/network.rs`):
+  `list` prints every mainnet that has a network choice, the chain it is on,
+  whether that is a testnet and its choices; `set` takes a registry id,
+  refuses one the registry does not know, and a family's own id selects its
+  mainnet (before: `network_chain_by_family` had no CLI command).
 - **`spectra settings reset --yes` puts every core setting back to its default**
   (`StateCommand::ResetAppSettings`, `core/src/store/state.rs`;
   `cli/src/cmd/settings.rs`)
@@ -7688,9 +7858,9 @@
   settings reset moving to core, the Litecoin recheck gate, the network-family
   reset and per-chain RPC endpoints; the per-chain RPC item removed from "Known
   open items"; metrics tables.
-- Total: 8 .rs files changed (1 new), +587 −60 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 461 →
-  462.
+- Total: 8 .rs files changed (1 new), +314 −44 lines; data and config files:
+  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 461
+  → 462.
 
 ## Beta Commit 118
 
@@ -7785,7 +7955,7 @@
     empty.
   - `supports_diagnostics` and `supports_endpoint_catalog` from `chains.toml`
     and `ChainEntry`.
-- Measured, as `PLAN.md` records it in this commit: exported functions and
+- Measured: 2026-08-24, as `PLAN.md` records it: exported functions and
   methods 216 → 189; `cli-acceptance.sh` assertions 107 → 122; self-tests 67
   checks, 0 failed.
 - Tests: 8 new, 5 removed
@@ -7802,9 +7972,9 @@
   `async_runtime = "tokio"`; an export's callers are in Swift) and "Regenerating
   bindings" (the Xcode phase calls `scripts/bindgen-ios.sh`); `PLAN.md`
   "Behaviour changed on purpose" and Stage C.
-- Total: 25 .rs files changed, +1990 −1126 lines; data and config files:
-  `core/data/chains.toml`, `scripts/cli-acceptance.sh`; dependencies unchanged;
-  `#[test]` functions 458 → 461.
+- Total: 25 .rs files changed (1 deleted), +1084 −934 lines; data and config
+  files: `core/data/chains.toml`, `scripts/cli-acceptance.sh`; dependencies
+  unchanged; `#[test]` functions 458 → 461.
 
 ## Beta Commit 117
 
@@ -7815,8 +7985,8 @@
 - **`ChainIdentity` carries `token_tracking_chain`** (`core/src/registry.rs`):
   the `CoreTokenTrackingChain` for each of the 18 chains that host tracked
   tokens.
-- Measured, as `PLAN.md` records it in this commit: after the fix the iOS
-  staking tab's Solana page loads 100 live validators.
+- Measured: 2026-08-23, as `PLAN.md` records it: after the fix the iOS staking
+  tab's Solana page loads 100 live validators.
 - Tests: 1 new
   - Token tracking 1: two chains claiming one tracking chain, or the count
     drifting from 18.
@@ -7825,7 +7995,7 @@
 - Docs: `PLAN.md` "Behaviour changed on purpose" (staking runtime, send-preview
   in-flight guard, diagnostics reset, owned-address lists, "Load more" on every
   chain).
-- Total: 3 .rs files changed, +409 −25 lines; data and config files: none;
+- Total: 3 .rs files changed, +53 −10 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions 457 → 458.
 
 ## Beta Commit 116
@@ -7854,7 +8024,7 @@
     same value.
   - `spectra chains --json` carries `watchOnlyImport` and `staking`; `spectra
     wallet watch` refuses a chain that cannot be watched without its keys.
-- Measured, as `PLAN.md` records it in this commit: chain-name literals in the
+- Measured: 2026-08-21, as `PLAN.md` records it: chain-name literals in the
   Swift root 743 → 530.
 - Tests: 7 new
   - Monero derivation 1: a chain with no catalog path refused, or an unknown
@@ -7866,21 +8036,22 @@
     mainnet client; a non-staking chain routed.
 - Docs: `PLAN.md` "Behaviour changed on purpose" (EVM destination-risk warning,
   Litecoin recheck, Monero import, watch-only rows) and Stage C slices.
-- Total: 10 .rs files changed, +835 −88 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 450 →
-  457.
+- Total: 10 .rs files changed, +372 −49 lines; data and config files:
+  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 450
+  → 457.
 
 ## Beta Commit 115
 
 - **Private-key import is offered exactly where a key derives an address**
   (`Chain::derives_from_private_key`; `core/src/derivation/import.rs`,
   `core/src/receive.rs`)
-  - 28 mainnets; added Polygon, Base, Linea, Scroll, Blast, Mantle and Decred;
-    removed Bitcoin SV, Tron, Solana, Cardano, Stellar, XRP Ledger, Sui, Aptos,
+  - 28 mainnets; added Polygon, Base, Linea, Scroll, Blast and Mantle; removed
+    Bitcoin SV, Tron, Solana, Cardano, Stellar, XRP Ledger, Sui, Aptos,
     TON, Internet Computer, NEAR, Polkadot, Zcash, Bitcoin Gold, Kaspa, Dash and
     Bittensor, each of which was offered and then failed to derive.
-  - `PRIVATE_KEY_SUPPORTED_CHAINS` reads the flag and offers mainnets only;
-    `chain_supports_private_key_import` deleted.
+  - The import gate and `core_supported_private_key_chain_names` read the flag
+    in place of the deleted `PRIVATE_KEY_SUPPORTED_CHAINS`, and the picker
+    offers mainnets only; `chain_supports_private_key_import` deleted.
 - **Settings are core state** (`AppSettings`, `StateCommand::SetAppSetting {
   update }`; new `cli/src/cmd/settings.rs`)
   - Eighteen fields of the former `PersistedAppSettings` blob, one command
@@ -7934,7 +8105,7 @@
     chain's endpoints, and role names replace `core_endpoint_role_mask`.
   - Diagnostics: `diagnostics_record_*` write one row, `diagnostics_run_summary`
     and `diagnostics_forget_wallet` added, the read-all/replace-all pairs gone.
-- Measured, as `PLAN.md` records it in this commit: exported functions and
+- Measured: 2026-08-21, as `PLAN.md` records it: exported functions and
   methods 216; Swift root vs `views/` 16,337 vs 10,785 lines; chain-name
   literals in the Swift root 743.
 - Tests: 19 new, 1 removed
@@ -7953,9 +8124,9 @@
 - Docs: `PLAN.md` "Behaviour changed on purpose" (private-key chains, the
   biometric gate on twelve chains, untracked NEAR tokens, settings, the
   launch-time transaction prune) and Stage C (target ~60 exports, slices).
-- Total: 34 .rs files changed (3 new), +3521 −1191 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 432 →
-  450.
+- Total: 34 .rs files changed (3 new), +2721 −1146 lines; data and config
+  files: `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]`
+  functions 432 → 450.
 
 ## Beta Commit 114
 
@@ -7972,12 +8143,12 @@
   `SendExecutionShape`, `SendFeeField`, `core_send_execution_shape`): for twelve
   chains, the fee-shortfall display decimals, whether a private-key-only wallet
   can sign, how the fee enters the request, and the default fee.
-- **Every send-preview record names its fee `estimated_network_fee`**
+- **Every send-preview record names its fee `estimatedNetworkFee`**
   (`core/src/send/preview_types.rs`, `core/src/send/preview_decode.rs`; before:
-  sixteen chain-specific spellings).
-- Measured, as `PLAN.md` records it in this commit: Swift 27,216 non-generated
-  lines; Swift enums restating the chain list 4 → 0; chain-name literals in the
-  Swift root 973.
+  fifteen chain-specific spellings such as `estimatedNetworkFeeEth`).
+- Measured: 2026-08-19, as `PLAN.md` records it: Swift 27,216 non-generated
+  lines; Swift enums restating the chain list 4 → 0; chain-name literals in
+  the Swift root 973.
 - Tests: 3 new
   - Private-key derivation 1: coverage drifting from the EVM family and five
     UTXO chains.
@@ -7986,19 +8157,24 @@
 - Docs: `PLAN.md` "Behaviour changed on purpose" (one Swift chain type,
   diagnostics on every mainnet, the private-key dispatcher, endpoints for
   sixteen more mainnets) and known open items.
-- Total: 13 .rs files changed, +651 −113 lines; data and config files: none;
+- Total: 13 .rs files changed, +334 −92 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions 429 → 432.
 
 ## Beta Commit 113
 
 - **Network-mode enums removed** (`CoreBitcoinNetworkMode`,
-  `CoreDogecoinNetworkMode`, `NetworkSelection`):
-  `AddressValidationRequest.network_mode`, which nothing read, is gone; the
-  `kind` string decides the network.
+  `CoreDogecoinNetworkMode` in `core/src/store/wallet_domain.rs`)
+  - `AddressValidationRequest.network_mode`, which nothing read, is gone; the
+    `kind` string decides the network.
+  - A wallet's network is a registry chain id
+    (`CoreImportedWallet.network_chain_id`, `WalletSummary.network_mode`, the
+    import's `network_chain_by_family`), as is the network
+    `BitcoinSendParams`, `app_core_bitcoin_esplora_base_urls` and
+    `app_core_bitcoin_wallet_store_default_base_urls` take (before:
+    `mainnet`, `testnet`, `testnet4` or `signet`).
 - **More chain facts on the registry** (`core/src/registry.rs`)
   - `Chain::bitcoin_network` replaces `bitcoin_network_for_mode`;
-    `Chain::network_choices`, `Chain::pending_status_poll` (`PendingStatusPoll`)
-    and `supports_deep_utxo_discovery` added.
+    `Chain::pending_status_poll` (`PendingStatusPoll`) added.
   - New exports `core_address_validation_kind`, `core_pending_status_poll`,
     `core_chain_display_name`, `core_network_choices`; they replace
     `ImportNetworks`' per-family matches and a 20-row chain-to-kind table in the
@@ -8010,23 +8186,23 @@
     testnet row has no value.
   - Only live prices cross; `formatting_dashboard_asset_grouping_key` export
     removed.
-- Measured, as `PLAN.md` records it in this commit: Swift root vs `views/`
-  16,934 vs 11,128 lines; 1,124 chain-name literals in the Swift root; 292
-  exported functions and methods.
+- Measured: 2026-08-16, as `PLAN.md` records it: Swift root vs `views/` 16,934
+  vs 11,128 lines; 1,124 chain-name literals in the Swift root; 292 exported
+  functions and methods.
 - Tests: 4 new
   - Dashboard rows 4: rows merged across chains; a stored price beating a live
     one; a testnet row valued; pinned rows out of order.
 - Docs: `PLAN.md` "Behaviour changed on purpose" (`network_mode` removed), Stage
   3 measurements, and the open question on per-chain dashboard rows.
-- Total: 24 .rs files changed, +1294 −578 lines; data and config files: none;
+- Total: 24 .rs files changed, +1164 −563 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions 425 → 429.
 
 ## Beta Commit 112
 
 - **`service.rs` split by owner into `core/src/service/`** (`mod.rs`,
   `state.rs`, `network.rs`, `send.rs`, `helpers.rs`, `types.rs`,
-  `standalone.rs`, `history_cursor.rs`, and `send_params.rs` from
-  `service_send_params.rs`); the export surface is unchanged.
+  `standalone.rs`, and `send_params.rs` from `service_send_params.rs`); the
+  export surface is unchanged.
 - **Module moves**: `derivation/validation.rs` → `validation/address.rs`,
   `validation.rs` → `validation/mod.rs`, `fetch/refresh.rs` →
   `fetch/refresh/policy.rs`, `fetch/refresh_engine.rs` →
@@ -8065,17 +8241,18 @@
   `core/src/send/transfer.rs`)
   - Sixteen `plan_x`/`core_x` pairs became one exported function each.
   - `plan_store_derived_state`, `plan_transfer_availability`, `can_send_holding`
-    and their request records deleted (`send/transfer.rs` 264 → 56 lines).
+    and their request records deleted (`send/transfer.rs` 286 → 57 lines).
   - `CoreTokenTrackingChain::chain_name` is the one chain mapping; its copies in
     the token merge and dashboard planners are gone.
 - **Ten dead exports** deleted or un-exported: three `WalletService` methods
   including the address-book KV pair, `http_probe`, `http_get` and five
   `derive_<chain>` functions; `CorePersistedAddressBookStore` removed.
-- `wallet_db` test databases are keyed on process, thread and a counter (two
-  parallel tests could share a file).
-- Measured, as `PLAN.md` records it in this commit: `core_plan_*` exports 8 → 0;
-  290 exported functions counted from the Rust side (552 of the earlier 765 were
-  generated converter pairs); largest core file 4,781 → 2,501 lines; 69
+- **`wallet_db` test databases are keyed on process, thread and a counter**
+  (`core/src/store/wallet_db.rs`; before: on `subsec_nanos()`, so two parallel
+  tests could share a file).
+- Measured: 2026-08-16, as `PLAN.md` records it: `core_plan_*` exports 8 → 0;
+  290 exported functions counted from the Rust side (552 of the earlier 765
+  were generated converter pairs); largest core file 4,781 → 2,501 lines; 69
   acceptance assertions.
 - Tests: 9 new, 5 removed
   - Operational log 3: events lost on reopen; a log out of order or unbounded;
@@ -8091,8 +8268,8 @@
 - Docs: `PLAN.md` Rule 0 (new), "Behaviour changed on purpose" (network mode,
   testnet pricing, dashboard rebuild, EVM send gating), Stage 2 complete, Stage
   C1 done, progress table.
-- Total: 40 .rs files changed (8 new), +6294 −6128 lines; data and config files:
-  none; dependencies unchanged; `#[test]` functions 421 → 425.
+- Total: 40 .rs files changed (8 new, 1 deleted), +5809 −6087 lines; data and
+  config files: none; dependencies unchanged; `#[test]` functions 421 → 425.
 
 ## Beta Commit 111
 
@@ -8109,15 +8286,15 @@
   `StateCommand::SetPriceAlerts` in `core/src/store/state.rs`; `wallet_db`): an
   alert with a non-positive target or empty holding key is dropped; a change
   emits `priceAlertsChanged`.
-- Comment banners and module docs shortened across core and the CLI; no
+- **Comment banners and module docs shortened** (core and the CLI); no
   behaviour change.
 - Tests: 3 new
   - Price alerts 2: an alert lost on reopen; an alert that cannot fire stored.
   - Resident state 1: a `CoreAppState` collection not surviving save and reload.
 - Docs: `PLAN.md` Stage C ("The CLI gap is closed").
-- Total: 64 .rs files changed (3 new), +1005 −751 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 418 →
-  421.
+- Total: 64 .rs files changed (3 new), +935 −751 lines; data and config files:
+  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 418
+  → 421.
 
 ## Beta Commit 110
 
@@ -8131,8 +8308,7 @@
   describe `ARCHITECTURE.md` as the decisions record.
 - Docs: `docs/ARCHITECTURE.md`, `docs/FFI-BOUNDARY.md`, `docs/SUMMARY.md`
   (deleted), `PLAN.md` header, `README.md` "Architecture".
-- Total: No code changed; no .rs files changed, +160 −793 lines; data and config
-  files: none; dependencies unchanged; `#[test]` functions unchanged at 418.
+- Total: No code changed.
 
 ## Beta Commit 109
 
@@ -8157,8 +8333,8 @@
 - **`BalanceRefreshEngine::refresh_now`** awaits one cycle (`trigger_immediate`
   only spawns it).
 - **Core logs to stderr at `warn`** unless `RUST_LOG` says otherwise
-  (`core/src/service.rs`; before: stdout at `debug`, interleaved with `--json`
-  output).
+  (`core/src/service.rs`; before: stdout at `debug` in debug builds and `info`
+  in release, interleaved with `--json` output).
 - **Self-test fixtures are core-derived addresses**
   (`core/src/diagnostics/self_tests.rs`): seven address-validation checks
   (Bitcoin, Bitcoin Cash, Litecoin, Monero, Polkadot, Stellar, Internet
@@ -8170,7 +8346,7 @@
   (`core/src/registry.rs`; before: "ICP", disagreeing with `chains.toml`);
   `coin_symbol` stays "ICP" and `from_display_name` loses its special case.
 - **Sixteen exports with no Swift caller**: ten deleted, six un-exported.
-- Measured, as `PLAN.md` records it in this commit: core 59,564 lines and 234
+- Measured: 2026-08-14, as `PLAN.md` records it: core 59,564 lines and 234
   exported functions at the start of Stage C; generated exports 950 → 765;
   source-level exports 231 → 198; self-tests 59/66 → 66/66.
 - Tests: 12 new
@@ -8183,9 +8359,9 @@
     tracking chain not round-tripping through the registry.
 - Docs: `PLAN.md` Stage C (new: C1 skeleton, C2 surface, slices), the
   diagnostics collapse notes, the ICP open item closed.
-- Total: 50 .rs files changed (4 new), +1900 −364 lines; data and config files:
-  `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]` functions 406 →
-  418.
+- Total: 50 .rs files changed (4 new), +1541 −352 lines; data and config
+  files: `scripts/cli-acceptance.sh`; dependencies unchanged; `#[test]`
+  functions 406 → 418.
 
 ## Beta Commit 108
 
@@ -8233,9 +8409,9 @@
   testnet resolves its own RPC endpoints, and a mainnet's RPC list no longer
   includes its testnets'; the settings index keeps a chain and its testnets
   together.
-- Measured, as `PLAN.md` records it in this commit: `core_plan_*` exports 10 →
-  8; Swift root vs `views/` 18,613 vs 10,969 lines; CLI commands drivable
-  without a TTY 0 of 24 → all.
+- Measured: 2026-08-14, as `PLAN.md` records it: `core_plan_*` exports 10 → 8;
+  Swift root vs `views/` 18,613 vs 10,969 lines; CLI commands drivable without
+  a TTY 0 of 24 → all.
 - Tests: 37 new
   - Derived state 5: portfolio sums, exclusion, testnet quoting and send gating
     going wrong.
@@ -8252,7 +8428,7 @@
 - Docs: `PLAN.md` "Behaviour changed on purpose" (new), Stage 3 progress,
   progress table, known open items (testnet endpoints and `EVMChainContext`
   fixed).
-- Total: 18 .rs files changed (10 new), +4267 −2863 lines; data and config
+- Total: 18 .rs files changed (10 new), +3589 −2766 lines; data and config
   files: `Cargo.lock`, `cli/Cargo.toml`, `scripts/cli-acceptance.sh`;
   dependencies: added clap 4, serde_json 1; removed base64, bip39, dialoguer,
   getrandom, pbkdf2, sha2 (`cli/Cargo.toml`); `#[test]` functions 369 → 406.
@@ -8312,7 +8488,7 @@
   `core/src/send/utxo.rs`, an unused second UTXO selector, deleted.
 - **CLI commands `currency`, `addressbook` (`ab`) and `txs`**
   (`cli/src/main.rs`) drive the same state through `WalletService`.
-- Measured, as `PLAN.md` records it in this commit: Swift 30,879 non-generated
+- Measured: 2026-08-14, as `PLAN.md` records it: Swift 30,879 non-generated
   lines, 64% of them outside `views/`; 42 `core_plan_*` exports; 0 Swift calls
   into `StateCommand`.
 - Tests: 68 new, 8 removed
@@ -8336,8 +8512,8 @@
   `ARCHITECTURE.md` "Known divergence: Swift owns the domain state";
   `FFI-BOUNDARY.md` regenerating bindings, which shape a new export takes, "Do
   not add a `core_plan_*`"; `SUMMARY.md`.
-- Total: 30 .rs files changed, +4422 −1088 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions 309 → 369.
+- Total: 30 .rs files changed (1 deleted), +3743 −931 lines; data and config
+  files: none; dependencies unchanged; `#[test]` functions 309 → 369.
 
 ## Beta Commit 106
 
@@ -8375,7 +8551,8 @@
     yields a client routed to a dead loopback port (before: a direct client).
   - `socks5://` URLs are upgraded to `socks5h://`; the built-in Tor proxy is
     `socks5h://127.0.0.1:19050`.
-- History-cursor helpers moved into `core/src/service/history_cursor.rs`.
+- **History-cursor helpers moved into `core/src/service/history_cursor.rs`**
+  (from `core/src/service.rs`).
 - Tests: 36 new
   - Derivation paths 1: a catalog chain or testnet without a resolved path.
   - Import 7: EVM chains not sharing one address slot; Ethereum Classic's own
@@ -8396,9 +8573,10 @@
   modules, `state.rs`, `wallet_db.rs`, `secret_backends.rs`), Swift test-target
   note, new "Known divergence: iOS bypasses the core state model";
   `FFI-BOUNDARY.md` "Secret material" (`SecretStore` backends) and file paths.
-- Total: 18 .rs files changed (2 new), +2763 −1503 lines; data and config files:
-  `Cargo.lock`, `cli/Cargo.toml`; dependencies: added base64 0.22; removed
-  rusqlite, serde, serde_json (`cli/Cargo.toml`); `#[test]` functions 273 → 309.
+- Total: 18 .rs files changed (2 new), +2600 −1480 lines; data and config
+  files: `Cargo.lock`, `cli/Cargo.toml`; dependencies: added base64 0.22;
+  removed rusqlite, serde, serde_json (`cli/Cargo.toml`); `#[test]` functions
+  273 → 309.
 
 ## Beta Commit 104
 
@@ -8416,7 +8594,7 @@
 - Docs: `ARCHITECTURE.md` workspace layout (core holds the UniFFI exports;
   `ffi/` is a re-export shim); `FFI-BOUNDARY.md` "Send-result payloads" and
   "Secret material" (new).
-- Total: 4 .rs files changed (1 new), +523 −408 lines; data and config files:
+- Total: 4 .rs files changed (1 new), +493 −403 lines; data and config files:
   none; dependencies unchanged; `#[test]` functions 272 → 273.
 
 ## Beta Commit 103
@@ -8428,9 +8606,10 @@
 - **The CLI offers every catalog derivation path** (`cli/src/main.rs`): each
   tagged entry, with `{account}` set to 0, is a choice (before: default and
   alternate); the CLI builds again after Beta Commit 102's catalog change.
-- `.gitignore`: Kotlin bindings and JNI libraries.
+- **`.gitignore` ignores the Kotlin bindings and JNI libraries**
+  (`kotlin/app/src/main/kotlin/uniffi/`, `kotlin/app/src/main/jniLibs/`)
 - Docs: `SUMMARY.md` views list (Liquid Glass notes → `iosUI.md`).
-- Total: 1 .rs files changed, +67 −36 lines; data and config files:
+- Total: 1 .rs file changed, +21 −17 lines; data and config files:
   `.gitignore`, `Makefile`; dependencies unchanged; `#[test]` functions
   unchanged at 272.
 
@@ -8452,10 +8631,11 @@
     (before: always account 0).
   - `resolved_flavor` returns the tag of the catalog entry the path matches
     (before: a hand-written match).
-- The CLI still reads `alt_derivation_path` and does not build at this commit.
-- Total: 4 .rs files changed, +237 −261 lines; data and config files:
-  `core/data/chains.toml`; dependencies unchanged; `#[test]` functions unchanged
-  at 272.
+- **The CLI does not build** (`cli/src/main.rs` still reads the removed
+  `alt_derivation_path`).
+- Total: 4 .rs files changed, +131 −105 lines; data and config files:
+  `core/data/chains.toml`; dependencies unchanged; `#[test]` functions
+  unchanged at 272.
 
 ## Beta Commit 101
 
@@ -8466,8 +8646,7 @@
   - `color_name` renamed `color` on chains and tokens.
   - A one-line `comment` on every chain and token.
   - `slip44_coin_type` and `notable_details` removed from chains.
-- `app_core.rs`'s `slip44` path helper renamed `bip44_path`.
-- Total: 3 .rs files changed, +3346 −3541 lines; data and config files:
+- Total: 3 .rs files changed, +31 −32 lines; data and config files:
   `core/data/chains.toml`, `core/data/tokens.toml`; dependencies unchanged;
   `#[test]` functions unchanged at 272.
 
@@ -8477,21 +8656,22 @@
   `core/src/send/chains/bitcoin.rs`): a P2SH `from` address is checked against
   the key and spent with a redeem script and witness (before: signed through the
   P2PKH path).
-- **A UTXO with a malformed txid is an error** (before: replaced by an all-zero
-  txid).
+- **A UTXO with a malformed txid is an error**
+  (`core/src/send/chains/bitcoin.rs`; before: replaced by an all-zero txid).
 - **Send parameter records moved to `core/src/service_send_params.rs`** (new):
   the typed per-chain send params out of `service.rs`.
 - **EVM derivation exports come from a macro** (`evm_deriver!` in
   `core/src/derivation/chains/evm.rs`): the same 33 `derive_<chain>` exports and
   signatures.
-- Clippy fixes in the CLI; `.gitignore` covers agent and editor files
-  (`AGENTS.md`, `CLAUDE.md`, `.cursor/`, …).
+- **`.gitignore` covers agent and editor files** (`AGENTS.md`, `CLAUDE.md`,
+  `.cursor/`, …)
 - Docs: `ARCHITECTURE.md` `service.rs` and `service_send_params.rs` entries,
   vertical-slicing and FFI principles; `FFI-BOUNDARY.md` UniFFI 0.29 → 0.31,
   exports live in their owning module (no `core/src/ffi.rs`), string chain ids,
   typed send params.
-- Total: 5 .rs files changed (1 new), +1048 −1203 lines; data and config files:
-  `.gitignore`; dependencies unchanged; `#[test]` functions unchanged at 272.
+- Total: 5 .rs files changed (1 new), +1006 −1185 lines; data and config
+  files: `.gitignore`; dependencies unchanged; `#[test]` functions unchanged
+  at 272.
 
 ## Beta Commit 99
 
@@ -8532,7 +8712,8 @@
   (`Chain::evm_explorer_api_base`): Ethereum Classic, Hyperliquid and their
   testnets return "does not support Etherscan history" (before: every EVM chain
   was queried at `api.etherscan.io`); `EvmChainConfig` deleted.
-- `service.rs` fetch helpers became free functions.
+- **`service.rs` fetch helpers became free functions** (the `ChainClient` enum
+  is deleted).
 - Tests: 1 new
   - Decimal conversion 1: f64 rounding in raw-unit amounts.
 - Total: 6 .rs files changed, +367 −431 lines; data and config files: none;
@@ -8577,8 +8758,8 @@
   accounts 0–2, Ethereum accounts and indexes 0–2 plus three truncated legacy
   paths, Solana standard and legacy — and returns chain id, path, label and
   address; no network, and a failed candidate is skipped.
-- Unused tuple-returning `derive_from_seed_phrase` helpers removed from the
-  P2PKH chain files; unused staking-client fields underscored.
+- **Unused tuple-returning `derive_from_seed_phrase` helpers removed** from
+  the seven P2PKH chain files (`core/src/derivation/chains/`).
 - Total: 12 .rs files changed (1 new), +309 −181 lines; data and config files:
   none; dependencies unchanged; `#[test]` functions unchanged at 266.
 
@@ -8603,12 +8784,13 @@
 - **Token `category` became `tags`** (`core/data/tokens.toml`,
   `core/src/tokens.rs`): `"stablecoin"` and `"meme"` → one-element lists,
   `"custom"` → `[]`.
-- The `history_store` tests use string chain ids; they did not compile after
-  Beta Commit 93.
-- Total: 14 .rs files changed, +1126 −256 lines; data and config files:
-  `Cargo.lock`, `core/Cargo.toml`, `core/data/tokens.toml`; dependencies: added
-  tracing 0.1, tracing-subscriber 0.3 (`core/Cargo.toml`); `#[test]` functions
-  unchanged at 266.
+- **The `history_store` tests use string chain ids**
+  (`core/src/fetch/history_store.rs`); they did not compile after Beta Commit
+  93.
+- Total: 14 .rs files changed, +1030 −164 lines; data and config files:
+  `Cargo.lock`, `core/Cargo.toml`, `core/data/tokens.toml`; dependencies:
+  added tracing 0.1, tracing-subscriber 0.3 (`core/Cargo.toml`); `#[test]`
+  functions unchanged at 266.
 
 ## Beta Commit 93
 
@@ -8628,19 +8810,22 @@
   - `chain_by_id` → `chain_by_str_id`; ids `opBNB` → `opbnb` and
     `bitcoin-testnet4` → `bitcoin-testnet-4`.
 - **The CLI resolves every registry chain by name** (before: ids 0–29 only).
-- Doc comments added to the derivation chain files.
+- **Doc comments on the derivation chain files**
+  (`core/src/derivation/chains/*.rs`)
 - Tests: 1 new
   - Registry 1: the chain count drifting from 78.
-- Total: 37 .rs files changed, +914 −917 lines; data and config files:
+- Total: 37 .rs files changed, +902 −658 lines; data and config files:
   `core/data/chains.toml`, `core/data/tokens.toml`; dependencies unchanged;
   `#[test]` functions 265 → 266.
 
 ## Beta Commit 92
 
 - **Duplicate address validators removed from the derivation chain files**
-  (`core/src/derivation/chains/*.rs`): twenty `validate_<chain>_address`
-  functions and the `pubkey_to_*` watch-only encoders, copies of what
-  `core/src/derivation/validation.rs` holds.
+  (`core/src/derivation/chains/*.rs`): seventeen `validate_<chain>_address`
+  functions and the Aptos, ICP and Sui watch-only encoders
+  (`pubkey_to_aptos_address`, `pubkey_der_to_icp_address`,
+  `pubkey_to_sui_address`), copies of what `core/src/derivation/validation.rs`
+  holds.
 - Total: 17 .rs files changed, +0 −189 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions unchanged at 265.
 
@@ -8662,8 +8847,9 @@
   to them.
 - Docs: `ARCHITECTURE.md` moved to `docs/ARCHITECTURE.md`; `docs/SUMMARY.md`
   added (a file-by-file map of the Swift layer).
-- Total: 55 .rs files changed (1 new), +2255 −1539 lines; data and config files:
-  none; dependencies unchanged; `#[test]` functions unchanged at 265.
+- Total: 55 .rs files changed (1 new, 16 deleted), +2098 −1539 lines; data and
+  config files: none; dependencies unchanged; `#[test]` functions unchanged at
+  265.
 
 ## Beta Commit 90
 
@@ -8699,22 +8885,24 @@
   `core_validate_seed_phrase_word_count` (below 12 refused, non-standard lengths
   advised) and `core_validate_wallet_password` (empty allowed, otherwise at
   least 4 characters and matching).
-- `tokens.toml` regrouped by chain (before: by symbol).
+- **`tokens.toml` regrouped by chain** (`core/data/tokens.toml`; before: by
+  symbol)
 - Tests: 0 new, 6 removed
   - Removed: two chain-inference tests, the override-beats-inference test,
     request parsing, NEAR ignoring the path, and the presets catalog load.
 - Docs: `core/data/DERIVATION_WORKFLOW.md` and
   `core/src/derivation/chains/REFACTOR_NOTES.md` deleted.
-- Total: 56 .rs files changed (19 new), +6302 −9942 lines; data and config
-  files: `core/data/DerivationPresets.json`,
-  `core/data/DerivationRequestCompilationPresets.json`, `core/data/chains.toml`,
-  `core/data/derivation_presets.toml`, `core/data/tokens.toml`; dependencies
-  unchanged; `#[test]` functions 271 → 265.
+- Total: 56 .rs files changed (19 new, 2 deleted), +2848 −6673 lines; data and
+  config files: `core/data/DerivationPresets.json`,
+  `core/data/DerivationRequestCompilationPresets.json`,
+  `core/data/chains.toml`, `core/data/derivation_presets.toml`,
+  `core/data/tokens.toml`; dependencies unchanged; `#[test]` functions 271 →
+  265.
 
 ## Beta Commit 89
 
 - **Sei icon gets a white full-disc background** (`resources/coinicon/sei.svg`)
-- Total: no .rs files changed, +1 −0 lines; data and config files:
+- Total: no .rs files changed; data and config files:
   `resources/coinicon/sei.svg`; dependencies unchanged; `#[test]` functions
   unchanged at 271.
 
@@ -8726,9 +8914,9 @@
     fiat icons (CNY, EUR, GBP, RUB, USD) to `resources/fiaticon/`.
   - `bitcoingold.svg`, `ink.svg` and `sonic.svg` gain a white full-disc
     background circle.
-- Total: no .rs files changed, +3 −0 lines; data and config files:
-  `resources/coinicon/` (73), `resources/fiaticon/` (5); dependencies unchanged;
-  `#[test]` functions unchanged at 271.
+- Total: no .rs files changed; data and config files: `resources/coinicon/`
+  (73), `resources/fiaticon/` (5); dependencies unchanged; `#[test]` functions
+  unchanged at 271.
 
 ## Beta Commit 84
 
@@ -8738,10 +8926,10 @@
   `supported_chains`): each preset's default derivation path (before:
   `spectra_core::platform::catalog::core_bootstrap`, which Beta Commit 73
   deleted).
-- The `render_evm_overrides_fragment` test's `EvmSendOverridesInput` literal
-  fills the fields added in Beta Commit 80 with `..Default::default()`
-  (`core/src/send/ethereum.rs`).
-- Total: 2 .rs files changed, +42 −56 lines; data and config files:
+- **The `render_evm_overrides_fragment` test builds again**
+  (`core/src/send/ethereum.rs`): its `EvmSendOverridesInput` literal fills the
+  fields added in Beta Commit 80 with `..Default::default()`.
+- Total: 2 .rs files changed, +10 −9 lines; data and config files:
   `Cargo.lock`, `core/Cargo.toml`, `ffi/Cargo.toml`,
   `tools/uniffi-bindgen/Cargo.toml`; dependencies: uniffi 0.29 → 0.31
   (`core/Cargo.toml`, `ffi/Cargo.toml`, `tools/uniffi-bindgen/Cargo.toml`);
@@ -8753,9 +8941,7 @@
   then regenerate bindings** (`Makefile`; `scripts/build-ios.sh --release`,
   `scripts/build-android.sh --release`); `make ios` and `make android` stay
   debug.
-- `TorInternalState::CustomProxy` drops its unused `socks5_url` field
-  (`core/src/tor.rs`).
-- Total: 1 .rs files changed, +15 −5 lines; data and config files: `Makefile`;
+- Total: 1 .rs file changed, +2 −2 lines; data and config files: `Makefile`;
   dependencies unchanged; `#[test]` functions unchanged at 271.
 
 ## Beta Commit 81
@@ -8785,11 +8971,11 @@
   - Stealth-address keys follow DKSAP with BLAKE3 domain tags from Litecoin
     Core's libmw; commitments and Bulletproof range proofs come from
     `grin_secp256k1zkp`.
-  - The fee is applied as given; the caller's estimate is expected to include
-    the ~1017-byte MWEB overhead (`MWEB_PEGIN_OVERHEAD_BYTES`).
-- Total: 7 .rs files changed (2 new), +3775 −175 lines; data and config files:
-  `Cargo.lock`, `core/Cargo.toml`; dependencies: added arti-client 0.22, blake3
-  1, secp256k1zkp 0.7 (package `grin_secp256k1zkp`), tokio-util 0.7,
+  - The fee is the caller's, floored at 1017 sats
+    (`MWEB_PEGIN_OVERHEAD_BYTES`, the extension block's size at 1 sat/vbyte).
+- Total: 7 .rs files changed (2 new), +803 −34 lines; data and config files:
+  `Cargo.lock`, `core/Cargo.toml`; dependencies: added arti-client 0.22,
+  blake3 1, secp256k1zkp 0.7 (package `grin_secp256k1zkp`), tokio-util 0.7,
   tor-rtcompat 0.22 (`core/Cargo.toml`); `#[test]` functions unchanged at 271.
 
 ## Beta Commit 80
@@ -8807,6 +8993,12 @@
   - `sign_only` signs without broadcasting and returns the raw transaction hex
     with an empty txid.
   - The buffer on `eth_estimateGas` is a parameter, default 20%.
+  - `fetch_erc20_metadata` asks for decimals and symbol in one JSON-RPC batch
+    (`EvmClient::call_batch` in `core/src/fetch/chains/evm.rs`; before: two
+    requests).
+  - `encode_erc20_approve`, `encode_erc20_transfer_from`,
+    `EvmClient::fetch_erc20_allowance` and `fetch_nonce_and_fee` added, with
+    no caller.
 - **Bitcoin sends gain coin control** (`core/src/send/chains/bitcoin.rs`;
   `CoinSelectionStrategy`, `BitcoinExtraOutput` in `core/src/staking/types.rs`)
   - Coin selection is largest-first or smallest-first; `pinned_utxos` bypasses
@@ -8830,9 +9022,9 @@
   `hmac_key` is `"uniform"`; the default stays Ed25519 expansion.
 - **Keccak-256 comes from `sha3`** (EVM, Tron, Sui, Aptos, Monero derivation and
   `derivation/engine.rs`; before: `tiny-keccak`, now dropped).
-- `service.rs` token-balance fan-out shares a `coin_token_balances!` macro and
-  EVM chain checks go through `chain_for_evm_id`; behaviour unchanged.
-- Total: 28 .rs files changed, +1176 −666 lines; data and config files:
+- **`service.rs` token-balance fan-out shares a `coin_token_balances!` macro**
+  and EVM chain checks go through `chain_for_evm_id`; behaviour unchanged.
+- Total: 28 .rs files changed, +1141 −638 lines; data and config files:
   `Cargo.lock`, `core/Cargo.toml`, `resources/icons/okb.svg`,
   `resources/icons/sonic.svg`, `resources/icons/zksyncera.svg`; dependencies:
   added alloy-rlp 0.3, removed tiny-keccak (`core/Cargo.toml`); `#[test]`
@@ -8851,14 +9043,14 @@
     `upsert_asset_holding` are deleted.
 - **Icons for Berachain, Bittensor, Kaspa, OKB, Sonic and zkSync Era**
   (`resources/icons/`); Dogecoin, Monero and Solana redrawn.
-- Total: 2 .rs files changed, +178 −200 lines; data and config files:
-  `resources/icons/` (9); dependencies unchanged; `#[test]` functions unchanged
-  at 271.
+- Total: 2 .rs files changed, +25 −65 lines; data and config files:
+  `resources/icons/` (9); dependencies unchanged; `#[test]` functions
+  unchanged at 271.
 
 ## Beta Commit 78
 
 - **Cronos, Dogecoin and Sky USDS icons redrawn** (`resources/icons/`)
-- Total: no .rs files changed, +129 −143 lines; data and config files:
+- Total: no .rs files changed; data and config files:
   `resources/icons/cronos.svg`, `resources/icons/dogecoin.svg`,
   `resources/icons/skyusds.svg`; dependencies unchanged; `#[test]` functions
   unchanged at 271.
@@ -8876,9 +9068,9 @@
   Decred, Hyperliquid, Mantle, Polkadot, Polygon, Scroll; tokens FDUSD, PAXG,
   Pump.fun, Shiba Inu; fiat CNY, EUR, GBP, RUB, USD under
   `resources/icons/fiat/`. Aptos redrawn.
-- Total: no .rs files changed, +258 −75 lines; data and config files:
-  `resources/icons/` (24), `core/data/` (1); dependencies unchanged; `#[test]`
-  functions unchanged at 271.
+- Total: no .rs files changed; data and config files: `resources/icons/` (24),
+  `core/data/` (1); dependencies unchanged; `#[test]` functions unchanged at
+  271.
 
 ## Beta Commit 76
 
@@ -8889,9 +9081,8 @@
     XAUt, TUSD, Uniswap, USDD, WLFI and USD1, Wrapped Bitcoin.
   - 22 redrawn, among them AAVE, BNB, Bitcoin, Cardano, Ethereum, Litecoin,
     Stellar, XRP and Zcash.
-- Total: no .rs files changed, +415 −113 lines; data and config files:
-  `resources/icons/` (48); dependencies unchanged; `#[test]` functions unchanged
-  at 271.
+- Total: no .rs files changed; data and config files: `resources/icons/` (48);
+  dependencies unchanged; `#[test]` functions unchanged at 271.
 
 ## Beta Commit 75
 
@@ -8904,8 +9095,7 @@
     migration plan ("What changes from the current codebase", "What stays the
     same") is removed.
 - Docs: `ARCHITECTURE.md` rewritten throughout.
-- Total: no .rs files changed, +201 −155 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 271.
+- Total: No code changed.
 
 ## Beta Commit 74
 
@@ -8923,8 +9113,8 @@
     from the merge and persisted records.
   - Send verification reads `confirmation_count` (before:
     `dogecoin_confirmations`).
-- `.gitignore` ignores `swift/generated/` (UniFFI output).
-- Total: 4 .rs files changed, +70 −52 lines; data and config files:
+- **`.gitignore` ignores `swift/generated/`** (UniFFI output)
+- Total: 4 .rs files changed, +67 −52 lines; data and config files:
   `.gitignore`; dependencies unchanged; `#[test]` functions unchanged at 271.
 
 ## Beta Commit 73
@@ -8954,8 +9144,8 @@
   `spectra_core::platform::catalog::core_bootstrap`, which no longer exists.
 - Tests: 0 new, 3 removed
   - Catalog 1 and localization 2, deleted with their modules.
-- Total: 47 .rs files changed (1 new), +4630 −5321 lines; data and config files:
-  none; dependencies unchanged; `#[test]` functions 274 → 271.
+- Total: 47 .rs files changed (1 new, 21 deleted), +4630 −5321 lines; data and
+  config files: none; dependencies unchanged; `#[test]` functions 274 → 271.
 
 ## Beta Commit 72
 
@@ -8974,16 +9164,16 @@
     → `xpub_walker.rs` (old names kept as re-export aliases); `runtime/tests.rs`
     → `derivation/tests.rs`.
 - **Icons for DAI, Ink, KCS and LINK** (`resources/icons/`)
-- Measured: `core/src/derivation/chains/REFACTOR_NOTES.md` records `cargo test
-  --lib -p spectra_core` after the refactor: 283 passed, 0 failed.
+- Measured: 2026-04-30, `core/src/derivation/chains/REFACTOR_NOTES.md` records
+  `cargo test --lib -p spectra_core` after the refactor: 283 passed, 0 failed.
 - Docs: `core/src/derivation/chains/REFACTOR_NOTES.md` (new): layout, testnets,
   what was deleted, open follow-ups (the Sui seed-phrase path hashes with
   Keccak-256 while the watch-only encoder uses Blake2b-256;
   `derive_from_private_key` still dispatches in `engine.rs`).
-- Total: 32 .rs files changed (1 new), +8094 −3840 lines; data and config files:
-  `resources/icons/dai.svg`, `resources/icons/ink.svg`,
-  `resources/icons/kcs.svg`, `resources/icons/link.svg`; dependencies unchanged;
-  `#[test]` functions unchanged at 274.
+- Total: 32 .rs files changed (1 new, 2 deleted), +7989 −3840 lines; data and
+  config files: `resources/icons/dai.svg`, `resources/icons/ink.svg`,
+  `resources/icons/kcs.svg`, `resources/icons/link.svg`; dependencies
+  unchanged; `#[test]` functions unchanged at 274.
 
 ## Beta Commit 71
 
@@ -9019,7 +9209,7 @@
 - Tests: 2 new
   - Testnet registry 2: mainnet and testnet counts not adding up to all chains;
     a testnet whose counterpart is not a mainnet.
-- Total: 10 .rs files changed, +2227 −443 lines; data and config files:
+- Total: 10 .rs files changed, +1000 −241 lines; data and config files:
   `resources/icons/` (25), `core/data/` (2); dependencies unchanged; `#[test]`
   functions 272 → 274.
 
@@ -9069,10 +9259,10 @@
   (`WalletService`) endpoints, what can and cannot cross UniFFI 0.29,
   regenerating bindings, boundary-breaking changes, JSON conventions, Rust vs
   Swift state, common errors.
-- Total: 63 .rs files changed (19 new), +7249 −982 lines; data and config files:
-  `core/data/` (3), `resources/icons/` (2), `Cargo.lock`, `core/` (1);
-  dependencies: added blake2b_simd 1.0 (`core/Cargo.toml`); `#[test]` functions
-  257 → 272.
+- Total: 63 .rs files changed (19 new), +5607 −143 lines; data and config
+  files: `core/data/` (3), `resources/icons/` (2), `Cargo.lock`, `core/` (1);
+  dependencies: added blake2b_simd 1.0 (`core/Cargo.toml`); `#[test]`
+  functions 257 → 272.
 
 ## Beta Commit 69
 
@@ -9110,15 +9300,18 @@
 - **JSON bridges removed** (`core/src/ffi.rs`): encode/decode of the persisted
   price-alert and address-book stores, `HistoryRecordEncodeInput`;
   `core_static_resource_json` returns a `String` (before: bytes).
-- `service/mod.rs` splits further into `chain_client.rs`,
+- **`SpectraBridgeError` gains `Network`, `Decode` and `InvalidInput`**
+  (`core/src/lib.rs`): JSON and hex decode errors map to `Decode` (before:
+  `Failure`, the only variant).
+- **`service/mod.rs` splits further** into `chain_client.rs`,
   `derivation_methods.rs`, `pricing_methods.rs` and `state_methods.rs`; `lib.rs`
   re-exports trimmed.
 - **Icons added for AVAX, Bitcoin Cash, Ethereum, Ethereum Classic, Litecoin,
   Optimism and Zcash** (`resources/icons/`); AAVE, Aptos, Bitcoin, Dogecoin and
   Linea redrawn.
-- Total: 48 .rs files changed (4 new), +2537 −1699 lines; data and config files:
-  `resources/icons/` (12), `Cargo.lock`, `cli/` (1); dependencies: added tokio 1
-  (`cli/Cargo.toml`); `#[test]` functions unchanged at 257.
+- Total: 48 .rs files changed (4 new), +2339 −1549 lines; data and config
+  files: `resources/icons/` (12), `Cargo.lock`, `cli/` (1); dependencies:
+  added tokio 1 (`cli/Cargo.toml`); `#[test]` functions unchanged at 257.
 
 ## Beta Commit 68
 
@@ -9158,9 +9351,9 @@
   endpoint fallbacks instead of cloned per attempt.
 - **Icons for Aptos and Linea** (`resources/icons/`); AAVE, Bitcoin and Dogecoin
   redrawn.
-- Total: 35 .rs files changed (9 new), +4649 −3894 lines; data and config files:
-  `resources/icons/` (5), `core/data/` (3), `.vscode/` (1); dependencies
-  unchanged; `#[test]` functions unchanged at 257.
+- Total: 35 .rs files changed (9 new, 1 deleted), +3280 −3627 lines; data and
+  config files: `resources/icons/` (5), `core/data/` (3), `.vscode/` (1);
+  dependencies unchanged; `#[test]` functions unchanged at 257.
 
 ## Beta Commit 66
 
@@ -9168,10 +9361,11 @@
   `fetch/chains/`, `send/chains/`, one `<chain>.rs` each, replacing
   `chains/<chain>/{mod,derive,fetch,send}.rs`; each `mod.rs`'s client and shared
   types merge into the fetch file)
-  - `chains/registry.rs` → `registry/mod.rs`, `tokens.rs` →
-    `registry/tokens.rs`; `catalog`, `formatting`, `localization`, `resources`,
-    `types` → `platform/`; `diagnostics_sanitizer.rs` →
-    `diagnostics/sanitizer.rs`, `self_tests.rs` → `diagnostics/self_tests.rs`.
+- **Shared modules moved into folders** (`core/src/`):
+  `chains/registry.rs` → `registry/mod.rs`, `tokens.rs` →
+  `registry/tokens.rs`; `catalog`, `formatting`, `localization`, `resources`,
+  `types` → `platform/`; `diagnostics_sanitizer.rs` →
+  `diagnostics/sanitizer.rs`, `self_tests.rs` → `diagnostics/self_tests.rs`.
 - **CoinMarketCap ids removed** (`market_id` in `core/data/tokens.toml` and
   `TokenEntry`; `market_data_id` on `CoreCoin`, `AssetHolding`,
   `CoreTokenPreferenceEntry`, the holdings-merge records and
@@ -9180,15 +9374,15 @@
   (`core/src/fetch/refresh_engine.rs`): a cycle that starts while another runs
   (timer tick or `trigger_immediate`) is skipped; each cycle logs start, end,
   counts and elapsed time to stderr.
-- `Chain::is_bitcoin_utxo` deleted.
+- **`Chain::is_bitcoin_utxo` deleted** (`core/src/registry/mod.rs`)
 - **Icons for AAVE, Bitcoin and Dogecoin** (new `resources/icons/`);
   `.vscode/settings.json` sets the SVG preview background.
 - Tests: 2 new, 1 removed
   - Refresh in-flight gate 2: two concurrent cycles both running; the gate not
     released after a cycle.
   - Removed `bitcoin_utxo_group_matches_legacy` with `is_bitcoin_utxo`.
-- Total: 104 .rs files changed (7 new), +3133 −3211 lines; data and config
-  files: `.vscode/settings.json`, `core/data/tokens.toml`,
+- Total: 104 .rs files changed (7 new, 22 deleted), +3098 −3124 lines; data
+  and config files: `.vscode/settings.json`, `core/data/tokens.toml`,
   `resources/icons/aave.svg`, `resources/icons/bitcoin.svg`,
   `resources/icons/dogecoin.svg`; dependencies unchanged; `#[test]` functions
   256 → 257.
@@ -9200,8 +9394,9 @@
   Bitcoin SV, Cardano, Dogecoin, EVM, ICP, Litecoin, Monero, NEAR, Polkadot,
   Solana, Stellar, Sui, TON, Tron, XRP); code moved and reformatted, behaviour
   unchanged.
-- Total: 88 .rs files changed (70 new), +9873 −9596 lines; data and config
-  files: none; dependencies unchanged; `#[test]` functions unchanged at 256.
+- Total: 88 .rs files changed (70 new, 16 deleted), +9873 −9596 lines; data
+  and config files: none; dependencies unchanged; `#[test]` functions
+  unchanged at 256.
 
 ## Beta Commit 64
 
@@ -9225,19 +9420,14 @@
 - **HTTP errors carry the full error chain** (`core/src/fetch/http.rs`
   `format_reqwest_error`): source errors plus
   timeout/connect/request/body/decode flags.
-- **NEAR history is parsed in core** (`core/src/chains/near.rs`, export
-  `near_parse_history_response` → `NearHistoryParsedSnapshot`): hash, send or
-  receive, amount in NEAR, counterparty and timestamp per row.
-- **Tron's TronScan transaction-list history and `fetch/balance_decoder.rs`
-  deleted** (`chains/tron.rs` `fetch_history`, `TronHistoryEntry`); the unified
-  TRX/TRC-20 history stays.
-- Tests: 2 new, 2 removed
-  - NEAR history parsing 2: send and receive told apart wrongly; malformed JSON
-    not yielding an empty list.
-  - Removed 2 with `balance_decoder.rs`.
-- Total: 9 .rs files changed, +332 −542 lines; data and config files:
-  `Cargo.lock`, `core/Cargo.toml`; dependencies unchanged; `#[test]` functions
-  unchanged at 256.
+- **NEAR history parsing moved into `core/src/chains/near.rs`**
+  (`near_parse_history_response`, `NearHistoryParsedSnapshot` and their two
+  tests, from `core/src/fetch/balance_decoder.rs`, which is deleted).
+- **Tron's TronScan transaction-list history deleted** (`chains/tron.rs`
+  `fetch_history`, `TronHistoryEntry`); the unified TRX/TRC-20 history stays.
+- Total: 9 .rs files changed (1 deleted), +320 −473 lines; data and config
+  files: `Cargo.lock`, `core/Cargo.toml`; dependencies unchanged; `#[test]`
+  functions unchanged at 256.
 
 ## Beta Commit 63
 
@@ -9258,7 +9448,7 @@
   and the holdings-merge append payload (before: core derived it from the symbol
   for new holdings).
 - Docs: `DERIVATION_WORKFLOW.md` moved to `core/data/`, content unchanged.
-- Total: 8 .rs files changed, +201 −2530 lines; data and config files:
+- Total: 8 .rs files changed, +27 −49 lines; data and config files:
   `core/data/` (5), `core/embedded/` (4); dependencies unchanged; `#[test]`
   functions unchanged at 256.
 
@@ -9280,7 +9470,7 @@
     (`derive_key_material_for_chain_with_overrides`).
   - Wallets stored without the field load with no overrides
     (`#[serde(default)]`).
-- Total: 6 .rs files changed (1 new), +751 −214 lines; data and config files:
+- Total: 6 .rs files changed (1 new), +490 −214 lines; data and config files:
   `core/derivation_presets.toml`; dependencies unchanged; `#[test]` functions
   unchanged at 256.
 
@@ -9308,10 +9498,10 @@
   helpers (chain dispatch behind `execute_send`, balance and history helpers)
   move out of the `#[uniffi::export]` impl block, which exported them regardless
   of `pub(crate)`.
-- The last JSON field decoders (`balance_decoder_i64_field`, `_f64_field`,
-  `_first_element_string_field`) are deleted.
-- Total: 11 .rs files changed, +3421 −2922 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 256.
+- **The last JSON field decoders are deleted** (`fetch/balance_decoder.rs`:
+  `balance_decoder_i64_field`, `_f64_field`, `_first_element_string_field`)
+- Total: 11 .rs files changed (1 deleted), +3421 −2922 lines; data and config
+  files: none; dependencies unchanged; `#[test]` functions unchanged at 256.
 
 ## Beta Commit 58
 
@@ -9371,8 +9561,8 @@
     Sui payload not passed through, wrap-key or extract-field payloads built
     wrong, an unknown format not refused.
   - Removed 6 with the JSON balance and history decoders.
-- Total: 20 .rs files changed, +1097 −1513 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 256.
+- Total: 20 .rs files changed (2 deleted), +1097 −1513 lines; data and config
+  files: none; dependencies unchanged; `#[test]` functions unchanged at 256.
 
 ## Beta Commit 56
 
@@ -9387,8 +9577,8 @@
   path's purpose via `bitcoinPurposeScriptMap` or the preset's fixed type.
 - Tests: 0 new, 2 removed
   - Endpoint reliability 2, deleted with the module.
-- Total: 5 .rs files changed, +57 −177 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions 258 → 256.
+- Total: 5 .rs files changed (1 deleted), +57 −177 lines; data and config
+  files: none; dependencies unchanged; `#[test]` functions 258 → 256.
 
 ## Beta Commit 55
 
@@ -9403,7 +9593,7 @@
   destination-risk probe messages, fiat currency display names (added in Beta
   Commit 54), send-balance validation, insufficient-funds messages, EVM
   preflight reasons.
-- **JSON exports removed** (`core/src/ffi.rs`): `core_bootstrap_json`,
+- **Exports removed** (`core/src/ffi.rs`): `core_bootstrap_json`,
   `core_localization_document_json`, `core_build_persisted_snapshot_json`,
   `core_wallet_secret_index_json`, `core_encode_history_records_from_persisted`,
   `core_plan_display_mark`.
@@ -9418,8 +9608,8 @@
 - Tests: 0 new, 29 removed
   - Deleted with the removed formatters 19, AppState caches 4, the AppState
     store 4, the event bus 2.
-- Total: 10 .rs files changed, +178 −2044 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions 287 → 258.
+- Total: 10 .rs files changed (4 deleted), +178 −2044 lines; data and config
+  files: none; dependencies unchanged; `#[test]` functions 287 → 258.
 
 ## Beta Commit 54
 
@@ -9475,14 +9665,14 @@
     Cash") (before: camel-case keys such as `bitcoinCash`).
 - **The CLI reads chain presets from core** (`cli/src/main.rs`,
   `app_core_chain_presets`; before: its own parse of
-  `swift/derivation/DerivationPresets.json`); the prompt and section banners are
-  restyled.
+  `swift/derivation/DerivationPresets.json`)
+- **The CLI prompt and section banners are restyled** (`cli/src/main.rs`)
 - Tests: 5 new
   - Chain registry 5: an id that does not round-trip, and EVM or Bitcoin-UTXO
     grouping, EVM chain ids or endpoint slot offsets diverging from the tables
     they replace.
-- Total: 11 .rs files changed (1 new), +4210 −773 lines; data and config files:
-  `core/embedded/AppEndpointDirectory.json`,
+- Total: 11 .rs files changed (1 new), +1749 −773 lines; data and config
+  files: `core/embedded/AppEndpointDirectory.json`,
   `core/embedded/DerivationPresets.json`,
   `core/embedded/DerivationRequestCompilationPresets.json`; dependencies
   unchanged; `#[test]` functions 282 → 287.
@@ -9514,9 +9704,9 @@
   `plan_dashboard_supported_token_entries`, `store/app_state/token_helpers.rs`
   `normalize_dashboard_contract_address`): contract addresses use the canonical
   Sui/Aptos form, otherwise lowercased; empty input gives none.
-- Embedded preset and endpoint paths follow the app's renames
+- **Embedded preset and endpoint paths follow the app's renames**
   (`swift/derivation/`, `swift/rustbridge/AppEndpointDirectory.json`; also the
-  CLI).
+  CLI)
 - Tests: 16 new
   - Degraded messages 6: a sync suffix left on the detail, live success not
     recognized, an unknown detail given a template.
@@ -9530,7 +9720,7 @@
   - Dashboard contracts 1: Sui/Aptos contracts not canonicalized.
 - Docs: `ARCHITECTURE.md` "iOS — Liquid Glass": `DashboardViews.swift` named,
   `AppLocalization.swift` dropped.
-- Total: 12 .rs files changed (1 new), +737 −18 lines; data and config files:
+- Total: 12 .rs files changed (1 new), +735 −16 lines; data and config files:
   none; dependencies unchanged; `#[test]` functions 266 → 282.
 
 ## Beta Commit 51
@@ -9550,10 +9740,12 @@
     another).
   - A refresh cycle fetches up to 8 entries at once and reads the observer once
     per cycle (before: one entry at a time).
-- History cache and pagination store are keyed by `(chain_id, id)` tuples
-  instead of `"{chain_id}:{id}"` strings, and the `wallet_db` connection pool
-  uses `parking_lot::Mutex`; behaviour unchanged.
-- Total: 7 .rs files changed, +247 −69 lines; data and config files:
+- **History cache and pagination store keyed by `(chain_id, id)` tuples**
+  (`fetch/history_cache.rs`, `fetch/history_store.rs`; before:
+  `"{chain_id}:{id}"` strings); behaviour unchanged.
+- **The `wallet_db` connection pool uses `parking_lot::Mutex`**
+  (`store/wallet_db.rs`); behaviour unchanged.
+- Total: 7 .rs files changed, +198 −69 lines; data and config files:
   `Cargo.lock`, `core/Cargo.toml`; dependencies: added parking_lot 0.12
   (`core/Cargo.toml`); `#[test]` functions unchanged at 266.
 
@@ -9607,12 +9799,16 @@
 - **`core_validate_send_balance`** (`core/src/send/flow_helpers.rs`): one
   amount-plus-fee check for native and token sends, with the user-facing
   insufficient-funds or insufficient-fee message.
-- `balance_decoder_*` field accessors exported for Swift
-  (`core/src/fetch/balance_decoder.rs`).
-- `wallet_db` keeps one SQLite connection per database path instead of opening
-  one per call; `reduce_state` mutates in place (`reduce_state_in_place`);
-  localization lookup, the balance cache and the token catalog avoid per-call
-  allocation; behaviour unchanged.
+- **`balance_decoder_*` field accessors exported for Swift**
+  (`core/src/fetch/balance_decoder.rs`)
+- **Per-call connections and allocations removed; behaviour unchanged**
+  - `wallet_db` keeps one SQLite connection per database path
+    (`core/src/store/wallet_db.rs`; before: one opened per call).
+  - `reduce_state` mutates in place (`store/state.rs`
+    `reduce_state_in_place`).
+  - Localization lookup, the balance cache and the token catalog avoid
+    per-call allocation (`localization.rs`, `fetch/balance_cache.rs`,
+    `tokens.rs`).
 - Tests: 11 new, 1 removed
   - Send balance 5: a send allowed when amount or fee exceeds the balance, a
     token send allowed without native balance for the fee.
@@ -9621,21 +9817,21 @@
   - Seed envelope 3: decryption with the wrong key succeeding, a short key
     accepted.
   - Removed: the legacy wallet-store round trip, with the migration.
-- Total: 41 .rs files changed (2 new), +4223 −1729 lines; data and config files:
-  `Cargo.lock`, `cli/Cargo.toml`, `core/Cargo.toml`; dependencies: added aes-gcm
-  0.10, removed once_cell (`core/Cargo.toml`); added bip39 2, colored 2,
-  dialoguer 0.11, dirs 5, getrandom 0.2, pbkdf2 0.12, rpassword 7, rusqlite
-  0.31, serde 1, sha2 0.10, uuid 1, removed clap (`cli/Cargo.toml`); `#[test]`
-  functions 256 → 266.
+- Total: 41 .rs files changed (2 new, 1 deleted), +3861 −1658 lines; data and
+  config files: `Cargo.lock`, `cli/Cargo.toml`, `core/Cargo.toml`;
+  dependencies: added aes-gcm 0.10, removed once_cell (`core/Cargo.toml`);
+  added bip39 2, colored 2, dialoguer 0.11, dirs 5, getrandom 0.2, pbkdf2
+  0.12, rpassword 7, rusqlite 0.31, serde 1, sha2 0.10, uuid 1, removed clap
+  (`cli/Cargo.toml`); `#[test]` functions 256 → 266.
 
 ## Beta Commit 49
 
 - **Static resources embedded from `core/embedded/`** (`core/src/resources.rs`;
-  before: `Resources/` in the app tree); localization tables embedded from
-  `resources/strings/<locale>/` (`core/src/localization.rs`; before:
-  `Resources/Localization/`).
-- Unused helpers removed from `derivation/bitcoin_primitives.rs` and
-  `runtime.rs` (`double_sha256`, xprv version constants, the unused witness
+  before: `Resources/` in the app tree)
+- **Localization tables embedded from `resources/strings/<locale>/`**
+  (`core/src/localization.rs`; before: `Resources/Localization/`)
+- **Unused helpers removed** (`derivation/bitcoin_primitives.rs`,
+  `runtime.rs`: `double_sha256`, xprv version constants, the unused witness
   version and version byte in parsed addresses); behaviour unchanged.
 - Total: 4 .rs files changed, +39 −61 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions unchanged at 256.
@@ -9646,7 +9842,7 @@
   `BIP39EnglishWordList.txt` (2048 words), `BuyCryptoProviders.json`,
   `ChainVisualRegistry.json`, `TokenVisualRegistry.json`; not yet referenced by
   code.
-- Total: no .rs files changed, +2478 −0 lines; data and config files:
+- Total: no .rs files changed; data and config files:
   `core/embedded/BIP39EnglishWordList.txt`,
   `core/embedded/BuyCryptoProviders.json`,
   `core/embedded/ChainVisualRegistry.json`,
@@ -9659,8 +9855,9 @@
   (`core/src/derivation/bitcoin_primitives.rs`, `runtime.rs`): Base58Check
   through `bs58` `with_check`, CRC16-XMODEM through `crc`, RFC 4648 Base32
   through `data-encoding`; outputs unchanged.
-- **`chains/bitcoin_hd.rs` moved to `derivation/utxo_hd.rs`**; `core/Cargo.toml`
-  regrouped by derivation stage with a comment per dependency.
+- **`chains/bitcoin_hd.rs` moved to `derivation/utxo_hd.rs`**
+- **`core/Cargo.toml` regrouped by derivation stage** with a comment per
+  dependency.
 - **Deep UTXO discovery also covers Bitcoin and Dogecoin**
   (`core_supports_deep_utxo_discovery`; before: Bitcoin Cash, Bitcoin SV,
   Litecoin).
@@ -9669,7 +9866,7 @@
 - **Litecoin retry profiles removed** (`core/src/fetch/http.rs`, `http_ffi.rs`):
   Litecoin reads use `ChainRead` (before: `LitecoinRead`, 4 attempts with
   gentler backoff).
-- Total: 11 .rs files changed, +118 −106 lines; data and config files:
+- Total: 11 .rs files changed, +24 −88 lines; data and config files:
   `Cargo.lock`, `core/Cargo.toml`; dependencies: added crc 3, data-encoding 2
   (`core/Cargo.toml`); `#[test]` functions unchanged at 256.
 
@@ -9710,7 +9907,7 @@
     explicit chain overridden.
 - Docs: `core/DERIVATION_WORKFLOW.md` new section "Derivation Variables —
   Complete Inventory".
-- Total: 5 .rs files changed (1 new), +2719 −273 lines; data and config files:
+- Total: 5 .rs files changed (1 new), +2586 −271 lines; data and config files:
   `Cargo.lock`, `core/Cargo.toml`; dependencies: added ripemd 0.1, schnorrkel
   0.11 (`core/Cargo.toml`); `#[test]` functions 226 → 256.
 
@@ -9732,22 +9929,22 @@
 - **`WalletService` pass-through secret methods removed** (`load_secret`,
   `save_secret`, `delete_secret`, `list_secret_keys`); only Rust calls the
   registered store.
-- Async exports run on tokio (`#[uniffi::export(async_runtime = "tokio")]` in
-  `service.rs`, `http_ffi.rs`).
+- **Async exports run on tokio** (`#[uniffi::export(async_runtime = "tokio")]`
+  in `service.rs`, `http_ffi.rs`, `refresh_engine.rs`, `app_state/events.rs`)
 - Tests: 6 new
   - Derivation knobs 6: a custom HMAC key, salt prefix or iteration count with
     no effect, the default HMAC key not matching the standard seed, an unknown
     wordlist accepted.
 - Docs: `core/DERIVATION_WORKFLOW.md` (new): entry points, caller-tunable
   fields, stages from mnemonic to address; `core/README.md` deleted.
-- Total: 6 .rs files changed, +493 −310 lines; data and config files:
-  `Cargo.lock`, `core/Cargo.toml`; dependencies: added hmac 0.12, removed slip10
-  (`core/Cargo.toml`); `#[test]` functions 220 → 226.
+- Total: 6 .rs files changed, +334 −127 lines; data and config files:
+  `Cargo.lock`, `core/Cargo.toml`; dependencies: added hmac 0.12, removed
+  slip10 (`core/Cargo.toml`); `#[test]` functions 220 → 226.
 
 ## Beta Commit 44
 
 - **`.gitignore` ignores cloud-sync placeholder files** (`.!*!*`)
-- Total: no .rs files changed, +3 −0 lines; data and config files: `.gitignore`;
+- Total: no .rs files changed; data and config files: `.gitignore`;
   dependencies unchanged; `#[test]` functions unchanged at 220.
 
 ## Beta Commit 43
@@ -9755,8 +9952,10 @@
 - **`Core/` renamed `core/` and modules grouped into `derivation/`, `fetch/`,
   `send/` and `store/`** (e.g. `main.rs` → `derivation/runtime.rs`,
   `ethereum_send.rs` → `send/ethereum.rs`, `send_machine.rs` →
-  `send/machine.rs`, `wallet_db.rs` → `store/wallet_db.rs`); embedded preset and
-  endpoint paths follow the app's `swift/` folder; behaviour unchanged.
+  `send/machine.rs`, `wallet_db.rs` → `store/wallet_db.rs`); behaviour
+  unchanged.
+- **Embedded preset and endpoint paths follow the app's `swift/` folder**
+  (`core/src/app_core.rs`, `catalog.rs`)
 - Docs: `Core/README.md` moved to `core/README.md`.
 - Total: 83 .rs files changed (1 new), +73 −52 lines; data and config files:
   `core/Cargo.lock`, `core/Cargo.toml`, `core/tokens.toml`; dependencies: the 29
@@ -9770,11 +9969,12 @@
   through `derivation_derive_all_addresses_json`, using fixed paths for 13
   chains and Bitcoin, Ethereum and Solana by default; an unknown chain filter
   exits with code 2.
-- Embedded resources and localization tables now read from the app's top-level
-  `Resources/` (before: `Swift/Resources/`).
+- **Embedded resources and localization tables read from the app's top-level
+  `Resources/`** (`Core/src/resources.rs`, `localization.rs`; before:
+  `Swift/Resources/`)
 - Docs: `ARCHITECTURE.md` "Summary judgement on the workspace model" and "What
   this is NOT" reworded without the rust-bitcoin comparison.
-- Total: 3 .rs files changed (1 new), +234 −36 lines; data and config files:
+- Total: 3 .rs files changed (1 new), +138 −32 lines; data and config files:
   `Cargo.lock`, `Cargo.toml`, `cli/Cargo.toml`; dependencies: added clap 4,
   serde_json 1, spectra_core (path) (`cli/Cargo.toml`); `#[test]` functions
   unchanged at 220.
@@ -9792,11 +9992,15 @@
 - **HTTP for Swift call sites** (`Core/src/http_ffi.rs`): `http_get` and
   `http_post_json` single-shot text wrappers, and `diagnostics_probe_jsonrpc`
   doing transport and parse in one call.
+- **Shared HTTP client settings** (`Core/src/http.rs`)
+  - HTTPS is no longer enforced by the client (before: `https_only`).
+  - Request timeout 20 s → 30 s, with a 10 s connect timeout.
+  - User agent `spectra-core/<version>` (before: `Spectra/1.0`).
 - **EVM send preflight and fee bump** (`Core/src/send_flow_helpers.rs`):
   contract-recipient and missing-token detection, probe-failure reporting,
   replacement fee bump with defaults and a floor, insufficient-funds and
   insufficient-fee messages.
-- `.gitignore` ignores `.claude/`.
+- **`.gitignore` ignores `.claude/`**
 - Tests: 23 new
   - Event bus 2: an event kind not delivered, the pump running after unregister.
   - Diagnostics export 6: a field missing from or wrongly present in a chain's
@@ -9807,7 +10011,7 @@
   - EVM preflight and fees 9: a contract recipient or missing token not
     reported, a bump below the floor, wrong insufficient-funds wording.
 - Docs: `temp.md` deleted.
-- Total: 8 .rs files changed (2 new), +1326 −74 lines; data and config files:
+- Total: 8 .rs files changed (2 new), +1175 −19 lines; data and config files:
   `.gitignore`, `Cargo.lock`, `Core/Cargo.toml`; dependencies: added wiremock
   0.6 as a dev-dependency (`Core/Cargo.toml`); `#[test]` functions 197 → 220.
 
@@ -9825,6 +10029,7 @@
   - Send previews of the 17 non-EVM chains decoded from fetched JSON
     (`send_preview_decode.rs`); per-chain send payloads with decimal-to-raw-unit
     conversion and broadcast-result classification (`send_payload.rs`).
+  - Per-chain send-preview record types (`wallet_core.rs`).
   - Send helpers: ENS-name detection, Ethereum and Tron error messages,
     address-book validation, EVM chain context, rebroadcast dispatch, risk-probe
     messages (`send_flow.rs`, `send_flow_helpers.rs`); broadcast verification
@@ -9846,9 +10051,13 @@
 - **Chain self-tests** (new `Core/src/self_tests.rs`,
   `self_tests_run_chain_json`, `self_tests_run_all_json`): per chain, address
   accept and reject cases and derivation checks.
-- History and transaction types renamed with a `Core` prefix
-  (`CoreNormalizedHistoryEntry`, `CoreBitcoinHistorySnapshot`, …);
-  `wallet_core.rs` keeps only the send-preview record types.
+- **JSON exports added for Swift call sites** (`Core/src/ffi.rs`)
+  - Address and identifier validation, endpoint reliability ordering and
+    attempt recording, as JSON twins of the typed exports.
+  - `core_encode_history_records_json`, and encode/decode of persisted
+    price-alert, address-book and transaction records.
+- **History and transaction types renamed with a `Core` prefix**
+  (`CoreNormalizedHistoryEntry`, `CoreBitcoinHistorySnapshot`, …)
 - Tests: 137 new
   - Receive 15: wrong receive message per chain and seed or watch-only state,
     wrong wallet names.
@@ -9872,14 +10081,14 @@
     round-tripping, a chain without self-tests.
 - Docs: `temp.md` (new): Phase 5 inventory of Swift `Shell/` files and which
   move to Rust.
-- Total: 33 .rs files changed (27 new), +7987 −286 lines; data and config files:
-  `Cargo.lock`, `Core/Cargo.toml`; dependencies: removed async-trait, borsh,
-  chrono, elliptic-curve, getrandom, hmac, ripemd, secrecy, uuid
+- Total: 33 .rs files changed (27 new), +7932 −52 lines; data and config
+  files: `Cargo.lock`, `Core/Cargo.toml`; dependencies: removed async-trait,
+  borsh, chrono, elliptic-curve, getrandom, hmac, ripemd, secrecy, uuid
   (`Core/Cargo.toml`); `#[test]` functions 60 → 197.
 
 ## Beta Commit 39
 
-- Embedded preset and endpoint JSON paths follow the app's moves
+- **Embedded preset and endpoint JSON paths follow the app's moves**
   (`Swift/Derivation/DerivationPresets.json`,
   `Swift/ProviderCatalog/AppEndpointDirectory.json`); behaviour unchanged.
 - Total: 2 .rs files changed, +5 −5 lines; data and config files: none;
@@ -9888,13 +10097,14 @@
 ## Beta Commit 38
 
 - **`Core/src/core/*` flattened into `Core/src/`** (`lib.rs` declares each
-  module; `crate::core::` paths become `crate::`), embedded resources read from
-  `Swift/Resources/`, and the nested `Core/tools/uniffi-bindgen/` removed in
-  favour of the workspace one; behaviour unchanged.
-- Total: 53 .rs files changed, +140 −1021 lines; data and config files:
-  `Core/tools/uniffi-bindgen/Cargo.lock`,
+  module; `crate::core::` paths become `crate::`); behaviour unchanged.
+- **The nested `Core/tools/uniffi-bindgen/` removed** in favour of the
+  workspace one.
+- Total: 53 .rs files changed (2 deleted), +140 −145 lines; data and config
+  files: `Core/tools/uniffi-bindgen/Cargo.lock`,
   `Core/tools/uniffi-bindgen/Cargo.toml`; dependencies: removed uniffi
-  (`Core/tools/uniffi-bindgen/Cargo.toml`); `#[test]` functions unchanged at 60.
+  (`Core/tools/uniffi-bindgen/Cargo.toml`); `#[test]` functions unchanged at
+  60.
 
 ## Beta Commit 37
 
@@ -9911,15 +10121,18 @@
   `core_*_json(String) -> String` becomes `core_*` taking and returning
   `uniffi::Record` types, with `usize` fields as `u64`; persisted state and
   high-risk send evaluation stay JSON.
+- **Embedded catalog, resource and localization paths follow the app's move
+  into `Swift/`** (`Core/src/app_core.rs`, `core/catalog.rs`,
+  `core/resources.rs`, `core/localization.rs`)
 - Docs: `ARCHITECTURE.md` (new): target three-crate workspace, native iOS
   (Liquid Glass) and Android (Material You) apps over one Rust core, planned
   moves (`Core/` → `core/`, Swift into `ios/`, `android/` scaffold, `scripts/`);
   `filesystem.md` deleted.
-- Total: 21 .rs files changed (2 new), +4760 −393 lines; data and config files:
+- Total: 21 .rs files changed (2 new), +406 −364 lines; data and config files:
   `tools/uniffi-bindgen/` (2), `Cargo.lock`, `Cargo.toml`, `Core/` (1),
   `Makefile`, `ffi/` (1); dependencies: added spectra_core (path), uniffi 0.29
-  (`ffi/Cargo.toml`); uniffi 0.29 (`tools/uniffi-bindgen/Cargo.toml`); `#[test]`
-  functions unchanged at 60.
+  (`ffi/Cargo.toml`); uniffi 0.29 (`tools/uniffi-bindgen/Cargo.toml`);
+  `#[test]` functions unchanged at 60.
 
 ## Beta Commit 36
 
@@ -9954,7 +10167,7 @@
   `replace_all_history_records`, `delete_history_records_for_wallet`,
   `clear_all_history_records`): rows carry id, wallet, chain, hash, creation
   time and the Swift record as a base64 payload.
-- Total: 3 .rs files changed, +568 −4 lines; data and config files:
+- Total: 3 .rs files changed, +565 −1 lines; data and config files:
   `Core/Cargo.lock`, `Core/Cargo.toml`; dependencies unchanged; `#[test]`
   functions unchanged at 60.
 
@@ -9967,12 +10180,12 @@
   `upsert_wallet_json`, `remove_wallet_json`; `update_native_balance` decodes a
   chain's balance JSON into the native holding, `set_native_balance` sets it
   directly.
-- Total: 1 .rs files changed, +207 −4148 lines; data and config files:
+- Total: 1 .rs file changed, +207 −0 lines; data and config files:
   `Core/Derivation/Core/Generated/module.modulemap`,
   `Core/Derivation/Core/Generated/spectra_derivation.swift`,
   `Core/Derivation/Core/Generated/spectra_derivationFFI.h`,
-  `Core/Derivation/Core/Generated/spectra_derivationFFI.modulemap`; dependencies
-  unchanged; `#[test]` functions unchanged at 60.
+  `Core/Derivation/Core/Generated/spectra_derivationFFI.modulemap`;
+  dependencies unchanged; `#[test]` functions unchanged at 60.
 
 ## Beta Commit 32
 
@@ -10027,16 +10240,17 @@
   `list_builtin_tokens_json`, `WalletService::list_builtin_tokens`):
   `BuiltInTokenRegistry.json` is no longer embedded.
 - **Unified native-and-token history** (`chains/solana.rs` SOL and SPL;
-  `chains/tron.rs` TRX and TRC-20 from TronScan) and batch SPL balances
-  (`fetch_spl_balances`).
+  `chains/tron.rs` TRX and TRC-20 from TronScan)
+- **Balances for a list of tokens in one call**
+  (`WalletService::fetch_token_balances`): TRC-20 and NEP-141 fetched in
+  parallel, SPL in one batch (`fetch_spl_balances`).
 - **Transaction status for UTXO chains** (`fetch_tx_status` in Bitcoin, Bitcoin
   Cash, Bitcoin SV, Dogecoin, Litecoin; `WalletService::fetch_utxo_tx_status`)
-  and `fetch_token_balances`.
 - **Generated Swift bindings committed** under `Core/Derivation/Core/Generated/`
   (`spectra_derivation.swift`, FFI header, module maps).
-- Total: 12 .rs files changed (1 new), +6299 −22 lines; data and config files:
-  `Core/Derivation/` (4), `Core/` (3); dependencies: added futures 0.3, toml 0.8
-  (`Core/Cargo.toml`); `#[test]` functions unchanged at 48.
+- Total: 12 .rs files changed (1 new), +961 −20 lines; data and config files:
+  `Core/Derivation/` (4), `Core/` (3); dependencies: added futures 0.3, toml
+  0.8 (`Core/Cargo.toml`); `#[test]` functions unchanged at 48.
 
 ## Beta Commit 29
 
@@ -10063,9 +10277,11 @@
 - **SQLite state blobs** (`WalletService::load_state`, `save_state`: a JSON
   value per key in a database file).
 - **Mnemonic helpers** (`generate_mnemonic` for 12–24 words, 12 by default;
-  `validate_mnemonic`; `bip39_english_wordlist`), plus `broadcast_raw`,
-  `fetch_utxo_fee_preview`, `fetch_evm_send_preview`, `fetch_tron_send_preview`.
-- Total: 23 .rs files changed (3 new), +5404 −84 lines; data and config files:
+  `validate_mnemonic`; `bip39_english_wordlist`)
+- **Raw broadcast and send previews on `WalletService`** (`broadcast_raw`,
+  `fetch_utxo_fee_preview`, `fetch_evm_send_preview`,
+  `fetch_tron_send_preview`)
+- Total: 23 .rs files changed (3 new), +5321 −84 lines; data and config files:
   `Core/Cargo.lock`, `Core/Cargo.toml`; dependencies: added rusqlite 0.31
   (`Core/Cargo.toml`); `#[test]` functions unchanged at 48.
 
@@ -10096,7 +10312,7 @@
 - Tests: 3 new
   - Store planning 3: owned addresses duplicated or reordered, a non-native
     receive holding preferred, a pending self-send confirmation not consumed.
-- Total: 24 .rs files changed (20 new), +9827 −83 lines; data and config files:
+- Total: 24 .rs files changed (20 new), +8216 −6 lines; data and config files:
   `Core/Cargo.lock`, `Core/Cargo.toml`; dependencies: added async-trait 0.1,
   base64 0.22, blake2 0.10, borsh 1, chrono 0.4, getrandom 0.2, once_cell 1,
   rand 0.8, reqwest 0.12, ripemd 0.1, sha3 0.10, tokio 1, uuid 1
@@ -10113,8 +10329,8 @@
   path.
 - **Address and identifier validation** (new `Core/src/core/addressing.rs`;
   `core_validate_address_json`, `core_validate_string_identifier_json`):
-  per-chain validators and normalization for 19 chains including Monero; Aptos
-  token types validated.
+  per-chain validators and normalization for 18 address kinds (the EVM chains
+  share one), Monero included; Aptos token types validated.
 - **Endpoint reliability ordering** (new
   `Core/src/core/endpoint_reliability.rs`;
   `core_order_endpoints_by_reliability_json`,
@@ -10133,9 +10349,9 @@
 - Docs: `Core/README.md` rewritten as "Rust Core": UniFFI boundary, generated
   bindings under `Derivation/Core/Generated/`, the Swift bridge adapters,
   ownership split.
-- Total: 11 .rs files changed (2 new), +1353 −1401 lines; data and config files:
-  `Core/include/spectra_derivation.h`; dependencies unchanged; `#[test]`
-  functions 36 → 45.
+- Total: 11 .rs files changed (2 new), +1331 −1185 lines; data and config
+  files: `Core/include/spectra_derivation.h`; dependencies unchanged;
+  `#[test]` functions 36 → 45.
 
 ## Beta Commit 26
 
@@ -10148,19 +10364,22 @@
   - `derivation_derive_json` and `derivation_derive_from_private_key_json` take
     the derivation request as JSON, seed phrase included; zero or unknown output
     flags are refused.
-- The crate builds as staticlib and cdylib; new `Core/tools/uniffi-bindgen/`
-  binary runs `uniffi_bindgen_main`.
+- **The crate builds as staticlib and cdylib** (`Core/Cargo.toml`; before:
+  staticlib only)
+- **New `Core/tools/uniffi-bindgen/` binary** runs `uniffi_bindgen_main`.
 - Docs: `filesystem.md` (new, one line naming `Core`).
-- Total: 5 .rs files changed (1 new), +2134 −9 lines; data and config files:
-  `Core/Cargo.lock`, `Core/Cargo.toml`, `Core/tools/uniffi-bindgen/Cargo.lock`,
+- Total: 5 .rs files changed (1 new), +560 −8 lines; data and config files:
+  `Core/Cargo.lock`, `Core/Cargo.toml`,
+  `Core/tools/uniffi-bindgen/Cargo.lock`,
   `Core/tools/uniffi-bindgen/Cargo.toml`; dependencies: added thiserror 2,
   uniffi 0.29 (`Core/Cargo.toml`); uniffi 0.29
-  (`Core/tools/uniffi-bindgen/Cargo.toml`); `#[test]` functions unchanged at 36.
+  (`Core/tools/uniffi-bindgen/Cargo.toml`); `#[test]` functions unchanged at
+  36.
 
 ## Beta Commit 25
 
-- Localization and static resource paths follow the app's move of
-  `Views/Resources/` to `Resources/` (`Core/src/core/localization.rs`,
+- **Localization and static resource paths follow the app's move of
+  `Views/Resources/` to `Resources/`** (`Core/src/core/localization.rs`,
   `resources.rs`); behaviour unchanged.
 - Total: 2 .rs files changed, +33 −33 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions unchanged at 36.
@@ -10204,10 +10423,11 @@
   - UTXO 5: fees below the minimum, more inputs than needed, a dust target
     accepted, insufficient funds not reported.
 - Docs: `Core/README.md` (moved from `Spectra/Derivation/Rust/README.md`).
-- Total: 23 .rs files changed (6 new), +1976 −154 lines; data and config files:
-  `Core/Cargo.lock`, `Core/Cargo.toml`, `Core/include/spectra_derivation.h`;
-  dependencies: the 19 entries of `Spectra/Derivation/Rust/Cargo.toml` moved
-  unchanged to `Core/Cargo.toml`; `#[test]` functions 15 → 36.
+- Total: 23 .rs files changed (6 new, 3 deleted), +1963 −154 lines; data and
+  config files: `Core/Cargo.lock`, `Core/Cargo.toml`,
+  `Core/include/spectra_derivation.h`; dependencies: the 19 entries of
+  `Spectra/Derivation/Rust/Cargo.toml` moved unchanged to `Core/Cargo.toml`;
+  `#[test]` functions 15 → 36.
 
 ## Beta Commit 23
 
@@ -10246,8 +10466,8 @@
     legacy store not round-tripping, wrong import or refresh plans.
   - History and transaction merge 3: duplicates kept, unconfirmed preferred,
     existing creation times overwritten.
-- Total: 17 .rs files changed (15 new), +5579 −87 lines; data and config files:
-  `Spectra/Derivation/Rust/include/spectra_derivation.h`; dependencies
+- Total: 17 .rs files changed (15 new), +5507 −87 lines; data and config
+  files: `Spectra/Derivation/Rust/include/spectra_derivation.h`; dependencies
   unchanged; `#[test]` functions 1 → 15.
 
 ## Beta Commit 22
@@ -10258,9 +10478,10 @@
     must be explicit; `Auto` is refused.
   - The Bitcoin script type is no longer inferred from the path purpose and must
     be P2PKH, P2SH-P2WPKH, P2WPKH or P2TR.
-- The derivation runtime moves from `src/lib.rs` to `src/main.rs`, which
-  `lib.rs` includes as a module; `lib.rs` adds `DerivationRequestPreset` and
-  `parse_derivation_request_presets_json`.
+- **The derivation runtime moves from `src/lib.rs` to `src/main.rs`**, which
+  `lib.rs` includes as a module.
+- **Derivation request presets parse from JSON** (`src/lib.rs`
+  `DerivationRequestPreset`, `parse_derivation_request_presets_json`)
 - Total: 2 .rs files changed (1 new), +1463 −1398 lines; data and config files:
   none; dependencies unchanged; `#[test]` functions unchanged at 1.
 
@@ -10271,7 +10492,7 @@
   `SpectraPrivateKeyDerivationRequest` in `include/spectra_derivation.h`;
   `src/lib.rs`): the key is exactly 64 hex characters and its curve must match
   the chain; addresses for all 22 chains, with P2WPKH as the Bitcoin default.
-- Total: 1 .rs files changed, +323 −0 lines; data and config files:
+- Total: 1 .rs file changed, +254 −0 lines; data and config files:
   `Spectra/Derivation/Rust/Cargo.lock`, `Spectra/Derivation/Rust/Cargo.toml`,
   `Spectra/Derivation/Rust/include/spectra_derivation.h`; dependencies: added
   elliptic-curve 0.13 (`Spectra/Derivation/Rust/Cargo.toml`); `#[test]`
@@ -10290,17 +10511,17 @@
     those chains' standard formats.
   - Each chain requires its curve and derivation algorithm; Bitcoin accepts all
     four networks, Dogecoin mainnet and testnet, the rest mainnet only.
-- **BIP-39 seed computed directly** (PBKDF2-HMAC-SHA512 over NFKD text): any
-  iteration count is accepted (0 means 2048; 1 is refused); an HMAC key other
-  than "Bitcoin seed" or "ed25519 seed" is refused; unknown output flags are
-  refused.
-- `.gitignore` added.
+- **BIP-39 seed computed directly** (PBKDF2-HMAC-SHA512 over NFKD text)
+  - Any iteration count is accepted (0 means 2048; 1 is refused).
+  - An HMAC key other than "Bitcoin seed" or "ed25519 seed" is refused.
+- **Unknown output flags are refused** (`src/lib.rs`)
+- **`.gitignore` added**
 - Tests: 1 new
   - Derivation 1: a supported chain failing to derive.
 - Docs: `Spectra/Derivation/Rust/README.md` rewritten as "Rust Derivation Core":
   Swift calls Rust for every chain over the C ABI, safety model, ownership
   split.
-- Total: 1 .rs files changed, +717 −165 lines; data and config files:
+- Total: 1 .rs file changed, +622 −101 lines; data and config files:
   `.gitignore`, `Spectra/Derivation/Rust/Cargo.lock`,
   `Spectra/Derivation/Rust/Cargo.toml`,
   `Spectra/Derivation/Rust/include/spectra_derivation.h`; dependencies: added
@@ -10314,7 +10535,7 @@
   BIP-39 seed bytes are cleared after the master key is built.
 - Docs: `Spectra/Derivation/Rust/README.md` "Bridge Notes" (Swift calls the C
   symbols directly, no Swift fallback) and "Seed Safety Notes".
-- Total: 1 .rs files changed, +59 −9 lines; data and config files: none;
+- Total: 1 .rs file changed, +43 −9 lines; data and config files: none;
   dependencies unchanged; `#[test]` functions unchanged at 0.
 
 ## Beta Commit 14
@@ -10335,20 +10556,19 @@
     SLIP-0010 for Bitcoin.
 - Docs: `AGENTS.md` deleted; `Spectra/Derivation/Rust/README.md` (new):
   migration plan from the Swift engine, ownership split, frozen FFI ids.
-- Total: 1 .rs files changed (1 new), +1468 −3 lines; data and config files:
+- Total: 1 .rs file changed (1 new), +595 −0 lines; data and config files:
   `Spectra/Derivation/Rust/Cargo.lock`, `Spectra/Derivation/Rust/Cargo.toml`,
   `Spectra/Derivation/Rust/include/spectra_derivation.h`; dependencies: added
   bech32 0.11, bip39 2, bitcoin 0.32, bs58 0.5, curve25519-dalek 4,
-  ed25519-dalek 2, hex 0.4, hmac 0.12, pbkdf2 0.12, secp256k1 0.29, secrecy 0.8,
-  serde 1, serde_json 1, sha2 0.10, slip10 0.4, tiny-keccak 2, zeroize 1
+  ed25519-dalek 2, hex 0.4, hmac 0.12, pbkdf2 0.12, secp256k1 0.29, secrecy
+  0.8, serde 1, serde_json 1, sha2 0.10, slip10 0.4, tiny-keccak 2, zeroize 1
   (`Spectra/Derivation/Rust/Cargo.toml`); `#[test]` functions unchanged at 0.
 
 ## Initial Commit
 
-- **Project README and agent guidance** (`README.md`, `AGENTS.md`): the README
-  states the wallet's ethos (self-custody, payments, staking, recovery,
-  diagnostics; no trading, swap funnels or card on-ramps); `AGENTS.md` asks for
-  permission before applying a change app-wide.
+- **Project README and agent guidance** (`README.md`, `AGENTS.md`)
+  - The README states the wallet's ethos (self-custody, payments, staking,
+    recovery, diagnostics; no trading, swap funnels or card on-ramps).
+  - `AGENTS.md` asks for permission before applying a change app-wide.
 - Docs: `README.md` (new), `AGENTS.md` (new).
-- Total: no .rs files changed, +73 −0 lines; data and config files: none;
-  dependencies unchanged; `#[test]` functions unchanged at 0.
+- Total: No code changed.
