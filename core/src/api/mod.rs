@@ -65,7 +65,7 @@ pub mod nearblocks;
 pub mod solana_json_rpc;
 pub mod starknet_json_rpc;
 pub mod substrate_json_rpc;
-pub mod sui_json_rpc;
+pub mod sui_graphql;
 pub mod tezos_rpc;
 pub mod thor_rest;
 pub mod toncenter_v2;

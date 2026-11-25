@@ -10,6 +10,7 @@
 //! signing; the one given is bound into the review.
 
 use super::*;
+use crate::api::sui_graphql::node as graphql;
 use crate::registry::PaymentMemoKind;
 use crate::send::payment_memo::PaymentMemo;
 use crate::send::stages::{SendArtifact, SendStage};
@@ -47,7 +48,7 @@ impl Default for Live {
     }
 }
 
-/// One loopback host for every network's API: Sui and EVM JSON-RPC, the
+/// One loopback host for every network's API: Sui GraphQL, EVM JSON-RPC, the
 /// Aptos REST API, TON Center v2 and, under `/v3`, TON Center v3.
 async fn nodes(contract: String, live: Arc<Mutex<Live>>) -> wiremock::MockServer {
     node_at(move |url, body| {
@@ -55,22 +56,6 @@ async fn nodes(contract: String, live: Arc<Mutex<Live>>) -> wiremock::MockServer
         let rpc = |call: &Value| {
             let params = &call["params"];
             let result = match call["method"].as_str().unwrap() {
-                "sui_getChainIdentifier" => json!("35834a8a"),
-                "sui_getCheckpoint" => json!({"sequenceNumber": "0",
-                    "digest": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"}),
-                "suix_getCoinMetadata" => json!({"decimals": live.decimals}),
-                "suix_getReferenceGasPrice" => json!("1000"),
-                "suix_getBalance" => json!({"totalBalance": if params[1] == "0x2::sui::SUI" {
-                    live.native.to_string() } else { live.token.to_string() }}),
-                "suix_getCoins" => {
-                    let native = params[1] == "0x2::sui::SUI";
-                    json!({"data": [{
-                        "coinObjectId": format!("0x{}", if native { "33" } else { "44" }.repeat(32)),
-                        "version": if native { 7 } else { live.version }.to_string(),
-                        "digest": "1".repeat(32),
-                        "balance": if native { live.native } else { live.token }.to_string()}],
-                        "hasNextPage": false, "nextCursor": null})
-                }
                 "eth_call" => {
                     let data = params[0]["data"].as_str().unwrap();
                     match &data[..10] {
@@ -97,6 +82,39 @@ async fn nodes(contract: String, live: Arc<Mutex<Live>>) -> wiremock::MockServer
         };
         if let Some(batch) = body.as_array() {
             return Some(json!(batch.iter().map(rpc).collect::<Vec<_>>()));
+        }
+        if let Some(operation) = body["operationName"].as_str() {
+            let variables = &body["variables"];
+            let native = |kind: &str| kind.contains("::sui::SUI");
+            return Some(json!({"data": match operation {
+                "Chain" => graphql::chain(Chain::Sui),
+                "CoinMetadata" => graphql::metadata(live.decimals),
+                "Epoch" => graphql::epoch(10, 1000),
+                "Balance" => graphql::balance(if native(variables["coinType"].as_str().unwrap()) {
+                    live.native
+                } else {
+                    live.token
+                }),
+                "Objects" => {
+                    let kind = variables["type"].as_str().unwrap();
+                    let coin_type = kind
+                        .strip_prefix("0x2::coin::Coin<")
+                        .and_then(|kind| kind.strip_suffix('>'))
+                        .unwrap();
+                    let (byte, version, balance) = if native(kind) {
+                        ("33", 7, live.native)
+                    } else {
+                        ("44", live.version, live.token)
+                    };
+                    graphql::objects(variables["owner"].as_str().unwrap(), vec![graphql::coin(
+                        &format!("0x{}", byte.repeat(32)),
+                        version,
+                        coin_type,
+                        u64::try_from(balance).unwrap(),
+                    )])
+                }
+                other => panic!("unexpected Sui operation {other}"),
+            }}));
         }
         // TON Center v2 names its get-method `method` too; JSON-RPC is posted
         // to the root.

@@ -4,9 +4,10 @@
 
 use super::*;
 use crate::api::endpoint::EndpointApi;
+use crate::api::sui_graphql::node;
 use crate::derivation::setup::WalletSetupMethod;
-use serde_json::{Value, json};
-use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+use serde_json::Value;
+use wiremock::{Mock, MockServer, Request, matchers::any};
 
 fn token() -> String {
     format!("0x{}::usdc::USDC", "aa".repeat(32))
@@ -16,10 +17,15 @@ fn single() -> String {
     format!("0x{}::one::ONE", "bb".repeat(32))
 }
 
+/// The wallet's objects of `coin_type`.
 fn coins(coin_type: &str) -> Vec<Value> {
     let coin = |byte: &str, version: u64, balance: u64| {
-        json!({"coinObjectId": format!("0x{}", byte.repeat(32)), "version": version.to_string(),
-            "digest": "1".repeat(32), "balance": balance.to_string()})
+        node::coin(
+            &format!("0x{}", byte.repeat(32)),
+            version,
+            coin_type,
+            balance,
+        )
     };
     if coin_type == SUI {
         vec![
@@ -38,7 +44,7 @@ fn coins(coin_type: &str) -> Vec<Value> {
     }
 }
 
-/// The wallet and a node whose dry run reports 1 MIST of computation and
+/// The wallet and a node whose simulation reports 1 MIST of computation and
 /// 2 of storage for every million.
 async fn wallet() -> (
     crate::service::loopback_service::OpenService,
@@ -48,38 +54,30 @@ async fn wallet() -> (
     let server = MockServer::start().await;
     Mock::given(any())
         .respond_with(|request: &Request| {
-            let body: Value = serde_json::from_slice(&request.body).unwrap();
-            let (identifier, checkpoint) = Chain::Sui.sui_network_identity().unwrap();
-            let result = match body["method"].as_str().unwrap() {
-                "sui_getChainIdentifier" => json!(identifier),
-                "sui_getCheckpoint" => json!({"sequenceNumber": "0", "digest": checkpoint}),
-                "suix_getAllBalances" => json!(
-                    [SUI.to_string(), token(), single()]
-                        .iter()
-                        .map(|kind| {
-                            let rows = coins(kind);
-                            let total: u64 = rows
-                                .iter()
-                                .map(|row| row["balance"].as_str().unwrap().parse::<u64>().unwrap())
-                                .sum();
-                            json!({"coinType": kind, "coinObjectCount": rows.len(),
-                            "totalBalance": total.to_string()})
-                        })
-                        .collect::<Vec<_>>()
+            let (operation, variables) = node::operation(request);
+            node::respond(match operation.as_str() {
+                "Chain" => node::chain(Chain::Sui),
+                // Every coin object, or one type's (`Coin<T>`).
+                "Objects" => node::objects(
+                    variables["owner"].as_str().unwrap(),
+                    match variables["type"].as_str().unwrap() {
+                        "0x2::coin::Coin" => [SUI.to_string(), token(), single()]
+                            .iter()
+                            .flat_map(|kind| coins(kind))
+                            .collect(),
+                        one => coins(
+                            one.strip_prefix("0x2::coin::Coin<")
+                                .and_then(|kind| kind.strip_suffix('>'))
+                                .unwrap(),
+                        ),
+                    },
                 ),
-                "suix_getCoins" => json!({"data": coins(body["params"][1].as_str().unwrap()),
-                    "nextCursor": null, "hasNextPage": false}),
-                "suix_getBalance" => json!({"totalBalance": "12000000"}),
-                "suix_getCoinMetadata" => json!({"decimals": 6}),
-                "suix_getReferenceGasPrice" => json!("1000"),
-                "sui_dryRunTransactionBlock" => json!({"effects": {
-                    "status": {"status": "success"},
-                    "gasUsed": {"computationCost": "1000000", "storageCost": "2000000",
-                        "storageRebate": "2500000"}}}),
-                other => panic!("unexpected Sui call {other}"),
-            };
-            ResponseTemplate::new(200)
-                .set_body_json(json!({"jsonrpc": "2.0", "id": body["id"], "result": result}))
+                "Balance" => node::balance(12_000_000),
+                "CoinMetadata" => node::metadata(6),
+                "Epoch" => node::epoch(10, 1000),
+                "Simulate" => node::simulated(true, [1_000_000, 2_000_000, 2_500_000]),
+                other => panic!("unexpected Sui operation {other}"),
+            })
         })
         .mount(&server)
         .await;
@@ -94,7 +92,7 @@ async fn wallet() -> (
     service
         .use_endpoint(
             Chain::Sui,
-            EndpointApi::SuiJsonRpc,
+            EndpointApi::SuiGraphql,
             &[Balance, Fee, Broadcast, Verification],
             &server.uri(),
         )
@@ -130,7 +128,7 @@ async fn coin_objects_are_listed_by_type_sui_first() {
     );
 }
 
-/// A merge's budget is its dry run's computation and storage with a fifth
+/// A merge's budget is its simulation's computation and storage with a fifth
 /// to spare; a type one object holds has nothing to merge, and nothing is
 /// stored for it.
 #[tokio::test]

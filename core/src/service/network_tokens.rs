@@ -743,10 +743,7 @@ impl WalletService {
                 let client = SuiClient::new(endpoints);
                 let (client, owner) = (&client, address.as_str());
                 self.own_decimals_balances(chain, &tokens, move |coin_type| async move {
-                    client
-                        .fetch_coin_balance(owner, &coin_type)
-                        .await
-                        .map(u128::from)
+                    client.fetch_coin_balance(owner, &coin_type).await
                 })
                 .await
             }

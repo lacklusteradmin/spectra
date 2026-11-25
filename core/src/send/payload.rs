@@ -89,7 +89,7 @@ impl std::fmt::Display for SignedPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Hex(text) | Self::Base64(text) => f.write_str(text),
-            // As `sui_executeTransactionBlock` names its two parts.
+            // As `sui client execute-signed-tx` names its two parts.
             Self::Sui {
                 transaction,
                 signature,

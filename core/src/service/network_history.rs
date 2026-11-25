@@ -537,10 +537,10 @@ async fn fetch_history_page(
             "{}: no keyless history source configured",
             chain.chain_display_name()
         ))),
-        Api::SuiJsonRpc => Ok(SuiClient::new(endpoints)
+        Api::SuiGraphql => Ok(SuiClient::new(endpoints)
             .fetch_history_page(address, cursor)
             .await?
-            .filter_map(crate::api::sui_json_rpc::SuiHistoryEntry::history_entry)),
+            .filter_map(crate::api::sui_graphql::SuiHistoryEntry::history_entry)),
         Api::ToncenterV2 => {
             let mut position: AssetCursor = cursor
                 .map(serde_json::from_str)

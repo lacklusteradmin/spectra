@@ -3,11 +3,12 @@
 //! read again before a signature and before execution.
 
 use super::*;
+use crate::api::sui_graphql::node as graphql;
 use crate::secrets::backends::InMemorySecretStore;
 use crate::secrets::wallet::store_seed_phrase;
 use serde_json::Value;
 use std::sync::Mutex;
-use wiremock::{Mock, MockServer, Request, ResponseTemplate, matchers::any};
+use wiremock::{Mock, MockServer, Request, matchers::any};
 
 const OUTSIDER: &str = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong";
 
@@ -28,39 +29,40 @@ fn policy() -> String {
 /// What the loopback node holds: the version of the account's one gas coin,
 /// and every method asked.
 struct Node {
-    version: &'static str,
-    methods: Vec<String>,
+    version: u64,
+    operations: Vec<String>,
 }
 
 async fn node() -> (MockServer, Arc<Mutex<Node>>) {
     let live = Arc::new(Mutex::new(Node {
-        version: "7",
-        methods: Vec::new(),
+        version: 7,
+        operations: Vec::new(),
     }));
     let state = live.clone();
     let account = fixture()["multisig"]["address"].clone();
     let server = MockServer::start().await;
     Mock::given(any())
         .respond_with(move |request: &Request| {
-            let body: Value = serde_json::from_slice(&request.body).unwrap();
+            let (operation, variables) = graphql::operation(request);
             let mut live = state.lock().unwrap();
-            let method = body["method"].as_str().unwrap().to_string();
-            live.methods.push(method.clone());
-            let result = match method.as_str() {
-                "sui_getChainIdentifier" => json!(Chain::Sui.sui_network_identity().unwrap().0),
-                "sui_getCheckpoint" => json!({"sequenceNumber": "0",
-                    "digest": Chain::Sui.sui_network_identity().unwrap().1}),
-                "suix_getReferenceGasPrice" => json!("1000"),
-                "suix_getCoins" => {
-                    assert_eq!(body["params"][0], account);
-                    json!({"data": [{"coinObjectId": format!("0x{}", "33".repeat(32)),
-                        "version": live.version, "digest": "1".repeat(32), "balance": "200000000"}],
-                        "hasNextPage": false, "nextCursor": null})
+            live.operations.push(operation.clone());
+            graphql::respond(match operation.as_str() {
+                "Chain" => graphql::chain(Chain::Sui),
+                "Epoch" => graphql::epoch(10, 1000),
+                "Objects" => {
+                    assert_eq!(variables["owner"], account);
+                    graphql::objects(
+                        account.as_str().unwrap(),
+                        vec![graphql::coin(
+                            &format!("0x{}", "33".repeat(32)),
+                            live.version,
+                            "0x2::sui::SUI",
+                            200_000_000,
+                        )],
+                    )
                 }
                 other => panic!("unexpected {other}"),
-            };
-            ResponseTemplate::new(200)
-                .set_body_json(json!({"jsonrpc": "2.0", "id": body["id"], "result": result}))
+            })
         })
         .mount(&server)
         .await;
@@ -186,7 +188,7 @@ async fn a_transfer_whose_gas_coin_changed_is_neither_signed_nor_executed() {
             None,
         )
     };
-    live.lock().unwrap().version = "8";
+    live.lock().unwrap().version = 8;
     let refusal = sign().await.unwrap_err().to_string();
     assert!(refusal.contains("gas object"), "{refusal}");
     assert_eq!(
@@ -197,7 +199,7 @@ async fn a_transfer_whose_gas_coin_changed_is_neither_signed_nor_executed() {
             .signed_weight,
         0
     );
-    live.lock().unwrap().version = "7";
+    live.lock().unwrap().version = 7;
     sign().await.unwrap();
     // The secp256k1 member's signature, made by the SDK, completes it.
     let joined = service
@@ -211,7 +213,7 @@ async fn a_transfer_whose_gas_coin_changed_is_neither_signed_nor_executed() {
         .unwrap();
     assert_eq!(joined.id, created.id);
     assert!(joined.complete);
-    live.lock().unwrap().version = "8";
+    live.lock().unwrap().version = 8;
     let refusal = service
         .submit_multisig(created.id.clone(), None, None)
         .await
@@ -222,9 +224,9 @@ async fn a_transfer_whose_gas_coin_changed_is_neither_signed_nor_executed() {
         !live
             .lock()
             .unwrap()
-            .methods
+            .operations
             .iter()
-            .any(|method| method == "sui_executeTransactionBlock")
+            .any(|operation| operation == "Execute")
     );
     let stored = service.multisig_session(created.id).await.unwrap();
     assert_eq!(stored.submitted_txid, None);

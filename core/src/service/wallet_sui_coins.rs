@@ -5,7 +5,7 @@
 //! costs more gas and, past a few hundred objects, more than one
 //! transaction. Merging joins a type's objects: SUI by paying gas with every
 //! coin, which the network joins into the gas coin; another type with
-//! `MergeCoins`, gas paid apart in SUI. Built, dry-run for its cost, and
+//! `MergeCoins`, gas paid apart in SUI. Built, simulated for its cost, and
 //! signed and broadcast through the ordinary send stages under
 //! [`WalletOperation::MergeCoins`].
 
@@ -122,7 +122,7 @@ impl WalletService {
                     "One object holds this coin; there is nothing to merge.",
                 ));
             }
-            // A dry run prices the merge; the budget covers its computation
+            // A simulation prices the merge; the budget covers its computation
             // and storage with a fifth to spare, before the storage rebate.
             let provisional: u64 = 50_000_000;
             let prepare = |budget: u64, gas: Vec<GasCoin>| {
@@ -144,15 +144,14 @@ impl WalletService {
                     }
                 }
             };
-            // The trial pays at most what the wallet's SUI covers.
+            // The trial pays at most what the wallet's SUI coins cover.
             let trial_budget = if native {
                 provisional.min(objects.iter().map(|coin| coin.balance).sum())
             } else {
-                provisional.min(client.fetch_balance(&owner).await?.mist)
+                provisional.min(client.fetch_balance(&owner).await?.coin_mist)
             };
             let trial = prepare(trial_budget, gas_for(trial_budget).await?)?;
-            let (computation, storage, _rebate) =
-                client.dry_run_gas(&trial.transaction.bytes).await?;
+            let (computation, storage, _rebate) = client.simulate(&trial.transaction.bytes).await?;
             let budget = (computation + storage)
                 .saturating_mul(6)
                 .div_ceil(5)

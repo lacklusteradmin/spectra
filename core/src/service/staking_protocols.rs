@@ -144,7 +144,6 @@ async fn prepare_sui_staking(
         if !client
             .fetch_staking_validators()
             .await?
-            .active_validators
             .iter()
             .any(|v| v.sui_address == target)
         {
@@ -173,7 +172,7 @@ async fn prepare_sui_staking(
         )
         .await?
     };
-    client.simulate_staking(&prepared.bytes).await?;
+    client.simulate(&prepared.bytes).await?;
     Ok(PreparedPayload::Sui(prepared))
 }
 
@@ -517,53 +516,32 @@ impl WalletService {
                         }
                         Ok(positions)
                     }
-                    Chain::Sui => {
-                        let client = SuiClient::new(endpoints);
-                        let mut positions = Vec::new();
-                        for group in client.fetch_delegated_stakes(&owner).await? {
-                            for stake in group.stakes {
-                                let amount = stake
-                                    .principal
-                                    .parse::<u64>()
-                                    .map_err(SpectraBridgeError::invalid)?;
-                                let object = validate_sui_position(
-                                    &client,
-                                    &owner,
-                                    &stake.staked_sui_id,
-                                    amount,
-                                )
-                                .await?;
-                                if object.pool_id != group.staking_pool
-                                    || Some(object.activation_epoch)
-                                        != stake.stake_active_epoch.parse().ok()
-                                {
-                                    return Err(SpectraBridgeError::invalid(
-                                        "Sui stake object and delegation snapshot differ",
-                                    ));
-                                }
-                                positions.push(StakingPosition {
-                                    id: stake.staked_sui_id,
-                                    owner: owner.clone(),
-                                    validator_identifier: group.validator_address.clone(),
-                                    status: if stake.status == "Active" {
-                                        StakingPositionStatus::Active
-                                    } else {
-                                        StakingPositionStatus::Activating
-                                    },
-                                    staked_amount_smallest_unit: stake.principal,
-                                    unbonding_amount_smallest_unit: "0".into(),
-                                    withdrawable_amount_smallest_unit: "0".into(),
-                                    claimable_rewards_smallest_unit: stake.estimated_reward,
-                                    pending_rewards_smallest_unit: None,
-                                    rewards_unlock_time_unix: None,
-                                    unlock_epoch: None,
-                                    unlock_time_unix: None,
-                                    available_actions: vec![StakingAction::Unstake],
-                                });
-                            }
-                        }
-                        Ok(positions)
-                    }
+                    Chain::Sui => Ok(SuiClient::new(endpoints)
+                        .fetch_stakes(&owner)
+                        .await?
+                        .into_iter()
+                        .map(|stake| StakingPosition {
+                            id: stake.id,
+                            owner: owner.clone(),
+                            status: match (&stake.validator, stake.active) {
+                                (None, _) => StakingPositionStatus::Inactive,
+                                (Some(_), true) => StakingPositionStatus::Active,
+                                (Some(_), false) => StakingPositionStatus::Activating,
+                            },
+                            // A pool whose validator left the active set is
+                            // named by its own id.
+                            validator_identifier: stake.validator.unwrap_or(stake.object.pool_id),
+                            staked_amount_smallest_unit: stake.object.principal.to_string(),
+                            unbonding_amount_smallest_unit: "0".into(),
+                            withdrawable_amount_smallest_unit: "0".into(),
+                            claimable_rewards_smallest_unit: None,
+                            pending_rewards_smallest_unit: None,
+                            rewards_unlock_time_unix: None,
+                            unlock_epoch: None,
+                            unlock_time_unix: None,
+                            available_actions: vec![StakingAction::Unstake],
+                        })
+                        .collect()),
                     Chain::Aptos => {
                         let client = Arc::new(AptosClient::new(endpoints));
                         stream::iter(targets)
@@ -797,7 +775,6 @@ impl WalletService {
                         if !client
                             .fetch_staking_validators()
                             .await?
-                            .active_validators
                             .iter()
                             .any(|v| v.sui_address == target)
                         {
@@ -861,7 +838,7 @@ impl WalletService {
                             "Sui staking object, amount or gas changed; review again",
                         ));
                     }
-                    client.simulate_staking(&prepared.bytes).await?;
+                    client.simulate(&prepared.bytes).await?;
                 }
                 PreparedPayload::Aptos(prepared) if chain == Chain::Aptos => {
                     let client = AptosClient::new(endpoints);
@@ -1009,7 +986,7 @@ async fn validate_sui_position(
     owner: &str,
     target: &str,
     amount: u64,
-) -> Result<crate::api::sui_json_rpc::SuiStakedObject, SpectraBridgeError> {
+) -> Result<crate::api::sui_graphql::SuiStakedObject, SpectraBridgeError> {
     let object = client.fetch_staked_object(target, owner).await?;
     if object.principal != amount {
         return Err(SpectraBridgeError::invalid(

@@ -92,7 +92,7 @@ impl Chain {
         }
     }
 
-    /// Maximum native payment reviewed for the staking PTB; dry-run must fit it.
+    /// Maximum native payment reviewed for the staking PTB; its simulation must fit it.
     pub fn sui_staking_gas_budget(self) -> Result<u64, RegistryError> {
         match self {
             Self::Sui => Ok(10_000_000),

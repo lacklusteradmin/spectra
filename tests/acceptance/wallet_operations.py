@@ -12,7 +12,8 @@ import json
 import sqlite3
 import unittest
 
-from harness import ABANDON, Handler, Spectra, b58encode, fixture, scratch, serve, unittest_main
+from harness import (ABANDON, SUI_GENESIS, Handler, Spectra, b58encode, fixture, scratch, serve, sui_object, sui_objects,
+                     sui_simulated, unittest_main)
 
 xrp = fixture('xrp-mnemonic-payment.json')
 merge = fixture('account-closing.json')['stellar_account_merge']
@@ -40,8 +41,9 @@ def stellar_secret(seed: bytes) -> str:
 
 
 class Node(Handler):
-    """An XRPL JSON-RPC node under /xrpl, a Horizon under /horizon, and NEAR,
-    Sui and Solana nodes under /near, /sui and /solana."""
+    """An XRPL JSON-RPC node under /xrpl, a Horizon under /horizon, NEAR and
+    Solana JSON-RPC nodes under /near and /solana, and a Sui GraphQL node
+    under /sui."""
 
     def do_GET(self):
         state = self.state
@@ -89,29 +91,29 @@ class Node(Handler):
             return {'result': list(json.dumps(answer).encode()), 'logs': [], 'block_height': 100}
         raise AssertionError(call)
 
-    def sui(self, call):
-        method, params = call['method'], call['params']
-        coin = lambda n, version, balance: {'coinObjectId': '0x' + n * 32, 'version': str(version),
-                                            'digest': '1' * 32, 'balance': str(balance)}
-        coins = {'0x2::sui::SUI': [coin('33', 7, 4000000)],
-                 SUI_TOKEN: [coin('66', 10, 1000000), coin('77', 11, 1000000), coin('88', 12, 1000000)]}
-        if method == 'sui_getChainIdentifier':
-            return '35834a8a'
-        if method == 'sui_getCheckpoint':
-            return {'sequenceNumber': '0', 'digest': '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S'}
-        if method == 'suix_getCoins':
-            return {'data': coins[params[1]], 'nextCursor': None, 'hasNextPage': False}
-        if method == 'suix_getBalance':
-            return {'totalBalance': '4000000'}
-        if method == 'suix_getReferenceGasPrice':
-            return '1000'
-        if method == 'sui_dryRunTransactionBlock':
-            return {'effects': {'status': {'status': 'success'}, 'gasUsed': {
-                'computationCost': '1000000', 'storageCost': '2000000', 'storageRebate': '2500000'}}}
-        if method == 'sui_executeTransactionBlock':
-            self.state['submitted'].append(params[0])
-            return {'digest': 'D1gest', 'effects': {'status': {'status': 'success'}}}
-        raise AssertionError(call)
+    def sui(self, request):
+        """A Sui GraphQL node: the wallet's SUI coin and three of a token's."""
+        operation, variables = request['operationName'], request['variables']
+        owner = variables.get('owner')
+        coin = lambda n, version, kind, balance: sui_object(
+            owner, '0x' + n * 32, version, f'0x2::coin::Coin<{kind}>', {'balance': str(balance)})
+        coins = {'0x2::sui::SUI': [coin('33', 7, '0x2::sui::SUI', 4000000)],
+                 SUI_TOKEN: [coin(n, version, SUI_TOKEN, 1000000) for n, version in (('66', 10), ('77', 11), ('88', 12))]}
+        if operation == 'Chain':
+            return {'chainIdentifier': SUI_GENESIS, 'checkpoint': {'sequenceNumber': 100}}
+        if operation == 'Objects':
+            kind = variables['type'].removeprefix('0x2::coin::Coin<').removesuffix('>')
+            return sui_objects(*coins[kind])
+        if operation == 'Balance':
+            return {'address': {'balance': {'totalBalance': '4000000', 'coinBalance': '4000000'}}}
+        if operation == 'Epoch':
+            return {'epoch': {'epochId': 10, 'referenceGasPrice': '1000'}}
+        if operation == 'Simulate':
+            return sui_simulated(True)
+        if operation == 'Execute':
+            self.state['submitted'].append(variables['transaction'])
+            return {'executeTransaction': {'effects': {'digest': 'D1gest', 'status': 'SUCCESS', 'executionError': None}}}
+        raise AssertionError(request)
 
     def solana(self, call):
         method, params, state = call['method'], call.get('params') or [], self.state
@@ -140,8 +142,7 @@ class Node(Handler):
             call = json.loads(body)
             return self.reply({'jsonrpc': '2.0', 'id': call['id'], 'result': self.solana(call)})
         if self.path.startswith('/sui'):
-            call = json.loads(body)
-            return self.reply({'jsonrpc': '2.0', 'id': call['id'], 'result': self.sui(call)})
+            return self.reply({'data': self.sui(json.loads(body))})
         if self.path.startswith('/near'):
             call = json.loads(body)
             return self.reply({'jsonrpc': '2.0', 'id': call['id'], 'result': self.near(call)})
@@ -259,7 +260,7 @@ class WalletOperationsTests(unittest.TestCase):
     def test_sui_merges_a_tokens_objects_with_gas_apart(self):
         self.spectra.run('wallet', 'import', '--chain', 'sui', '--name', 'SUI', '--no-password',
                          env={'SPECTRA_SEED': ABANDON})
-        self.endpoint('sui', 'sui-json-rpc', '/sui')
+        self.endpoint('sui', 'sui-graphql', '/sui')
         built = self.spectra.run('wallet', 'merge', 'SUI', '--coin-type', SUI_TOKEN)['artifact']
         signed = json.loads(self.sign_and_broadcast(built, '/sui'))['tx_bytes']
         assert self.submitted == [signed], self.submitted

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub enum EndpointApi {
     EvmJsonRpc,
     SolanaJsonRpc,
-    SuiJsonRpc,
+    SuiGraphql,
     NearJsonRpc,
     XrplJsonRpc,
     SubstrateJsonRpc,
@@ -55,7 +55,7 @@ impl EndpointApi {
         match self {
             Self::EvmJsonRpc => "evm-json-rpc",
             Self::SolanaJsonRpc => "solana-json-rpc",
-            Self::SuiJsonRpc => "sui-json-rpc",
+            Self::SuiGraphql => "sui-graphql",
             Self::NearJsonRpc => "near-json-rpc",
             Self::XrplJsonRpc => "xrpl-json-rpc",
             Self::SubstrateJsonRpc => "substrate-json-rpc",
@@ -326,7 +326,7 @@ pub fn endpoint_capability_options(
             TokenHistory,
             Staking,
         ],
-        SuiJsonRpc => &[
+        SuiGraphql => &[
             Balance,
             History,
             Fee,

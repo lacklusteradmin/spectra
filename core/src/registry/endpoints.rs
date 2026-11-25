@@ -35,7 +35,7 @@ impl Chain {
             Chain::Xrp => &[Api::XrplJsonRpc],
             Chain::Cardano => &[Api::Koios],
             c if c.is_substrate() => &[Api::SubstrateJsonRpc],
-            Chain::Sui => &[Api::SuiJsonRpc],
+            Chain::Sui => &[Api::SuiGraphql],
             Chain::Aptos => &[Api::AptosRest],
             Chain::Ton => &[Api::ToncenterV2],
             Chain::Near => &[Api::NearJsonRpc],

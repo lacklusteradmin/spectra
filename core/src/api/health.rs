@@ -212,7 +212,6 @@ fn checks(
             Check::rpc(base, "eth_getBalance", json!([ZERO_EVM, "latest"]), Response::RpcHex(None)),
         ],
         SolanaJsonRpc => vec![rpc("getHealth"), rpc("getSlot")],
-        SuiJsonRpc => vec![rpc("sui_getLatestCheckpointSequenceNumber")],
         NearJsonRpc => vec![rpc("status")],
         SubstrateJsonRpc => vec![rpc("chain_getHeader")],
         XrplJsonRpc => vec![Check::rpc(base, "server_info", json!([{}]), Response::Xrpl)],
@@ -305,8 +304,8 @@ fn checks(
             Check::get(base.to_string(), Response::Field("/nodes/0/node_cert_hash")),
         ],
         // Checked through their own clients: gRPC, Litecoin's peer-to-peer
-        // protocol and Chronik's protobuf.
-        Lightwalletd | LitecoinP2p | Chronik => vec![],
+        // protocol, Chronik's protobuf and Sui's GraphQL.
+        Lightwalletd | LitecoinP2p | Chronik | SuiGraphql => vec![],
     };
     if checks.is_empty() {
         return Err(ApiError::invalid(
@@ -396,6 +395,21 @@ pub(crate) async fn probe(
         .await
         {
             Ok(()) => (true, true, "Aptos indexer network verified".into()),
+            Err(error) => (true, false, error.to_string()),
+        };
+    }
+    if endpoint.api == EndpointApi::SuiGraphql {
+        return match crate::api::sui_graphql::SuiClient::new(std::sync::Arc::new(vec![
+            endpoint.url.clone(),
+        ]))
+        .latest_checkpoint(chain)
+        .await
+        {
+            Ok(checkpoint) => (
+                true,
+                true,
+                format!("Sui network verified at checkpoint {checkpoint}"),
+            ),
             Err(error) => (true, false, error.to_string()),
         };
     }

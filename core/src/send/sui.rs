@@ -1,7 +1,7 @@
 //! SUI transfer: resolve gas objects, build a local PTB, sign, execute.
 
 use super::bcs;
-use crate::api::sui_json_rpc::SuiClient;
+use crate::api::sui_graphql::{SUI_COIN_TYPE, SuiClient};
 use crate::derivation::primitives::blake2b;
 use crate::send::error::SendError;
 use crate::send::keys::Ed25519Seed;
@@ -138,7 +138,9 @@ pub(crate) async fn prepare_native_transfer(
     let mut total = 0u64;
     let mut cursors = std::collections::HashSet::new();
     loop {
-        let page = client.fetch_sui_coins_page(from, cursor.as_deref()).await?;
+        let page = client
+            .fetch_coins_page(from, SUI_COIN_TYPE, cursor.as_deref())
+            .await?;
         for coin in page.coins {
             total = total
                 .checked_add(coin.balance)
@@ -501,7 +503,7 @@ pub(crate) async fn prepare_staking(
     owner: &str,
     validator: Option<&str>,
     amount: u64,
-    staked: Option<(&str, &crate::api::sui_json_rpc::SuiStakedObject)>,
+    staked: Option<(&str, &crate::api::sui_graphql::SuiStakedObject)>,
     gas_budget: u64,
 ) -> Result<PreparedSuiTransfer, SendError> {
     let required = amount
@@ -523,7 +525,7 @@ pub(crate) fn prepare_staking_data(
     owner: &str,
     validator: Option<&str>,
     amount: u64,
-    staked: Option<(&str, &crate::api::sui_json_rpc::SuiStakedObject)>,
+    staked: Option<(&str, &crate::api::sui_graphql::SuiStakedObject)>,
     gas_budget: u64,
     gas_price: u64,
     gas: &[GasCoin],

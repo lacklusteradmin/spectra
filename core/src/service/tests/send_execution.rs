@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::api::endpoint::EndpointCapability;
+use crate::api::sui_graphql::node as graphql;
 use crate::secrets::{backends::InMemorySecretStore, wallet::store_seed_phrase};
 use crate::send::SendExecutionRequest;
 use crate::service::{ChainEndpoints, WalletService};
@@ -311,6 +312,31 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
         let response_is_wrong = wrong_response.clone();
         Mock::given(any()).respond_with(move |request: &Request| {
             let body:Value=serde_json::from_slice(&request.body).unwrap_or(Value::Null);
+            if let Some(operation) = body["operationName"].as_str() {
+                let variables = &body["variables"];
+                return graphql::respond(match operation {
+                    "Epoch" => graphql::epoch(10, 1000),
+                    "Chain" => graphql::chain(Chain::Sui),
+                    "Objects" => graphql::objects(variables["owner"].as_str().unwrap(), vec![graphql::coin(
+                        &format!("0x{}", "33".repeat(32)),
+                        7,
+                        "0x2::sui::SUI",
+                        200_000_000,
+                    )]),
+                    "Execute" => {
+                        let bytes = STANDARD.decode(variables["transaction"].as_str().unwrap()).unwrap();
+                        assert_eq!(hex::encode(&bytes), v["sui"]["raw"]);
+                        assert_eq!(variables["signatures"][0], v["sui"]["signature"]);
+                        let digest = if response_is_wrong.load(std::sync::atomic::Ordering::Relaxed) {
+                            "11111111111111111111111111111111".to_string()
+                        } else {
+                            response_hash.lock().unwrap().clone().unwrap()
+                        };
+                        graphql::executed(&digest)
+                    }
+                    other => panic!("unexpected Sui operation {other}"),
+                });
+            }
             let path=request.url.path();
             let result = match body["method"].as_str().unwrap_or(path) {
                 "getGenesisHash" => json!(Chain::Solana.solana_genesis_hash().unwrap()),
@@ -345,24 +371,6 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
                     let public:[u8;32]=tx[69..101].try_into().unwrap();
                     ed25519_dalek::VerifyingKey::from_bytes(&public).unwrap().verify_strict(&tx[65..],&ed25519_dalek::Signature::from_slice(&tx[1..65]).unwrap()).unwrap();
                     json!(bs58::encode(&tx[1..65]).into_string())
-                },
-                "suix_getReferenceGasPrice" => json!("1000"),
-                "sui_getChainIdentifier" => json!(Chain::Sui.sui_network_identity().unwrap().0),
-                "sui_getCheckpoint" => {
-                    assert_eq!(body["params"],json!(["0"]));
-                    json!({"sequenceNumber":"0","digest":Chain::Sui.sui_network_identity().unwrap().1})
-                },
-                "suix_getCoins" => json!({"data":[{"coinObjectId":format!("0x{}","33".repeat(32)),"version":"7","digest":"11111111111111111111111111111111","balance":"200000000"}],"hasNextPage":false,"nextCursor":null}),
-                "sui_executeTransactionBlock" => {
-                    let bytes=STANDARD.decode(body["params"][0].as_str().unwrap()).unwrap();
-                    assert_eq!(hex::encode(&bytes),v["sui"]["raw"]);
-                    assert_eq!(body["params"][1][0],v["sui"]["signature"]);
-                    let digest = if response_is_wrong.load(std::sync::atomic::Ordering::Relaxed) {
-                        "11111111111111111111111111111111".to_string()
-                    } else {
-                        response_hash.lock().unwrap().clone().unwrap()
-                    };
-                    json!({"digest":digest,"effects":{"status":{"status":"success"}}})
                 },
                 "/" => json!({"chain_id":1,"ledger_version":"1"}),
                 "/estimate_gas_price" => json!({"gas_estimate":100}),

@@ -334,8 +334,16 @@ fn audit_local_builders_refuse_unfunded_or_mismatched_inputs() {
 async fn audit_failed_sui_execution_is_not_a_successful_send() {
     use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
     let server = MockServer::start().await;
-    Mock::given(any()).respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"jsonrpc":"2.0","id":1,"result":{"digest":"11111111111111111111111111111111","effects":{"status":{"status":"failure","error":"InsufficientGas"}}}}))).mount(&server).await;
-    let client = crate::api::sui_json_rpc::SuiClient::new(std::sync::Arc::new(vec![server.uri()]));
+    Mock::given(any())
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(serde_json::json!({"data": {
+                "executeTransaction": {"effects": {
+                    "digest": "11111111111111111111111111111111", "status": "FAILURE",
+                    "executionError": {"message": "InsufficientGas"}}}}})),
+        )
+        .mount(&server)
+        .await;
+    let client = crate::api::sui_graphql::SuiClient::new(std::sync::Arc::new(vec![server.uri()]));
     assert!(
         client
             .execute_signed_tx("test-payload", "test-signature")

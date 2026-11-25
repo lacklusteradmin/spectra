@@ -119,6 +119,14 @@ kept in the address book, and refused when the checksum fails; one written
 in a single case carries none. An XDC address is also read with the `xdc`
 prefix its wallets write, and stored and sent as `0x`.
 
+Sui is read and written through Sui GraphQL, Mysten's and ZAN's public
+endpoints built in; Sui's JSON-RPC is not spoken. An endpoint is the network
+whose checkpoint-zero digest it answers as its chain identifier. A Sui
+balance, SUI's or a token's, counts the address's coin objects and its address
+balance together. A transfer, coin merge or stake spends coin objects only and
+pays gas with SUI coin objects, so what the address balance holds is shown
+but cannot be sent from Spectra.
+
 A Cosmos SDK network (Cosmos Hub, Celestia, dYdX Chain, Terra, Kava, Injective,
 Akash, Babylon Genesis, Osmosis, Dymension, Saga, Allora and BandChain) sends
 its own coin with one bank `MsgSend`, signed in `SIGN_MODE_DIRECT`. Its keys
@@ -682,7 +690,9 @@ page safely but cannot skip it. A failed refresh retains the old continuation;
 a successful refresh starts at the newest page while keeping older saved rows.
 
 Aptos uses the public address Indexer for received, submitted and orderless
-transactions, with fullnode network verification. Sui, Aptos, TON and NEAR token
+transactions, with fullnode network verification. Sui's history is every
+transaction Sui GraphQL lists as affecting the address, each coin type it
+moved read from the transaction's balance changes, gas aside. Sui, Aptos, TON and NEAR token
 transfers are included alongside native history. Provider failures are reported;
 they do not produce an empty successful history.
 
@@ -740,7 +750,7 @@ reads cannot switch wallet identity or overwrite a newer review.
 | Network | Executed actions and ownership |
 | --- | --- |
 | Solana | Wallet-controlled stake account creation/delegation, full deactivation, unlocked withdrawal and simulated excess-lamport withdrawal. Staker, withdrawer and lockup authority are checked. |
-| Sui | System staking and whole withdrawal of owned StakedSui objects, including the chain's reward payout in that withdrawal. No artificial unlock delay. |
+| Sui | System staking and whole withdrawal of owned StakedSui objects, including the chain's reward payout in that withdrawal. No artificial unlock delay. A position's reward is unknown, as Sui GraphQL estimates none; a position in the pool of a validator that has left the active set is inactive, named by its pool's id, and can still be withdrawn. |
 | Aptos | Delegation-pool stake, unlock and withdrawal using actual delegator balances and Move simulation; validator identities alone do not prove delegation pools. |
 | NEAR | Verified delegation-pool deposit_and_stake, unstake and withdraw with full-access-key authority, storage and gas budgets. Existing pool discovery uses Fastnear plus durable core targets. |
 | Polkadot | Asset Hub nomination-pool join/top-up, unbond, withdraw and claim, using live runtime metadata, pool points, migration and slashing state. Required prerequisites execute atomically. |

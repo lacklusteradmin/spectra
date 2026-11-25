@@ -17,9 +17,13 @@ fn record(chain: Chain, api: EndpointApi, endpoint: String) -> EndpointRecord {
 fn every_builtin_api_has_a_probe_on_its_own_origin() {
     for record in &crate::catalog::endpoints::catalog().records {
         let chain = record.chain_id;
-        if record.api == EndpointApi::AptosIndexer {
-            // This request is owned by the Indexer API adapter; its configured
-            // path and network refusal are exercised below through `probe`.
+        if matches!(
+            record.api,
+            EndpointApi::AptosIndexer | EndpointApi::SuiGraphql
+        ) {
+            // GraphQL, whose requests their adapters own; the configured path
+            // and the network refusal are exercised through `probe`, below
+            // for Aptos and in `api/tests/sui_graphql.rs` for Sui.
             continue;
         }
         if matches!(

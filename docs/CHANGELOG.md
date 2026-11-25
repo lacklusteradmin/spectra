@@ -1,5 +1,63 @@
 # Changelog
 
+## Beta Commit 260
+
+- **Sui is read and written through Sui GraphQL** (`api/sui_graphql.rs`,
+  `EndpointApi::SuiGraphql`, `sui-graphql`; before: `api/sui_json_rpc.rs` and
+  `SuiJsonRpc`, whose every built-in endpoint now refuses JSON-RPC,
+  [audit](audits/sui-graphql-2026-11-24.md))
+  - The built-in endpoints are Mysten's and ZAN's GraphQL on mainnet and
+    testnet, with the capabilities the JSON-RPC rows claimed
+    (`core/data/endpoints.toml`; before: five mainnet JSON-RPC rows and one
+    testnet row).
+  - An endpoint is the network whose checkpoint-zero digest it answers as its
+    chain identifier (`Chain::sui_genesis_checkpoint`; before:
+    `sui_network_identity`'s four-byte identifier and checkpoint zero's
+    digest, two requests). The health probe checks it too (before: the latest
+    checkpoint alone).
+  - A balance, SUI's or a token's, counts the coin objects and the address
+    balance together; a merge's trial budget is capped by the coin objects'
+    part (`SuiBalance::coin_mist`).
+  - History is one listing of the transactions that affected the address
+    (before: two, as sender and as recipient, under a combined cursor).
+  - History times are to the second (before: milliseconds).
+  - An object listing (coins, stakes) is refused when it names an object
+    another address owns (before: coin listings were taken as given).
+  - Coin objects are counted per type from every `Coin` object the address
+    owns (before: `suix_getAllBalances`' object counts); a listing reads at
+    most 100 pages of 50.
+  - Staking positions are the owner's `StakedSui` objects, active from their
+    activation epoch, with the validator found by pool in the active set
+    (before: `suix_getStakes`' groups, each object fetched again).
+  - A staking position's reward is unknown (before: `estimatedReward`).
+  - A position whose validator left the active set is `Inactive` and named by
+    its pool's id.
+  - A digest without effects is pending (before: an unknown digest failed the
+    status read).
+  - Execution returns once the transaction is final (before:
+    `WaitForLocalExecution`).
+  - Merges and stakes are priced and checked by one simulation
+    (`SuiClient::simulate`; before: `dry_run_gas` and `simulate_staking`).
+- Measured: 2026-11-24, keyless, read-only: every Sui JSON-RPC method refused
+  on all six built-in endpoints; Mysten's and ZAN's GraphQL answered every read
+  on mainnet and testnet; a SUI transfer the CLI built simulated `SUCCESS` on
+  both mainnet endpoints ([audit](audits/sui-graphql-2026-11-24.md)).
+- Tests: 6 new
+  - Sui GraphQL 6: a transfer misread when its balance changes span pages; a
+    probe passing another network's endpoint; data accepted beside GraphQL
+    errors; 64-digit types not matching the catalog's; a listing paging
+    forever on a repeated cursor; coin objects miscounted across pages.
+- Docs: `CHAIN-SUPPORT.md` ("Wallets and transfers": Sui GraphQL and the
+  address balance; "History and confirmation": Sui history; "Staking positions
+  and execution": the Sui row), `OPEN-ITEMS.md` ("Asset and privacy
+  protocols": spending the Sui address balance; "Staking coverage": Sui
+  rewards and departed validators), `tests/README.md` (the harness's Sui
+  GraphQL answers), `audits/sui-graphql-2026-11-24.md` (new).
+- Total: 31 .rs files changed (3 new, 1 deleted), +1881 −1360 lines; data and
+  config files: `core/data/endpoints.toml`, `tests/acceptance/harness.py`,
+  `tests/acceptance/staking.py`, `tests/acceptance/wallet_operations.py`;
+  dependencies unchanged; `cargo test` passing 1682 → 1688.
+
 ## Beta Commit 259
 
 - **The token catalog lists 44 more tokens** (`core/data/tokens.toml`,

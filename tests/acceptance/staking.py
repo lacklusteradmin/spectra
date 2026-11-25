@@ -12,8 +12,8 @@ import hashlib
 import json
 import urllib.parse
 
-from harness import (ABANDON, ARGS, FIXTURES, JsonRpc, RpcError, Spectra, b58decode, b58encode, checked, fixture,
-                     scale_compact, scratch, serve)
+from harness import (ABANDON, ARGS, FIXTURES, SUI_GENESIS, JsonRpc, RpcError, Spectra, b58decode, b58encode, checked,
+                     fixture, scale_compact, scratch, serve, sui_object, sui_objects, sui_simulated)
 
 def aptos_call(raw):
     """The entry function, arguments, max gas and Ed25519 signature of an
@@ -54,8 +54,9 @@ def aptos_call(raw):
 
 
 class Node(JsonRpc):
-    """A node of whichever chain `state['chain']` names: Aptos's REST API, or
-    another's JSON-RPC. What it refuses is recorded in `state['errors']`."""
+    """A node of whichever chain `state['chain']` names: Aptos's REST API,
+    Sui's GraphQL, or another's JSON-RPC. What it refuses is recorded in
+    `state['errors']`."""
 
     def do_GET(self):
         state = self.state
@@ -76,6 +77,13 @@ class Node(JsonRpc):
         self.reply({'message': 'unexpected GET'}, 404)
 
     def do_POST(self):
+        if self.state['chain'] == 'sui':
+            request = self.body()
+            try:
+                return self.reply({'data': self.sui(request['operationName'], request['variables'])})
+            except (AssertionError, KeyError, ValueError) as error:
+                self.state['errors'].append((request.get('operationName'), str(error)))
+                return self.reply({'data': None, 'errors': [{'message': 'fixture rejected the request'}]})
         if self.state['chain'] != 'aptos':
             return super().do_POST()
         path = urllib.parse.urlsplit(self.path).path
@@ -127,39 +135,44 @@ class Node(JsonRpc):
             return {'value': [None if not s['final'] else {'confirmationStatus': 'finalized', 'slot': 101, 'err': None if s['succeeded'] else {'InstructionError': [0, 'Custom']}}]}
         raise AssertionError(method)
 
-    def sui(self, method, params):
+    def sui(self, operation, variables):
+        """Sui GraphQL: the staking system, one validator and the owner's one
+        SUI coin."""
         s = self.state
-        if method == 'sui_getChainIdentifier':
-            return '35834a8a'
-        if method == 'sui_getCheckpoint':
-            return {'sequenceNumber': '0', 'digest': '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S'}
-        if method == 'suix_getReferenceGasPrice':
-            return '1000'
-        if method == 'suix_getLatestSuiSystemState':
-            return {'activeValidators': [{'suiAddress': s['target'], 'name': 'Fixture validator', 'description': '',
-                    'projectUrl': '', 'commissionRate': '500', 'stakingPoolSuiBalance': '2000000000'}]}
-        if method == 'suix_getCoins':
-            return {'data': [{'coinObjectId': '0x' + '33' * 32, 'version': '7', 'digest': '1' * 32,
-                    'balance': str(s['balance'])}], 'hasNextPage': False, 'nextCursor': None}
-        if method == 'sui_getObject':
-            if params[0] == '0x5':
-                return {'data': {'type': '0x3::sui_system::SuiSystemState', 'owner': {'Shared': {'initial_shared_version': 1}}}}
-            assert params[0] == '0x' + '33' * 32, params
-            return {'data': {'objectId': params[0], 'version': '7', 'digest': '1' * 32, 'owner': {'AddressOwner': s['owner']},
-                    'type': '0x2::coin::Coin<0x2::sui::SUI>', 'content': {'fields': {'balance': str(s['balance'])}}}}
-        if method == 'sui_dryRunTransactionBlock':
-            assert base64.b64decode(params[0]).startswith(b'\0\0')
-            return {'effects': {'status': {'status': 'success' if s['simulation'] else 'failure'}}}
-        if method == 'sui_executeTransactionBlock':
-            raw = base64.b64decode(params[0])
+        coin = sui_object(s['owner'], '0x' + '33' * 32, 7, '0x2::coin::Coin<0x2::sui::SUI>', {'balance': str(s['balance'])})
+        if operation == 'Chain':
+            return {'chainIdentifier': SUI_GENESIS, 'checkpoint': {'sequenceNumber': 100}}
+        if operation == 'Epoch':
+            return {'epoch': {'epochId': 10, 'referenceGasPrice': '1000'}}
+        if operation == 'Validators':
+            return {'epoch': {'validatorSet': {'activeValidators': {'pageInfo': {'hasNextPage': False, 'endCursor': None},
+                    'nodes': [{'contents': {'json': {
+                        'metadata': {'sui_address': s['target'], 'name': 'Fixture validator', 'description': '', 'project_url': ''},
+                        'commission_rate': '500', 'staking_pool': {'id': '0x' + '99' * 32, 'sui_balance': '2000000000'}}}}]}}}}
+        if operation == 'Objects':
+            assert variables['owner'] == s['owner'] and variables['type'] == '0x2::coin::Coin<0x2::sui::SUI>', variables
+            return sui_objects(coin)
+        if operation == 'Object':
+            if variables['id'] == '0x5':
+                return {'object': {'address': '0x5', 'version': 9, 'digest': '1' * 32,
+                        'owner': {'__typename': 'Shared', 'initialSharedVersion': 1},
+                        'asMoveObject': {'contents': {'type': {'repr': '0x3::sui_system::SuiSystemState'}, 'json': {}}}}}
+            assert variables['id'] == coin['address'], variables
+            return {'object': {**coin, 'asMoveObject': {'contents': coin['contents']}}}
+        if operation == 'Simulate':
+            assert base64.b64decode(variables['transaction']['bcs']['value']).startswith(b'\0\0')
+            return sui_simulated(s['simulation'])
+        if operation == 'Execute':
+            raw = base64.b64decode(variables['transaction'])
             assert b58encode(hashlib.blake2b(b'TransactionData::' + raw, digest_size=32).digest()) == s['hash']
-            s['submitted'].append(params)
-            return {'digest': b58encode(bytes([0x55])*32) if s['foreign'] else s['hash'], 'effects': {'status': {'status': 'success'}}}
-        if method == 'sui_getTransactionBlock':
-            if not s['final']:
-                return {'digest': s['hash']}
-            return {'digest': s['hash'], 'checkpoint': '101', 'effects': {'status': {'status': 'success' if s['succeeded'] else 'failure'}}}
-        raise AssertionError(method)
+            s['submitted'].append(variables)
+            digest = b58encode(bytes([0x55]) * 32) if s['foreign'] else s['hash']
+            return {'executeTransaction': {'effects': {'digest': digest, 'status': 'SUCCESS', 'executionError': None}}}
+        if operation == 'Status':
+            assert variables['digest'] == s['hash'], variables
+            return {'transactionEffects': {'digest': s['hash'], 'checkpoint': {'sequenceNumber': 101},
+                    'status': 'SUCCESS' if s['succeeded'] else 'FAILURE'} if s['final'] else None}
+        raise AssertionError(operation)
 
     def aptos(self, body, path):
         s = self.state
@@ -297,7 +310,7 @@ def account_case(chain):
             scratch('staking') as directory:
         s, endpoint = node.state, node.url
         run = checked(Spectra(directory, SPECTRA_SEED=ABANDON), s['errors'])
-        api = {'solana':'solana-json-rpc', 'sui':'sui-json-rpc', 'aptos':'aptos-rest', 'near':'near-json-rpc'}[chain]
+        api = {'solana':'solana-json-rpc', 'sui':'sui-graphql', 'aptos':'aptos-rest', 'near':'near-json-rpc'}[chain]
         s['owner'] = run('wallet','import','--chain',chain,'--name','Stake','--no-password')['wallet']['address']
         run('endpoints','add','--chain',chain,'--api',api,'--capabilities','staking,balance,fee,verification,broadcast',endpoint)
         amount = '20' if chain=='aptos' else '2'

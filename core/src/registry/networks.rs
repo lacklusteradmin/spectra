@@ -189,12 +189,13 @@ impl Chain {
         }
     }
 
-    /// Official checkpoint-zero identifiers, cross-checked with public JSON-RPC
-    /// and Mysten's GraphQL deployments on 2026-10-04.
-    pub(crate) fn sui_network_identity(self) -> Option<(&'static str, &'static str)> {
+    /// The digest of the network's checkpoint zero, which Sui GraphQL
+    /// answers as its chain identifier; read from Mysten's and ZAN's GraphQL
+    /// deployments on 2026-11-24.
+    pub(crate) fn sui_genesis_checkpoint(self) -> Option<&'static str> {
         match self {
-            Self::Sui => Some(("35834a8a", "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S")),
-            Self::SuiTestnet => Some(("4c78adac", "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD")),
+            Self::Sui => Some("4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"),
+            Self::SuiTestnet => Some("69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD"),
             _ => None,
         }
     }

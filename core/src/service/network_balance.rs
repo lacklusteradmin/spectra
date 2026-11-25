@@ -205,7 +205,7 @@ async fn single_api_balance(
             let balance = client.fetch_balance(chain, &account).await?;
             balance.transferable().to_string()
         }
-        Api::SuiJsonRpc => SuiClient::new(endpoints)
+        Api::SuiGraphql => SuiClient::new(endpoints)
             .fetch_balance(address)
             .await?
             .mist

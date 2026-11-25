@@ -27,7 +27,7 @@ fn entries(chain: Chain, raw: &str) -> Vec<HistoryEntry> {
         Chain::Cardano => read(raw, koios::CardanoHistoryEntry::history_entry),
         Chain::Solana => read(raw, solana_json_rpc::SolanaTransfer::history_entry),
         Chain::Tron => read(raw, trongrid_v1::TronTransfer::history_entry),
-        Chain::Sui => read(raw, sui_json_rpc::SuiHistoryEntry::history_entry),
+        Chain::Sui => read(raw, sui_graphql::SuiHistoryEntry::history_entry),
         Chain::Ton => read(raw, toncenter_v2::TonHistoryEntry::history_entry),
         Chain::Near => read(raw, nearblocks::NearHistoryEntry::history_entry),
         Chain::Icp => read(raw, icp_rosetta::IcpHistoryEntry::history_entry),

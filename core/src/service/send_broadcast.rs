@@ -92,7 +92,7 @@ impl WalletService {
                     .await?
             }
             (
-                Api::SuiJsonRpc,
+                Api::SuiGraphql,
                 SignedPayload::Sui {
                     transaction,
                     signature,

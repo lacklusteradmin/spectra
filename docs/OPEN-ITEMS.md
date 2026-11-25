@@ -48,6 +48,15 @@ supported capability.
   receive, transfer, refusal and recovery paths through the CLI. The standard
   is Proposed and its reference substandards are marked for testnets: build
   against what issuers deploy on mainnet.
+- [ ] **Spend Sui address balances.** Sui holds an address's funds in coin
+  objects and in its address balance (the balance accumulator), and mainnet
+  addresses already hold SUI and tokens in the latter. Spectra shows both but
+  builds transactions from coin objects alone, so a send, merge or stake
+  cannot reach what the address balance holds. Build the withdrawal from the
+  address balance, and gas paid from it, as `@mysten/sui` does; prove the bytes
+  and digests against SDK vectors, select between coin objects and the address
+  balance in core, simulate before review, and drive the send, merge and
+  stake paths through the CLI.
 
 ### Multisig accounts
 
@@ -117,6 +126,13 @@ cosigners as data, as PSBTs do. What remains:
   preparation/signing, explicit broadcast, final execution proof and durable
   recovery. Prove the whole action lifecycle and wrong-owner/network refusal
   through the CLI before enabling a network in the registry.
+- [ ] **Read Sui staking rewards and departed validators.** Sui GraphQL
+  reports neither a stake's reward estimate nor the validator of a pool that
+  left the active set, so a Sui position's reward is unknown and such a
+  position is named by its pool's id. Compute the reward from the pool's
+  exchange rates at the stake's activation epoch and now, and read a departed
+  pool's validator from the system state's inactive validators, checked
+  against `@mysten/sui`'s staking reads.
 - [ ] **Implement Peercoin minting if it is brought into product scope.**
   Minting is explicitly excluded today. It needs an online node and its own
   authority, key-access, process-lifetime and recovery model; a staking catalog

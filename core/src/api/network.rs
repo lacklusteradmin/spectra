@@ -51,7 +51,7 @@ pub(crate) async fn verify_network(
                 .await?
         }
         Chain::Sui => {
-            sui_json_rpc::SuiClient::new(urls)
+            sui_graphql::SuiClient::new(urls)
                 .verify_network(chain)
                 .await?
         }

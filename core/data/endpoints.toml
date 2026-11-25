@@ -852,46 +852,35 @@ chain_id = "ton-testnet"
 endpoint = "https://testnet.toncenter.com/api/v3"
 capabilities = ["token-balance", "token-discovery", "token-history", "verification"]
 
+# Sui GraphQL; Sui's public JSON-RPC is shut down. Mainnet and testnet read
+# methods verified 2026-11-24: identity, balances, coin and staked objects,
+# coin metadata, address history, validators and simulation.
 [[endpoints]]
-id = "sui.rpc.publicnode"
-api = "sui-json-rpc"
+id = "sui.graphql.mysten"
+api = "sui-graphql"
 chain_id = "sui"
-endpoint = "https://sui-rpc.publicnode.com"
+endpoint = "https://graphql.mainnet.sui.io/graphql"
 capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
 
 [[endpoints]]
-id = "sui.rpc.blockvision"
-api = "sui-json-rpc"
+id = "sui.graphql.zan"
+api = "sui-graphql"
 chain_id = "sui"
-endpoint = "https://sui-mainnet-endpoint.blockvision.org"
+endpoint = "https://api.zan.top/public/sui-mainnet/graphql"
 capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
 
 [[endpoints]]
-id = "sui.rpc.blockpi"
-api = "sui-json-rpc"
-chain_id = "sui"
-endpoint = "https://sui.blockpi.network/v1/rpc/public"
-capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
-
-[[endpoints]]
-id = "sui.rpc.suiscan"
-api = "sui-json-rpc"
-chain_id = "sui"
-endpoint = "https://rpc-mainnet.suiscan.xyz"
-capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
-
-[[endpoints]]
-id = "sui.rpc.1rpc"
-api = "sui-json-rpc"
-chain_id = "sui"
-endpoint = "https://1rpc.io/sui"
-capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification", "staking"]
-
-[[endpoints]]
-id = "sui.testnet.rpc.publicnode"
-api = "sui-json-rpc"
+id = "sui.testnet.graphql.mysten"
+api = "sui-graphql"
 chain_id = "sui-testnet"
-endpoint = "https://sui-testnet-rpc.publicnode.com"
+endpoint = "https://graphql.testnet.sui.io/graphql"
+capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification"]
+
+[[endpoints]]
+id = "sui.testnet.graphql.zan"
+api = "sui-graphql"
+chain_id = "sui-testnet"
+endpoint = "https://api.zan.top/public/sui-testnet/graphql"
 capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification"]
 
 [[endpoints]]

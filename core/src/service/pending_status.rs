@@ -502,8 +502,8 @@ impl WalletService {
                             })?;
                         client.fetch_transaction_status(&hash).await
                     }
-                    Api::SuiJsonRpc => {
-                        let client = crate::api::sui_json_rpc::SuiClient::new(eps);
+                    Api::SuiGraphql => {
+                        let client = crate::api::sui_graphql::SuiClient::new(eps);
                         client.verify_network(chain).await?;
                         client.fetch_transaction_status(&hash).await
                     }

@@ -33,8 +33,9 @@ binary under test, `Spectra` (one data directory and the environment its
 processes see, with `run`, `fail` and `process`), `serve` (a loopback node for
 a block's length) with the `Handler` and `JsonRpc` bases, `fixture` for
 `core/tests/fixtures/`, `companion` and `ChainFixture` for the fixture
-programs, the multisig helpers `Spectra.sign` and `signed_by`, and `suite` for
-a node another suite defines. Suites check with `assert`, so the harness refuses
+programs, the multisig helpers `Spectra.sign` and `signed_by`, the Sui GraphQL
+answers `sui_object`, `sui_objects` and `sui_simulated`, and `suite` for a node
+another suite defines. Suites check with `assert`, so the harness refuses
 to load under `python -O` or `PYTHONOPTIMIZE`.
 
 | Suite | Purpose |

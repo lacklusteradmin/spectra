@@ -227,6 +227,30 @@ def tron_signed(body):
     return raw, [value for number, value in fields if number == 2]
 
 
+SUI_GENESIS = '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S'
+
+
+def sui_object(owner, id_, version, type_, fields):
+    """A Sui object as GraphQL's `Objects` lists it, held by `owner`."""
+    return {'address': id_, 'version': version, 'digest': '1' * 32,
+            'owner': {'__typename': 'AddressOwner', 'address': {'address': owner}},
+            'contents': {'type': {'repr': type_}, 'json': fields}}
+
+
+def sui_objects(*objects):
+    """A Sui GraphQL `Objects` answer: one page of `objects`."""
+    return {'address': {'objects': {'pageInfo': {'hasNextPage': False, 'endCursor': None}, 'nodes': list(objects)}}}
+
+
+def sui_simulated(success, computation=1000000, storage=2000000, rebate=2500000):
+    """A Sui GraphQL `Simulate` answer."""
+    return {'simulateTransaction': {'effects': {
+        'status': 'SUCCESS' if success else 'FAILURE',
+        'executionError': None if success else {'message': 'refused'},
+        'gasEffects': {'gasSummary': {'computationCost': computation, 'storageCost': storage,
+                                      'storageRebate': rebate}}}}}
+
+
 def signed_by(session):
     """The signers that have signed a multisig session, sorted."""
     return sorted(signer['signer'] for signer in session['signers'] if signer['signed'])

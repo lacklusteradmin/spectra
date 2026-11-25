@@ -4,6 +4,7 @@
 
 use super::*;
 use crate::api::endpoint::EndpointApi;
+use crate::api::sui_graphql::node as graphql;
 use crate::derivation::setup::WalletSetupMethod;
 use crate::send::keys::Ed25519Seed;
 use crate::send::stages::SendStage;
@@ -116,54 +117,43 @@ fn solana(node: &Node, method: &str, params: &Value) -> Value {
     }
 }
 
-fn sui(node: &Node, method: &str, params: &Value) -> Value {
-    let (identifier, checkpoint) = Chain::Sui.sui_network_identity().unwrap();
+fn sui(node: &Node, operation: &str, variables: &Value) -> Value {
     let owner = if node.foreign {
         target(Chain::Sui)
     } else {
         node.owner.clone()
     };
     let pool = format!("0x{}", "99".repeat(32));
-    let coin = format!("0x{}", "33".repeat(32));
-    match method {
-        "sui_getChainIdentifier" => json!(identifier),
-        "sui_getCheckpoint" => json!({"sequenceNumber": "0", "digest": checkpoint}),
-        "suix_getReferenceGasPrice" => json!("1000"),
-        "suix_getLatestSuiSystemState" => json!({"activeValidators": [{
-            "suiAddress": target(Chain::Sui), "name": "Fixture validator", "description": "",
-            "projectUrl": "", "commissionRate": "500", "stakingPoolSuiBalance": "2000000000"}]}),
-        "suix_getStakes" => json!([{"validatorAddress": target(Chain::Sui), "stakingPool": pool,
-            "stakes": [{"stakedSuiId": position(Chain::Sui), "stakeActiveEpoch": "8",
-                "principal": "2000000000", "status": "Active", "estimatedReward": "1234567"}]}]),
-        "suix_getCoins" => json!({"data": [{"coinObjectId": coin, "version": "7",
-            "digest": "1".repeat(32), "balance": node.balance.to_string()}],
-            "hasNextPage": false, "nextCursor": null}),
-        "sui_getObject" if params[0] == "0x5" => json!({"data": {
-            "type": "0x3::sui_system::SuiSystemState",
-            "owner": {"Shared": {"initial_shared_version": 1}}}}),
-        "sui_getObject" => {
-            let stake = params[0] == position(Chain::Sui);
-            assert!(stake || params[0] == coin.as_str(), "{params}");
-            let (version, kind, fields) = if stake {
-                (
-                    "8",
-                    "0x3::staking_pool::StakedSui",
-                    json!({"principal": "2000000000", "pool_id": pool,
-                        "stake_activation_epoch": "8"}),
-                )
+    let coin = || {
+        graphql::coin(
+            &format!("0x{}", "33".repeat(32)),
+            7,
+            "0x2::sui::SUI",
+            u64::try_from(node.balance).unwrap(),
+        )
+    };
+    let stake = || graphql::staked(&position(Chain::Sui), 8, &pool, 8, 2_000_000_000);
+    match operation {
+        "Chain" => graphql::chain(Chain::Sui),
+        "Epoch" => graphql::epoch(10, 1000),
+        "Validators" => graphql::validators(&[(&target(Chain::Sui), &pool)]),
+        "Objects" => match variables["type"].as_str().unwrap() {
+            "0x3::staking_pool::StakedSui" => graphql::objects(&owner, vec![stake()]),
+            "0x2::coin::Coin<0x2::sui::SUI>" => graphql::objects(&owner, vec![coin()]),
+            other => panic!("unexpected Sui objects {other}"),
+        },
+        "Object" if variables["id"] == "0x5" => graphql::system_state(),
+        "Object" => {
+            let id = variables["id"].as_str().unwrap();
+            if id == position(Chain::Sui) {
+                graphql::owned(stake(), &owner)
             } else {
-                (
-                    "7",
-                    "0x2::coin::Coin<0x2::sui::SUI>",
-                    json!({"balance": node.balance.to_string()}),
-                )
-            };
-            json!({"data": {"objectId": params[0], "version": version, "digest": "1".repeat(32),
-                "owner": {"AddressOwner": owner}, "type": kind, "content": {"fields": fields}}})
+                assert_eq!(id, coin()["address"], "{variables}");
+                graphql::owned(coin(), &owner)
+            }
         }
-        "sui_dryRunTransactionBlock" => json!({"effects": {"status": {
-            "status": if node.simulation { "success" } else { "failure" }}}}),
-        other => panic!("unexpected Sui call {other}"),
+        "Simulate" => graphql::simulated(node.simulation, [1_000_000, 2_000_000, 0]),
+        other => panic!("unexpected Sui operation {other}"),
     }
 }
 
@@ -334,11 +324,14 @@ impl Staking {
                 if node.chain == Chain::Aptos {
                     return ResponseTemplate::new(200).set_body_json(aptos(&node, request, &body));
                 }
+                if node.chain == Chain::Sui {
+                    let (operation, variables) = graphql::operation(request);
+                    return graphql::respond(sui(&node, &operation, &variables));
+                }
                 let method = body["method"].as_str().unwrap();
                 let params = &body["params"];
                 let result = match node.chain {
                     Chain::Solana => solana(&node, method, params),
-                    Chain::Sui => sui(&node, method, params),
                     _ => near(&node, method, params),
                 };
                 ResponseTemplate::new(200)
@@ -353,7 +346,7 @@ impl Staking {
                 &[Staking, Balance, Fee, Verification, Broadcast],
             )],
             Chain::Sui => &[(
-                EndpointApi::SuiJsonRpc,
+                EndpointApi::SuiGraphql,
                 &[Staking, Balance, Fee, Verification, Broadcast],
             )],
             Chain::Aptos => &[
@@ -473,11 +466,14 @@ async fn owned_positions_are_discovered_and_naming_their_pool_finds_the_same() {
         let named = staking.positions(vec![position(chain)]).await.unwrap();
         assert_eq!(json_of(&named), json_of(&discovered), "{chain:?}");
         if chain == Chain::Sui {
-            // Sui's reward estimate is what unstaking pays out beside the principal.
+            // Earning since epoch 8, with its validator still active; Sui
+            // GraphQL estimates no reward, so the reward is unknown, not zero.
             assert_eq!(
-                discovered[0].claimable_rewards_smallest_unit.as_deref(),
-                Some("1234567")
+                discovered[0].status,
+                crate::staking::StakingPositionStatus::Active
             );
+            assert_eq!(discovered[0].validator_identifier, target(Chain::Sui));
+            assert_eq!(discovered[0].claimable_rewards_smallest_unit, None);
         }
     }
 }
@@ -787,7 +783,7 @@ fn sui_owned_object_staking_matches_official_sdk_ptbs_signatures_and_hashes() {
         digest: [0; 32],
         balance: 3_000_000_000,
     }];
-    let object = crate::api::sui_json_rpc::SuiStakedObject {
+    let object = crate::api::sui_graphql::SuiStakedObject {
         version: 8,
         digest: [0; 32],
         principal: 2_000_000_000,

@@ -33,7 +33,7 @@ pub(crate) use crate::api::{
     aptos_rest::AptosClient, blockbook::BlockbookClient, evm_json_rpc::EvmClient,
     horizon::HorizonClient, icp_rosetta::IcpClient, insight::InsightClient,
     kaspa_rest::KaspaClient, koios::KoiosClient, near_json_rpc::NearClient,
-    solana_json_rpc::SolanaClient, substrate_json_rpc::SubstrateClient, sui_json_rpc::SuiClient,
+    solana_json_rpc::SolanaClient, substrate_json_rpc::SubstrateClient, sui_graphql::SuiClient,
     toncenter_v2::ToncenterV2Client, tron_http::TronHttpClient, xrpl_json_rpc::XrplClient,
 };
 pub(crate) use crate::error::SpectraBridgeError;
