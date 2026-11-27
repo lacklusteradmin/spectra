@@ -192,7 +192,8 @@ async fn standing_approvals_are_found_revoked_and_named() {
         endpoints: vec![rpc.clone()],
     };
     let service =
-        WalletService::new(vec![endpoints(Chain::Ethereum), endpoints(Chain::BnbChain)]).unwrap();
+        WalletService::serving(vec![endpoints(Chain::Ethereum), endpoints(Chain::BnbChain)])
+            .unwrap();
     service.set_secret_store(Arc::new(
         crate::secrets::backends::InMemorySecretStore::new(),
     ));
@@ -206,15 +207,6 @@ async fn standing_approvals_are_found_revoked_and_named() {
         .await
         .unwrap();
     let set = |update| StateCommand::SetAppSetting { update };
-    for chain_id in [Chain::Ethereum, Chain::BnbChain] {
-        service
-            .apply_state_command(set(AppSettingUpdate::CustomEndpointsOnly {
-                chain_id,
-                value: true,
-            }))
-            .await
-            .unwrap();
-    }
     let import = |chain| service.import_wallets(fixture(chain, WalletSetupMethod::ImportPhrase));
     let approver = import(Chain::Ethereum).await.unwrap().wallets.remove(0);
     assert_eq!(approver.address.as_deref(), Some(OWNER));

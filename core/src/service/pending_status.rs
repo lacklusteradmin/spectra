@@ -883,7 +883,7 @@ mod tests {
         Mock::given(body_partial_json(json!({"method":"getSignatureStatuses"})))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"temporarily unavailable"}})))
             .expect(6).mount(&server).await;
-        let service = WalletService::new(vec![crate::service::ChainEndpoints {
+        let service = WalletService::serving(vec![crate::service::ChainEndpoints {
             chain_id: Chain::Solana,
             capabilities: EndpointCapability::ALL.to_vec(),
             endpoints: vec![server.uri()],
@@ -960,7 +960,7 @@ mod tests {
             .expect(4)
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![crate::service::ChainEndpoints {
+        let service = WalletService::serving(vec![crate::service::ChainEndpoints {
             chain_id: Chain::Solana,
             capabilities: EndpointCapability::ALL.to_vec(),
             endpoints: vec![server.uri()],
@@ -1029,7 +1029,7 @@ mod tests {
             ResponseTemplate::new(200).set_body_json(json!({"jsonrpc":"2.0", "id":body["id"],
                 "result":if body["method"] == "eth_chainId" { json!("0x1") } else { serde_json::Value::Null }}))
         }).mount(&server).await;
-        let service = WalletService::new(vec![crate::service::ChainEndpoints {
+        let service = WalletService::serving(vec![crate::service::ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
@@ -1140,7 +1140,7 @@ mod tests {
         let sepolia = MockServer::start().await;
         let (service, _) = stored_service().await;
         service
-            .update_endpoints(vec![
+            .serve(vec![
                 crate::service::ChainEndpoints {
                     capabilities: EndpointCapability::ALL.to_vec(),
                     chain_id: crate::registry::Chain::Ethereum,

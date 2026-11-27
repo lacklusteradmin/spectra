@@ -89,7 +89,13 @@ async fn reopened_account_holding(
                     .position(|segment| matches!(*segment, "address" | "addrs" | "addr" | "addresses"))
                     .and_then(|at| segments.get(at + 1))
                     .expect("an address read");
-                let value = values.get(*address).expect("only wallet-owned addresses are read");
+                let value = values
+                    .iter()
+                    .find(|(owned, _)| {
+                        crate::service::send_stage_support::same_utxo_address(chain, owned, address)
+                    })
+                    .map(|(_, value)| value)
+                    .expect("only wallet-owned addresses are read");
                 indexer_balance(chain, value)
             };
             ResponseTemplate::new(200).set_body_json(response)
@@ -105,7 +111,7 @@ async fn reopened_account_holding(
         chain_id: chain,
         endpoints: vec![server.uri()],
     }];
-    let service = WalletService::new(endpoints.clone()).unwrap();
+    let service = WalletService::serving(endpoints.clone()).unwrap();
     service.opened(database.clone()).await.unwrap();
     service
         .upsert_wallet(WalletState::single_address(
@@ -138,7 +144,7 @@ async fn reopened_account_holding(
             .unwrap();
     }
     drop(service);
-    let reopened = WalletService::new(endpoints).unwrap();
+    let reopened = WalletService::serving(endpoints).unwrap();
     reopened.opened(database).await.unwrap();
     (reopened, directory, server)
 }
@@ -221,7 +227,7 @@ mod balance_summaries {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn service(chain: crate::registry::Chain, server: &MockServer) -> Arc<WalletService> {
-        WalletService::new(vec![ChainEndpoints {
+        WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],
@@ -229,27 +235,39 @@ mod balance_summaries {
         .unwrap()
     }
 
+    /// One Blockbook adapter reads every network; a Bitcoin Cash address
+    /// goes as Blockbook writes it, a whole CashAddr, whether the caller
+    /// wrote it legacy, bare or prefixed: zelcore's Blockbook refuses a bare
+    /// payload (2026-11-26).
     #[tokio::test]
     async fn one_blockbook_adapter_reads_each_network_and_keeps_bch_address_rules() {
+        const CASHADDR: &str = "bitcoincash:qp3wjpa3tjlj042z2wv7hahsldgwhwy0rq9sywjpyy";
         let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/api/v2/address/holder"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"balance":"123456789"})))
-            .expect(5)
-            .mount(&server)
-            .await;
-        for chain in [
-            Chain::Litecoin,
-            Chain::BitcoinCashTestnet,
-            Chain::BitcoinGold,
-            Chain::Dash,
-            Chain::Zcash,
+        for (route, times) in [
+            ("/api/v2/address/holder".to_string(), 3),
+            (format!("/api/v2/address/{CASHADDR}"), 3),
         ] {
-            let address = if chain.mainnet_counterpart() == Chain::BitcoinCash {
-                "bitcoincash:holder"
-            } else {
-                "holder"
-            };
+            Mock::given(method("GET"))
+                .and(path(route))
+                .respond_with(
+                    ResponseTemplate::new(200).set_body_json(json!({"balance":"123456789"})),
+                )
+                .expect(times)
+                .mount(&server)
+                .await;
+        }
+        // Satoshi's address, as Blockbook named it on 2026-11-26.
+        for (chain, address) in [
+            (Chain::Litecoin, "holder"),
+            (Chain::BitcoinCash, "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"),
+            (
+                Chain::BitcoinCash,
+                "qp3wjpa3tjlj042z2wv7hahsldgwhwy0rq9sywjpyy",
+            ),
+            (Chain::BitcoinCash, CASHADDR),
+            (Chain::BitcoinGold, "holder"),
+            (Chain::Zcash, "holder"),
+        ] {
             let balance = service(chain, &server)
                 .fetch_native_balance_summary(chain, address.into())
                 .await

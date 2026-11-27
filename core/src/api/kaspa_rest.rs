@@ -38,6 +38,9 @@ struct ApiUtxoEntry {
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ApiScriptPublicKey {
+    /// api.kaspa.org leaves version 0 out, as protobuf's JSON leaves out a
+    /// default (2026-11-26); any other version is written.
+    #[serde(default)]
     version: u32,
     script_public_key: String,
 }

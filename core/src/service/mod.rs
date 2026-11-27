@@ -36,6 +36,7 @@ pub(crate) use crate::api::{
     solana_json_rpc::SolanaClient, substrate_json_rpc::SubstrateClient, sui_graphql::SuiClient,
     toncenter_v2::ToncenterV2Client, tron_http::TronHttpClient, xrpl_json_rpc::XrplClient,
 };
+pub(crate) use crate::catalog::endpoints::EndpointRecord;
 pub(crate) use crate::error::SpectraBridgeError;
 pub(crate) use crate::registry::Chain;
 pub(crate) use crate::secrets::store::SecretStore;
@@ -158,8 +159,8 @@ pub use zcash_shielded::ZcashShieldedStatus;
 mod litecoin_mweb;
 pub use litecoin_mweb::LitecoinMwebStatus;
 
-use endpoint_directory::EndpointIndex;
-pub use endpoint_directory::{ChainEndpoints, catalog_endpoints};
+#[cfg(test)]
+pub(crate) use endpoint_directory::ChainEndpoints;
 use keypool::keypool_key;
 pub use network::EndpointProbe;
 pub use network_balance::NativeBalanceSummary;
@@ -194,8 +195,13 @@ pub struct WalletService {
 
     /// Serializes persistent mutations, including database binding.
     pub(crate) state_writer: Arc<tokio::sync::Mutex<()>>,
-    uses_catalog_endpoints: Arc<std::sync::atomic::AtomicBool>,
-    pub(crate) endpoints: Arc<AsyncRwLock<EndpointIndex>>,
+    /// The endpoints this service has built in: the catalog's, or the ones a
+    /// test serves. The user's own are settings, beside them.
+    pub(crate) built_in_endpoints: Arc<parking_lot::RwLock<Arc<Vec<EndpointRecord>>>>,
+    /// The endpoints of a network's own APIs a front end named for this
+    /// service's life, in place of every configured one: the CLI's
+    /// `--endpoint`. Indexers stay as configured.
+    pub(crate) endpoint_overrides: Arc<parking_lot::RwLock<HashMap<Chain, Vec<EndpointRecord>>>>,
     /// Per-wallet history pagination state (cursor / page / exhaustion).
     pub(crate) history_pagination: Arc<HistoryPaginationStore>,
     /// Optional Keychain delegate (set via `set_secret_store`).
@@ -237,8 +243,14 @@ pub struct WalletService {
 }
 #[uniffi::export]
 impl WalletService {
+    /// A service whose built-in endpoints are `endpoints`, each checked as a
+    /// catalog row is: a test's loopback nodes, or none.
     #[uniffi::constructor]
-    pub fn new(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
+    pub fn new(endpoints: Vec<EndpointRecord>) -> Result<Arc<Self>, SpectraBridgeError> {
+        for record in &endpoints {
+            crate::catalog::endpoints::validate_record(record)
+                .map_err(SpectraBridgeError::invalid)?;
+        }
         Ok(Arc::new(Self {
             transport_cache_dir: Arc::new(parking_lot::Mutex::new(None)),
             trc20_metadata: Arc::new(crate::api::tron_metadata_cache::MetadataCache::default()),
@@ -250,8 +262,8 @@ impl WalletService {
             balance_refreshes: Arc::new(balance_refresh::BalanceRefreshes::default()),
             projection_sequence: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             state_writer: Arc::new(tokio::sync::Mutex::new(())),
-            uses_catalog_endpoints: Arc::new(std::sync::atomic::AtomicBool::new(false)),
-            endpoints: Arc::new(AsyncRwLock::new(EndpointIndex::from_list(endpoints)?)),
+            built_in_endpoints: Arc::new(parking_lot::RwLock::new(Arc::new(endpoints))),
+            endpoint_overrides: Default::default(),
             history_pagination: Arc::new(HistoryPaginationStore::new()),
             secret_store: Arc::new(std::sync::RwLock::new(None)),
             wallet_state: Arc::new(AsyncRwLock::new(ResidentState::default())),
@@ -264,13 +276,10 @@ impl WalletService {
         }))
     }
 
+    /// The service the apps and the CLI run: the endpoint catalog built in.
     #[uniffi::constructor]
     pub fn new_catalog() -> Result<Arc<Self>, SpectraBridgeError> {
-        let service = Self::new(catalog_endpoints()?)?;
-        service
-            .uses_catalog_endpoints
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        Ok(service)
+        Self::new(crate::catalog::endpoints::catalog().records.clone())
     }
 
     /// Register the platform Keychain implementation. Must be called once at

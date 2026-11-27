@@ -471,4 +471,34 @@ mod history_tests {
             [(&*"ab".repeat(32), 73_456_789, Some(1000), Some(42))]
         );
     }
+
+    /// A Bitcoin Cash wallet's legacy address is asked as the CashAddr
+    /// Blockbook names its inputs and outputs by, and its outputs count:
+    /// Blockbook wrote Satoshi's address that way on 2026-11-26.
+    #[tokio::test]
+    async fn a_legacy_bitcoin_cash_address_reads_its_cashaddr_rows() {
+        let legacy = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa";
+        let cashaddr = "bitcoincash:qp3wjpa3tjlj042z2wv7hahsldgwhwy0rq9sywjpyy";
+        let io = |owner: &str, value: &str| json!({"addresses": [owner], "value": value});
+        let server = MockServer::start().await;
+        Mock::given(path(format!("/api/v2/address/{cashaddr}")))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"transactions": [
+                    {"txid": "ab".repeat(32), "blockHeight": 42, "blockTime": 1_700_000_000u64,
+                     "value": "1000", "fees": "10",
+                     "vin": [io("bitcoincash:qq0tsf7h36shzcvuty3y362wa7xh4w0pvuvzsfd4ht", "1010")],
+                     "vout": [io(cashaddr, "1000")]},
+                ]})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = BlockbookClient::new(
+            Arc::new(vec![server.uri()]),
+            crate::registry::Chain::BitcoinCash,
+        );
+        let page = client.fetch_history_page(legacy, None).await.unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].net_sats, 1000);
+    }
 }

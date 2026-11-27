@@ -403,7 +403,7 @@ impl WalletService {
                                 && crate::amount::decimal::to_f64(rate) >= floor as f64
                         })
                         .ok_or_else(|| SpectraBridgeError::invalid("Invalid fee rate"))?,
-                    None if !chain.indexers_estimate_fee_rate() => floor.to_string(),
+                    None if !chain.reads_indexer_fee_rate() => floor.to_string(),
                     None => {
                         let rate = self.bitcoin_fee_rate(chain).await?.sats_per_vbyte;
                         if !rate.is_finite() || rate <= 0.0 {

@@ -120,11 +120,11 @@ pub fn run(ctx: &Ctx, out: Out, command: StakingCommand) -> CliResult<()> {
         StakingCommand::Validators(args) => validators(ctx, out, args),
         StakingCommand::Endpoints(args) => {
             let chain = resolve_chain(&args.chain)?;
-            let config = ctx.rt.block_on(ctx.service()?.staking_endpoints(chain))?;
+            let endpoints = ctx.rt.block_on(ctx.service()?.staking_endpoints(chain))?;
             out.report(&EndpointsReport {
-                chain: config.chain_id,
-                endpoints: config.endpoints,
-                capabilities: config.capabilities,
+                chain,
+                endpoints,
+                capabilities: vec![EndpointCapability::Staking],
             })
         }
         StakingCommand::BroadcastEndpoints(args) => {

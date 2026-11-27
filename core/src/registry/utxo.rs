@@ -144,6 +144,7 @@ impl Chain {
             Self::LitecoinTestnet => {
                 Ok("4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0".into())
             }
+            Self::Zcash | Self::ZcashTestnet => self.zcash_genesis().map(str::to_string),
             // Qtum Core's and DigiByte Core's chainparams.
             Self::Qtum => {
                 Ok("000075aef83cf2853580f8ae8ce6f8c3096cfa21d98334d6e3f95e5582ed986c".into())
@@ -158,7 +159,7 @@ impl Chain {
                         .block_hash()
                         .to_string()
                 })
-                .ok_or_else(|| self.not_in("Bitcoin or Litecoin")),
+                .ok_or_else(|| self.not_in("Bitcoin, Litecoin or Zcash")),
         }
     }
 
@@ -213,11 +214,15 @@ impl Chain {
         }
     }
 
-    /// Whether the network's indexers estimate a fee rate. Qtum's Blockbook
-    /// answers zero, so a Qtum send pays [`Chain::min_fee_rate`], the rate
-    /// Qtum Core's own wallet pays at least.
-    pub(crate) fn indexers_estimate_fee_rate(self) -> bool {
-        self.mainnet_counterpart() != Self::Qtum
+    /// Whether a send on the network is priced at its indexers' fee rate:
+    /// Bitcoin's, Fractal's and DigiByte's, and Litecoin's MWEB quote. Every
+    /// other UTXO network pays the registry's fee, Qtum at
+    /// [`Chain::min_fee_rate`] since its Blockbook estimates zero.
+    pub(crate) fn reads_indexer_fee_rate(self) -> bool {
+        matches!(
+            self.mainnet_counterpart(),
+            Self::Bitcoin | Self::FractalBitcoin | Self::Digibyte | Self::Litecoin
+        )
     }
 
     pub(crate) fn litecoin_max_money(self) -> Result<u64, RegistryError> {

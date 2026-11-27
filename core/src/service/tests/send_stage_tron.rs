@@ -108,6 +108,9 @@ async fn wallet() -> (Wallet, wiremock::MockServer, Arc<Mutex<Ledger>>) {
         Secret::Key(fixture()["key"].as_str().unwrap()),
     )
     .await;
+    wallet
+        .add_endpoint("trongrid-v1", &format!("{}/v1/accounts", server.uri()))
+        .await;
     (wallet, server, ledger)
 }
 

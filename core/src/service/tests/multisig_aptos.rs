@@ -58,7 +58,7 @@ async fn node() -> (MockServer, Arc<Mutex<Node>>) {
 
 /// The watched account and the wallets of its two Ed25519 members.
 async fn wallets(endpoint: String) -> Arc<WalletService> {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: CHAIN,
         endpoints: vec![endpoint],

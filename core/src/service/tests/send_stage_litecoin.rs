@@ -50,7 +50,7 @@ async fn service(
     path: &str,
     password: Option<&str>,
 ) -> (Arc<WalletService>, String, Arc<InMemorySecretStore>) {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: chain,
         endpoints: vec![endpoint],
@@ -176,7 +176,7 @@ async fn protected_litecoin_wallet_builds_and_signs_known_receive_and_change_aft
                     .any(|input| input.source.address == change)
             );
             drop(wallet);
-            let resumed = WalletService::new(vec![ChainEndpoints {
+            let resumed = WalletService::serving(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: chain,
                 endpoints: vec![server.uri()],

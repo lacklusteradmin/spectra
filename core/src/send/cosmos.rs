@@ -20,7 +20,7 @@ use crate::send::stages::units_u128;
 /// The SDK's protobuf messages a transfer is written in, field for field.
 /// prost leaves out a field at its default, as the SDK's own encoder and
 /// CosmJS do, so the bytes are the ones a sign document is checked against.
-mod proto {
+pub(crate) mod proto {
     #[derive(Clone, PartialEq, prost::Message)]
     pub struct Coin {
         #[prost(string, tag = "1")]

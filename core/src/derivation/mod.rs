@@ -9,7 +9,6 @@ pub mod aptos;
 pub(crate) mod aptos_multikey;
 pub(crate) mod bip32;
 pub mod bitcoin;
-pub mod bitcoin_cash;
 pub mod bitcoin_gold;
 pub mod bitcoin_sv;
 pub mod cardano;

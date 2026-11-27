@@ -577,13 +577,15 @@ impl SolanaClient {
             });
         }
 
-        // 2. Fetch each transaction and build unified entries.
+        // 2. Fetch each transaction and build unified entries. Version 1
+        // transactions are on mainnet (2026-11-26), and a node refuses one
+        // asked for with a lower supported version: the page would fail.
         let mut result: Vec<SolanaTransfer> = Vec::new();
         for sig in &signatures {
             let tx = self
                 .call(
                     "getTransaction",
-                    json!([sig, {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": 0}]),
+                    json!([sig, {"encoding": "json", "commitment": "confirmed", "maxSupportedTransactionVersion": SUPPORTED_TRANSACTION_VERSION}]),
                 )
                 .await?;
             if tx.is_null() {
@@ -602,6 +604,11 @@ impl SolanaClient {
         })
     }
 }
+
+/// The newest transaction version history reads: legacy, version 0 and
+/// version 1 all carry their static keys under `accountKeys` and the keys
+/// they load under `meta.loadedAddresses`, which is all the decode reads.
+const SUPPORTED_TRANSACTION_VERSION: u8 = 1;
 
 fn solana_transaction_status(
     result: &Value,

@@ -1018,7 +1018,7 @@ async fn a_near_named_account_is_held_once_the_network_lists_the_key() {
         })
         .mount(&server)
         .await;
-    let service = WalletService::new(vec![crate::service::ChainEndpoints {
+    let service = WalletService::serving(vec![crate::service::ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Near,
         endpoints: vec![server.uri()],

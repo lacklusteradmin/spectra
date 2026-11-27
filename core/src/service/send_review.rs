@@ -387,7 +387,7 @@ mod tests {
                 })
                 .mount(&server)
                 .await;
-            let service = WalletService::new(vec![ChainEndpoints {
+            let service = WalletService::serving(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: crate::registry::Chain::Ethereum,
                 endpoints: vec![server.uri()],

@@ -135,12 +135,19 @@ impl BlockbookClient {
         .await
     }
 
+    /// A Bitcoin Cash address as Blockbook writes one: a whole CashAddr,
+    /// network prefix included, from the legacy form a wallet derives or a
+    /// CashAddr with or without its prefix. Blockbook names every input and
+    /// output that way, and zelcore's refuses a bare payload (2026-11-26).
     fn normalize_address(&self, address: &str) -> String {
-        if self.chain.mainnet_counterpart() == crate::registry::Chain::BitcoinCash {
-            crate::derivation::bitcoin_cash::normalize_bch_address(address)
-        } else {
-            address.to_string()
+        if self.chain.cashaddr_prefix().is_none() {
+            return address.to_string();
         }
+        crate::derivation::utxo_address::parse_utxo_address(self.chain, address)
+            .and_then(|parsed| {
+                crate::derivation::utxo_address::encode_cashaddr(self.chain, &parsed)
+            })
+            .unwrap_or_else(|_| address.to_string())
     }
 
     pub fn new(endpoints: Arc<Vec<String>>, chain: crate::registry::Chain) -> Self {

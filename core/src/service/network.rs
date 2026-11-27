@@ -36,62 +36,35 @@ impl WalletService {
     // whatever its visibility, so internal helpers live in plain
     // `impl WalletService` blocks of their own modules.
 
-    /// Run read-only protocol checks for every API on `chain`. A pass never
-    /// promises broadcast support.
+    /// Check every endpoint `chain` is read and sent through, all at once:
+    /// that it answers, as the network it is configured for where core can
+    /// ask. Read-only; a pass never promises a broadcast will be accepted.
     pub async fn probe_chain_endpoints(
         &self,
         chain: crate::registry::Chain,
     ) -> Result<Vec<EndpointProbe>, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
-            let this = &this;
-            let mut records: Vec<_> = this
-                .endpoint_directory()
-                .await?
-                .into_iter()
-                .filter(|entry| entry.record.chain_id == chain)
-                .map(|entry| entry.record)
-                .collect();
-
-            if let Some(api) = chain.default_api() {
-                for endpoint in this.configured_endpoint_urls(chain).await.iter() {
-                    if records.iter().any(|r| &r.endpoint == endpoint) {
-                        continue;
-                    }
-                    records.push(crate::catalog::endpoints::EndpointRecord {
-                        id: format!("configured:{endpoint}"),
-                        api,
+            let records = this.endpoint_records(chain).await;
+            let out: Vec<EndpointProbe> =
+                futures::future::join_all(records.into_iter().map(|record| async move {
+                    let endpoint = crate::api::endpoint::Endpoint {
+                        api: record.api,
+                        url: record.endpoint.clone(),
+                    };
+                    let (checked, reachable, detail) =
+                        crate::api::health::probe(chain, &endpoint, &record.capabilities).await;
+                    EndpointProbe {
+                        api: record.api,
                         chain_id: chain,
-                        endpoint: endpoint.clone(),
-                        capabilities: this
-                            .endpoints
-                            .read()
-                            .await
-                            .capabilities
-                            .get(&chain)
-                            .cloned()
-                            .unwrap_or_default(),
-                    });
-                }
-            }
-            let mut out = Vec::with_capacity(records.len());
-            for record in records {
-                let endpoint = crate::api::endpoint::Endpoint {
-                    api: record.api,
-                    url: record.endpoint.clone(),
-                };
-                let (checked, reachable, detail) =
-                    crate::api::health::probe(chain, &endpoint, &record.capabilities).await;
-                out.push(EndpointProbe {
-                    api: record.api,
-                    chain_id: chain,
-                    endpoint: record.endpoint,
-                    capabilities: record.capabilities.clone(),
-                    checked,
-                    reachable,
-                    detail,
-                });
-            }
+                        endpoint: record.endpoint,
+                        capabilities: record.capabilities,
+                        checked,
+                        reachable,
+                        detail,
+                    }
+                }))
+                .await;
             this.diagnostic_runs.record_endpoints(chain, out.clone());
             Ok(out)
         })

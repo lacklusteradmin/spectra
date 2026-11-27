@@ -49,7 +49,7 @@ fn phrase(restore_height: u64) -> WalletImportCommit {
 
 /// A service whose Monero daemon is `daemon`.
 async fn service(daemon: &MockServer) -> Arc<WalletService> {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Monero,
         endpoints: vec![daemon.uri()],

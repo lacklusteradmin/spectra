@@ -180,7 +180,7 @@ async fn token_wallet(
     let wallet = Wallet::import(chain, &server.uri(), Secret::Key(KEY)).await;
     if chain == Chain::Ton {
         wallet
-            .use_only("toncenter-v3", &format!("{}/v3", server.uri()))
+            .add_endpoint("toncenter-v3", &format!("{}/v3", server.uri()))
             .await;
     }
     (wallet, server, live)

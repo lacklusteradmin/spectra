@@ -18,10 +18,8 @@ class Node(Handler):
     def do_GET(self):
         s = self.state
         path, _, query = self.path.partition('?')
-        if path == '/cosmos/base/tendermint/v1beta1/node_info':
-            return self.reply({'default_node_info': {'network': 'cosmoshub-4'}})
         if path == '/cosmos/base/tendermint/v1beta1/blocks/latest':
-            return self.reply({'block': {'header': {'height': str(s['height'])}}})
+            return self.reply({'block': {'header': {'chain_id': 'cosmoshub-4', 'height': str(s['height'])}}})
         if path == '/feemarket/v1/gas_price/uatom':
             return self.reply({'price': {'denom': 'uatom', 'amount': '0.005000000000000000'}})
         if path == f"/cosmos/auth/v1beta1/accounts/{s['owner']}":

@@ -857,20 +857,32 @@ pub(crate) fn parse_stellar_amount(s: &str) -> Result<i64, ApiError> {
 
 impl HorizonClient {
     /// Submit a signed XDR envelope; the hash Horizon names it by.
+    /// Submit a signed envelope as Horizon takes one: `tx`, form-encoded.
+    /// Horizon refuses a JSON body (HTTP 415), as every built-in Horizon did
+    /// on 2026-11-26.
     pub async fn submit_envelope_b64(&self, tx_b64: &str) -> Result<String, ApiError> {
-        let tx_b64 = tx_b64.to_string();
+        // Base64's own `+`, `/` and `=` are the characters a form escapes.
+        let form = format!(
+            "tx={}",
+            tx_b64
+                .replace('+', "%2B")
+                .replace('/', "%2F")
+                .replace('=', "%3D")
+        );
         race(&self.endpoints, |base| {
             let client = self.client.clone();
-            let tx_b64 = tx_b64.clone();
+            let form = form.clone();
             let url = format!("{}/transactions", base.trim_end_matches('/'));
             async move {
-                let resp: serde_json::Value = client
-                    .post_json(
+                let (_, body) = client
+                    .post_bytes(
                         &url,
-                        &serde_json::json!({"tx": tx_b64}),
+                        "application/x-www-form-urlencoded",
+                        form.into_bytes(),
                         RetryProfile::ChainWrite,
                     )
                     .await?;
+                let resp: serde_json::Value = serde_json::from_slice(&body)?;
                 let hash = resp
                     .get("hash")
                     .and_then(|v| v.as_str())
@@ -1045,5 +1057,40 @@ mod transaction_status_tests {
                     .is_err()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod submission_tests {
+    use super::*;
+    use serde_json::json;
+    use wiremock::matchers::{body_string, header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// An envelope goes as Horizon takes it, `tx` form-encoded with base64's
+    /// `+`, `/` and `=` escaped; Horizon answers a JSON body with 415, as
+    /// stellar.org's did on 2026-11-26.
+    #[tokio::test]
+    async fn an_envelope_is_submitted_form_encoded() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/transactions"))
+            .and(header("Content-Type", "application/x-www-form-urlencoded"))
+            .and(body_string("tx=AA%2B%2F%3D"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"hash": "ab".repeat(32)})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(415))
+            .mount(&server)
+            .await;
+        let hash = HorizonClient::new(std::sync::Arc::new(vec![server.uri()]))
+            .submit_envelope_b64("AA+/=")
+            .await
+            .unwrap();
+        assert_eq!(hash, "ab".repeat(32));
     }
 }

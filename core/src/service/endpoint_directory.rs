@@ -119,7 +119,6 @@ impl WalletService {
         let this = self.clone();
         crate::service::worker::run(async move {
             let this = &this;
-            let catalog = crate::catalog::endpoints::catalog();
             let custom = this
                 .wallet_state
                 .read()
@@ -127,8 +126,8 @@ impl WalletService {
                 .settings
                 .custom_endpoints
                 .clone();
-            let mut entries: Vec<_> = catalog
-                .records
+            let mut entries: Vec<_> = this
+                .built_in_endpoints()
                 .iter()
                 .cloned()
                 .map(|record| EndpointDirectoryEntry {
@@ -151,54 +150,127 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// Every configured URL of the chain's own APIs that declares each
-    /// capability in `required`, with the API it speaks. The list has no
-    /// order: requests go to all of them at once.
+    pub(crate) fn built_in_endpoints(&self) -> Arc<Vec<EndpointRecord>> {
+        self.built_in_endpoints.read().clone()
+    }
+
+    /// Every endpoint `chain` is read and sent through, of every API it
+    /// takes: the user's own, then the built-in ones unless the user chose
+    /// theirs alone, a built-in one at a URL the user saved giving way to the
+    /// user's. Endpoints named for the chain's own APIs replace every
+    /// configured one of those APIs.
+    pub(crate) async fn endpoint_records(&self, chain: Chain) -> Vec<EndpointRecord> {
+        let mut records = self.configured_records(chain).await;
+        if let Some(named) = self.endpoint_overrides.read().get(&chain) {
+            records.retain(|record| !chain.endpoint_apis().contains(&record.api));
+            records.splice(0..0, named.iter().cloned());
+        }
+        records
+    }
+
+    /// `endpoint_records` before any named for this service's life.
+    async fn configured_records(&self, chain: Chain) -> Vec<EndpointRecord> {
+        let (custom, custom_only) = {
+            let state = self.wallet_state.read().await;
+            (
+                state
+                    .settings
+                    .custom_endpoints
+                    .iter()
+                    .filter(|endpoint| endpoint.chain_id == chain)
+                    .cloned()
+                    .collect::<Vec<_>>(),
+                state.settings.custom_endpoints_only.contains(&chain),
+            )
+        };
+        let mut records: Vec<EndpointRecord> =
+            custom.iter().filter_map(|e| e.record().ok()).collect();
+        if !custom_only {
+            for record in self.built_in_endpoints().iter() {
+                if record.chain_id == chain
+                    && !records
+                        .iter()
+                        .any(|r| same_url(&r.endpoint, &record.endpoint))
+                {
+                    records.push(record.clone());
+                }
+            }
+        }
+        records
+    }
+
+    /// Read and send on `chain` through `urls`, for this service's life. A
+    /// URL configured for one of the network's APIs is used as configured;
+    /// any other speaks the network's first API, declared for everything
+    /// Spectra's adapter for it does there. Those of the network's own APIs
+    /// replace every configured one of them.
+    pub async fn use_only_endpoints(
+        &self,
+        chain: Chain,
+        urls: Vec<String>,
+    ) -> Result<(), SpectraBridgeError> {
+        let configured = self.configured_records(chain).await;
+        let api = chain.default_api().ok_or_else(|| {
+            SpectraBridgeError::invalid(format!("{} takes no endpoints", chain.str_id()))
+        })?;
+        let named: Vec<EndpointRecord> = urls
+            .into_iter()
+            .map(|url| {
+                configured
+                    .iter()
+                    .find(|record| same_url(&record.endpoint, &url))
+                    .cloned()
+                    .unwrap_or_else(|| EndpointRecord {
+                        id: format!("named:{url}"),
+                        api,
+                        chain_id: chain,
+                        capabilities: crate::api::endpoint::endpoint_capability_options(chain, api),
+                        endpoint: url,
+                    })
+            })
+            .filter(|record| chain.endpoint_apis().contains(&record.api))
+            .collect();
+        if !named.is_empty() {
+            self.endpoint_overrides.write().insert(chain, named);
+        }
+        Ok(())
+    }
+
+    /// Each network's own endpoints as requests use them.
+    pub async fn configured_endpoints(&self) -> Vec<(Chain, Vec<String>)> {
+        let mut rows = Vec::new();
+        for chain in Chain::all().filter(|chain| !chain.endpoint_apis().is_empty()) {
+            rows.push((
+                chain,
+                self.chain_endpoints(chain, &[])
+                    .await
+                    .into_iter()
+                    .map(|endpoint| endpoint.url)
+                    .collect(),
+            ));
+        }
+        rows
+    }
+
+    /// Every endpoint of the chain's own APIs that declares each capability
+    /// in `required`, with the API it speaks. The list has no order:
+    /// requests go to all of them at once.
     pub(crate) async fn chain_endpoints(
         &self,
         chain: Chain,
         required: &[EndpointCapability],
     ) -> Vec<Endpoint> {
-        let urls = self.configured_endpoint_urls(chain).await;
-        let Ok(directory) = self.endpoint_directory().await else {
-            return vec![];
-        };
-        let declares =
-            |capabilities: &[EndpointCapability]| required.iter().all(|c| capabilities.contains(c));
-        let index = self.endpoints.read().await;
-        urls.iter()
-            .filter(|url| crate::api::http::may_contact(url))
-            .filter_map(|url| {
-                let matching: Vec<_> = directory
-                    .iter()
-                    .filter(|e| {
-                        e.record.endpoint.trim_end_matches('/') == url.trim_end_matches('/')
-                    })
-                    .collect();
-                let api = if matching.is_empty() {
-                    // Outside the directory: the transport list vouches for
-                    // it, and it is read as the chain's default API.
-                    index
-                        .capabilities
-                        .get(&chain)
-                        .is_some_and(|caps| declares(caps))
-                        .then(|| chain.default_api())
-                        .flatten()?
-                } else {
-                    matching
-                        .iter()
-                        .find(|e| {
-                            e.record.chain_id == chain
-                                && chain.endpoint_apis().contains(&e.record.api)
-                                && declares(&e.record.capabilities)
-                        })?
-                        .record
-                        .api
-                };
-                Some(Endpoint {
-                    api,
-                    url: url.clone(),
-                })
+        self.endpoint_records(chain)
+            .await
+            .into_iter()
+            .filter(|record| {
+                chain.endpoint_apis().contains(&record.api)
+                    && required.iter().all(|c| record.capabilities.contains(c))
+                    && crate::api::http::may_contact(&record.endpoint)
+            })
+            .map(|record| Endpoint {
+                api: record.api,
+                url: record.endpoint,
             })
             .collect()
     }
@@ -234,124 +306,35 @@ impl WalletService {
         self.chain_endpoints(chain, &[])
             .await
             .into_iter()
-            .find(|endpoint| endpoint.url.trim_end_matches('/') == url.trim_end_matches('/'))
+            .find(|endpoint| same_url(&endpoint.url, url))
             .map(|endpoint| endpoint.api)
     }
 
     /// The URLs for one API on `chain` that declare every capability in
-    /// `required`: custom endpoints first, then the catalog. How indexers and
-    /// secondary services are found; the chain's own list is `chain_endpoints`.
+    /// `required`. How indexers and secondary services are found; the
+    /// chain's own list is `chain_endpoints`.
     pub(crate) async fn api_endpoints(
         &self,
         chain: Chain,
         api: EndpointApi,
         required: &[EndpointCapability],
     ) -> Result<Vec<String>, SpectraBridgeError> {
-        let mut urls = self.custom_api_endpoints(chain, &[api], required).await;
-        let catalog_records: &[EndpointRecord] = if self.uses_custom_endpoints_only(chain).await {
-            &[]
-        } else {
-            &crate::catalog::endpoints::catalog().records
-        };
-        for record in catalog_records {
-            if record.chain_id == chain
-                && record.api == api
-                && required.iter().all(|c| record.capabilities.contains(c))
-                && !urls.contains(&record.endpoint)
-            {
-                urls.push(record.endpoint.clone());
-            }
-        }
-        urls.retain(|url| crate::api::http::may_contact(url));
-        Ok(urls)
-    }
-
-    /// Whether the user set this network to their own endpoints alone.
-    pub(crate) async fn uses_custom_endpoints_only(&self, chain: Chain) -> bool {
-        self.wallet_state
-            .read()
+        Ok(self
+            .endpoint_records(chain)
             .await
-            .settings
-            .custom_endpoints_only
-            .contains(&chain)
-    }
-
-    pub(crate) async fn custom_api_endpoints(
-        &self,
-        chain: Chain,
-        apis: &[EndpointApi],
-        required: &[EndpointCapability],
-    ) -> Vec<String> {
-        self.wallet_state
-            .read()
-            .await
-            .settings
-            .custom_endpoints
-            .iter()
-            .filter(|e| {
-                e.chain_id == chain
-                    && apis.contains(&e.api)
-                    && required.iter().all(|c| e.capabilities.contains(c))
+            .into_iter()
+            .filter(|record| {
+                record.api == api
+                    && required.iter().all(|c| record.capabilities.contains(c))
+                    && crate::api::http::may_contact(&record.endpoint)
             })
-            .map(|e| e.endpoint.clone())
-            .collect()
+            .map(|record| record.endpoint)
+            .collect())
     }
 }
 
-impl WalletService {
-    /// Each chain's own list as requests use it, custom URLs included.
-    pub async fn configured_endpoints(&self) -> Vec<ChainEndpoints> {
-        let mut rows = Vec::new();
-        for chain in Chain::all().filter(|chain| !chain.endpoint_apis().is_empty()) {
-            rows.push(ChainEndpoints {
-                capabilities: vec![],
-                endpoints: self.configured_endpoint_urls(chain).await.as_ref().clone(),
-                chain_id: chain,
-            });
-        }
-        rows
-    }
-}
-
-/// One chain's primary-API endpoint list, given at construction or through
-/// `update_endpoints` to replace the catalog transport.
-#[derive(Debug, Clone, Serialize, Deserialize, uniffi::Record)]
-pub struct ChainEndpoints {
-    /// Declared operations for explicit URLs absent from the directory.
-    pub capabilities: Vec<EndpointCapability>,
-    pub chain_id: crate::registry::Chain,
-    pub endpoints: Vec<String>,
-}
-
-// Durable transaction lifecycle records live in `crate::send::stages`.
-
-// ── Endpoint index (internal — pre-indexed for O(1) chain_id lookup) ──────
-
-#[derive(Debug, Clone, Default)]
-pub(crate) struct EndpointIndex {
-    pub(super) capabilities: std::collections::HashMap<Chain, Vec<EndpointCapability>>,
-    pub(super) endpoints: std::collections::HashMap<Chain, Arc<Vec<String>>>,
-}
-
-impl EndpointIndex {
-    pub(super) fn from_list(list: Vec<ChainEndpoints>) -> Result<Self, SpectraBridgeError> {
-        for row in &list {
-            for url in &row.endpoints {
-                crate::api::endpoint::validate_configured_endpoint(row.chain_id, url)?;
-            }
-        }
-
-        let mut endpoints = std::collections::HashMap::with_capacity(list.len());
-        let mut capabilities = std::collections::HashMap::new();
-        for entry in list {
-            capabilities.insert(entry.chain_id, entry.capabilities);
-            endpoints.insert(entry.chain_id, Arc::new(entry.endpoints));
-        }
-        Ok(Self {
-            endpoints,
-            capabilities,
-        })
-    }
+fn same_url(a: &str, b: &str) -> bool {
+    a.trim_end_matches('/') == b.trim_end_matches('/')
 }
 
 impl WalletService {
@@ -387,79 +370,69 @@ impl WalletService {
         };
         Ok((*api, self.endpoints_for(chain, required).await))
     }
+}
 
-    pub(crate) async fn configured_endpoint_urls(&self, chain: Chain) -> Arc<Vec<String>> {
-        let base = self
-            .endpoints
-            .read()
-            .await
-            .endpoints
-            .get(&chain)
-            .cloned()
-            .unwrap_or_default();
-        if self
-            .uses_catalog_endpoints
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            let mut custom = self
-                .custom_api_endpoints(chain, chain.endpoint_apis(), &[])
-                .await;
-            // The user's endpoints alone, when the user said so for this
-            // network: the catalog's are not contacted at all.
-            if self.uses_custom_endpoints_only(chain).await {
-                return Arc::new(custom);
-            }
-            if !custom.is_empty() {
-                for url in base.iter() {
-                    if !custom.contains(url) {
-                        custom.push(url.clone());
-                    }
-                }
-                return Arc::new(custom);
-            }
-        }
-        base
+/// A test's endpoints for one network: each URL speaking the network's
+/// first API and declaring `capabilities`, as far as that API's adapter does
+/// them there.
+#[cfg(test)]
+#[derive(Debug, Clone)]
+pub(crate) struct ChainEndpoints {
+    pub(crate) capabilities: Vec<EndpointCapability>,
+    pub(crate) chain_id: Chain,
+    pub(crate) endpoints: Vec<String>,
+}
+
+#[cfg(test)]
+impl ChainEndpoints {
+    fn records(&self) -> Vec<EndpointRecord> {
+        let Some(api) = self.chain_id.default_api() else {
+            return vec![];
+        };
+        let supported = crate::api::endpoint::endpoint_capability_options(self.chain_id, api);
+        self.endpoints
+            .iter()
+            .map(|url| EndpointRecord {
+                id: format!("test:{}:{url}", self.chain_id),
+                api,
+                chain_id: self.chain_id,
+                endpoint: url.clone(),
+                capabilities: self
+                    .capabilities
+                    .iter()
+                    .copied()
+                    .filter(|c| supported.contains(c))
+                    .collect(),
+            })
+            .collect()
     }
 }
 
+#[cfg(test)]
 impl WalletService {
-    pub async fn update_endpoints(
+    /// A service built in with `endpoints` alone.
+    pub(crate) fn serving(endpoints: Vec<ChainEndpoints>) -> Result<Arc<Self>, SpectraBridgeError> {
+        let service = Self::new(vec![])?;
+        *service.built_in_endpoints.write() =
+            Arc::new(endpoints.iter().flat_map(ChainEndpoints::records).collect());
+        Ok(service)
+    }
+
+    /// Replace the built-in endpoints of each network `endpoints` names.
+    pub(crate) async fn serve(
         &self,
         endpoints: Vec<ChainEndpoints>,
     ) -> Result<(), SpectraBridgeError> {
-        let index = EndpointIndex::from_list(endpoints)?;
-        self.uses_catalog_endpoints
-            .store(false, std::sync::atomic::Ordering::Relaxed);
-        let mut guard = self.endpoints.write().await;
-        *guard = index;
+        let mut built_in = self.built_in_endpoints.write();
+        let mut records: Vec<EndpointRecord> = built_in
+            .iter()
+            .filter(|record| !endpoints.iter().any(|e| e.chain_id == record.chain_id))
+            .cloned()
+            .collect();
+        records.extend(endpoints.iter().flat_map(ChainEndpoints::records));
+        *built_in = Arc::new(records);
         Ok(())
     }
-}
-
-/// Catalog transport configuration for a non-platform front end: each
-/// chain's own list, every API it speaks included. Indexers and secondary
-/// services are asked for by API, through `WalletService::api_endpoints`.
-pub fn catalog_endpoints() -> Result<Vec<ChainEndpoints>, SpectraBridgeError> {
-    let mut endpoints = Vec::new();
-    for chain in Chain::all() {
-        let apis = chain.endpoint_apis();
-        if apis.is_empty() {
-            continue;
-        }
-        endpoints.push(ChainEndpoints {
-            capabilities: vec![],
-            chain_id: chain,
-            endpoints: crate::catalog::endpoints::records_for_chain(chain, &[])
-                .into_iter()
-                .filter(|record| {
-                    apis.contains(&record.api)
-                        && record.capabilities.iter().any(|c| c.is_primary_read())
-                })
-                .map(|record| record.endpoint)
-                .collect(),
-        });
-    }
-    Ok(endpoints)
 }
 
 #[cfg(test)]
@@ -635,7 +608,7 @@ mod tests {
         );
         assert!(
             !reopened
-                .configured_endpoint_urls(crate::registry::Chain::SolanaDevnet)
+                .endpoints_for(crate::registry::Chain::SolanaDevnet, &[])
                 .await
                 .iter()
                 .any(|url| url.contains(&server.uri()))
@@ -699,9 +672,9 @@ mod tests {
             .await
             .unwrap();
         let accounts = service
-            .tron_account_endpoints(
+            .api_endpoints(
                 crate::registry::Chain::Tron,
-                &[],
+                EndpointApi::TrongridV1,
                 &[EndpointCapability::TokenDiscovery],
             )
             .await
@@ -715,14 +688,14 @@ mod tests {
         );
         assert!(
             !service
-                .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+                .endpoints_for(crate::registry::Chain::Ethereum, &[])
                 .await
                 .iter()
                 .any(|url| url.contains(&server.uri()))
         );
         assert!(
             !service
-                .configured_endpoint_urls(crate::registry::Chain::Tron)
+                .endpoints_for(crate::registry::Chain::Tron, &[])
                 .await
                 .iter()
                 .any(|url| url.contains(&server.uri()))
@@ -807,7 +780,7 @@ mod tests {
         );
         assert_eq!(
             &service
-                .configured_endpoint_urls(crate::registry::Chain::Bitcoin)
+                .endpoints_for(crate::registry::Chain::Bitcoin, &[])
                 .await[..2],
             &["https://other.example/api", "https://node.example/api"]
         );
@@ -908,13 +881,9 @@ mod tests {
         );
         assert_eq!(balance.received_requests().await.unwrap().len(), 1);
         assert_eq!(broadcast.received_requests().await.unwrap().len(), 1);
-        // Even explicit transport overrides cannot widen a saved declaration.
+        // Naming a saved endpoint alone cannot widen its declaration.
         reopened
-            .update_endpoints(vec![ChainEndpoints {
-                chain_id: crate::registry::Chain::Ethereum,
-                endpoints: vec![balance.uri()],
-                capabilities: vec![EndpointCapability::Broadcast],
-            }])
+            .use_only_endpoints(crate::registry::Chain::Ethereum, vec![balance.uri()])
             .await
             .unwrap();
         assert!(
@@ -1081,11 +1050,10 @@ mod tests {
         }
         // Restrict the fixture to loopback, retaining the saved per-endpoint declarations.
         service
-            .update_endpoints(vec![ChainEndpoints {
-                chain_id: crate::registry::Chain::Ethereum,
-                endpoints: vec![broadcast.uri(), failing_balance.uri(), balance.uri()],
-                capabilities: vec![],
-            }])
+            .use_only_endpoints(
+                crate::registry::Chain::Ethereum,
+                vec![broadcast.uri(), failing_balance.uri(), balance.uri()],
+            )
             .await
             .unwrap();
         assert_eq!(
@@ -1117,11 +1085,7 @@ mod tests {
         assert_eq!(balance.received_requests().await.unwrap().len(), 1);
         assert_eq!(broadcast.received_requests().await.unwrap().len(), 2);
         service
-            .update_endpoints(vec![ChainEndpoints {
-                chain_id: crate::registry::Chain::Ethereum,
-                endpoints: vec![balance.uri()],
-                capabilities: vec![EndpointCapability::Broadcast],
-            }])
+            .use_only_endpoints(crate::registry::Chain::Ethereum, vec![balance.uri()])
             .await
             .unwrap();
         assert!(
@@ -1149,51 +1113,70 @@ mod tests {
 }
 
 #[cfg(test)]
-mod a_primary_endpoint_can_serve_a_primary_read {
+mod a_chain_reads_through_its_own_apis {
     use super::*;
 
-    /// Operation URL prefixes and incompatible API families are never passed
-    /// to a primary client as base URLs, even when they share a chain.
-    #[test]
-    fn no_chain_is_offered_an_endpoint_that_answers_none_of_them() {
-        let mut checked = 0;
-        for row in catalog_endpoints().expect("catalog endpoints") {
-            for endpoint in &row.endpoints {
-                let chain = row.chain_id;
-                let record = crate::catalog::endpoints::records_for_chain(row.chain_id, &[])
-                    .into_iter()
-                    .find(|record| &record.endpoint == endpoint)
-                    .unwrap();
-                assert!(chain.endpoint_apis().contains(&record.api));
-                assert!(
-                    record.capabilities.iter().any(|c| c.is_primary_read()),
-                    "{} lists operation-only URL {endpoint} as a base",
-                    row.chain_id
-                );
-                checked += 1;
+    /// Litecoin's Esplora and BlockCypher rows are both its own endpoints;
+    /// neither is set aside for the other, and no indexer of another API is
+    /// handed to its clients.
+    #[tokio::test]
+    async fn a_chain_uses_every_api_it_speaks_and_no_other() {
+        let service = WalletService::new_catalog().unwrap();
+        let litecoin = service
+            .chain_endpoints(crate::registry::Chain::Litecoin, &[])
+            .await;
+        for url in [
+            "https://litecoinspace.org/api",
+            "https://api.blockcypher.com/v1/ltc/main",
+        ] {
+            assert!(litecoin.iter().any(|endpoint| endpoint.url == url), "{url}");
+        }
+        for chain in crate::registry::Chain::all() {
+            for endpoint in service.chain_endpoints(chain, &[]).await {
+                assert!(chain.endpoint_apis().contains(&endpoint.api), "{chain}");
             }
         }
-        assert!(checked > 0, "no primary endpoint was checked at all");
     }
 
-    /// Litecoin's Esplora and BlockCypher rows are both its own endpoints;
-    /// neither is set aside for the other.
-    #[test]
-    fn a_chain_uses_every_api_it_speaks() {
-        let litecoin = catalog_endpoints()
-            .unwrap()
-            .into_iter()
-            .find(|row| row.chain_id == crate::registry::Chain::Litecoin)
+    /// A URL named for a network's own APIs replaces every configured one of
+    /// them for the service's life; its indexers stay, and an indexer named
+    /// is used as configured.
+    #[tokio::test]
+    async fn named_endpoints_replace_the_networks_own_and_keep_its_indexers() {
+        let service = WalletService::new_catalog().unwrap();
+        let chain = crate::registry::Chain::Ethereum;
+        let indexers = service
+            .api_endpoints(chain, EndpointApi::Blockscout, &[])
+            .await
             .unwrap();
-        assert!(
-            litecoin
-                .endpoints
-                .contains(&"https://litecoinspace.org/api".to_string())
+        assert!(!indexers.is_empty());
+        service
+            .use_only_endpoints(chain, vec!["http://127.0.0.1:1/rpc".into()])
+            .await
+            .unwrap();
+        let own = service.chain_endpoints(chain, &[]).await;
+        assert_eq!(own.len(), 1);
+        assert_eq!(
+            (own[0].api, own[0].url.as_str()),
+            (EndpointApi::EvmJsonRpc, "http://127.0.0.1:1/rpc")
         );
-        assert!(
-            litecoin
-                .endpoints
-                .contains(&"https://api.blockcypher.com/v1/ltc/main".to_string())
+        assert_eq!(
+            service.endpoint_records(chain).await[0].capabilities,
+            crate::api::endpoint::endpoint_capability_options(chain, EndpointApi::EvmJsonRpc)
         );
+        assert_eq!(
+            service
+                .api_endpoints(chain, EndpointApi::Blockscout, &[])
+                .await
+                .unwrap(),
+            indexers
+        );
+        // An indexer named alone is used as configured, and leaves the
+        // network's own endpoints as they were.
+        service
+            .use_only_endpoints(chain, vec![indexers[0].clone()])
+            .await
+            .unwrap();
+        assert_eq!(service.chain_endpoints(chain, &[]).await, own);
     }
 }

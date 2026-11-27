@@ -146,7 +146,7 @@ impl Store {
     }
 
     async fn open(&self, nodes: &[&MockServer]) -> Arc<WalletService> {
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: Chain::Ethereum,
             endpoints: nodes.iter().map(|node| node.uri()).collect(),
@@ -736,7 +736,7 @@ mod evm_funds_tests {
             balance: 10 * 10u128.pow(18),
         }));
         let server = node(state.clone()).await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],

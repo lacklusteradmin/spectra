@@ -5,17 +5,31 @@ Engineering work that remains. Delete an item once it is done. Rule 0 and
 
 ## Tasks
 
-- [ ] **Audit endpoints across all supported chains and networks.** Review
-  the endpoint catalog, default selection and custom endpoint routing. Verify
-  each endpoint's concrete network identity, `EndpointApi`, advertised
-  capabilities, access requirements and availability; confirm built-in defaults
-  need no API key. Cover reads, history/token discovery, fees, transaction status
-  and broadcast routing where advertised.
-  Check URL validation, health probes, failure reporting and fallback behaviour
-  against the same core rules. Record dated, reproducible evidence per endpoint,
-  remove or correct unsupported entries, and prove routing/refusal paths through
-  offline CLI fixtures. Keep live probes read-only; any resulting behaviour
-  changes need every verification target here and spectra-apple's checks.
+- [ ] **Verify an endpoint's network before reading from it.** Most XRP
+  Ledger, Tron and Stellar reads, and a few Cardano, NEAR and TON ones, ask a
+  node its network first; every other endpoint is asked only by the health
+  probe and before a broadcast, so a custom endpoint on another network (a
+  Sepolia RPC saved as Ethereum's) answers balances and history beside the
+  built-in ones. Ask each endpoint once per process through
+  `api::network::verify_network`, before any read is raced to it, and drop
+  the per-read checks.
+- [ ] **Follow Zcash's next network upgrade.** On 2026-11-26 Zebra 7.0.0 nodes
+  at height 3,613,715 reported consensus branch `0x77190ad9`, which
+  `zcash_protocol` 0.10.6 does not know: core refuses every transparent and
+  shielded Zcash send ("update before sending"). Move the Zcash crates to a
+  release that names the upgrade and its activation height, with SDK vectors
+  for both pools.
+- [ ] **Price opBNB and BNB testnet transfers when the fee history says
+  zero.** Their nodes' fee history sometimes gives a zero base fee and a zero
+  lowest tip (2026-11-26), and core refuses the zero fee, so a send fails
+  until a block holds a tipping transaction. Give each network the tip floor
+  its nodes include, from the network's own documentation, as Chiliz and 0G
+  have.
+- [ ] **Read Cosmos history from pruned nodes.** A transaction search on a
+  node that no longer keeps the blocks of some matching transactions fails
+  whole (HTTP 500 "height … is not available") instead of answering the newer
+  ones, as Injective's and BandChain's own nodes did on 2026-11-26. Bound the
+  search by the node's lowest kept height and say where the history stops.
 
 ## Supported chain scope
 
@@ -91,18 +105,22 @@ cosigners as data, as PSBTs do. What remains:
 
 ### History and provider coverage
 
-- [ ] **Add built-in EVM history and token-discovery providers.** BNB,
-  HyperEVM, Linea, Sei, Cronos, opBNB, Sonic, Berachain, X Layer, Monad, Kaia,
-  XDC Network, Robinhood Chain, Kava EVM, Stable, Arc, Katana, peaq and 0G
-  currently require a custom Blockscout-compatible address indexer. Add only
-  independently verified keyless sources for the concrete network, including
-  the corresponding test networks where coverage is absent. Verify network
-  identity, paginated native/token history, discovery and failure reporting;
-  an ordinary RPC does not supply complete address history. Robinhood Chain's
-  and Arc's Blockscout instances answer non-browser clients with a Cloudflare
-  challenge, and 0G's `chainscan.0g.ai/open/api` speaks a variant of the
-  Etherscan API (`timestamp`, hex `gas` and `gasUsed`, `addresstokenbalance`)
-  that the Blockscout adapter does not read (docs/audits/evm-mainnets-2026-11-24).
+- [ ] **Add built-in EVM history and token-discovery providers.** Arbitrum,
+  Base, Polygon, Arbitrum Sepolia, Plasma, BNB, HyperEVM, Linea, Sei, Cronos,
+  opBNB, Sonic, Berachain, X Layer, Monad, Kaia, XDC Network, Robinhood Chain,
+  Kava EVM, Stable, Arc, Katana, peaq and 0G currently require a custom
+  Blockscout-compatible address indexer. Add only independently verified
+  keyless sources for the concrete network, including the corresponding test
+  networks where coverage is absent. Verify network identity, paginated
+  native/token history, discovery and failure reporting; an ordinary RPC does
+  not supply complete address history. Robinhood Chain's and Arc's Blockscout
+  instances answer non-browser clients with a Cloudflare challenge, and 0G's
+  `chainscan.0g.ai/open/api` speaks a variant of the Etherscan API
+  (`timestamp`, hex `gas` and `gasUsed`, `addresstokenbalance`) that the
+  Blockscout adapter does not read (docs/audits/evm-mainnets-2026-11-24).
+  Arbitrum's, Base's, Polygon's and Arbitrum Sepolia's Blockscout instances
+  began answering every client with a Cloudflare challenge, and Routescan
+  stopped serving Plasma (docs/audits/endpoints-2026-11-26).
 - [ ] **Implement Substrate address-history adapters** for Polkadot/Westend,
   Kusama Asset Hub, Astar and Bittensor. Their current Substrate RPC path
   supports balances, transfers and submitted finality, but no complete
@@ -111,11 +129,13 @@ cosigners as data, as PSBTs do. What remains:
   and durable merge/continuation handling. Prove received and externally
   submitted transactions through CLI fixtures, not only local submissions.
 - [ ] **Restore verified default providers for BCH, DOGE, ZEC, DCR and DASH
-  testnets.** These networks currently require custom endpoints before reads
-  or transfers. Verify the concrete network and every advertised capability,
-  including balance, UTXOs, history, fee/status reads and submission routing.
-  CLI checks must distinguish missing configuration from provider failure;
-  retain no failed endpoint as a fallback.
+  testnets, and Blast.** These networks currently require custom endpoints
+  before reads or transfers. Blast's own RPC and PublicNode's stopped
+  answering, and Routescan stopped serving it, by 2026-11-26. Verify the
+  concrete network and every advertised capability, including balance, UTXOs,
+  history, fee/status reads and submission routing. CLI checks must
+  distinguish missing configuration from provider failure; retain no failed
+  endpoint as a fallback.
 
 ### Staking coverage
 

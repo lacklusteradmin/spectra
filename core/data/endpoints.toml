@@ -40,14 +40,6 @@ chain_id = "plasma"
 endpoint = "https://rpc.plasma.to"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
-# Keyless account methods answer; native history agrees with RPC receipts.
-[[endpoints]]
-id = "plasma.history.routescan"
-api = "blockscout"
-chain_id = "plasma"
-endpoint = "https://api.routescan.io/v2/network/mainnet/evm/9745/etherscan"
-capabilities = ["history", "token-history", "token-discovery"]
-
 [[endpoints]]
 id = "monad.rpc.quicknode"
 api = "evm-json-rpc"
@@ -413,7 +405,7 @@ id = "bitcoin.testnet4.mempool_emzy"
 api = "esplora"
 chain_id = "bitcoin-testnet-4"
 endpoint = "https://mempool.emzy.de/testnet4/api"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "bitcoin.signet.blockstream"
@@ -434,7 +426,7 @@ id = "bitcoin.signet.mempool_emzy"
 api = "esplora"
 chain_id = "bitcoin-signet"
 endpoint = "https://mempool.emzy.de/signet/api"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "bitcoinsv.whatsonchain.api"
@@ -464,7 +456,7 @@ id = "bitcoincash.mainnet.zelcore"
 api = "blockbook"
 chain_id = "bitcoin-cash"
 endpoint = "https://blockbook.bch.zelcore.io"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
 id = "litecoin.litecoinspace.api"
@@ -499,21 +491,21 @@ id = "dogecoin.mainnet.blockcypher"
 api = "blockcypher"
 chain_id = "dogecoin"
 endpoint = "https://api.blockcypher.com/v1/doge/main"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
 id = "dogecoin.mainnet.zelcore"
 api = "blockbook"
 chain_id = "dogecoin"
 endpoint = "https://blockbook.doge.zelcore.io"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
 id = "dash.mainnet.blockcypher"
 api = "blockcypher"
 chain_id = "dash"
 endpoint = "https://api.blockcypher.com/v1/dash/main"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
 id = "zcash.mainnet.zelcore"
@@ -587,21 +579,21 @@ id = "bitcoingold.mainnet.zelcore"
 api = "blockbook"
 chain_id = "bitcoin-gold"
 endpoint = "https://blockbook.btg.zelcore.io"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
 id = "dash.mainnet.zelcore"
 api = "blockbook"
 chain_id = "dash"
 endpoint = "https://blockbook.dash.zelcore.io"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
 id = "dash.mainnet.atomicwallet"
 api = "blockbook"
 chain_id = "dash"
 endpoint = "https://dash.atomicwallet.io"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 # Qtum's Blockbook names Qtum's genesis block at height 0; its fee estimate
 # is zero, so a Qtum send pays Qtum Core's minimum relay rate instead.
@@ -720,7 +712,7 @@ id = "solana.rpc.publicnode"
 api = "solana-json-rpc"
 chain_id = "solana"
 endpoint = "https://solana-rpc.publicnode.com"
-capabilities = ["balance", "history", "fee", "token-balance", "token-discovery", "token-history", "verification", "staking"]
+capabilities = ["balance", "history", "fee", "token-history", "verification"]
 
 [[endpoints]]
 id = "solana.devnet.rpc"
@@ -762,7 +754,7 @@ id = "xrp.testnet.xrpllabs"
 api = "xrpl-json-rpc"
 chain_id = "xrp-testnet"
 endpoint = "https://testnet.xrpl-labs.com/"
-capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification"]
+capabilities = ["balance", "fee", "broadcast", "token-balance", "token-discovery", "verification"]
 
 [[endpoints]]
 id = "cardano.koios.primary"
@@ -779,10 +771,10 @@ endpoint = "https://graph.xray.app/output/services/koios/mainnet/api/v1"
 capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification", "utxo"]
 
 [[endpoints]]
-id = "cardano.preprod.koios.xray"
+id = "cardano.preprod.koios.official"
 api = "koios"
 chain_id = "cardano-preprod"
-endpoint = "https://graph.xray.app/output/services/koios/preprod/api/v1"
+endpoint = "https://preprod.koios.rest/api/v1"
 capabilities = ["balance", "history", "fee", "broadcast", "token-balance", "token-discovery", "token-history", "verification", "utxo"]
 
 [[endpoints]]
@@ -829,7 +821,7 @@ id = "ton.api.v2"
 api = "toncenter-v2"
 chain_id = "ton"
 endpoint = "https://toncenter.com/api/v2"
-capabilities = ["balance", "history", "fee", "broadcast", "verification", "token-balance"]
+capabilities = ["balance", "history", "broadcast", "verification"]
 
 [[endpoints]]
 id = "ton.api.v3"
@@ -843,7 +835,7 @@ id = "ton.testnet.v2"
 api = "toncenter-v2"
 chain_id = "ton-testnet"
 endpoint = "https://testnet.toncenter.com/api/v2"
-capabilities = ["balance", "history", "fee", "broadcast", "verification", "token-balance"]
+capabilities = ["balance", "broadcast", "verification"]
 
 [[endpoints]]
 id = "ton.testnet.v3"
@@ -881,7 +873,7 @@ id = "sui.testnet.graphql.zan"
 api = "sui-graphql"
 chain_id = "sui-testnet"
 endpoint = "https://api.zan.top/public/sui-testnet/graphql"
-capabilities = ["balance", "history", "token-history", "fee", "broadcast", "token-balance", "token-discovery", "verification"]
+capabilities = ["history", "token-history", "fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "near.rpc.mainnet"
@@ -1322,7 +1314,7 @@ id = "hyperliquid.testnet.rpc.drpc"
 api = "evm-json-rpc"
 chain_id = "hyperliquid-testnet"
 endpoint = "https://hyperliquid-testnet.drpc.org"
-capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
+capabilities = ["balance", "fee", "broadcast", "verification"]
 
 [[endpoints]]
 id = "base.rpc.publicnode"
@@ -1392,20 +1384,6 @@ id = "scroll.rpc.1rpc"
 api = "evm-json-rpc"
 chain_id = "scroll"
 endpoint = "https://1rpc.io/scroll"
-capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
-
-[[endpoints]]
-id = "blast.rpc.blast-rpc"
-api = "evm-json-rpc"
-chain_id = "blast"
-endpoint = "https://blast-rpc.publicnode.com"
-capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
-
-[[endpoints]]
-id = "blast.rpc.rpc"
-api = "evm-json-rpc"
-chain_id = "blast"
-endpoint = "https://rpc.blast.io"
 capabilities = ["balance", "fee", "broadcast", "token-balance", "verification"]
 
 [[endpoints]]
@@ -1511,21 +1489,21 @@ id = "decred.mainnet.dcrdata"
 api = "insight"
 chain_id = "decred"
 endpoint = "https://dcrdata.decred.org/insight/api"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
 id = "kaspa.mainnet.kaspaorg"
 api = "kaspa-rest"
 chain_id = "kaspa"
 endpoint = "https://api.kaspa.org"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
 id = "kaspa.testnet.kaspaorg"
 api = "kaspa-rest"
 chain_id = "kaspa-testnet"
 endpoint = "https://api-tn10.kaspa.org"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 # VeChainThor nodes, verified 2026-11-24 (thor 2.5.1): genesis id at
 # /blocks/0, accounts, `POST /accounts/*` calls and simulation, /fees/priority,
@@ -1745,31 +1723,10 @@ capabilities = ["balance", "fee", "broadcast", "verification"]
 # Verified keyless address-history services; shared by routing and diagnostics.
 
 [[endpoints]]
-id = "base.history.keyless"
-api = "blockscout"
-chain_id = "base"
-endpoint = "https://base.blockscout.com"
-capabilities = ["history", "token-discovery", "token-history"]
-
-[[endpoints]]
-id = "arbitrum.history.keyless"
-api = "blockscout"
-chain_id = "arbitrum"
-endpoint = "https://arbitrum.blockscout.com"
-capabilities = ["history", "token-discovery", "token-history"]
-
-[[endpoints]]
 id = "optimism.history.keyless"
 api = "blockscout"
 chain_id = "optimism"
 endpoint = "https://explorer.optimism.io"
-capabilities = ["history", "token-discovery", "token-history"]
-
-[[endpoints]]
-id = "polygon.history.keyless"
-api = "blockscout"
-chain_id = "polygon"
-endpoint = "https://polygon.blockscout.com"
 capabilities = ["history", "token-discovery", "token-history"]
 
 [[endpoints]]
@@ -1815,13 +1772,6 @@ endpoint = "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan"
 capabilities = ["history", "token-discovery", "token-history"]
 
 [[endpoints]]
-id = "blast.history.keyless"
-api = "blockscout"
-chain_id = "blast"
-endpoint = "https://api.routescan.io/v2/network/mainnet/evm/81457/etherscan"
-capabilities = ["history", "token-discovery", "token-history"]
-
-[[endpoints]]
 id = "mantle.history.keyless"
 api = "blockscout"
 chain_id = "mantle"
@@ -1847,13 +1797,6 @@ id = "ethereum-classic-mordor.history.keyless"
 api = "blockscout"
 chain_id = "ethereum-classic-mordor"
 endpoint = "https://etc-mordor.blockscout.com"
-capabilities = ["history", "token-discovery", "token-history"]
-
-[[endpoints]]
-id = "arbitrum-sepolia.history.keyless"
-api = "blockscout"
-chain_id = "arbitrum-sepolia"
-endpoint = "https://arbitrum-sepolia.blockscout.com"
 capabilities = ["history", "token-discovery", "token-history"]
 
 [[endpoints]]
@@ -2073,13 +2016,6 @@ endpoint = "https://babylon-rest.publicnode.com"
 capabilities = ["balance", "history", "fee", "broadcast", "verification"]
 
 [[endpoints]]
-id = "babylon.rest.polkachu"
-api = "cosmos-rest"
-chain_id = "babylon"
-endpoint = "https://babylon-api.polkachu.com"
-capabilities = ["balance", "history", "fee", "broadcast", "verification"]
-
-[[endpoints]]
 id = "babylon.rest.validatus"
 api = "cosmos-rest"
 chain_id = "babylon"
@@ -2182,14 +2118,14 @@ id = "peercoin.mainnet.blockbook"
 api = "blockbook"
 chain_id = "peercoin"
 endpoint = "https://blockbook.peercoin.net"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 [[endpoints]]
 id = "peercoin.testnet.blockbook"
 api = "blockbook"
 chain_id = "peercoin-testnet"
 endpoint = "https://tblockbook.peercoin.net"
-capabilities = ["balance", "history", "utxo", "fee", "broadcast", "verification"]
+capabilities = ["balance", "history", "utxo", "broadcast", "verification"]
 
 # Filecoin: Lotus nodes and Filfox's address index, probed read-only
 # 2026-11-24. Each node answered `StateNetworkName` "mainnet", the mainnet

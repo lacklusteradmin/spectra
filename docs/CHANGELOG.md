@@ -1,5 +1,173 @@
 # Changelog
 
+## Beta Commit 262
+
+- **The endpoint catalog keeps only what answered as claimed**
+  (`core/data/endpoints.toml`, [audit](audits/endpoints-2026-11-26/README.md))
+  - Removed: Arbitrum's, Base's, Polygon's and Arbitrum Sepolia's Blockscout
+    (a Cloudflare challenge to every client), Plasma's Routescan (chain not
+    supported), Blast's two RPCs and its Routescan (refused or unreachable;
+    Blast has no built-in endpoint), and PolkaChu's Babylon gateway (HTTP 502
+    throughout).
+  - Cardano preprod reads Koios' own `preprod.koios.rest` (before: xray's,
+    which answers 404).
+  - Claims narrowed: Solana's PublicNode loses `token-balance`,
+    `token-discovery` and `staking` (a personal token demanded); HyperEVM
+    testnet's dRPC loses `token-balance` (batches of at most 3);
+    mempool.emzy.de's testnet4 and signet lose `balance`, `history` and `utxo`
+    (no address index); XRPL Labs' testnet loses `history` and
+    `token-history` (recent ledgers only); TON Center's testnet v2 loses
+    `history` (no archive); ZAN's Sui testnet loses `balance`,
+    `token-balance` and `token-discovery` (its balance reads fail).
+  - `fee` is no longer claimed where no fee is read: TON Center v2, and the
+    indexers of Bitcoin Cash, Bitcoin Gold, Dash, Dogecoin, Peercoin, Decred
+    and Kaspa. TON Center v2 no longer claims `token-balance` (jetton balances
+    are v3's).
+- **One endpoint model routes every request** (`service/endpoint_directory.rs`,
+  `service/mod.rs`)
+  - `WalletService::new` takes the service's built-in `EndpointRecord`s,
+    checked as catalog rows are; `new_catalog` passes the catalog's (before:
+    per-network URL lists, `ChainEndpoints`, read as each network's first API
+    beside the catalog).
+  - A network's endpoints are the user's, then the built-in ones unless the
+    user chose theirs alone; a built-in endpoint at a URL the user saved gives
+    way (before: an explicit list left out saved endpoints of the network's own
+    APIs, and token listings read saved ones alone).
+  - The CLI's `--endpoint` names a network's endpoints for one process
+    (`WalletService::use_only_endpoints`): a configured URL is used as
+    configured, any other speaks the network's first API with every capability
+    its adapter has there, and those of the network's own APIs replace every
+    configured one; indexers stay (before: the URL replaced the network's list
+    as its first API, whatever it was).
+  - TronGrid's account API is read only from an endpoint that declares it
+    (before: `<node>/v1/accounts` was derived from a node when none did).
+  - `ChainEndpoints`, `update_endpoints`, `catalog_endpoints`,
+    `validate_configured_endpoint`, `Chain::evm_history_source` and
+    `EvmHistorySource` are deleted; Blockscout queries take a base URL, and the
+    CLI's `chains` report drops `historySource`.
+  - `probe_chain_endpoints` checks the endpoints requests use, the user's
+    "only mine" honoured, all of a network's at once (before: every directory
+    row of the network, one after another).
+  - A broadcast to a URL that is none of the network's endpoints is refused
+    before it is asked, "Endpoint is not one of this network's" (before:
+    refused only on Bitcoin-family networks, "Endpoint is not this network's
+    indexer", and asked elsewhere).
+  - A broadcast through an endpoint whose network cannot be asked goes ahead
+    only when the endpoint in effect at that URL is built in (before: when the
+    catalog listed the URL).
+  - Setup summaries and funds scans list the endpoints reads use (before: the
+    catalog's, read apart from routing).
+- **Every endpoint is asked its network through its own API's client**
+  (`api/network.rs`, `api/health.rs`)
+  - `verify_network` dispatches on the endpoint's API, and `asks_network` says
+    which APIs can be asked (before: on the network, so an indexer was asked
+    as its network's node).
+  - The health probe passes an endpoint that can be asked on its network,
+    "network verified", and one that cannot on its API's reads, "answered; its
+    API cannot name its network" (before: Solana, NEAR, XRP Ledger, Stellar,
+    Cardano, Aptos, Tron, TON, ICP Rosetta and Bitcoin-family indexers passed
+    on any answer).
+  - An endpoint the probe has no check for reads "no check for this API and
+    its declared capabilities" (before: "no health check for the declared
+    capabilities").
+  - A Cosmos endpoint is asked through its newest block's `chain_id` (before:
+    `node_info`, which Numia's Celestia gateway does not serve).
+  - TON Center v3 and Algorand's indexer answer their own network checks, and
+    a Zcash indexer is asked Zcash's genesis block (before: a check that also
+    refused an unknown consensus upgrade). `ChronikClient::verify_network` is
+    deleted; the identity-block check is `UtxoClient`'s.
+- **Live answers core misread are read** (`api/`)
+  - EVM token history: Blockscout's and Routescan's rows carry no `logIndex`,
+    which was required and read by nothing; the field is gone (before: every
+    explorer but Metis's, Merlin's and Somnia's failed the page).
+  - An EVM batch carries at most 10 calls, the limit proxyd puts on
+    Optimism's, Unichain's, X Layer's and Scroll's nodes (before: up to 50).
+  - Stellar envelopes are submitted form-encoded (before: as JSON, which every
+    Horizon refused with HTTP 415, so no Stellar transaction was submitted).
+  - Solana history reads transactions up to version 1 (before: 0, and a page
+    holding a version 1 transaction failed).
+  - A Cardano transaction's result is its Plutus contracts' (Koios
+    `_scripts`), none meaning success (before: `valid_contract`, which Koios
+    1.4 no longer writes, so no Cardano status was read).
+  - ICP fee metadata is asked without options when preprocess gives none
+    (before: refused, so no ICP transfer was priced).
+  - A nomination pool member's pending rewards are a bare balance (before: an
+    `Option`, refused for every member).
+  - A Kaspa output without a script version is version 0 (before: refused, so
+    no Kaspa output was read or spent).
+  - A Decred output's value is a number (before: a string; history and status
+    failed).
+  - Bitcoin Cash is asked of Blockbook as a whole CashAddr, from a legacy or
+    CashAddr address, and Blockbook's rows match a legacy wallet
+    (`api/blockbook.rs`, replacing `derivation/bitcoin_cash.rs`; before: the
+    bare payload, which zelcore's Blockbook refuses, and a legacy wallet's
+    transfers never matched).
+  - Esplora history continues after any page holding a confirmed transaction
+    (before: only after exactly 25, and mempool.space instances page by 50).
+- **Ethereum Classic and Mordor send legacy transactions at `eth_gasPrice`**
+  (`registry/evm.rs`; before: type-2, which CoreGeth without London refuses).
+- **A Cosmos fee quote simulates within the send's own timeout window**
+  (`service/send_stage/cosmos.rs`; before: one block ahead, which expired in
+  simulation on BandChain).
+- **An adapter offers `fee` only where core reads it**
+  (`endpoint_capability_options`; `Chain::reads_indexer_fee_rate`, replacing
+  `indexers_estimate_fee_rate`)
+  - A UTXO indexer offers it on Bitcoin, Fractal Bitcoin, DigiByte and
+    Litecoin, where sends read its fee rate, and nowhere else (before: every
+    Esplora, Blockbook, BlockCypher, WhatsOnChain, Insight and Kaspa
+    endpoint).
+  - TON Center v2 offers neither `fee` nor `token-balance` (a transfer's fee
+    is the registry's, and jetton balances are v3's).
+- Measured: 2026-11-26, keyless, read-only, `spectra endpoints probe` over
+  every network: 295 endpoints on 126 networks, 227 verified as their network,
+  44 answered through an API that cannot name it, 24 failed (1rpc's usage
+  limit 18, rate limits 5, Somnia's zero-address read 1) (before, 11:18 UTC:
+  304 endpoints, 12 unreachable, Solana, NEAR, XRP Ledger, Stellar, Cardano,
+  Aptos, Tron, TON, ICP Rosetta and Bitcoin-family endpoints passing on any
+  answer) ([audit](audits/endpoints-2026-11-26/README.md)).
+- Measured: 2026-11-26, keyless, read-only, every claimed capability through
+  the adapter's own requests: 235 of 295 endpoints passed every claim, 1,226
+  of 1,396 claims passed, 151 failed and 19 were unchecked; the failures by
+  cause are in the [audit](audits/endpoints-2026-11-26/README.md).
+- Tests: 10 new
+  - Endpoint routing 1: a URL named for one process widening a saved
+    declaration or replacing an indexer.
+  - Health probe 1: an endpoint that cannot name its network reported as
+    verified.
+  - Live answers 5: an EVM batch over proxyd's 10 calls; a Stellar envelope
+    sent as JSON; a Decred output value as a number; a legacy Bitcoin Cash
+    wallet's CashAddr rows unmatched; a Cosmos quote simulated past its own
+    timeout.
+  - CLI acceptance 3 (`endpoints.py`): a probe passing a node on another
+    network; `--endpoint` reads reaching a saved endpoint; a broadcast to a
+    node on another network.
+  - Updated: the health probe's tests now guard against a built-in endpoint
+    never checked and another network's Esplora indexer, Monero daemon or
+    Rosetta ledger passing; others answer as the live services do, so each
+    guards that answer: Koios' Plutus contracts, a version 1 Solana
+    transaction, ICP preprocess without options, a bare pool-rewards balance,
+    a Kaspa UTXO without a script version, Blockscout rows without
+    `logIndex`, loopback Horizons that refuse JSON, and the Ethereum Classic
+    legacy vector from ethers.js 6.17.0.
+- Docs: `ARCHITECTURE.md` (the `api/network.rs` bullet; a new
+  `service/endpoint_directory.rs` bullet), `CHAIN-SUPPORT.md` ("Wallets and
+  transfers": the Cosmos sign document's chain id, legacy-only EVM networks,
+  custom indexers that prove their network; "History and confirmation":
+  networks without a built-in indexer, providers and how each endpoint is
+  asked its network), `OPEN-ITEMS.md` ("Tasks": the endpoint audit done;
+  reading endpoints only once verified, Zcash's next upgrade, opBNB's zero
+  fees and pruned Cosmos history added; "History and provider coverage": the
+  EVM indexer and default provider items updated), `tests/README.md`
+  (`endpoints.py`;
+  `generate-evm-legacy-vectors.cjs`), `audits/endpoints-2026-11-26/` (new).
+- Total: 94 .rs files changed (1 deleted), +1414 −1583 lines; data and
+  config files: `core/data/endpoints.toml`,
+  `core/tests/fixtures/evm-legacy-transactions.json`,
+  `tests/vectors/generate-evm-legacy-vectors.cjs`, `tests/acceptance/`
+  (`harness.py`, `endpoints.py`, `issued_assets.py`, `multisig_stellar.py`,
+  `send_cosmos.py`, `send_icp_zcash.py`, `send_tokens.py`, `staking.py`,
+  `wallet_operations.py`); dependencies unchanged; `cargo test` passing
+  1688 → 1690.
 ## Beta Commit 261
 
 - Docs: `AGENTS.md` "CHANGELOG" (many changes, many sub-items; how a

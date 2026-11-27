@@ -308,15 +308,24 @@ build defect.
   each entry its asset identity as a `NormalizedHistoryItem`; nothing is
   serialized to be read back by field name.
 - `api/network.rs` proves an endpoint is the network it is configured for,
-  through each client's own `verify_network`, before core signs or submits
-  through it; `api/health.rs` holds the read-only health probes. Neither
-  decides policy: `service/network.rs` runs the probes and records them, and
-  the send stages decide that only a catalog endpoint may skip a network
-  core cannot ask. Its siblings `network_balance`, `network_tokens`,
-  `network_history` and `network_prices` own the corresponding reads and
-  dispatch. `network_tokens::token_decimals` is the one reader of a token's
-  decimals: a send asks it `MetadataRead::Fresh`, while a balance read may
-  reuse the TRC-20 metadata other balance reads cached.
+  through the `verify_network` of the client of the API it speaks;
+  `asks_network` says which APIs can be asked. The health probe in
+  `api/health.rs` asks it, and reads an API's own routes only where it cannot
+  be asked. Neither decides policy: `service/network.rs` runs the probes and
+  records them, and the send stages ask before they submit and decide that
+  only a built-in endpoint may skip a network core cannot ask. Its siblings
+  `network_balance`, `network_tokens`, `network_history` and `network_prices`
+  own the corresponding reads and dispatch. `network_tokens::token_decimals`
+  is the one reader of a token's decimals: a send asks it
+  `MetadataRead::Fresh`, while a balance read may reuse the TRC-20 metadata
+  other balance reads cached.
+- `service/endpoint_directory.rs` routes every request. A network's endpoints
+  are `EndpointRecord`s: the user's own, then the service's built-in ones (the
+  catalog's; a test's loopback nodes) unless the user chose theirs alone.
+  A client is handed the records of its API that declare the capabilities the
+  request needs. `WalletService::use_only_endpoints` names a network's
+  endpoints for one process (the CLI's `--endpoint`): those of its own APIs
+  replace every configured one, and its indexers stay as configured.
 - `service/wallet_actions.rs::offers` decides what a wallet's page lists. The
   account operations behind that page (staking, NEAR keys and token storage,
   Sui coins, Solana token accounts, EVM approvals and NFTs, trust lines) fetch

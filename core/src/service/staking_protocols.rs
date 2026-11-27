@@ -318,7 +318,7 @@ impl WalletService {
         &self,
         chain: Chain,
     ) -> Result<Arc<Vec<String>>, SpectraBridgeError> {
-        Ok(Arc::new(self.staking_endpoints(chain).await?.endpoints))
+        Ok(Arc::new(self.staking_endpoints(chain).await?))
     }
 
     pub(super) async fn prepare_account_staking(

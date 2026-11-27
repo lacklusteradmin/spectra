@@ -289,7 +289,7 @@ mod tests {
     #[tokio::test]
     async fn only_a_send_signed_here_is_rebroadcast() {
         let server = MockServer::start().await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::EthereumSepolia,
             endpoints: vec![server.uri()],

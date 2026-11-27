@@ -639,7 +639,7 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     let path = database();
     service.opened(path.clone()).await.unwrap();
     let original = service
-        .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+        .endpoints_for(crate::registry::Chain::Ethereum, &[])
         .await;
     assert!(!original.is_empty());
     assert!(
@@ -665,7 +665,7 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
         .unwrap();
     assert_eq!(
         service
-            .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+            .endpoints_for(crate::registry::Chain::Ethereum, &[])
             .await[0],
         "http://127.0.0.1:8545"
     );
@@ -673,21 +673,20 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
     reopened.opened(path.clone()).await.unwrap();
     assert_eq!(
         reopened
-            .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+            .endpoints_for(crate::registry::Chain::Ethereum, &[])
             .await[0],
         "http://127.0.0.1:8545"
     );
     reopened
-        .update_endpoints(vec![crate::service::ChainEndpoints {
-            capabilities: EndpointCapability::ALL.to_vec(),
-            chain_id: crate::registry::Chain::Ethereum,
-            endpoints: vec!["http://127.0.0.1:9545".into()],
-        }])
+        .use_only_endpoints(
+            crate::registry::Chain::Ethereum,
+            vec!["http://127.0.0.1:9545".into()],
+        )
         .await
         .unwrap();
     assert_eq!(
         &*reopened
-            .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+            .endpoints_for(crate::registry::Chain::Ethereum, &[])
             .await,
         &["http://127.0.0.1:9545"]
     );
@@ -697,7 +696,7 @@ async fn owned_catalog_transport_reads_saved_settings_and_preserves_explicit_ove
         .unwrap();
     assert_eq!(
         service
-            .configured_endpoint_urls(crate::registry::Chain::Ethereum)
+            .endpoints_for(crate::registry::Chain::Ethereum, &[])
             .await,
         original
     );

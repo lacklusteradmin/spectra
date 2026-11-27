@@ -94,9 +94,6 @@ struct ChainRow {
     /// The picker's popular order and filters.
     popular_rank: u16,
     tags: Vec<&'static str>,
-    /// Explorer history source for EVM chains only. Other families use
-    /// different history routes.
-    history_source: Option<&'static str>,
     #[serde(skip)]
     chain: Chain,
 }
@@ -123,10 +120,6 @@ impl From<Chain> for ChainRow {
             supports_separate_signing: chain.supports_sign_only(),
             popular_rank: entry.popular_rank,
             tags: entry.tags.iter().map(|tag| tag.as_str()).collect(),
-            history_source: chain.is_evm().then(|| match chain.evm_history_source() {
-                spectra_core::registry::EvmHistorySource::Open(base) => base,
-                spectra_core::registry::EvmHistorySource::Unavailable => "none",
-            }),
             chain,
         }
     }
@@ -612,11 +605,8 @@ fn catalog(
             .rt
             .block_on(service.configured_endpoints())
             .into_iter()
-            .filter(|row| chains.contains(&row.chain_id))
-            .map(|row| ConfiguredRow {
-                chain: row.chain_id,
-                endpoints: row.endpoints,
-            })
+            .filter(|(chain, _)| chains.contains(chain))
+            .map(|(chain, endpoints)| ConfiguredRow { chain, endpoints })
             .collect(),
         total: endpoints.len(),
         endpoints,

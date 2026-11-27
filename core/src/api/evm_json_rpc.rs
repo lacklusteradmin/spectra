@@ -183,7 +183,7 @@ impl EvmClient {
     /// A JSON-RPC 2.0 batch whose requests answer independently, in the
     /// order of `requests` however the server orders its answer: the outer
     /// error is the batch's (transport, shape), the inner ones each request's
-    /// own (a revert, an RPC error object).
+    /// own (a revert, an RPC error object). At most [`MAX_BATCH_CALLS`].
     pub(crate) async fn call_batch_each(
         &self,
         requests: Vec<(&str, Value)>,
@@ -191,6 +191,11 @@ impl EvmClient {
         let n = requests.len();
         if n == 0 {
             return Ok(vec![]);
+        }
+        if n > MAX_BATCH_CALLS {
+            return Err(ApiError::invalid(format!(
+                "batch of {n} calls is over the {MAX_BATCH_CALLS} nodes take"
+            )));
         }
         let batch: Value = Value::Array(
             requests
@@ -248,6 +253,11 @@ impl EvmClient {
         .await
     }
 }
+
+/// The most calls one JSON-RPC batch carries: proxyd, the OP Stack's RPC
+/// gateway, refuses more than 10, as Optimism's, Unichain's, X Layer's and
+/// Scroll's public nodes did on 2026-11-26.
+pub(crate) const MAX_BATCH_CALLS: usize = 10;
 
 // EVM fetch paths: native balance, nonce, fee estimate, gas estimate, code,
 // receipts, tx nonce by hash, ENS resolution, ERC-20 balance + metadata,
@@ -508,7 +518,7 @@ impl EvmClient {
             .filter(|&index| matches!(reads[index], Ok((raw, _)) if raw > 0))
             .collect();
         /// Contracts per batch: three calls each.
-        const CONTRACTS_PER_BATCH: usize = 13;
+        const CONTRACTS_PER_BATCH: usize = MAX_BATCH_CALLS / 3;
         let checks = held.chunks(CONTRACTS_PER_BATCH).map(|chunk| {
             let requests = chunk
                 .iter()
@@ -538,9 +548,8 @@ impl EvmClient {
         holder: &str,
         contracts: &[String],
     ) -> Vec<Result<(u128, u8), ApiError>> {
-        /// Contracts per batch: two calls each, well inside the batch limit
-        /// public nodes enforce.
-        const CONTRACTS_PER_BATCH: usize = 20;
+        /// Contracts per batch: two calls each.
+        const CONTRACTS_PER_BATCH: usize = MAX_BATCH_CALLS / 2;
         let balance_of = match encode_erc20_balance_of(holder) {
             Ok(data) => format!("0x{}", hex::encode(data)),
             Err(error) => return contracts.iter().map(|_| Err(error.clone())).collect(),
@@ -920,7 +929,7 @@ impl EvmClient {
             )
         };
         let mut answers = Vec::with_capacity(pairs.len());
-        for chunk in pairs.chunks(50) {
+        for chunk in pairs.chunks(MAX_BATCH_CALLS) {
             let requests = chunk
                 .iter()
                 .map(|(token, spender)| {
@@ -953,7 +962,7 @@ impl EvmClient {
         contracts: &[String],
     ) -> Result<Vec<Option<Erc20Metadata>>, ApiError> {
         let mut answers = Vec::with_capacity(contracts.len());
-        for chunk in contracts.chunks(25) {
+        for chunk in contracts.chunks(MAX_BATCH_CALLS / 2) {
             let requests = chunk
                 .iter()
                 .flat_map(|contract| {
@@ -1315,5 +1324,76 @@ mod abi_word_tests {
         ] {
             assert!(abi_u128(&bad).is_err(), "{bad}");
         }
+    }
+}
+
+#[cfg(test)]
+mod batch_limit_tests {
+    use super::*;
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+    /// A node behind proxyd, as Optimism's was on 2026-11-26: a batch of more
+    /// than ten calls is refused whole; within that, `balanceOf` answers 5 and
+    /// `decimals` 6 for every contract, and nothing claims ERC-165.
+    async fn proxyd_node() -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(wiremock::matchers::method("POST"))
+            .respond_with(|request: &Request| {
+                let calls: Vec<Value> = serde_json::from_slice(&request.body).unwrap();
+                if calls.len() > 10 {
+                    return ResponseTemplate::new(413).set_body_json(json!({
+                        "jsonrpc": "2.0", "id": null,
+                        "error": {"code": -32014, "message": "To send batches over 10 items, consider using a dedicated API provider"},
+                    }));
+                }
+                let answers: Vec<Value> = calls
+                    .iter()
+                    .map(|call| {
+                        let data = call["params"][0]["data"].as_str().unwrap();
+                        let word = if data.starts_with(&format!("0x{}", hex::encode(SEL_DECIMALS))) {
+                            6
+                        } else if data.starts_with("0x01ffc9a7") {
+                            0
+                        } else {
+                            5
+                        };
+                        json!({"jsonrpc": "2.0", "id": call["id"], "result": format!("0x{word:064x}")})
+                    })
+                    .collect();
+                ResponseTemplate::new(200).set_body_json(answers)
+            })
+            .mount(&server)
+            .await;
+        server
+    }
+
+    /// Twelve tokens' balances, their ERC-165 checks and their metadata are
+    /// all read through a node that refuses batches of more than ten calls.
+    #[tokio::test]
+    async fn token_reads_fit_a_ten_call_batch_limit() {
+        let server = proxyd_node().await;
+        let client = EvmClient::new(std::sync::Arc::new(vec![server.uri()]), 10);
+        let contracts: Vec<String> = (1..=12).map(|n| format!("0x{n:040x}")).collect();
+        let balances = client
+            .fetch_erc20_balances(&format!("0x{}", "11".repeat(20)), &contracts)
+            .await;
+        assert!(
+            balances.iter().all(|read| matches!(read, Ok((5, 6)))),
+            "{balances:?}"
+        );
+        let metadata = client.fetch_erc20_metadata_many(&contracts).await.unwrap();
+        assert!(
+            metadata
+                .iter()
+                .all(|m| m.as_ref().is_some_and(|m| m.decimals == 6))
+        );
+        assert!(
+            server
+                .received_requests()
+                .await
+                .unwrap()
+                .iter()
+                .all(|r| serde_json::from_slice::<Vec<Value>>(&r.body).unwrap().len() <= 10)
+        );
     }
 }

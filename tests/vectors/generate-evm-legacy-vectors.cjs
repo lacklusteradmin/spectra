@@ -1,7 +1,7 @@
 // Legacy (EIP-155 type 0) transactions as ethers.js signs them, for the
 // networks whose nodes take no typed envelope: a Kava EVM transfer, an ERC-20
-// transfer on Merlin and a Metis transfer at a gas price past 2^32 wei, each
-// signed by the key 0x01…01. `unsigned` is the EIP-155 signing payload, `raw`
+// transfer on Merlin, a Metis transfer at a gas price past 2^32 wei and an
+// Ethereum Classic transfer, each signed by the key 0x01…01. `unsigned` is the EIP-155 signing payload, `raw`
 // the signed transaction.
 // node tests/vectors/generate-evm-legacy-vectors.cjs
 const fs = require('node:fs');
@@ -19,6 +19,8 @@ const cases = [
     data: erc20.encodeFunctionData('transfer', [recipient, 10n ** 18n]) },
   { name: 'metis-native', chainId: 1088, nonce: 300, gasPrice: 15_772_000_922n, gasLimit: 21_000n,
     to: recipient, value: 1n, data: '0x' },
+  { name: 'ethereum-classic-native', chainId: 61, nonce: 12, gasPrice: 1_000_000_000n, gasLimit: 21_000n,
+    to: recipient, value: 250_000_000_000_000_000n, data: '0x' },
 ];
 
 Promise.all(cases.map(async (c) => {

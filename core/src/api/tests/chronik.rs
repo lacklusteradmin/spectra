@@ -34,13 +34,19 @@ async fn a_server_proves_it_is_ecash_by_its_identity_block() {
         .respond_with(protobuf(answer("block896800")))
         .mount(&server)
         .await;
-    client.verify_network().await.unwrap();
+    crate::api::network::verify_network(
+        crate::registry::Chain::Ecash,
+        crate::api::endpoint::EndpointApi::Chronik,
+        &server.uri(),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         client.fetch_block_hash(896_800).await.unwrap(),
         "0000000000000000297efb200794348b44bff4bfb31716cf64dc45bac0a251ea"
     );
 
-    let (other, client) = chronik().await;
+    let (other, _) = chronik().await;
     let mut block = Block::decode(answer("block896800").as_slice()).unwrap();
     block.block_info.as_mut().unwrap().hash[0] ^= 1;
     Mock::given(method("GET"))
@@ -48,7 +54,15 @@ async fn a_server_proves_it_is_ecash_by_its_identity_block() {
         .respond_with(protobuf(block.encode_to_vec()))
         .mount(&other)
         .await;
-    assert!(client.verify_network().await.is_err());
+    assert!(
+        crate::api::network::verify_network(
+            crate::registry::Chain::Ecash,
+            crate::api::endpoint::EndpointApi::Chronik,
+            &other.uri(),
+        )
+        .await
+        .is_err()
+    );
 }
 
 #[tokio::test]

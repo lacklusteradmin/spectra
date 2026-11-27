@@ -69,7 +69,7 @@ impl WalletService {
                 let owner = &owner;
                 async move {
                     client
-                        .fetch_approval_logs(owner, crate::registry::EvmHistorySource::Open(&base))
+                        .fetch_approval_logs(owner, &base)
                         .await
                 }
             })

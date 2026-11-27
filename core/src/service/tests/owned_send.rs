@@ -50,7 +50,7 @@ async fn node() -> MockServer {
 /// Two watched Ethereum wallets, "Source" holding ten ether and "Other",
 /// and an Arbitrum wallet "Elsewhere" at `elsewhere`.
 async fn wallets(endpoints: Vec<String>, elsewhere: &str) -> Arc<WalletService> {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Ethereum,
         endpoints,
@@ -336,7 +336,7 @@ mod watch_only_preview {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn service(chain: crate::registry::Chain, server: &MockServer) -> Arc<WalletService> {
-        WalletService::new(vec![ChainEndpoints {
+        WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],

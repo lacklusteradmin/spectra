@@ -20,6 +20,7 @@ import pathlib
 import sqlite3
 import subprocess
 import sys
+import urllib.parse
 import tempfile
 import threading
 
@@ -310,6 +311,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def body(self):
         raw = self.raw_body()
         return json.loads(raw) if raw else None
+
+    def horizon_submission(self):
+        """The base64 envelope of a Horizon `POST /transactions`, taken as
+        Horizon takes it, form-encoded; any other body is answered 415, as
+        Horizon answers it, and gives None."""
+        raw = self.raw_body()
+        if self.headers.get('Content-Type') != 'application/x-www-form-urlencoded':
+            self.reply({'status': 415, 'title': 'Unsupported Media Type'}, 415)
+            return None
+        return urllib.parse.parse_qs(raw.decode(), strict_parsing=True)['tx'][0]
 
     def reply(self, payload, code=200):
         self.reply_bytes(json.dumps(payload).encode(), code, 'application/json')

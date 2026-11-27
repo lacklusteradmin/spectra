@@ -29,6 +29,16 @@ pub struct CosmosClient {
     client: Arc<HttpClient>,
 }
 
+/// The header of a `blocks/latest` answer: `sdk_block`'s where the SDK
+/// writes one (0.47 and later), else `block`'s.
+fn latest_header(block: &Value) -> &Value {
+    if block["sdk_block"]["header"].is_object() {
+        &block["sdk_block"]["header"]
+    } else {
+        &block["block"]["header"]
+    }
+}
+
 impl CosmosClient {
     pub fn new(endpoints: Arc<Vec<String>>) -> Self {
         Self {
@@ -62,25 +72,26 @@ impl CosmosClient {
         .await
     }
 
-    /// Refuse a node that is not on `chain`: its `node_info` must name the
-    /// chain id every sign document binds.
+    /// Refuse a node that is not on `chain`: its newest block must name the
+    /// chain id every sign document binds. Every gateway serves the block;
+    /// not every one serves `node_info`.
     pub(crate) async fn verify_network(&self, chain: Chain) -> Result<(), ApiError> {
         let expected = chain.cosmos_network()?.chain_id;
         race(&self.endpoints, |base| {
             let client = self.client.clone();
             async move {
-                let info: Value = client
+                let block: Value = client
                     .get_json(
                         &format!(
-                            "{}/cosmos/base/tendermint/v1beta1/node_info",
+                            "{}/cosmos/base/tendermint/v1beta1/blocks/latest",
                             base.trim_end_matches('/')
                         ),
                         RetryProfile::GatewayRead,
                     )
                     .await?;
-                let network = info["default_node_info"]["network"]
+                let network = latest_header(&block)["chain_id"]
                     .as_str()
-                    .or_decode("Cosmos node_info: missing network")?;
+                    .or_decode("Cosmos block: missing chain id")?;
                 if network != expected {
                     return Err(ApiError::invalid(format!(
                         "Endpoint is on {network}, not {expected}"
@@ -97,12 +108,7 @@ impl CosmosClient {
         let block = self
             .get("/cosmos/base/tendermint/v1beta1/blocks/latest")
             .await?;
-        let header = if block["sdk_block"]["header"].is_object() {
-            &block["sdk_block"]["header"]
-        } else {
-            &block["block"]["header"]
-        };
-        header["height"]
+        latest_header(&block)["height"]
             .as_str()
             .and_then(|height| height.parse().ok())
             .or_decode("Cosmos block: missing height")

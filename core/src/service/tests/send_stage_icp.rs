@@ -23,9 +23,8 @@ async fn an_icp_transfer_is_built_only_at_the_ledger_fee_to_a_checksummed_accoun
                 "/network/list" => json!({"network_identifiers": [
                     crate::api::icp_rosetta::network_identifier()
                 ]}),
-                "/construction/preprocess" => {
-                    json!({"options": {"request_types": ["TRANSACTION"]}})
-                }
+                // As the ICP node answered on 2026-11-26: no options.
+                "/construction/preprocess" => json!({"required_public_keys": []}),
                 "/construction/metadata" => json!({"suggested_fee": [{
                     "value": quoted.load(Ordering::SeqCst).to_string(),
                     "currency": {"symbol": "ICP", "decimals": 8},
@@ -36,7 +35,7 @@ async fn an_icp_transfer_is_built_only_at_the_ledger_fee_to_a_checksummed_accoun
         })
         .mount(&server)
         .await;
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Icp,
         endpoints: vec![server.uri()],

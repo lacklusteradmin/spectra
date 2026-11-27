@@ -281,20 +281,13 @@ mod scan_tests {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
         }])
         .unwrap();
         // No history endpoint on the network: the balance alone decides.
-        service
-            .wallet_state
-            .write()
-            .await
-            .settings
-            .custom_endpoints_only
-            .push(crate::registry::Chain::Ethereum);
         let scan = FundsScan {
             service: (*service).clone(),
             checked: Arc::new(tokio::sync::Mutex::new(0)),
@@ -358,7 +351,7 @@ mod scan_tests {
             .mount(&server)
             .await;
         let chain = crate::registry::Chain::Ethereum;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],
@@ -368,7 +361,6 @@ mod scan_tests {
         let indexer = format!("{}/scout", server.uri());
         {
             let mut state = service.wallet_state.write().await;
-            state.settings.custom_endpoints_only.push(chain);
             state
                 .settings
                 .custom_endpoints
@@ -396,11 +388,18 @@ mod scan_tests {
         };
         assert_eq!(
             scan.endpoints().await,
-            [FundsScanEndpoint {
-                chain_id: chain,
-                endpoint: indexer,
-                capabilities: vec![EndpointCapability::History],
-            }]
+            [
+                FundsScanEndpoint {
+                    chain_id: chain,
+                    endpoint: indexer,
+                    capabilities: vec![EndpointCapability::History],
+                },
+                FundsScanEndpoint {
+                    chain_id: chain,
+                    endpoint: server.uri(),
+                    capabilities: vec![EndpointCapability::Balance],
+                }
+            ]
         );
         let reads = scan.next_batch().await.reads;
         assert_eq!(

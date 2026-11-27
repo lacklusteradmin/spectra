@@ -134,7 +134,7 @@ async fn wallet() -> (Wallet, wiremock::MockServer, Arc<Mutex<Account>>) {
     let account = Arc::new(Mutex::new(Account::default()));
     let server = near(account.clone()).await;
     let wallet = Wallet::import(Chain::Near, &server.uri(), Secret::Phrase(PHRASE)).await;
-    wallet.use_only("near-json-rpc", &server.uri()).await;
+    wallet.add_endpoint("near-json-rpc", &server.uri()).await;
     (wallet, server, account)
 }
 

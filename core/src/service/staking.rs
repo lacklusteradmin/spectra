@@ -352,7 +352,7 @@ impl WalletService {
         &self,
         chain: Chain,
     ) -> Result<Vec<StakingValidator>, SpectraBridgeError> {
-        let endpoints = self.staking_endpoints(chain).await?.endpoints;
+        let endpoints = self.staking_endpoints(chain).await?;
         crate::staking::fetch_validators(chain, endpoints)
             .await
             .ok_or_else(|| {
@@ -424,7 +424,7 @@ impl WalletService {
     pub async fn staking_endpoints(
         &self,
         chain: crate::registry::Chain,
-    ) -> Result<ChainEndpoints, SpectraBridgeError> {
+    ) -> Result<Vec<String>, SpectraBridgeError> {
         let Some(model) = chain.staking_model() else {
             return Err(SpectraBridgeError::InvalidInput {
                 reason: format!(
@@ -457,11 +457,7 @@ impl WalletService {
                 "No staking endpoints configured",
             ));
         }
-        Ok(ChainEndpoints {
-            capabilities: vec![EndpointCapability::Staking],
-            chain_id: chain,
-            endpoints,
-        })
+        Ok(endpoints)
     }
 }
 
@@ -551,30 +547,30 @@ mod tests {
                 service
                     .staking_endpoints(crate::registry::Chain::Solana)
                     .await
-                    .unwrap()
-                    .endpoints[0],
+                    .unwrap()[0],
                 url
             );
         }
         for chain in [Chain::Bitcoin, Chain::SolanaDevnet] {
             assert!(service.fetch_staking_validators(chain).await.is_err());
         }
-        let explicit = WalletService::new(vec![ChainEndpoints {
-            capabilities: vec![EndpointCapability::Staking],
-            chain_id: crate::registry::Chain::Solana,
-            endpoints: vec!["http://127.0.0.1:13003".into()],
-        }])
-        .unwrap();
+        let explicit = WalletService::new_catalog().unwrap();
         explicit
             .opened(path.to_string_lossy().into())
+            .await
+            .unwrap();
+        explicit
+            .use_only_endpoints(
+                crate::registry::Chain::Solana,
+                vec!["http://127.0.0.1:13003".into()],
+            )
             .await
             .unwrap();
         assert_eq!(
             explicit
                 .staking_endpoints(crate::registry::Chain::Solana)
                 .await
-                .unwrap()
-                .endpoints,
+                .unwrap(),
             vec!["http://127.0.0.1:13003"]
         );
         let _ = std::fs::remove_file(path);

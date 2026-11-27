@@ -505,7 +505,7 @@ impl WalletService {
             use crate::diagnostics::self_tests::{self_tests_run_chain, self_tests_run_evm_rpc};
             let mut results = self_tests_run_chain(chain);
             let rpc_endpoint = if chain.is_evm() {
-                let endpoints = this.configured_endpoint_urls(chain).await;
+                let endpoints = this.endpoints_for(chain, &[]).await;
                 let rpc = endpoints
                     .first()
                     .ok_or_else(|| {

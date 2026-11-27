@@ -181,9 +181,9 @@ pub fn txs(ctx: &Ctx, out: Out, command: TxsCommand) -> CliResult<()> {
             out.report(&PendingChainsReport { chains })
         }
         TxsCommand::Poll(args) => {
-            // A maintenance request names the stored transaction network. The
-            // catalog transport keeps persisted custom nodes available; the
-            // poll itself still targets only this stored network.
+            // A maintenance request names the stored transaction network: the
+            // poll targets only it, through its configured endpoints, the
+            // user's saved ones included.
             let chain = resolve_chain(&args.chain)?;
             let changes = ctx
                 .rt

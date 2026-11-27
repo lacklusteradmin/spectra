@@ -4,7 +4,7 @@
 use spectra_core::{
     api::tor::{TorStatus, tor_status},
     registry::Chain,
-    service::{ChainEndpoints, WalletService},
+    service::WalletService,
     store::state::{AppSettingUpdate, StateCommand},
 };
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
@@ -165,10 +165,15 @@ async fn a_reopened_store_routes_through_its_saved_proxy_by_hostname() {
     }
     drop(saving);
 
-    let reopened = WalletService::new(vec![ChainEndpoints {
-        capabilities: spectra_core::api::endpoint::EndpointCapability::ALL.to_vec(),
+    let reopened = WalletService::new(vec![spectra_core::catalog::endpoints::EndpointRecord {
+        id: "test".into(),
+        api: spectra_core::api::endpoint::EndpointApi::EvmJsonRpc,
         chain_id: Chain::Ethereum,
-        endpoints: vec!["http://spectra.invalid:8545".into()],
+        endpoint: "http://spectra.invalid:8545".into(),
+        capabilities: spectra_core::api::endpoint::endpoint_capability_options(
+            Chain::Ethereum,
+            spectra_core::api::endpoint::EndpointApi::EvmJsonRpc,
+        ),
     }])
     .unwrap();
     reopened.open_state(database).await.unwrap();

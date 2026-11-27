@@ -38,10 +38,13 @@ class Node(Handler):
         raise AssertionError(self.path)
 
     def do_POST(self):
-        body = self.body()
         if self.path.startswith('/horizon/transactions'):
-            self.state['submitted'].append(body['tx'])
-            return self.reply({'hash': 'cc' * 32})
+            envelope = self.horizon_submission()
+            if envelope is not None:
+                self.state['submitted'].append(envelope)
+                self.reply({'hash': 'cc' * 32})
+            return
+        body = self.body()
         method, params, state = body['method'], (body.get('params') or [{}])[0], self.state
         if method == 'server_info':
             result = {'info': {'network_id': 0}}

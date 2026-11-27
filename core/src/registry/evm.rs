@@ -81,13 +81,14 @@ impl Chain {
     }
 
     /// Networks whose nodes take only legacy (EIP-155 type 0) transactions:
-    /// London is not active on Kava EVM, and Merlin's zkEVM and Metis's
-    /// l2geth decode no typed envelope. A send there carries one gas price,
-    /// read from `eth_gasPrice`, as both of its fee fields.
+    /// London is not active on Kava EVM or Ethereum Classic (CoreGeth's
+    /// blocks carry no base fee), and Merlin's zkEVM and Metis's l2geth
+    /// decode no typed envelope. A send there carries one gas price, read
+    /// from `eth_gasPrice`, as both of its fee fields.
     pub fn evm_legacy_transactions(self) -> bool {
         matches!(
             self.mainnet_counterpart(),
-            Self::KavaEvm | Self::Merlin | Self::Metis
+            Self::KavaEvm | Self::Merlin | Self::Metis | Self::EthereumClassic
         )
     }
 

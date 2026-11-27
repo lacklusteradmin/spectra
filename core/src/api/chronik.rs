@@ -253,16 +253,6 @@ impl ChronikClient {
         display_hash(&info.hash)
     }
 
-    /// Refuse a server that is not on `chain`'s network: it must name the
-    /// network's identity block.
-    pub(crate) async fn verify_network(&self) -> Result<(), ApiError> {
-        let (height, expected) = self.chain.identity_block()?;
-        if self.fetch_block_hash(height).await? != expected {
-            return Err(ApiError::invalid("Chronik server is on another network"));
-        }
-        Ok(())
-    }
-
     async fn script_utxos(&self, address: &str) -> Result<ScriptUtxos, ApiError> {
         let path = self.script_path(address)?;
         let answer: ScriptUtxos = self.get(&format!("{path}/utxos")).await?;

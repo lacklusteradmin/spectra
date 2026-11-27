@@ -324,21 +324,18 @@ impl WalletService {
         chain: Chain,
         endpoint: &str,
     ) -> Result<(), ApiError> {
-        let api = self.endpoint_api(chain, endpoint).await;
-        if crate::api::network::verify_network(chain, api, endpoint).await? {
+        let Some(record) = self.endpoint_records(chain).await.into_iter().find(|r| {
+            chain.endpoint_apis().contains(&r.api)
+                && r.endpoint.trim_end_matches('/') == endpoint.trim_end_matches('/')
+        }) else {
+            return Err(ApiError::invalid("Endpoint is not one of this network's"));
+        };
+        if crate::api::network::verify_network(chain, record.api, endpoint).await? {
             return Ok(());
         }
-        // A network core cannot ask who it is: only a catalog endpoint, whose
+        // A network core cannot ask who it is: only a built-in endpoint, whose
         // network was checked when it was added, is trusted to be it.
-        let known = crate::catalog::endpoints::catalog()
-            .records
-            .iter()
-            .any(|r| {
-                r.chain_id == chain
-                    && chain.endpoint_apis().contains(&r.api)
-                    && r.endpoint.trim_end_matches('/') == endpoint.trim_end_matches('/')
-            });
-        if !known {
+        if !self.built_in_endpoints().iter().any(|r| r.id == record.id) {
             return Err(ApiError::invalid(
                 "Endpoint network and broadcast capability cannot be verified",
             ));

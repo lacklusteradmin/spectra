@@ -107,7 +107,8 @@ history, asked for with its block count as a hex quantity, which XDC and
 Somnia nodes require: the max fee is twice the next base fee plus the last
 block's lowest sampled tip, raised to the network's floor where it has one
 (1 gwei on Chiliz, 4 gwei on 0G, whose blocks fill with transactions that tip
-nothing). Kava EVM, Merlin and Metis nodes take only legacy transactions: a
+nothing). Ethereum Classic (and Mordor), Kava EVM, Merlin and Metis nodes
+take only legacy transactions: a
 send there is an EIP-155 transaction at the node's `eth_gasPrice`, which fills
 both reviewed fee fields, and carries no access list. Rollup data fees follow
 each network's oracle: Manta Pacific, Katana and MegaETH read Fjord's upper
@@ -144,7 +145,7 @@ on Osmosis and Injective). A transaction is valid for about ten minutes of
 blocks (its `timeout_height`), from an account the network has, at its next
 sequence, with the amount and fee in its spendable balance (vesting coins
 excluded); each is read again before signing. The sign document binds the
-chain id a verified node's `node_info` names. The public key in its
+chain id a verified node's newest block names. The public key in its
 `AuthInfo` is the signing key's, written at signing: a wallet stores none.
 Tokens (IBC denominations, CW-20s), staking and multisig are not offered.
 Evidence is in [the 2026-11-24 audit](audits/cosmos-2026-11-24/README.md).
@@ -300,8 +301,8 @@ indexer does not say when it matures. Zcash shields transparent funds at the
 addresses librustzcash's own gap window tracks; transparent sends spend
 every address the scan found.
 
-A custom indexer on Bitcoin, Litecoin, Qtum, Fractal Bitcoin, eCash or DigiByte
-broadcasts only once it names its network's identity block: its genesis, or a
+A custom indexer on Bitcoin, Litecoin, Qtum, Fractal Bitcoin, eCash, DigiByte
+or Zcash broadcasts only once it names its network's identity block: its genesis, or a
 later block where networks share one (block 1 on Bitcoin and Fractal Bitcoin,
 block 896,800 on eCash). Fractal Bitcoin's addresses and keys are Bitcoin's,
 so a Fractal send checks every indexer it read its inputs from for that block
@@ -706,10 +707,11 @@ applicable historical operator charge. The oracle is read at the mined block;
 missing or malformed components leave the total unknown while preserving the
 confirmed execution outcome.
 
-Only verified keyless public indexers are built in. BNB, HyperEVM, Linea, Sei,
-Cronos, opBNB, Sonic, Berachain, X Layer, Monad, Kaia, XDC Network, Robinhood
-Chain, Kava EVM, Stable, Arc, Katana, peaq and 0G require a compatible custom
-address indexer for history and automatic token discovery. A Blockscout-compatible
+Only verified keyless public indexers are built in. Arbitrum, Base, Polygon,
+Arbitrum Sepolia, Plasma, BNB, HyperEVM, Linea, Sei, Cronos, opBNB, Sonic,
+Berachain, X Layer, Monad, Kaia, XDC Network, Robinhood Chain, Kava EVM, Stable,
+Arc, Katana, peaq and 0G require a compatible custom address indexer for
+history and automatic token discovery. A Blockscout-compatible
 source can be configured on any EVM network. RPC-only access still supports
 native transfers, tracked ERC-20 balances/transfers and submitted receipts.
 Polkadot/Westend, Kusama Asset Hub, Astar, Bittensor and Starknet have no
@@ -729,13 +731,23 @@ each shown as what its messages moved in the network's coin, the fee aside.
 Nodes keep only recent blocks: days on Osmosis, BandChain and Injective,
 months to years elsewhere, and all of it at Kava Labs' and Numia's (Celestia).
 
-BCH, DOGE, ZEC (transparent), DCR and DASH test networks have no verified
-built-in keyless provider; Zcash testnet's shielded funds read a built-in
-lightwalletd. Their supported custom API must be configured before network reads or
-transfers. Failed providers are not retained as fallback entries. Mainnet Monero
-and stagenet defaults support local scanning; Avalanche defaults read ERC-20
-balances. [Dated read-only endpoint checks](audits/chain-support-2026-10-04/endpoint-probes.json)
-verify network identity and selected reads, not live transaction broadcast.
+BCH, DOGE, ZEC (transparent), DCR and DASH test networks, and Blast, have no
+verified built-in keyless provider; Zcash testnet's shielded funds read a
+built-in lightwalletd. Their supported custom API must be configured before
+network reads or transfers. TON testnet has no built-in history: its TON Center
+archive answered no request on 2026-11-26. Failed providers are not retained as
+fallback entries. Mainnet Monero and stagenet defaults support local scanning;
+Avalanche defaults read ERC-20 balances.
+
+Every endpoint is asked its network through its API's own client, by the
+health probe and before a broadcast, wherever the API can say (an EVM chain
+id, a genesis or identity block, a Cosmos block's chain id, a network
+passphrase and the like). Blockscout and Routescan, TronGrid, NearBlocks,
+FastNEAR, Filfox, the IC replica, Insight, Kaspa's REST API, WhatsOnChain, the
+BCH REST API, and the indexers of Bitcoin Cash, Bitcoin Gold, Dash and Dogecoin
+cannot be asked; a broadcast goes through such an endpoint only when it is
+built in. [The 2026-11-26 audit](audits/endpoints-2026-11-26/README.md) records
+every built-in endpoint's network and each capability it claims.
 
 ## Staking positions and execution
 

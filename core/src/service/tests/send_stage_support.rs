@@ -80,7 +80,7 @@ impl Wallet {
     /// A fresh store holding one wallet imported from `secret`, sealed with
     /// no password, whose network's only endpoint is `endpoint`.
     pub(crate) async fn import(chain: Chain, endpoint: &str, secret: Secret<'_>) -> Self {
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             chain_id: chain,
             endpoints: vec![endpoint.to_string()],
             capabilities: EndpointCapability::ALL.to_vec(),
@@ -132,9 +132,8 @@ impl Wallet {
     }
 
     /// Add `url` as the user's endpoint for `api`, with every capability the
-    /// API offers, and use only the user's endpoints on this network: what a
-    /// service asked for by API reaches the mock, never the catalog's hosts.
-    pub(crate) async fn use_only(&self, api: &str, url: &str) {
+    /// API offers there.
+    pub(crate) async fn add_endpoint(&self, api: &str, url: &str) {
         use crate::store::state::{AppSettingUpdate, StateCommand};
         let api_kind = self
             .chain
@@ -142,32 +141,26 @@ impl Wallet {
             .into_iter()
             .find(|candidate| candidate.as_str() == api)
             .unwrap();
-        for update in [
-            AppSettingUpdate::AddCustomEndpoint {
-                chain_id: self.chain,
-                api: api_kind,
-                endpoint: url.into(),
-                capabilities: crate::api::endpoint::endpoint_capability_options(
-                    self.chain, api_kind,
-                ),
-            },
-            AppSettingUpdate::CustomEndpointsOnly {
-                chain_id: self.chain,
-                value: true,
-            },
-        ] {
-            self.service
-                .apply_state_command(StateCommand::SetAppSetting { update })
-                .await
-                .unwrap();
-        }
+        self.service
+            .apply_state_command(StateCommand::SetAppSetting {
+                update: AppSettingUpdate::AddCustomEndpoint {
+                    chain_id: self.chain,
+                    api: api_kind,
+                    endpoint: url.into(),
+                    capabilities: crate::api::endpoint::endpoint_capability_options(
+                        self.chain, api_kind,
+                    ),
+                },
+            })
+            .await
+            .unwrap();
         assert_eq!(
             self.service
-                .custom_api_endpoints(self.chain, &[api_kind], &[])
-                .await,
+                .api_endpoints(self.chain, api_kind, &[])
+                .await
+                .unwrap(),
             [url.trim_end_matches('/')]
         );
-        assert!(self.service.uses_custom_endpoints_only(self.chain).await);
     }
 
     /// Track the token `contract` under `standard` and give the wallet a
@@ -308,4 +301,16 @@ impl Wallet {
 /// What a refusal says, for an assertion on its words.
 pub(crate) fn refusal<T: std::fmt::Debug>(result: Result<T, SpectraBridgeError>) -> String {
     result.unwrap_err().to_string()
+}
+
+/// Whether `a` and `b` are one address of `chain`'s: the same text, or the
+/// same script written in two of its forms (Bitcoin Cash's legacy and
+/// CashAddr), as an indexer answers either for the other.
+pub(crate) fn same_utxo_address(chain: Chain, a: &str, b: &str) -> bool {
+    use crate::derivation::utxo_address::parse_utxo_address;
+    a == b
+        || matches!(
+            (parse_utxo_address(chain, a), parse_utxo_address(chain, b)),
+            (Ok(a), Ok(b)) if a == b
+        )
 }

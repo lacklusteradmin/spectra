@@ -18,6 +18,8 @@ struct Chain_ {
     height: AtomicU64,
     spendable: AtomicU64,
     account: bool,
+    /// The `timeout_height` the last simulated transaction carried.
+    simulated_timeout: AtomicU64,
 }
 
 impl Chain_ {
@@ -28,6 +30,7 @@ impl Chain_ {
             height: AtomicU64::new(1_000),
             spendable: AtomicU64::new(5_000_000),
             account: true,
+            simulated_timeout: AtomicU64::new(0),
         })
     }
 }
@@ -36,17 +39,26 @@ async fn mock(state: Arc<Chain_>) -> wiremock::MockServer {
     node_at(move |url, body| {
         let path = url.path();
         Some(match path {
-            "/cosmos/base/tendermint/v1beta1/node_info" => {
-                json!({"default_node_info": {"network": state.network}})
-            }
             "/cosmos/base/tendermint/v1beta1/blocks/latest" => json!({
-                "block": {"header": {"height": state.height.load(Ordering::SeqCst).to_string()}}
+                "block": {"header": {
+                    "chain_id": state.network,
+                    "height": state.height.load(Ordering::SeqCst).to_string(),
+                }}
             }),
             "/feemarket/v1/gas_price/uatom" => {
                 json!({"price": {"denom": "uatom", "amount": "0.010000000000000000"}})
             }
             "/cosmos/tx/v1beta1/simulate" => {
-                assert!(body["tx_bytes"].is_string());
+                use prost::Message as _;
+                let raw = base64::engine::general_purpose::STANDARD
+                    .decode(body["tx_bytes"].as_str().unwrap())
+                    .unwrap();
+                let tx = crate::send::cosmos::proto::TxRaw::decode(raw.as_slice()).unwrap();
+                let tx_body =
+                    crate::send::cosmos::proto::TxBody::decode(tx.body_bytes.as_slice()).unwrap();
+                state
+                    .simulated_timeout
+                    .store(tx_body.timeout_height, Ordering::SeqCst);
                 json!({"gas_info": {"gas_wanted": "0", "gas_used": "70000"}})
             }
             "/cosmos/tx/v1beta1/txs" => {
@@ -184,4 +196,21 @@ async fn an_account_the_chain_does_not_have_or_another_network_is_refused() {
     let wallet = Wallet::import(Chain::CosmosHub, &server.uri(), Secret::Phrase(PHRASE)).await;
     assert!(wallet.build(wallet.request(RECIPIENT, "1")).await.is_err());
     assert!(wallet.built_nothing().await);
+}
+
+/// A quote simulates the transfer within the window the send itself gets: a
+/// single block's margin expires inside the simulation on a fast network,
+/// as BandChain's node refused one on 2026-11-26.
+#[tokio::test]
+async fn a_quote_simulates_within_the_sends_timeout() {
+    let state = Chain_::new();
+    let server = mock(state.clone()).await;
+    let wallet = Wallet::import(Chain::CosmosHub, &server.uri(), Secret::Phrase(PHRASE)).await;
+    let preview = wallet
+        .service
+        .preview_cosmos_send(Chain::CosmosHub, SENDER)
+        .await
+        .unwrap();
+    assert_eq!(preview.estimated_network_fee, "0.001176");
+    assert_eq!(state.simulated_timeout.load(Ordering::SeqCst), 1_000 + 107);
 }

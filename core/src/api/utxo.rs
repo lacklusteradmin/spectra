@@ -401,16 +401,14 @@ impl UtxoClient {
                         let mut page = match adapter? {
                             Adapter::Esplora(client) => {
                                 let items = client.fetch_history(address, after).await?;
-                                let next_cursor =
-                                    (items.iter().filter(|row| row.confirmed).count() == 25)
-                                        .then(|| {
-                                            items
-                                                .iter()
-                                                .rev()
-                                                .find(|row| row.confirmed)
-                                                .map(|row| row.txid.clone())
-                                        })
-                                        .flatten();
+                                // Instances page by 25 (Blockstream) or 50
+                                // (mempool.space): any confirmed row may have
+                                // more after it, and an empty page ends.
+                                let next_cursor = items
+                                    .iter()
+                                    .rev()
+                                    .find(|row| row.confirmed)
+                                    .map(|row| row.txid.clone());
                                 crate::api::HistoryPage { items, next_cursor }
                             }
                             Adapter::Blockbook(client) => {

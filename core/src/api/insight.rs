@@ -71,8 +71,9 @@ struct InsightVin {
 
 #[derive(Debug, Deserialize)]
 struct InsightVout {
-    #[serde(default)]
-    value: String,
+    /// DCR, a JSON number as dcrdata writes it (2026-11-26), like an
+    /// input's `value` and the transaction's `fees`.
+    value: f64,
     #[serde(rename = "scriptPubKey")]
     script_pub_key: Option<InsightScriptPubKey>,
 }
@@ -232,13 +233,7 @@ impl InsightClient {
                             .map(|s| s.addresses.iter().any(|a| a == address))
                             .unwrap_or(false)
                     })
-                    .map(|o| {
-                        o.value
-                            .parse::<f64>()
-                            .ok()
-                            .map(|v| (v * 1e8).round() as i64)
-                            .unwrap_or(0)
-                    })
+                    .map(|o| (o.value * 1e8).round() as i64)
                     .sum();
                 let net = owned_out - owned_in;
                 let fee_atoms = (tx.fees * 1e8).round() as u64;
@@ -303,5 +298,45 @@ impl InsightClient {
             }
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod history_tests {
+    use super::*;
+    use serde_json::json;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// A page as dcrdata answers it (2026-11-26): amounts are JSON numbers of
+    /// DCR, outputs' too. The address received one output and spent nothing.
+    #[tokio::test]
+    async fn a_dcrdata_page_reads_numeric_output_values() {
+        let address = "DsYrXZYrqHsYF1SnzQYnpeJff23fTukHTV5";
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/txs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "pagesTotal": 1,
+                "txs": [{
+                    "txid": "37".repeat(32), "blockheight": 1_135_937, "time": 1_764_000_000,
+                    "fees": 0.0000253,
+                    "vin": [{"addr": "DsOther", "value": 0.0076072, "valueSat": 760_720}],
+                    "vout": [
+                        {"value": 0.00356398, "scriptPubKey": {"addresses": [address]}},
+                        {"value": 0.00401767, "scriptPubKey": {"addresses": ["DsOther"]}},
+                    ],
+                }],
+            })))
+            .mount(&server)
+            .await;
+        let page = InsightClient::new(std::sync::Arc::new(vec![server.uri()]))
+            .fetch_history_page(address, None)
+            .await
+            .unwrap();
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].amount_atoms, 356_398);
+        assert!(page.items[0].is_incoming);
+        assert_eq!(page.next_cursor, None);
     }
 }

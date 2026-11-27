@@ -163,7 +163,7 @@ async fn toncenter() -> (MockServer, Arc<Mutex<Toncenter>>) {
 /// of signer 1's key, which is not the signer's account.
 async fn wallets() -> (Arc<WalletService>, MockServer, Arc<Mutex<Toncenter>>) {
     let (server, live) = toncenter().await;
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Ton,
         endpoints: vec![server.uri()],

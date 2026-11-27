@@ -221,8 +221,8 @@ async fn a_payment_is_priced_signed_and_accepted() {
         }
     );
     *ledger.committed.lock().unwrap() = None;
-    wallet.use_only("algod", &server.uri()).await;
-    wallet.use_only("algorand-indexer", &server.uri()).await;
+    wallet.add_endpoint("algod", &server.uri()).await;
+    wallet.add_endpoint("algorand-indexer", &server.uri()).await;
     assert_eq!(status(txid.clone()).await, TransactionStatus::Pending);
     *ledger.indexed.lock().unwrap() = Some(txid.clone());
     assert_eq!(

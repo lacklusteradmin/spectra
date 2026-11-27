@@ -16,7 +16,7 @@ fn record(id: &str, chain: Chain, status: &str) -> TransactionRecord {
     .unwrap()
 }
 async fn service(chain: Chain, server: &MockServer) -> (std::sync::Arc<WalletService>, String) {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: chain,
         endpoints: vec![server.uri()],
@@ -347,7 +347,7 @@ async fn dogecoin_stops_after_first_confirmation_across_restart_but_can_be_reche
             .unwrap()
             .is_empty()
     );
-    let reopened = WalletService::new(vec![ChainEndpoints {
+    let reopened = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: crate::registry::Chain::Dogecoin,
         endpoints: vec![server.uri()],

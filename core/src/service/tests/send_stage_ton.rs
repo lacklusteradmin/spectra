@@ -55,7 +55,7 @@ async fn ton_prepared_expiry_matches_the_signed_deployment_and_active_wallet_mes
             })
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             chain_id: chain,
             capabilities: EndpointCapability::ALL.to_vec(),
             endpoints: vec![server.uri()],
@@ -219,7 +219,7 @@ async fn expired_uncertain_submission_queries_execution_before_refusing_rebroadc
             };
             ResponseTemplate::new(200).set_body_json(response)
         }).mount(&server).await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             chain_id: chain,
             capabilities: EndpointCapability::ALL.to_vec(),
             endpoints: vec![server.uri()],

@@ -50,7 +50,7 @@ mod fee_estimates_are_typed {
                 })
                 .mount(&server)
                 .await;
-            let service = WalletService::new(vec![ChainEndpoints {
+            let service = WalletService::serving(vec![ChainEndpoints {
                 chain_id: chain,
                 capabilities: vec![EndpointCapability::Fee, EndpointCapability::Verification],
                 endpoints: vec![server.uri()],
@@ -102,7 +102,7 @@ mod fee_estimates_are_typed {
                 .expect(1)
                 .mount(&server)
                 .await;
-            let service = WalletService::new(vec![ChainEndpoints {
+            let service = WalletService::serving(vec![ChainEndpoints {
                 chain_id: chain,
                 capabilities: vec![EndpointCapability::Fee],
                 endpoints: vec![server.uri()],
@@ -144,7 +144,7 @@ mod fee_estimates_are_typed {
             .expect(1)
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             chain_id: Chain::AptosTestnet,
             capabilities: vec![EndpointCapability::Fee, EndpointCapability::Balance],
             endpoints: vec![server.uri()],
@@ -183,7 +183,7 @@ mod fee_estimates_are_typed {
                 .expect(1)
                 .mount(&server)
                 .await;
-            let service = WalletService::new(vec![ChainEndpoints {
+            let service = WalletService::serving(vec![ChainEndpoints {
                 chain_id: Chain::Aptos,
                 capabilities: vec![EndpointCapability::Fee],
                 endpoints: vec![server.uri()],
@@ -452,7 +452,7 @@ mod failed_reads {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
@@ -497,7 +497,7 @@ mod failed_reads {
                 } else { json!({"jsonrpc":"2.0","id":body["id"],"result":result}) };
                 ResponseTemplate::new(200).set_body_json(response)
             }).mount(&server).await;
-            let service = WalletService::new(vec![ChainEndpoints {
+            let service = WalletService::serving(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: crate::registry::Chain::Ethereum,
                 endpoints: vec![server.uri()],
@@ -550,7 +550,7 @@ mod failed_reads {
                     .mount(&server)
                     .await;
             }
-            let service = WalletService::new(vec![ChainEndpoints {
+            let service = WalletService::serving(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: crate::registry::Chain::Tron,
                 endpoints: vec![server.uri()],
@@ -648,7 +648,7 @@ mod a_preview_quotes_the_asset_it_moves {
     #[tokio::test]
     async fn owned_preview_uses_wallet_network_and_exact_amount_without_secrets() {
         let server = evm_node().await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::EthereumSepolia,
             endpoints: vec![server.uri()],
@@ -711,7 +711,7 @@ mod a_preview_quotes_the_asset_it_moves {
         server: &MockServer,
         call: crate::send::evm::TransferCall,
     ) -> crate::send::preview_types::SendPreview {
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
@@ -803,7 +803,7 @@ mod a_preview_quotes_the_asset_it_moves {
                 .mount(&server)
                 .await;
         }
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Tron,
             endpoints: vec![server.uri()],
@@ -832,7 +832,7 @@ mod a_preview_quotes_the_asset_it_moves {
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Tron,
             endpoints: vec![server.uri()],
@@ -880,7 +880,7 @@ mod destination_probe_tests {
             }).mount(&server).await;
             // Zero nonce on BNB needs its keyed explorer: without a key the
             // result is unknown/error, rather than an invented empty history.
-            let service = WalletService::new(vec![ChainEndpoints {
+            let service = WalletService::serving(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: Chain::BnbChain,
                 endpoints: vec![server.uri()],
@@ -927,7 +927,7 @@ mod destination_probe_tests {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: Chain::BnbChain,
             endpoints: vec![server.uri()],
@@ -955,7 +955,7 @@ mod destination_probe_tests {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Litecoin,
             endpoints: vec![server.uri()],
@@ -1073,7 +1073,7 @@ mod evm_network_fee_budgets {
     }
 
     fn service(server: &MockServer, chain: Chain) -> std::sync::Arc<WalletService> {
-        WalletService::new(vec![ChainEndpoints {
+        WalletService::serving(vec![ChainEndpoints {
             chain_id: chain,
             capabilities: EndpointCapability::ALL.to_vec(),
             endpoints: vec![server.uri()],
@@ -1244,7 +1244,7 @@ mod shared_preview {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn service(chain: crate::registry::Chain, server: &MockServer) -> Arc<WalletService> {
-        WalletService::new(vec![ChainEndpoints {
+        WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],

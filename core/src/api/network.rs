@@ -1,5 +1,6 @@
-//! Proving that an endpoint serves the network it is configured for, before
-//! core signs or submits through it.
+//! Proving that an endpoint serves the network it is configured for, through
+//! the client of the API it speaks: what the health probe reports and what
+//! core requires before it submits through an endpoint.
 
 use std::sync::Arc;
 
@@ -7,120 +8,142 @@ use crate::api::endpoint::{Endpoint, EndpointApi};
 use crate::api::error::ApiError;
 use crate::registry::Chain;
 
-/// Check that `url` answers as `chain`, through the client of the API that
-/// network is read with. `api` is what the endpoint is configured to speak,
-/// which only the UTXO family's indexers need to know.
+/// Whether an endpoint of `api` on `chain` can be asked which network it
+/// serves. A Bitcoin-family indexer can where the registry names the
+/// network's identity block and the indexer names blocks by height.
+pub(crate) fn asks_network(chain: Chain, api: EndpointApi) -> bool {
+    use EndpointApi as Api;
+    match api {
+        Api::Blockbook if chain.mainnet_counterpart() == Chain::Peercoin => true,
+        Api::Esplora | Api::Blockbook | Api::Blockcypher | Api::Chronik | Api::UnisatOpenApi => {
+            chain.identity_block().is_ok()
+        }
+        Api::Whatsonchain
+        | Api::BchRestV2
+        | Api::Insight
+        | Api::KaspaRest
+        | Api::Blockscout
+        | Api::TrongridV1
+        | Api::Nearblocks
+        | Api::Fastnear
+        | Api::Filfox
+        | Api::IcpReplica => false,
+        _ => true,
+    }
+}
+
+/// Check that `url`, speaking `api`, answers as `chain`.
 ///
-/// `Ok(false)` when core has no way to ask the network who it is; the caller
-/// decides whether an endpoint it cannot verify is acceptable.
+/// `Ok(false)` when the API gives core no way to ask the network who it is
+/// ([`asks_network`]); the caller decides whether an endpoint it cannot
+/// verify is acceptable.
 pub(crate) async fn verify_network(
     chain: Chain,
-    api: Option<EndpointApi>,
+    api: EndpointApi,
     url: &str,
 ) -> Result<bool, ApiError> {
     use crate::api::*;
+    use EndpointApi as Api;
+    if !asks_network(chain, api) {
+        return Ok(false);
+    }
     let urls = Arc::new(vec![url.to_string()]);
-    if chain.is_evm() {
-        evm_json_rpc::EvmClient::new(urls, chain.evm_chain_id()?)
-            .verify_network()
-            .await?;
-        return Ok(true);
-    }
-    if chain.is_cosmos() {
-        cosmos_rest::CosmosClient::new(urls)
-            .verify_network(chain)
-            .await?;
-        return Ok(true);
-    }
-    if chain.is_substrate() {
-        substrate_json_rpc::SubstrateClient::new(urls)
-            .polkadot_context(chain)
-            .await?;
-        return Ok(true);
-    }
-    match chain.mainnet_counterpart() {
-        // A mirror node, or the mirror node an address book belongs to.
-        Chain::Hedera if api == Some(EndpointApi::HederaHapi) => {
+    match api {
+        Api::EvmJsonRpc => {
+            evm_json_rpc::EvmClient::new(urls, chain.evm_chain_id()?)
+                .verify_network()
+                .await?
+        }
+        Api::CosmosRest => {
+            cosmos_rest::CosmosClient::new(urls)
+                .verify_network(chain)
+                .await?
+        }
+        Api::SubstrateJsonRpc => {
+            substrate_json_rpc::SubstrateClient::new(urls)
+                .polkadot_context(chain)
+                .await?;
+        }
+        // The address book's own mirror node.
+        Api::HederaHapi => {
             hedera_hapi::HederaHapiClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Hedera => {
+        Api::HederaMirror => {
             hedera_mirror::HederaMirrorClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Sui => {
+        Api::SuiGraphql => {
             sui_graphql::SuiClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Solana => {
+        Api::SolanaJsonRpc => {
             solana_json_rpc::SolanaClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Near => {
+        Api::NearJsonRpc => {
             near_json_rpc::NearClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Stellar => {
+        Api::Horizon => {
             horizon::HorizonClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Xrp => {
+        Api::XrplJsonRpc => {
             xrpl_json_rpc::XrplClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Cardano => koios::KoiosClient::new(urls).verify_network(chain).await?,
-        Chain::Vechain => {
+        Api::Koios => koios::KoiosClient::new(urls).verify_network(chain).await?,
+        Api::ThorRest => {
             thor_rest::ThorClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Tron => {
+        Api::TronHttp => {
             tron_http::TronHttpClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Ton => {
+        Api::ToncenterV2 => {
             toncenter_v2::ToncenterV2Client::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Aptos => {
+        Api::ToncenterV3 => {
+            toncenter_v3::ToncenterV3Client::new(urls)
+                .verify_network(chain)
+                .await?
+        }
+        Api::AptosRest => {
             aptos_rest::AptosClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Starknet => {
+        Api::AptosIndexer => {
+            aptos_indexer::AptosIndexerClient::new(urls, chain.aptos_chain_id()?)
+                .verify_network()
+                .await?
+        }
+        Api::StarknetJsonRpc => {
             starknet_json_rpc::StarknetClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Zcash => {
-            blockbook::BlockbookClient::new(urls, chain)
-                .zcash_context()
-                .await?;
-        }
-        Chain::Peercoin => {
+        Api::Blockbook if chain.mainnet_counterpart() == Chain::Peercoin => {
             blockbook::BlockbookClient::new(urls, chain)
                 .verify_peercoin_network()
                 .await?
         }
-        // The indexer names the network's identity block: its genesis
-        // block, or a later one where networks share it.
-        Chain::Bitcoin
-        | Chain::Litecoin
-        | Chain::Qtum
-        | Chain::FractalBitcoin
-        | Chain::Ecash
-        | Chain::Digibyte => {
-            let api =
-                api.ok_or_else(|| ApiError::invalid("Endpoint is not this network's indexer"))?;
+        // The indexer names the network's identity block: its genesis block,
+        // or a later one where networks share it.
+        Api::Esplora | Api::Blockbook | Api::Blockcypher | Api::Chronik | Api::UnisatOpenApi => {
             utxo::UtxoClient::new(
                 chain,
                 vec![Endpoint {
@@ -129,27 +152,51 @@ pub(crate) async fn verify_network(
                 }],
             )
             .verify_every_endpoint()
-            .await?;
+            .await?
         }
-        Chain::Icp => icp_rosetta::IcpClient::new(urls).verify_network().await?,
-        Chain::Algorand => algod::AlgodClient::new(urls).verify_network(chain).await?,
-        Chain::Filecoin => {
+        Api::IcpRosetta => icp_rosetta::IcpClient::new(urls).verify_network().await?,
+        Api::Algod => algod::AlgodClient::new(urls).verify_network(chain).await?,
+        Api::AlgorandIndexer => {
+            algorand_indexer::AlgorandIndexerClient::new(urls)
+                .verify_network(chain)
+                .await?
+        }
+        Api::LotusJsonRpc => {
             lotus_json_rpc::LotusClient::new(urls)
                 .verify_network(chain)
                 .await?
         }
-        Chain::Tezos => match api {
-            Some(EndpointApi::Tzkt) => tzkt::TzktClient::new(urls).verify_network(chain).await?,
-            _ => {
-                tezos_rpc::TezosClient::new(urls)
-                    .verify_network(chain)
-                    .await?
-            }
-        },
-        Chain::Monero => {
+        Api::TezosRpc => {
+            tezos_rpc::TezosClient::new(urls)
+                .verify_network(chain)
+                .await?
+        }
+        Api::Tzkt => tzkt::TzktClient::new(urls).verify_network(chain).await?,
+        Api::MoneroDaemonRpc => {
             monero_daemon_rpc::daemon(url, chain).await?;
         }
-        _ => return Ok(false),
+        // The server's chain name and consensus branch.
+        Api::Lightwalletd => {
+            lightwalletd::LightwalletdClient::new(urls)
+                .session(chain)
+                .await?;
+        }
+        // The node's headers, checked back to the network's checkpoint.
+        Api::LitecoinP2p => {
+            litecoin_p2p::LitecoinP2pClient::new(urls)
+                .session(chain, &Default::default())
+                .await?;
+        }
+        Api::Whatsonchain
+        | Api::BchRestV2
+        | Api::Insight
+        | Api::KaspaRest
+        | Api::Blockscout
+        | Api::TrongridV1
+        | Api::Nearblocks
+        | Api::Fastnear
+        | Api::Filfox
+        | Api::IcpReplica => return Ok(false),
     }
     Ok(true)
 }

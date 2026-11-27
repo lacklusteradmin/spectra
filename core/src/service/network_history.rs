@@ -201,16 +201,7 @@ impl WalletService {
         let native_entries = crate::api::http::race(&sources, |base| {
             let client = &client;
             let address = &address;
-            async move {
-                client
-                    .fetch_history(
-                        address,
-                        crate::registry::EvmHistorySource::Open(&base),
-                        page,
-                        page_size,
-                    )
-                    .await
-            }
+            async move { client.fetch_history(address, &base, page, page_size).await }
         })
         .await?;
         let token_sources = self
@@ -228,12 +219,7 @@ impl WalletService {
                 let address = &address;
                 async move {
                     client
-                        .fetch_token_transfers(
-                            address,
-                            crate::registry::EvmHistorySource::Open(&base),
-                            page,
-                            page_size,
-                        )
+                        .fetch_token_transfers(address, &base, page, page_size)
                         .await
                 }
             })
@@ -251,13 +237,7 @@ impl WalletService {
                     let address = &address;
                     async move {
                         client
-                            .fetch_nft_transfers(
-                                address,
-                                crate::registry::EvmHistorySource::Open(&base),
-                                standard,
-                                page,
-                                page_size,
-                            )
+                            .fetch_nft_transfers(address, &base, standard, page, page_size)
                             .await
                     }
                 })
@@ -410,16 +390,7 @@ async fn fetch_history_page(
         let page = crate::api::history_page::page_number(cursor)?;
         let items = crate::api::http::race(&sources, |base| {
             let client = &client;
-            async move {
-                client
-                    .fetch_history(
-                        address,
-                        crate::registry::EvmHistorySource::Open(&base),
-                        page,
-                        50,
-                    )
-                    .await
-            }
+            async move { client.fetch_history(address, &base, page, 50).await }
         })
         .await?;
         let next_cursor = (items.len() == 50).then(|| (page + 1).to_string());
@@ -497,9 +468,9 @@ async fn fetch_history_page(
             )
             .await;
         let accounts = service
-            .tron_account_endpoints(
+            .api_endpoints(
                 chain,
-                &node_endpoints,
+                Api::TrongridV1,
                 &[
                     EndpointCapability::History,
                     EndpointCapability::TokenHistory,

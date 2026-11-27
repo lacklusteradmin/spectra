@@ -76,7 +76,7 @@ struct Wallets {
 }
 
 async fn wallets(server: &MockServer) -> Wallets {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Tron,
         endpoints: vec![server.uri()],

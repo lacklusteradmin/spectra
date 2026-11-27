@@ -73,8 +73,8 @@ pub(crate) enum CosmosTxSearch {
 /// One Cosmos SDK network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CosmosNetwork {
-    /// The chain id every sign document binds, which a node's `node_info`
-    /// must name.
+    /// The chain id every sign document binds, which a node's blocks must
+    /// name.
     pub chain_id: &'static str,
     /// The bech32 prefix of an account address.
     pub hrp: &'static str,

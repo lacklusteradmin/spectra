@@ -280,7 +280,7 @@ class Node(JsonRpc):
                 amount=int.from_bytes(raw[4:],'little')*10//9
                 return '0x'+amount.to_bytes(16,'little').hex()
             if call=='NominationPoolsApi_pending_rewards':
-                return '0x01'+(30000000000).to_bytes(16,'little').hex()
+                return '0x'+(30000000000).to_bytes(16,'little').hex()
             if call in ('NominationPoolsApi_member_needs_delegate_migration','NominationPoolsApi_pool_needs_delegate_migration'):
                 return '0x00'
             if call=='NominationPoolsApi_member_pending_slash':

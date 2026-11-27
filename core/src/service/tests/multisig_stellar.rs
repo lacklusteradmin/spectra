@@ -81,7 +81,7 @@ async fn horizon() -> (MockServer, Arc<Mutex<Horizon>>) {
 /// threshold) and its signers p1 and p2, each a wallet of its phrase.
 async fn wallets() -> (Arc<WalletService>, MockServer, Arc<Mutex<Horizon>>) {
     let (server, live) = horizon().await;
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: CHAIN,
         endpoints: vec![server.uri()],

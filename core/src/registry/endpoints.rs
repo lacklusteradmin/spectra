@@ -104,20 +104,6 @@ impl Chain {
         self.uses_account_utxo() && self.uses_utxo_client()
     }
 
-    /// The keyless explorer source for this EVM chain, if configured.
-    pub fn evm_history_source(self) -> EvmHistorySource<'static> {
-        crate::catalog::endpoints::catalog()
-            .records
-            .iter()
-            .find(|record| {
-                record.chain_id == self
-                    && record.api == EndpointApi::Blockscout
-                    && record.capabilities.contains(&EndpointCapability::History)
-            })
-            .map(|record| EvmHistorySource::Open(record.endpoint.as_str()))
-            .unwrap_or(EvmHistorySource::Unavailable)
-    }
-
     /// How this chain's pending transactions reach a final status.
     ///
     /// Resolved through the mainnet counterpart so a testnet cannot diverge.

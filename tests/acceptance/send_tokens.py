@@ -93,7 +93,7 @@ with serve(Node, external_hash=None, trace_response=None, submitted=[], traces=0
 
     run('wallet', 'import', '--chain', 'ton', '--name', 'Token', '--private-key-env', 'SPECTRA_PRIVATE_KEY')
     run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v2',
-        '--capabilities', 'balance,fee,verification,token-balance,broadcast', endpoint)
+        '--capabilities', 'balance,verification,broadcast', endpoint)
     run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v3',
         '--capabilities', 'verification,token-balance,token-discovery', endpoint + '/v3')
     prepared = run('send', 'build', 'Token', '--to', DESTINATION, '--endpoint', endpoint,

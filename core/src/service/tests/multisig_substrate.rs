@@ -139,7 +139,7 @@ struct Account {
 
 async fn account() -> Account {
     let (server, live) = node().await;
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: CHAIN,
         endpoints: vec![server.uri()],

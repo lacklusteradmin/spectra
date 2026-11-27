@@ -248,10 +248,11 @@ impl SubstrateClient {
         let active_balance = self
             .pool_runtime::<u128>("points_to_balance", &(pool_id, points).encode(), at)
             .await?;
+        // A `Balance`, zero for an account in no pool (Asset Hub's
+        // NominationPoolsApi v1, 2026-11-26).
         let pending_rewards = self
-            .pool_runtime::<Option<u128>>("pending_rewards", owner, at)
-            .await?
-            .ok_or_else(invalid)?;
+            .pool_runtime::<u128>("pending_rewards", owner, at)
+            .await?;
         let needs_migration = self
             .pool_runtime::<bool>("member_needs_delegate_migration", owner, at)
             .await?;

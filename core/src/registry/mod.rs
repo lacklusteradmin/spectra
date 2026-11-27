@@ -51,7 +51,7 @@ pub(crate) mod stellar_asset;
 pub(crate) mod xrpl_amount;
 pub use tokens::NftStandard;
 
-use crate::api::endpoint::{EndpointApi, EndpointCapability};
+use crate::api::endpoint::EndpointApi;
 
 /// Declares [`Chain`] and `ALL_CHAINS` from one list, so the enum and the
 /// iteration order cannot disagree.
@@ -349,18 +349,6 @@ pub enum KeyScheme {
     Ed25519Extended,
     /// A Stark curve scalar: Starknet's.
     Stark,
-}
-
-/// Where an EVM chain's transaction history can be read from.
-///
-/// Only keyless explorer sources are configured.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EvmHistorySource<'a> {
-    /// A keyless endpoint. The base already identifies the chain, so no
-    /// `chainid` is sent.
-    Open(&'a str),
-    /// No keyless indexer is configured. Asking is an error, not an empty list.
-    Unavailable,
 }
 
 impl Chain {

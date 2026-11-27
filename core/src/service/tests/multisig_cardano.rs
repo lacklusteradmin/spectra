@@ -92,7 +92,7 @@ async fn koios() -> (MockServer, Arc<Mutex<Koios>>) {
 /// The watched script; the wallets of its cosigners 0 and 2; a phrase
 /// holding none of its keys; and a wallet holding cosigner 0's key alone.
 async fn wallets(endpoint: String) -> Arc<WalletService> {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Cardano,
         endpoints: vec![endpoint],

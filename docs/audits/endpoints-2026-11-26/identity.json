@@ -1,0 +1,4363 @@
+{
+ "checked_at_utc": "2026-11-26T13:02:52+00:00",
+ "command": "spectra --json endpoints probe",
+ "ok": false,
+ "networksWithoutApis": [
+  "blast",
+  "bitcoin-cash-testnet",
+  "dogecoin-testnet",
+  "decred-testnet",
+  "dash-testnet"
+ ],
+ "uncheckedApis": 0,
+ "total": 295,
+ "unreachable": 24,
+ "endpoints": [
+  {
+   "chain": "bitcoin",
+   "endpoint": "https://blockstream.info/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin",
+   "endpoint": "https://mempool.space/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin",
+   "endpoint": "https://mempool.emzy.de/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin",
+   "endpoint": "https://api.blockcypher.com/v1/btc/main",
+   "api": "blockcypher",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: all 3 attempts failed: HTTP 429 Too Many Requests"
+  },
+  {
+   "chain": "ethereum",
+   "endpoint": "https://ethereum-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ethereum",
+   "endpoint": "https://1rpc.io/eth",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "ethereum",
+   "endpoint": "https://eth.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "solana",
+   "endpoint": "https://api.mainnet-beta.solana.com",
+   "api": "solana-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "solana",
+   "endpoint": "https://solana-rpc.publicnode.com",
+   "api": "solana-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "token-history",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "dogecoin",
+   "endpoint": "https://api.blockcypher.com/v1/doge/main",
+   "api": "blockcypher",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://api.blockcypher.com/v1/doge/main: all 2 attempts failed: HTTP 429 Too Many Requests"
+  },
+  {
+   "chain": "dogecoin",
+   "endpoint": "https://blockbook.doge.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "xrp",
+   "endpoint": "https://s1.ripple.com:51234/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "xrp",
+   "endpoint": "https://s2.ripple.com:51234/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "xrp",
+   "endpoint": "https://xrplcluster.com/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "https://litecoinspace.org/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "https://api.blockcypher.com/v1/ltc/main",
+   "api": "blockcypher",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: all 3 attempts failed: HTTP 429 Too Many Requests"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "https://blockbook.ltc.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "tcp://seed-a.litecoin.loshan.co.uk:9333",
+   "api": "litecoin-p2p",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "tcp://dnsseed.thrasher.io:9333",
+   "api": "litecoin-p2p",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "tcp://dnsseed.ltcpool.org:9333",
+   "api": "litecoin-p2p",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-cash",
+   "endpoint": "https://rest.bch.actorforth.org/v2",
+   "api": "bch-rest-v2",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "bitcoin-cash",
+   "endpoint": "https://blockbook.bch.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "tron",
+   "endpoint": "https://api.trongrid.io/v1/accounts",
+   "api": "trongrid-v1",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "tron",
+   "endpoint": "https://api.trongrid.io",
+   "api": "tron-http",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: all 3 attempts failed: HTTP 429 Too Many Requests"
+  },
+  {
+   "chain": "tron",
+   "endpoint": "https://tron-rpc.publicnode.com",
+   "api": "tron-http",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "stellar",
+   "endpoint": "https://horizon.stellar.org",
+   "api": "horizon",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "stellar",
+   "endpoint": "https://horizon.stellar.lobstr.co",
+   "api": "horizon",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "cardano",
+   "endpoint": "https://api.koios.rest/api/v1",
+   "api": "koios",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification",
+    "utxo"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "cardano",
+   "endpoint": "https://graph.xray.app/output/services/koios/mainnet/api/v1",
+   "api": "koios",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification",
+    "utxo"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "polkadot",
+   "endpoint": "https://asset-hub-polkadot-rpc.n.dwellir.com",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "staking",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "polkadot",
+   "endpoint": "https://polkadot-asset-hub-rpc.polkadot.io",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "staking",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "polkadot",
+   "endpoint": "https://statemint.api.onfinality.io/public",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "staking",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "arbitrum",
+   "endpoint": "https://arbitrum-one-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "arbitrum",
+   "endpoint": "https://arb1.arbitrum.io/rpc",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "arbitrum",
+   "endpoint": "https://1rpc.io/arb",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "optimism",
+   "endpoint": "https://mainnet.optimism.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "optimism",
+   "endpoint": "https://optimism-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "optimism",
+   "endpoint": "https://1rpc.io/op",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "optimism",
+   "endpoint": "https://explorer.optimism.io",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "avalanche",
+   "endpoint": "https://api.avax.network/ext/bc/C/rpc",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "avalanche",
+   "endpoint": "https://avalanche-c-chain-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "avalanche",
+   "endpoint": "https://1rpc.io/avax/c",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "avalanche",
+   "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "sui",
+   "endpoint": "https://graphql.mainnet.sui.io/graphql",
+   "api": "sui-graphql",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "sui",
+   "endpoint": "https://api.zan.top/public/sui-mainnet/graphql",
+   "api": "sui-graphql",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "aptos",
+   "endpoint": "https://api.mainnet.aptoslabs.com/v1",
+   "api": "aptos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "aptos",
+   "endpoint": "https://mainnet.aptoslabs.com/v1",
+   "api": "aptos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "aptos",
+   "endpoint": "https://api.mainnet.aptoslabs.com/v1/graphql",
+   "api": "aptos-indexer",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ton",
+   "endpoint": "https://toncenter.com/api/v2",
+   "api": "toncenter-v2",
+   "capabilities": [
+    "balance",
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ton",
+   "endpoint": "https://toncenter.com/api/v3",
+   "api": "toncenter-v3",
+   "capabilities": [
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "near",
+   "endpoint": "https://rpc.mainnet.near.org",
+   "api": "near-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "near",
+   "endpoint": "https://free.rpc.fastnear.com",
+   "api": "near-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "near",
+   "endpoint": "https://api.nearblocks.io/v3",
+   "api": "nearblocks",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "near",
+   "endpoint": "https://api.fastnear.com",
+   "api": "fastnear",
+   "capabilities": [
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "internet-computer",
+   "endpoint": "https://icp-api.io",
+   "api": "icp-replica",
+   "capabilities": [
+    "broadcast",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "internet-computer",
+   "endpoint": "https://rosetta-api.internetcomputer.org",
+   "api": "icp-rosetta",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "monero",
+   "endpoint": "http://xmr-node.cakewallet.com:18081",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "base",
+   "endpoint": "https://base-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "base",
+   "endpoint": "https://mainnet.base.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "base",
+   "endpoint": "https://1rpc.io/base",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "ethereum-classic",
+   "endpoint": "https://etc.etcdesktop.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ethereum-classic",
+   "endpoint": "https://etc.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "bitcoin-sv",
+   "endpoint": "https://api.whatsonchain.com/v1/bsv/main",
+   "api": "whatsonchain",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-dataseed.bnbchain.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-dataseed1.binance.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-dataseed1.defibit.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-dataseed1.ninicoin.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://1rpc.io/bnb",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "hyperliquid",
+   "endpoint": "https://rpc.hyperliquid.xyz/evm",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "hyperliquid",
+   "endpoint": "https://hyperliquid-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "hyperliquid",
+   "endpoint": "https://1rpc.io/hyperliquid",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "polygon",
+   "endpoint": "https://polygon-bor-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "polygon",
+   "endpoint": "https://1rpc.io/matic",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "linea",
+   "endpoint": "https://linea-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "linea",
+   "endpoint": "https://rpc.linea.build",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "linea",
+   "endpoint": "https://1rpc.io/linea",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "scroll",
+   "endpoint": "https://scroll-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "scroll",
+   "endpoint": "https://rpc.scroll.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "scroll",
+   "endpoint": "https://1rpc.io/scroll",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "scroll",
+   "endpoint": "https://scroll.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "mantle",
+   "endpoint": "https://mantle-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "mantle",
+   "endpoint": "https://rpc.mantle.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "mantle",
+   "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "zcash",
+   "endpoint": "https://blockbook.zec.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "zcash",
+   "endpoint": "https://zec.rocks:443",
+   "api": "lightwalletd",
+   "capabilities": [
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "zcash",
+   "endpoint": "https://na.zec.rocks:443",
+   "api": "lightwalletd",
+   "capabilities": [
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "zcash",
+   "endpoint": "https://eu.zec.rocks:443",
+   "api": "lightwalletd",
+   "capabilities": [
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-gold",
+   "endpoint": "https://blockbook.btg.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "decred",
+   "endpoint": "https://dcrdata.decred.org/insight/api",
+   "api": "insight",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "kaspa",
+   "endpoint": "https://api.kaspa.org",
+   "api": "kaspa-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "sei",
+   "endpoint": "https://evm-rpc.sei-apis.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "sei",
+   "endpoint": "https://sei-evm-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "celo",
+   "endpoint": "https://forno.celo.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "celo",
+   "endpoint": "https://celo-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "celo",
+   "endpoint": "https://1rpc.io/celo",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "celo",
+   "endpoint": "https://celo.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "cronos",
+   "endpoint": "https://evm.cronos.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "cronos",
+   "endpoint": "https://cronos-evm-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "cronos",
+   "endpoint": "https://1rpc.io/cro",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "opbnb",
+   "endpoint": "https://opbnb-mainnet-rpc.bnbchain.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "opbnb",
+   "endpoint": "https://opbnb-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "opbnb",
+   "endpoint": "https://1rpc.io/opbnb",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "zksync-era",
+   "endpoint": "https://mainnet.era.zksync.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "zksync-era",
+   "endpoint": "https://1rpc.io/zksync2-era",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "zksync-era",
+   "endpoint": "https://zksync.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "sonic",
+   "endpoint": "https://rpc.soniclabs.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "sonic",
+   "endpoint": "https://sonic-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "sonic",
+   "endpoint": "https://1rpc.io/sonic",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "berachain",
+   "endpoint": "https://rpc.berachain.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "berachain",
+   "endpoint": "https://berachain-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "unichain",
+   "endpoint": "https://mainnet.unichain.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "unichain",
+   "endpoint": "https://unichain-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "unichain",
+   "endpoint": "https://1rpc.io/unichain",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "unichain",
+   "endpoint": "https://unichain.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "ink",
+   "endpoint": "https://rpc-gel.inkonchain.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ink",
+   "endpoint": "https://ink-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ink",
+   "endpoint": "https://explorer.inkonchain.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "dash",
+   "endpoint": "https://api.blockcypher.com/v1/dash/main",
+   "api": "blockcypher",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://api.blockcypher.com/v1/dash/main: all 2 attempts failed: HTTP 429 Too Many Requests"
+  },
+  {
+   "chain": "dash",
+   "endpoint": "https://blockbook.dash.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "dash",
+   "endpoint": "https://dash.atomicwallet.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "x-layer",
+   "endpoint": "https://rpc.xlayer.tech",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bittensor",
+   "endpoint": "https://entrypoint-finney.opentensor.ai",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "plasma",
+   "endpoint": "https://rpc.plasma.to",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "monad",
+   "endpoint": "https://rpc.monad.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "monad",
+   "endpoint": "https://rpc1.monad.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "world-chain",
+   "endpoint": "https://worldchain-mainnet.g.alchemy.com/public",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "world-chain",
+   "endpoint": "https://worldchain-mainnet.explorer.alchemy.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "peercoin",
+   "endpoint": "https://blockbook.peercoin.net",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kaia",
+   "endpoint": "https://public-en.node.kaia.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "xdc",
+   "endpoint": "https://rpc.xinfin.network",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "xdc",
+   "endpoint": "https://erpc.xinfin.network",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "robinhood-chain",
+   "endpoint": "https://rpc.mainnet.chain.robinhood.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kava-evm",
+   "endpoint": "https://evm.kava-rpc.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kava-evm",
+   "endpoint": "https://evm.kava.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "chiliz",
+   "endpoint": "https://rpc.chiliz.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "chiliz",
+   "endpoint": "https://chiliz-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "chiliz",
+   "endpoint": "https://scan-api.chiliz.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "stable",
+   "endpoint": "https://rpc.stable.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "arc",
+   "endpoint": "https://rpc.mainnet.arc.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "arc",
+   "endpoint": "https://rpc.drpc.mainnet.arc.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "manta-pacific",
+   "endpoint": "https://pacific-rpc.manta.network/http",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "manta-pacific",
+   "endpoint": "https://pacific-explorer.manta.network",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "metis",
+   "endpoint": "https://andromeda.metis.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "metis",
+   "endpoint": "https://metis-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "metis",
+   "endpoint": "https://andromeda-explorer.metis.io",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "flare",
+   "endpoint": "https://flare-api.flare.network/ext/C/rpc",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "flare",
+   "endpoint": "https://flare-explorer.flare.network",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "katana",
+   "endpoint": "https://rpc.katana.network",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "megaeth",
+   "endpoint": "https://mainnet.megaeth.com/rpc",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "megaeth",
+   "endpoint": "https://megaeth.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "merlin",
+   "endpoint": "https://rpc.merlinchain.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "merlin",
+   "endpoint": "https://scan.merlinchain.io",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "peaq",
+   "endpoint": "https://quicknode1.peaq.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "peaq",
+   "endpoint": "https://peaq-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "somnia",
+   "endpoint": "https://api.infra.mainnet.somnia.network",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "somnia",
+   "endpoint": "https://explorer.somnia.network",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://explorer.somnia.network/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1: invalid health response: {\"message\":\"Not available: the explorer cannot answer this request right now\",\"result\":null,\"status\":\"0\"}"
+  },
+  {
+   "chain": "0g",
+   "endpoint": "https://evmrpc.0g.ai",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "0g",
+   "endpoint": "https://0g-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "cosmos-hub",
+   "endpoint": "https://cosmos-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "cosmos-hub",
+   "endpoint": "https://cosmos-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "celestia",
+   "endpoint": "https://celestia-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "celestia",
+   "endpoint": "https://public-celestia-lcd.numia.xyz",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "dydx",
+   "endpoint": "https://dydx-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "dydx",
+   "endpoint": "https://dydx-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "dydx",
+   "endpoint": "https://dydx-rest.kingnodes.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "terra",
+   "endpoint": "https://terra-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "terra",
+   "endpoint": "https://terra-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kava",
+   "endpoint": "https://api.data.kava.io",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kava",
+   "endpoint": "https://kava-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kava",
+   "endpoint": "https://kava-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "injective",
+   "endpoint": "https://injective-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "injective",
+   "endpoint": "https://injective-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "injective",
+   "endpoint": "https://sentry.lcd.injective.network",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "akash",
+   "endpoint": "https://akash-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "akash",
+   "endpoint": "https://akash-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "akash",
+   "endpoint": "https://api.akashnet.net",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "akash",
+   "endpoint": "https://rest-akash.ecostake.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "babylon",
+   "endpoint": "https://babylon-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "babylon",
+   "endpoint": "https://api.babylon.validatus.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "osmosis",
+   "endpoint": "https://lcd.osmosis.zone",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "osmosis",
+   "endpoint": "https://osmosis-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "osmosis",
+   "endpoint": "https://osmosis-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "dymension",
+   "endpoint": "https://dymension-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "dymension",
+   "endpoint": "https://api.dymension.nodestake.org",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "dymension",
+   "endpoint": "https://dymension-mainnet-api.crouton.digital",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "saga",
+   "endpoint": "https://saga-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "saga",
+   "endpoint": "https://saga-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "saga",
+   "endpoint": "https://api.saga.nodestake.org",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "allora",
+   "endpoint": "https://allora-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "allora",
+   "endpoint": "https://allora-api.mainnet.allora.network",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "band",
+   "endpoint": "https://band-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "band",
+   "endpoint": "https://laozi1.bandchain.org/api",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kusama",
+   "endpoint": "https://kusama-asset-hub-rpc.polkadot.io",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kusama",
+   "endpoint": "https://asset-hub-kusama-rpc.n.dwellir.com",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kusama",
+   "endpoint": "https://ksm-rpc.stakeworld.io/assethub",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "astar",
+   "endpoint": "https://rpc.astar.network",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "astar",
+   "endpoint": "https://astar.api.onfinality.io/public",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "algorand",
+   "endpoint": "https://mainnet-api.4160.nodely.dev",
+   "api": "algod",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "algorand",
+   "endpoint": "https://mainnet-api.algonode.cloud",
+   "api": "algod",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "algorand",
+   "endpoint": "https://mainnet-idx.4160.nodely.dev",
+   "api": "algorand-indexer",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "algorand",
+   "endpoint": "https://mainnet-idx.algonode.cloud",
+   "api": "algorand-indexer",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "qtum",
+   "endpoint": "https://qtum.atomicwallet.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "fractal-bitcoin",
+   "endpoint": "https://mempool.fractalbitcoin.io/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "fractal-bitcoin",
+   "endpoint": "https://open-api-fractal.unisat.io",
+   "api": "unisat-open-api",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ecash",
+   "endpoint": "https://chronik.e.cash",
+   "api": "chronik",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ecash",
+   "endpoint": "https://chronik-native1.fabien.cash",
+   "api": "chronik",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ecash",
+   "endpoint": "https://chronik-native2.fabien.cash",
+   "api": "chronik",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "digibyte",
+   "endpoint": "https://digiexplorer.info/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "digibyte",
+   "endpoint": "https://digibyte.atomicwallet.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "digibyte",
+   "endpoint": "https://blockbook.dgb.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://mainnet.vechain.org",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://mainnet.vecha.in",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://mainnetc1.vechain.network",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://mainnetc2.vechain.network",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://node-mainnet.vechain.energy",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "filecoin",
+   "endpoint": "https://api.node.glif.io/rpc/v1",
+   "api": "lotus-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "filecoin",
+   "endpoint": "https://filfox.info/rpc/v1",
+   "api": "lotus-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "filecoin",
+   "endpoint": "https://filecoin.drpc.org",
+   "api": "lotus-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "filecoin",
+   "endpoint": "https://filfox.info/api/v1",
+   "api": "filfox",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "tezos",
+   "endpoint": "https://rpc.tzkt.io/mainnet",
+   "api": "tezos-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "tezos",
+   "endpoint": "https://rpc.tzbeta.net",
+   "api": "tezos-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "tezos",
+   "endpoint": "https://mainnet.smartpy.io",
+   "api": "tezos-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "tezos",
+   "endpoint": "https://api.tzkt.io",
+   "api": "tzkt",
+   "capabilities": [
+    "history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "starknet",
+   "endpoint": "https://starknet-rpc.publicnode.com",
+   "api": "starknet-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "starknet",
+   "endpoint": "https://api.zan.top/public/starknet-mainnet",
+   "api": "starknet-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "hedera",
+   "endpoint": "https://mainnet-public.mirrornode.hedera.com",
+   "api": "hedera-mirror",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "hedera",
+   "endpoint": "https://mainnet-public.mirrornode.hedera.com/api/v1/network/nodes",
+   "api": "hedera-hapi",
+   "capabilities": [
+    "broadcast"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-testnet",
+   "endpoint": "https://blockstream.info/testnet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-testnet",
+   "endpoint": "https://mempool.space/testnet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-testnet-4",
+   "endpoint": "https://mempool.space/testnet4/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-testnet-4",
+   "endpoint": "https://mempool.emzy.de/testnet4/api",
+   "api": "esplora",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-signet",
+   "endpoint": "https://blockstream.info/signet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-signet",
+   "endpoint": "https://mempool.space/signet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-signet",
+   "endpoint": "https://mempool.emzy.de/signet/api",
+   "api": "esplora",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "litecoin-testnet",
+   "endpoint": "https://litecoinspace.org/testnet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "litecoin-testnet",
+   "endpoint": "tcp://dnsseed-testnet.thrasher.io:19335",
+   "api": "litecoin-p2p",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "bitcoin-sv-testnet",
+   "endpoint": "https://api.whatsonchain.com/v1/bsv/test",
+   "api": "whatsonchain",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "zcash-testnet",
+   "endpoint": "https://testnet.zec.rocks:443",
+   "api": "lightwalletd",
+   "capabilities": [
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "kaspa-testnet",
+   "endpoint": "https://api-tn10.kaspa.org",
+   "api": "kaspa-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "peercoin-testnet",
+   "endpoint": "https://tblockbook.peercoin.net",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ethereum-sepolia",
+   "endpoint": "https://ethereum-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ethereum-sepolia",
+   "endpoint": "https://1rpc.io/sepolia",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "ethereum-sepolia",
+   "endpoint": "https://eth-sepolia.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "ethereum-hoodi",
+   "endpoint": "https://ethereum-hoodi-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ethereum-hoodi",
+   "endpoint": "https://1rpc.io/hoodi",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "network: evm-json-rpc rpc error: {\"code\":-32001,\"message\":\"You've reached the usage limit for your current plan. To continue with higher limits and uninterrupted access, please upgrade here: https://www.1rpc.io/#pricing\"}"
+  },
+  {
+   "chain": "ethereum-hoodi",
+   "endpoint": "https://eth-hoodi.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "arbitrum-sepolia",
+   "endpoint": "https://arbitrum-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "optimism-sepolia",
+   "endpoint": "https://optimism-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "optimism-sepolia",
+   "endpoint": "https://testnet-explorer.optimism.io",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "base-sepolia",
+   "endpoint": "https://base-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "base-sepolia",
+   "endpoint": "https://base-sepolia.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "bnb-testnet",
+   "endpoint": "https://bsc-testnet-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "avalanche-fuji",
+   "endpoint": "https://avalanche-fuji-c-chain-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "avalanche-fuji",
+   "endpoint": "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "polygon-amoy",
+   "endpoint": "https://polygon-amoy-bor-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "hyperliquid-testnet",
+   "endpoint": "https://rpc.hyperliquid-testnet.xyz/evm",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "hyperliquid-testnet",
+   "endpoint": "https://hyperliquid-testnet.drpc.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "linea-sepolia",
+   "endpoint": "https://linea-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "celo-sepolia",
+   "endpoint": "https://forno.celo-sepolia.celo-testnet.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "celo-sepolia",
+   "endpoint": "https://celo-sepolia.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "cronos-testnet",
+   "endpoint": "https://evm-t3.cronos.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "zksync-era-sepolia",
+   "endpoint": "https://sepolia.era.zksync.dev",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "zksync-era-sepolia",
+   "endpoint": "https://zksync-sepolia.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "sonic-testnet",
+   "endpoint": "https://rpc.testnet.soniclabs.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ink-sepolia",
+   "endpoint": "https://rpc-gel-sepolia.inkonchain.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ink-sepolia",
+   "endpoint": "https://ink-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ink-sepolia",
+   "endpoint": "https://explorer-sepolia.inkonchain.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "x-layer-testnet",
+   "endpoint": "https://testrpc.xlayer.tech/terigon",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "x-layer-testnet",
+   "endpoint": "https://xlayertestrpc.okx.com/terigon",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ethereum-classic-mordor",
+   "endpoint": "https://rpc.mordor.etccooperative.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ethereum-classic-mordor",
+   "endpoint": "https://geth-mordor.etc-network.info",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ethereum-classic-mordor",
+   "endpoint": "https://0xrpc.io/mordor",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ethereum-classic-mordor",
+   "endpoint": "https://etc-mordor.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "tron-nile",
+   "endpoint": "https://nile.trongrid.io/v1/accounts",
+   "api": "trongrid-v1",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "tron-nile",
+   "endpoint": "https://nile.trongrid.io",
+   "api": "tron-http",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "solana-devnet",
+   "endpoint": "https://api.devnet.solana.com",
+   "api": "solana-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "xrp-testnet",
+   "endpoint": "https://s.altnet.rippletest.net:51234/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "xrp-testnet",
+   "endpoint": "https://testnet.xrpl-labs.com/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "stellar-testnet",
+   "endpoint": "https://horizon-testnet.stellar.org",
+   "api": "horizon",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "cardano-preprod",
+   "endpoint": "https://preprod.koios.rest/api/v1",
+   "api": "koios",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification",
+    "utxo"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "sui-testnet",
+   "endpoint": "https://graphql.testnet.sui.io/graphql",
+   "api": "sui-graphql",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "sui-testnet",
+   "endpoint": "https://api.zan.top/public/sui-testnet/graphql",
+   "api": "sui-graphql",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "fee",
+    "broadcast",
+    "token-discovery",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "aptos-testnet",
+   "endpoint": "https://api.testnet.aptoslabs.com/v1",
+   "api": "aptos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "aptos-testnet",
+   "endpoint": "https://api.testnet.aptoslabs.com/v1/graphql",
+   "api": "aptos-indexer",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ton-testnet",
+   "endpoint": "https://testnet.toncenter.com/api/v2",
+   "api": "toncenter-v2",
+   "capabilities": [
+    "balance",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "ton-testnet",
+   "endpoint": "https://testnet.toncenter.com/api/v3",
+   "api": "toncenter-v3",
+   "capabilities": [
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "near-testnet",
+   "endpoint": "https://rpc.testnet.near.org",
+   "api": "near-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "near-testnet",
+   "endpoint": "https://test.rpc.fastnear.com",
+   "api": "near-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "near-testnet",
+   "endpoint": "https://api-testnet.nearblocks.io/v3",
+   "api": "nearblocks",
+   "capabilities": [
+    "history",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "answered; its API cannot name its network"
+  },
+  {
+   "chain": "polkadot-westend",
+   "endpoint": "https://westend-asset-hub-rpc.polkadot.io",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "monero-stagenet",
+   "endpoint": "http://stagenet.xmr-tw.org:38081",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "monero-stagenet",
+   "endpoint": "http://node.monerodevs.org:38089",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "monero-stagenet",
+   "endpoint": "http://node2.monerodevs.org:38089",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  },
+  {
+   "chain": "monero-stagenet",
+   "endpoint": "http://xmr-lux.boldsuck.org:38081",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "network verified"
+  }
+ ]
+}

@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::api::http::{HttpClient, RetryProfile};
-use crate::registry::EvmHistorySource;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvmHistoryEntry {
@@ -58,7 +57,6 @@ pub struct EvmTokenTransferEntry {
     pub amount_raw: String,
     pub txid: String,
     pub block_number: u64,
-    pub log_index: u32,
     pub timestamp: u64,
 }
 
@@ -104,22 +102,16 @@ pub fn serves_nft_inventory(base: &str) -> bool {
     !is_routescan(base)
 }
 
-/// Build a query for a configured keyless explorer, refusing unavailable history.
-pub fn explorer_query_url(source: EvmHistorySource<'_>, params: &str) -> Result<String, ApiError> {
-    match source {
-        EvmHistorySource::Open(base) => {
-            let base = base.trim_end_matches('/');
-            let suffix = if is_routescan(base) || base.ends_with("/api") {
-                ""
-            } else {
-                "/api"
-            };
-            Ok(format!("{base}{suffix}?{params}"))
-        }
-        EvmHistorySource::Unavailable => Err(ApiError::InvalidInput(
-            "no explorer serves this chain's transaction history".into(),
-        )),
-    }
+/// A query to the keyless explorer at `base`, which already names its
+/// network: no `chainid` and no key go on it.
+pub fn explorer_query_url(base: &str, params: &str) -> String {
+    let base = base.trim_end_matches('/');
+    let suffix = if is_routescan(base) || base.ends_with("/api") {
+        ""
+    } else {
+        "/api"
+    };
+    format!("{base}{suffix}?{params}")
 }
 
 /// Distinguish empty history from explorer refusal by the shape of `result`.
@@ -189,7 +181,7 @@ impl BlockscoutClient {
     pub async fn fetch_approval_logs(
         &self,
         owner: &str,
-        source: EvmHistorySource<'_>,
+        base: &str,
     ) -> Result<ApprovalLogs, ApiError> {
         #[derive(Deserialize)]
         struct ApiResp {
@@ -216,12 +208,12 @@ impl BlockscoutClient {
         let mut from_block = 0u64;
         for _ in 0..LOG_PAGES {
             let url = explorer_query_url(
-                source,
+                base,
                 &format!(
                     "module=logs&action=getLogs&fromBlock={from_block}&toBlock=latest\
                      &topic0={APPROVAL_TOPIC}&topic1={owner_topic}&topic0_1_opr=and"
                 ),
-            )?;
+            );
             let response: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
             let rows = etherscan_result_rows(&response.status, &response.message, response.result)?;
             let full = rows.len() >= LOG_PAGE;
@@ -267,7 +259,7 @@ impl BlockscoutClient {
     pub async fn fetch_history(
         &self,
         address: &str,
-        source: EvmHistorySource<'_>,
+        base: &str,
         page: u32,
         page_size: u32,
     ) -> Result<Vec<EvmHistoryEntry>, ApiError> {
@@ -275,11 +267,11 @@ impl BlockscoutClient {
         let page = page.max(1);
         let page_size = page_size.clamp(1, 500);
         let url = explorer_query_url(
-            source,
+            base,
             &format!(
                 "module=account&action=txlist&address={addr_lower}&sort=desc&page={page}&offset={page_size}"
             ),
-        )?;
+        );
 
         #[derive(Deserialize)]
         struct ApiResp {
@@ -361,22 +353,21 @@ impl BlockscoutClient {
         const PAGE_SIZE: usize = 1000;
         const MAX_PAGES: usize = 10;
         let address = address.to_lowercase();
-        let source = EvmHistorySource::Open(base);
         if !is_routescan(base) {
             let url = explorer_query_url(
-                source,
+                base,
                 &format!("module=account&action=tokenlist&address={address}"),
-            )?;
+            );
             return parse_token_list(self.client.get_json(&url, RetryProfile::ChainRead).await?);
         }
         let mut held = Vec::new();
         for page in 1..=MAX_PAGES {
             let url = explorer_query_url(
-                source,
+                base,
                 &format!(
                     "module=account&action=addresstokenbalance&address={address}&page={page}&offset={PAGE_SIZE}"
                 ),
-            )?;
+            );
             let rows =
                 parse_token_list(self.client.get_json(&url, RetryProfile::ChainRead).await?)?;
             let last = rows.len() < PAGE_SIZE;
@@ -396,7 +387,7 @@ impl BlockscoutClient {
     pub async fn fetch_token_transfers(
         &self,
         address: &str,
-        source: EvmHistorySource<'_>,
+        base: &str,
         page: u32,
         page_size: u32,
     ) -> Result<(Vec<EvmTokenTransferEntry>, bool), ApiError> {
@@ -404,11 +395,11 @@ impl BlockscoutClient {
         let safe_page = page.max(1);
         let safe_size = page_size.clamp(1, 500);
         let url = explorer_query_url(
-            source,
+            base,
             &format!(
                 "module=account&action=tokentx&address={addr_lower}&page={safe_page}&offset={safe_size}&sort=desc"
             ),
-        )?;
+        );
 
         #[derive(Deserialize)]
         struct ApiResp {
@@ -427,8 +418,6 @@ impl BlockscoutClient {
             to: String,
             contract_address: String,
             value: String,
-            #[serde(default)]
-            log_index: String,
             /// Present on an NFT's transfer, which is no fungible amount.
             #[serde(default, rename = "tokenID")]
             token_id: Option<String>,
@@ -465,11 +454,6 @@ impl BlockscoutClient {
                         .parse()
                         .ok()
                         .or_decode("history block number")?,
-                    log_index: tx
-                        .log_index
-                        .parse()
-                        .ok()
-                        .or_decode("token transfer log index")?,
                     timestamp,
                 })
             })
@@ -485,7 +469,7 @@ impl BlockscoutClient {
     pub async fn fetch_nft_transfers(
         &self,
         address: &str,
-        source: EvmHistorySource<'_>,
+        base: &str,
         standard: crate::registry::NftStandard,
         page: u32,
         page_size: u32,
@@ -524,13 +508,13 @@ impl BlockscoutClient {
             NftStandard::Erc1155 => "token1155tx",
         };
         let url = explorer_query_url(
-            source,
+            base,
             &format!(
                 "module=account&action={action}&address={}&page={}&offset={page_size}&sort=desc",
                 address.to_lowercase(),
                 page.max(1),
             ),
-        )?;
+        );
         let resp: ApiResp = self.client.get_json(&url, RetryProfile::ChainRead).await?;
         let rows = etherscan_result_rows(&resp.status, &resp.message, resp.result)?;
         let full = rows.len() >= page_size as usize;
@@ -816,78 +800,27 @@ mod a_refusal_is_not_an_empty_history {
 }
 
 #[cfg(test)]
-mod every_evm_chain_says_where_its_history_comes_from {
+mod explorer_queries {
     use super::explorer_query_url;
-    use crate::registry::{Chain, EvmHistorySource};
 
     /// A keyless source carries the chain in its base, so no `chainid` and no
     /// key go on the query.
     #[test]
     fn an_open_source_sends_neither_a_chainid_nor_a_key() {
-        let url = explorer_query_url(
-            EvmHistorySource::Open("https://eth.blockscout.com"),
-            "module=account&action=txlist&address=0xabc",
-        )
-        .expect("open sources never refuse");
         assert_eq!(
-            url,
+            explorer_query_url(
+                "https://eth.blockscout.com",
+                "module=account&action=txlist&address=0xabc",
+            ),
             "https://eth.blockscout.com/api?module=account&action=txlist&address=0xabc"
         );
-    }
-
-    #[test]
-    fn unavailable_history_is_refused_before_network_access() {
-        for chain in [
-            Chain::BnbChain,
-            Chain::Sonic,
-            Chain::OpBnb,
-            Chain::Sei,
-            Chain::Linea,
-            Chain::Hyperliquid,
-            Chain::Cronos,
-            Chain::XLayer,
-            Chain::Berachain,
-            Chain::Kaia,
-            Chain::Xdc,
-            Chain::RobinhoodChain,
-            Chain::KavaEvm,
-            Chain::Stable,
-            Chain::Arc,
-            Chain::Katana,
-            Chain::Peaq,
-            Chain::ZeroG,
-        ] {
-            assert_eq!(chain.evm_history_source(), EvmHistorySource::Unavailable);
-            assert!(explorer_query_url(chain.evm_history_source(), "module=account").is_err());
-        }
-    }
-
-    #[test]
-    fn history_sources_match_the_concrete_network_directory() {
-        let catalog = crate::catalog::endpoints::catalog();
-        for chain in Chain::all().filter(|chain| chain.is_evm()) {
-            if let EvmHistorySource::Open(url) = chain.evm_history_source() {
-                assert!(catalog.records.iter().any(|record| {
-                    record.chain_id == chain
-                        && record.endpoint == url
-                        && record
-                            .capabilities
-                            .contains(&crate::api::endpoint::EndpointCapability::History)
-                }));
-            }
-            // A testnet reads its own explorer or none, never its mainnet's.
-            let mainnet = chain.mainnet_counterpart();
-            if chain != mainnet && matches!(chain.evm_history_source(), EvmHistorySource::Open(_)) {
-                assert_ne!(chain.evm_history_source(), mainnet.evm_history_source());
-            }
-        }
     }
 
     #[test]
     fn explicit_history_api_paths_are_not_extended() {
         for base in ["https://example.org/api", "https://example.org/etherscan/"] {
             assert_eq!(
-                explorer_query_url(EvmHistorySource::Open(base), "action=txlist").unwrap(),
+                explorer_query_url(base, "action=txlist"),
                 format!("{}?action=txlist", base.trim_end_matches('/'))
             );
         }
@@ -914,7 +847,7 @@ mod history_page_tests {
                 "value":"1", "gasPrice":"1", "gasUsed":"21000", "isError":"0"
             }]}))
         }).mount(&server).await;
-        let source = EvmHistorySource::Open(Box::leak(server.uri().into_boxed_str()));
+        let source = Box::leak(server.uri().into_boxed_str());
         let client = BlockscoutClient::new();
         for page in [1, 2] {
             let rows = client.fetch_history("FROM", source, page, 7).await.unwrap();
@@ -957,7 +890,7 @@ mod execution_history_regressions {
                 )
                 .mount(&server)
                 .await;
-            let source = EvmHistorySource::Open(Box::leak(server.uri().into_boxed_str()));
+            let source = Box::leak(server.uri().into_boxed_str());
             let result = BlockscoutClient::new()
                 .fetch_history("from", source, 1, 20)
                 .await;
@@ -1111,7 +1044,7 @@ mod nft_answers {
             let (entries, full) = BlockscoutClient::new()
                 .fetch_nft_transfers(
                     "0x000000000000000000000000000000000000dead",
-                    EvmHistorySource::Open(&server.uri()),
+                    &server.uri(),
                     standard,
                     1,
                     2,
@@ -1138,13 +1071,14 @@ mod nft_answers {
 
     /// A fungible transfer list never carries an NFT's row as an amount, and
     /// a tracked token's row is kept when the explorer leaves its decimals
-    /// out: the tracked token's own decimals scale it.
+    /// out: the tracked token's own decimals scale it. Rows carry no log
+    /// index, as Blockscout's and Routescan's did on 2026-11-26.
     #[tokio::test]
     async fn fungible_rows_are_raw_amounts_of_fungible_tokens() {
         let row = |token_id: Option<&str>, decimals: &str| {
             let mut row = json!({"blockNumber": "1", "timeStamp": "1700000000", "hash": "0xh",
                 "from": "0xA", "to": "0xB", "contractAddress": "0xC", "tokenName": "T",
-                "tokenSymbol": "T", "tokenDecimal": decimals, "value": "1000", "logIndex": "0"});
+                "tokenSymbol": "T", "tokenDecimal": decimals, "value": "1000"});
             if let Some(id) = token_id {
                 row["tokenID"] = json!(id);
             }
@@ -1158,7 +1092,7 @@ mod nft_answers {
             .mount(&server)
             .await;
         let (entries, full) = BlockscoutClient::new()
-            .fetch_token_transfers("0xa", EvmHistorySource::Open(&server.uri()), 1, 3)
+            .fetch_token_transfers("0xa", &server.uri(), 1, 3)
             .await
             .unwrap();
         // The page was full: an NFT row on it still counts towards that.

@@ -106,7 +106,7 @@ async fn node(v2: bool) -> (MockServer, Arc<Mutex<Ledger>>) {
 }
 
 async fn service(endpoint: String) -> (Arc<WalletService>, Arc<InMemorySecretStore>) {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Xrp,
         endpoints: vec![endpoint],

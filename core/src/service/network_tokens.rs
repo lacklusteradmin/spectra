@@ -59,36 +59,6 @@ fn validate_token_reads(
     Ok(())
 }
 
-impl WalletService {
-    /// TronGrid v1 account API bases declaring `required`: the catalog's and
-    /// custom `trongrid-v1` entries under the catalog transport. Under an
-    /// explicit override, or when none declares it, each primary node's own
-    /// `/v1/accounts`, since TronGrid serves both APIs from one host.
-    pub(crate) async fn tron_account_endpoints(
-        &self,
-        chain: Chain,
-        primary: &[String],
-        required: &[crate::api::endpoint::EndpointCapability],
-    ) -> Result<Vec<String>, SpectraBridgeError> {
-        let accounts = if self
-            .uses_catalog_endpoints
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            self.api_endpoints(chain, EndpointApi::TrongridV1, required)
-                .await?
-        } else {
-            Vec::new()
-        };
-        if !accounts.is_empty() {
-            return Ok(accounts);
-        }
-        Ok(primary
-            .iter()
-            .map(|url| format!("{}/v1/accounts", url.trim_end_matches('/')))
-            .collect())
-    }
-}
-
 /// An Asset Hub asset's id, as its validated identifier writes it.
 pub(crate) fn asset_id(contract: &str) -> Result<u32, SpectraBridgeError> {
     contract
@@ -117,9 +87,7 @@ fn holding_key(chain: Chain, contract: &str) -> Option<String> {
 }
 
 impl WalletService {
-    /// The URLs of an indexer `api` that lists holdings on `chain`: the
-    /// catalog's and custom ones under the catalog transport, only custom
-    /// ones under an explicit override, which names every service it means.
+    /// The URLs of an indexer `api` that lists holdings on `chain`.
     pub(super) async fn listing_endpoints(
         &self,
         chain: Chain,
@@ -135,14 +103,7 @@ impl WalletService {
             } else {
                 &[crate::api::endpoint::EndpointCapability::TokenDiscovery]
             };
-        if self
-            .uses_catalog_endpoints
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            self.api_endpoints(chain, api, required).await
-        } else {
-            Ok(self.custom_api_endpoints(chain, &[api], required).await)
-        }
+        self.api_endpoints(chain, api, required).await
     }
 
     /// Every token `address` holds on `chain`, from one listing, or `None`
@@ -211,9 +172,8 @@ impl WalletService {
                     .await?
             }
             Chain::Tron => {
-                let primary = self.endpoints_for(chain, &discovery).await;
                 let accounts = self
-                    .tron_account_endpoints(chain, &primary, &discovery)
+                    .api_endpoints(chain, EndpointApi::TrongridV1, &discovery)
                     .await?;
                 let nodes = self
                     .endpoints_for(

@@ -273,7 +273,9 @@ impl WalletService {
                         sequence: account.sequence,
                         gas_limit: UNSIMULATED_TRANSFER_GAS,
                         fee: 0,
-                        timeout_height: height + 1,
+                        // The send's own window: a block's margin expires
+                        // in a simulation on a fast network.
+                        timeout_height: height + chain.cosmos_timeout_blocks()?,
                     },
                 )?;
                 let (_, fee) = price_transfer(&client, chain, &unpriced).await?;

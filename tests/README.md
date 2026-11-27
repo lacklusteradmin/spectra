@@ -41,7 +41,7 @@ to load under `python -O` or `PYTHONOPTIMIZE`.
 | Suite | Purpose |
 |---|---|
 | `send.py` | A password-protected owned send: `send owned-broadcast` is refused without `--yes`; with it and the password from the environment it broadcasts exactly once. |
-| `endpoints.py` | The listing's built-in/custom source filter, the health verdict the CLI aggregates (networks without APIs, unreachable endpoints), and a balance read from an endpoint added for a network the catalog lists none for, against a loopback Blockbook node. |
+| `endpoints.py` | The listing's built-in/custom source filter, the health verdict the CLI aggregates (networks without APIs, unreachable endpoints, an API that cannot name its network), a balance read from an endpoint added for a network the catalog lists none for, against a loopback Blockbook node; a probe that fails a node on another network; `--endpoint` reading through the named node alone, and a broadcast to a node on another network refused with nothing submitted. |
 | `send_stages.py` | An EVM send built, signed and broadcast in separate processes: nothing submitted before `broadcast-signed --yes`, an identical retry, and two processes racing to sign at one nonce, one refused as reserved. |
 | `send_polkadot.py` | A Polkadot Asset Hub send across processes: a fee changed at broadcast submits nothing, one broadcast, an unchanged rebroadcast, polled finality, recovery after a lost status write, and a failed outcome with its cursor kept; then a USDT `Assets.transfer` built, signed and broadcast in separate processes. |
 | `send_cardano.py` | A Cardano send built, signed and broadcast once, exactly as signed. |
@@ -154,7 +154,7 @@ source.
 | `generate-solana-token-2022-vectors.cjs` | Token-2022 `TransferCheckedWithFee` and a transfer hook's extra accounts, every seed kind, resolved by @solana/spl-token. |
 | `generate-account-closing-vectors.cjs` | XRP AccountDelete and Stellar AccountMerge, built and signed by the official XRPL packages and the Stellar SDK. |
 | `generate-derivation-profile-vectors.cjs` | Addresses for every registry derivation profile at accounts 0 and 1, from independent libraries. |
-| `generate-evm-legacy-vectors.cjs` | Legacy EIP-155 transactions on Kava EVM, Merlin and Metis (a native transfer, an ERC-20 transfer, a gas price past 2^32 wei): signing payload, signed bytes and hash, from ethers.js. |
+| `generate-evm-legacy-vectors.cjs` | Legacy EIP-155 transactions on Kava EVM, Merlin, Metis and Ethereum Classic (native transfers, an ERC-20 transfer, a gas price past 2^32 wei): signing payload, signed bytes and hash, from ethers.js. |
 | `generate-account-key-vectors.cjs` | Account extended public keys in each UTXO network's encoding, from bip39, bip32 and tiny-secp256k1. |
 | `generate-account-utxo-vectors.cjs` | Signed transactions spending several account addresses with separate input keys, from bitcoinjs-lib and kaspa-wasm. |
 | `generate-substrate-path-vectors.cjs` | Substrate hard/soft derivation paths and passphrases, with sr25519 keys and SS58 addresses, from polkadot.js. |

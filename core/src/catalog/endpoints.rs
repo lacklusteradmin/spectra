@@ -39,29 +39,38 @@ impl TryFrom<TomlEndpoint> for EndpointRecord {
     type Error = String;
 
     fn try_from(e: TomlEndpoint) -> Result<Self, Self::Error> {
-        if e.capabilities.is_empty() {
-            return Err(format!(
-                "{}: an endpoint must declare what it is used for",
-                e.id
-            ));
-        }
-        let supported = endpoint_capability_options(e.chain_id, e.api);
-        if let Some(claim) = e.capabilities.iter().find(|c| !supported.contains(c)) {
-            return Err(format!(
-                "{}: {} has no {} adapter on this network",
-                e.id,
-                e.api.as_str(),
-                claim.as_str()
-            ));
-        }
-        Ok(EndpointRecord {
+        let record = EndpointRecord {
             id: e.id,
             chain_id: e.chain_id,
             api: e.api,
             endpoint: e.endpoint,
             capabilities: e.capabilities,
-        })
+        };
+        validate_record(&record)?;
+        Ok(record)
     }
+}
+
+/// A built-in endpoint speaks one of its network's APIs and declares what it
+/// is used for, each use one Spectra's adapter for that API implements there.
+pub(crate) fn validate_record(record: &EndpointRecord) -> Result<(), String> {
+    if record.capabilities.is_empty() {
+        return Err(format!(
+            "{}: an endpoint must declare what it is used for",
+            record.id
+        ));
+    }
+    let supported = endpoint_capability_options(record.chain_id, record.api);
+    if let Some(claim) = record.capabilities.iter().find(|c| !supported.contains(c)) {
+        return Err(format!(
+            "{}: {} has no {} adapter on {}",
+            record.id,
+            record.api.as_str(),
+            claim.as_str(),
+            record.chain_id.str_id()
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, uniffi::Record)]
@@ -353,11 +362,8 @@ mod capability_tests {
             assert!(selected("bitcoin", capability).is_empty());
         }
         assert_eq!(selected("ton", "token-history"), ["ton.api.v3"]);
-        // v2 reads the metadata required to interpret v3 token balances.
-        assert_eq!(
-            selected("ton", "token-balance"),
-            ["ton.api.v2", "ton.api.v3"]
-        );
+        // Jetton balances and their metadata are v3's too.
+        assert_eq!(selected("ton", "token-balance"), ["ton.api.v3"]);
         assert!(selected("ton", "history").contains(&"ton.api.v2".into()));
         assert!(selected("solana", "token-discovery").contains(&"solana.rpc.mainnet".into()));
         assert_eq!(

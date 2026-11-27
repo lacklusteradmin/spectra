@@ -1,0 +1,4516 @@
+{
+ "checked_at_utc": "2026-11-26T11:17:48+00:00 to 11:23:45+00:00",
+ "binary": "spectra at Beta Commit 261 (before this change)",
+ "command": "spectra --json endpoints probe",
+ "ok": false,
+ "networksWithoutApis": [
+  "bitcoin-cash-testnet",
+  "dogecoin-testnet",
+  "decred-testnet",
+  "dash-testnet"
+ ],
+ "uncheckedApis": 0,
+ "total": 304,
+ "unreachable": 12,
+ "endpoints": [
+  {
+   "chain": "bitcoin",
+   "endpoint": "https://blockstream.info/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockstream.info/api/blocks/tip/height"
+  },
+  {
+   "chain": "bitcoin",
+   "endpoint": "https://mempool.space/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mempool.space/api/blocks/tip/height"
+  },
+  {
+   "chain": "bitcoin",
+   "endpoint": "https://mempool.emzy.de/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mempool.emzy.de/api/blocks/tip/height"
+  },
+  {
+   "chain": "bitcoin",
+   "endpoint": "https://api.blockcypher.com/v1/btc/main",
+   "api": "blockcypher",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.blockcypher.com/v1/btc/main"
+  },
+  {
+   "chain": "ethereum",
+   "endpoint": "https://ethereum-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum",
+   "endpoint": "https://1rpc.io/eth",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum",
+   "endpoint": "https://eth.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://eth.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://eth.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "solana",
+   "endpoint": "https://api.mainnet-beta.solana.com",
+   "api": "solana-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: getHealth, getSlot"
+  },
+  {
+   "chain": "solana",
+   "endpoint": "https://solana-rpc.publicnode.com",
+   "api": "solana-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: getHealth, getSlot"
+  },
+  {
+   "chain": "dogecoin",
+   "endpoint": "https://api.blockcypher.com/v1/doge/main",
+   "api": "blockcypher",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.blockcypher.com/v1/doge/main"
+  },
+  {
+   "chain": "dogecoin",
+   "endpoint": "https://blockbook.doge.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockbook.doge.zelcore.io/api/v2"
+  },
+  {
+   "chain": "xrp",
+   "endpoint": "https://s1.ripple.com:51234/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: server_info"
+  },
+  {
+   "chain": "xrp",
+   "endpoint": "https://s2.ripple.com:51234/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: server_info"
+  },
+  {
+   "chain": "xrp",
+   "endpoint": "https://xrplcluster.com/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: server_info"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "https://litecoinspace.org/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://litecoinspace.org/api/blocks/tip/height"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "https://api.blockcypher.com/v1/ltc/main",
+   "api": "blockcypher",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.blockcypher.com/v1/ltc/main"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "https://blockbook.ltc.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockbook.ltc.zelcore.io/api/v2"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "tcp://seed-a.litecoin.loshan.co.uk:9333",
+   "api": "litecoin-p2p",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Litecoin node at height 3219689 offers MWEB light-client service"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "tcp://dnsseed.thrasher.io:9333",
+   "api": "litecoin-p2p",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Litecoin node at height 3219689 offers MWEB light-client service"
+  },
+  {
+   "chain": "litecoin",
+   "endpoint": "tcp://dnsseed.ltcpool.org:9333",
+   "api": "litecoin-p2p",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Litecoin node at height 3219689 offers MWEB light-client service"
+  },
+  {
+   "chain": "bitcoin-cash",
+   "endpoint": "https://rest.bch.actorforth.org/v2",
+   "api": "bch-rest-v2",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://rest.bch.actorforth.org/v2/blockchain/getBlockchainInfo"
+  },
+  {
+   "chain": "bitcoin-cash",
+   "endpoint": "https://blockbook.bch.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockbook.bch.zelcore.io/api/v2"
+  },
+  {
+   "chain": "tron",
+   "endpoint": "https://api.trongrid.io/v1/accounts",
+   "api": "trongrid-v1",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.trongrid.io/v1/accounts/T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb"
+  },
+  {
+   "chain": "tron",
+   "endpoint": "https://api.trongrid.io",
+   "api": "tron-http",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.trongrid.io/wallet/getnowblock"
+  },
+  {
+   "chain": "tron",
+   "endpoint": "https://tron-rpc.publicnode.com",
+   "api": "tron-http",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://tron-rpc.publicnode.com/wallet/getnowblock"
+  },
+  {
+   "chain": "stellar",
+   "endpoint": "https://horizon.stellar.org",
+   "api": "horizon",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://horizon.stellar.org/fee_stats"
+  },
+  {
+   "chain": "stellar",
+   "endpoint": "https://horizon.stellar.lobstr.co",
+   "api": "horizon",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://horizon.stellar.lobstr.co/fee_stats"
+  },
+  {
+   "chain": "cardano",
+   "endpoint": "https://api.koios.rest/api/v1",
+   "api": "koios",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification",
+    "utxo"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.koios.rest/api/v1/tip"
+  },
+  {
+   "chain": "cardano",
+   "endpoint": "https://graph.xray.app/output/services/koios/mainnet/api/v1",
+   "api": "koios",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification",
+    "utxo"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://graph.xray.app/output/services/koios/mainnet/api/v1/tip"
+  },
+  {
+   "chain": "polkadot",
+   "endpoint": "https://asset-hub-polkadot-rpc.n.dwellir.com",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "staking",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "polkadot",
+   "endpoint": "https://polkadot-asset-hub-rpc.polkadot.io",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "staking",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "polkadot",
+   "endpoint": "https://statemint.api.onfinality.io/public",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "staking",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "arbitrum",
+   "endpoint": "https://arbitrum-one-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "arbitrum",
+   "endpoint": "https://arb1.arbitrum.io/rpc",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "arbitrum",
+   "endpoint": "https://1rpc.io/arb",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "arbitrum",
+   "endpoint": "https://arbitrum.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://arbitrum.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1: HTTP 403: <!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=Edge\"><meta name=\"robots\" content=\"noindex,nofollow\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"content-security-policy\" content=\"default-src &#39;none&#39;; script-src &#39;nonce-KyEjG2U4JafmLVM80iS0ia&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;\"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial,\"Noto Sans\",sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\",\"Segoe UI Symbol\",\"Noto Color Emoji\"}body{display:flex;flex-direction:column;height:100vh;min-height:100vh}.main-content{margin:8rem auto;padding-left:1.5rem;max-width:60rem}@media (width <= 720px){.main-content{margin-top:4rem}}#challenge-error-text{background-image:url(\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0ibm9uZSI+PHBhdGggZmlsbD0iI0IyMEYwMyIgZD0iTTE2IDNhMTMgMTMgMCAxIDAgMTMgMTNBMTMuMDE1IDEzLjAxNSAwIDAgMCAxNiAzbTAgMjRhMTEgMTEgMCAxIDEgMTEtMTEgMTEuMDEgMTEuMDEgMCAwIDEtMTEgMTEiLz48cGF0aCBmaWxsPSIjQjIwRjAzIiBkPSJNMTcuMDM4IDE4LjYxNUgxNC44N0wxNC41NjMgOS41aDIuNzgzem0tMS4wODQgMS40MjdxLjY2IDAgMS4wNTcuMzg4LjQwNy4zODkuNDA3Ljk5NCAwIC41OTYtLjQwNy45ODQtLjM5Ny4zOS0xLjA1Ny4zODktLjY1IDAtMS4wNTYtLjM4OS0uMzk4LS4zODktLjM5OC0uOTg0IDAtLjU5Ny4zOTgtLjk4NS40MDYtLjM5NyAxLjA1Ni0uMzk3Ii8+PC9zdmc+\");background-repeat:no-repeat;background-size:contain;padding-left:34px}</style><meta http-equiv=\"refresh\" content=\"360\"></head><body><div class=\"main-wrapper\" role=\"main\"><div class=\"main-content\"><noscript><div class=\"h2\"><span id=\"challenge-error-text\">Enable JavaScript and cookies to continue</span></div></noscript></div></div><script nonce=\"KyEjG2U4JafmLVM80iS0ia\">(function(){window._cf_chl_opt = {cFPWv: 'g',cH: 'TqchbVANHCXX5BRY0QO3p8YCrJGl9svoW77emfTeX6Q-1795691903-1.2.1.1-Nni2DvyswtHg2S2F16MLrAiFWno_7RzFtOaBKakRfZv0EqN9mD7VoW_U_BRn2TAA',cITimeS: '1795691903',cN: 'KyEjG2U4JafmLVM80iS0ia',cRay: 'a6087dfc2a5bd6e7',cTplC:0,cTplO:0,cTplV:5,cType: 'managed',cUPMDTk:\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_tk=S.RCh9_gkE_J1CR_cp.ttiRz4NPwKxpKmvG_b_wIZF4-1795691903-1.0.1.1-5My69mOydTxAc8lkuhiZti_tNHT4wmRyswDXeclgMn0\",cvId: '3',cZone: 'arbitrum.blockscout.com',fa:\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_f_tk=S.RCh9_gkE_J1CR_cp.ttiRz4NPwKxpKmvG_b_wIZF4-1795691903-1.0.1.1-5My69mOydTxAc8lkuhiZti_tNHT4wmRyswDXeclgMn0\",md: 'SV9qWC7r_72JjjFUKT3bjhSOxrZJyUH5SMdRG_igeUM-1795691903-1.2.1.1-_uBmek.3qMolPpPmQlCQSQvd3WP8B6kxhxjFoE1zTUv2f5d5eqBEGxukFLUzlS5X4eSbQpcGOBIMMY66N3q9NmtYvmJnFsJE40xuyUwErweAl4tpYmVsVU3T7cEX8.Sa2NDj9YDf3DS75oHGLU9DlfO.We0XPJRxTkZOGhFsxI21NKv.13CSzTPP7uuE0IyC69HubOsDsaSaGd61JmxP6YCMViUQMJu43jLOOPWa4BkYLjj9IhoCD3geA75IDs_PmYxhQeX067rXfLgzBL9_HHxlhlGky6dFyMCVrOSF3cL6QGvkXzDU69sHRfCIaTRkhh1f3Zjfr0r.sySWu0qpj8OcJrbc62pEXdJX2ARwRiaQ7xYPknVV24L6kdVGVrZtnZXw8Qs7wMrENlGOPOjBJBiSnP1sf2X_2HKuLjGKlSVDOdq4gl_QJewLWmSwLt_qQf7xGFYig3e95X6I5BYMAeJchN68vwzhLdjy9F4woRJrJblRdxPOQmQTiAima8sYV70FV1ZL.Q8rL.Ku.m2EnPSVfsiHs_44_achkyrd8BOy.Dta90wjLtytlIdd_pP9iKR0a36fRnI5xMyCqnwr5TRSNZm2PuZXwOQES_Ok4oPEdfo7OAvtYkxwSq_EwUDGYQ7lD3vUcSZXVbm8S4iLv4kT8mQ7CN8XEdwdin3OuZkXPPDc0npYBxOvYa4vCbfwPrhoD96sInFOYJ8vTV3NPIw9Tz5Q6mxVlrRUJ1coQYvJLiWUsE83dyCe3zg9VP66lViCnxffD5TQSXKDslVNZcCDBy6XxkTKuW6CzIrRoUFdddUum9HhuMTllfuOhYWKbkNUJowRILtR1DtMyapGsjPJrSR2ZjVdqYuDf6uwZCYAkQ93SYcHN805LVKZ2NkYX9vSjiS6CaSuAVHPAn59bElxzOHrPWYS4o7Wnsgitxlne_.1nnmUoVIQxJtAwoSJ1YzAgqeDJoO.zjC_ufaUmDu4TXjdRfSQAyMLjUduHnaAs3QMO0.70gkMPunuOGZCfaQ4ctJ7wE_yJcJQfHIWKtuQBxIBkPEItvTkpylrpym5PRKguRWpN898Jfhjv0Ve4PJuuE4gpqkgF5awEqS2Yjdl2iyGcaahjxXhK3ywNGOHuofdCu1mAE7TYTVjdozq2Rw32fNDTL8NSaDq3boYRF9JZSnr7O9sApaviEngLuM',mdrd: 'fZbdA6xZNO4WlpTF3B82j6pzkKx2051I0ou2.JIekJc-1795691903-1.2.1.1-0aTQ8cLMV5xmbbVKL24HGPNlVylHlIeQiHcUIfBv9JnGcBZQ2ie.HMpIcssOj4BpB3Se.K5cnfb7i2zCKoaovxT_E5ZNcnrKz3c38dpjxgElji4HKtM2s1qK.jYXWzamU4ABShAclNllRJpSqwXeEwbIsiBPdN6ho3R8bmhFnK2DMsetG6PGS4mUz2_2rlp_rbGSGGHvwmw4NElkZzsD.pUg560NuPwVpHVvYmvnoCg',};var a = document.createElement('script');a.nonce = 'KyEjG2U4JafmLVM80iS0ia';a.src = '/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1?ray=a6087dfc2a5bd6e7';window._cf_chl_opt.cOgUHash = location.hash === '' && location.href.indexOf('#') !== -1 ? '#' : location.hash;window._cf_chl_opt.cOgUQuery = location.search === '' && location.href.slice(0, location.href.length - window._cf_chl_opt.cOgUHash.length).indexOf('?') !== -1 ? '?' : location.search;if (window.history && window.history.replaceState) {var ogU = location.pathname + window._cf_chl_opt.cOgUQuery + window._cf_chl_opt.cOgUHash;history.replaceState(null, null,\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_rt_tk=S.RCh9_gkE_J1CR_cp.ttiRz4NPwKxpKmvG_b_wIZF4-1795691903-1.0.1.1-5My69mOydTxAc8lkuhiZti_tNHT4wmRyswDXeclgMn0\"+ window._cf_chl_opt.cOgUHash);a.onload = function() {history.replaceState(null, null, ogU);}}document.getElementsByTagName('head')[0].appendChild(a);}());</script></body></html>"
+  },
+  {
+   "chain": "optimism",
+   "endpoint": "https://mainnet.optimism.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "optimism",
+   "endpoint": "https://optimism-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "optimism",
+   "endpoint": "https://1rpc.io/op",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "optimism",
+   "endpoint": "https://explorer.optimism.io",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://explorer.optimism.io/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://explorer.optimism.io/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "avalanche",
+   "endpoint": "https://api.avax.network/ext/bc/C/rpc",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "avalanche",
+   "endpoint": "https://avalanche-c-chain-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "avalanche",
+   "endpoint": "https://1rpc.io/avax/c",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "avalanche",
+   "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "sui",
+   "endpoint": "https://graphql.mainnet.sui.io/graphql",
+   "api": "sui-graphql",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Sui network verified at checkpoint 349395390"
+  },
+  {
+   "chain": "sui",
+   "endpoint": "https://api.zan.top/public/sui-mainnet/graphql",
+   "api": "sui-graphql",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Sui network verified at checkpoint 349395393"
+  },
+  {
+   "chain": "aptos",
+   "endpoint": "https://api.mainnet.aptoslabs.com/v1",
+   "api": "aptos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.mainnet.aptoslabs.com/v1"
+  },
+  {
+   "chain": "aptos",
+   "endpoint": "https://mainnet.aptoslabs.com/v1",
+   "api": "aptos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet.aptoslabs.com/v1"
+  },
+  {
+   "chain": "aptos",
+   "endpoint": "https://api.mainnet.aptoslabs.com/v1/graphql",
+   "api": "aptos-indexer",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Aptos indexer network verified"
+  },
+  {
+   "chain": "ton",
+   "endpoint": "https://toncenter.com/api/v2",
+   "api": "toncenter-v2",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://toncenter.com/api/v2/getMasterchainInfo"
+  },
+  {
+   "chain": "ton",
+   "endpoint": "https://toncenter.com/api/v3",
+   "api": "toncenter-v3",
+   "capabilities": [
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://toncenter.com/api/v3/masterchainInfo"
+  },
+  {
+   "chain": "near",
+   "endpoint": "https://rpc.mainnet.near.org",
+   "api": "near-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: status"
+  },
+  {
+   "chain": "near",
+   "endpoint": "https://free.rpc.fastnear.com",
+   "api": "near-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: status"
+  },
+  {
+   "chain": "near",
+   "endpoint": "https://api.nearblocks.io/v3",
+   "api": "nearblocks",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.nearblocks.io/v3/stats"
+  },
+  {
+   "chain": "near",
+   "endpoint": "https://api.fastnear.com",
+   "api": "fastnear",
+   "capabilities": [
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.fastnear.com/v1/account/0000000000000000000000000000000000000000000000000000000000000000/staking"
+  },
+  {
+   "chain": "internet-computer",
+   "endpoint": "https://icp-api.io",
+   "api": "icp-replica",
+   "capabilities": [
+    "broadcast",
+    "verification",
+    "staking"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://icp-api.io"
+  },
+  {
+   "chain": "internet-computer",
+   "endpoint": "https://rosetta-api.internetcomputer.org",
+   "api": "icp-rosetta",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://rosetta-api.internetcomputer.org/network/list"
+  },
+  {
+   "chain": "monero",
+   "endpoint": "http://xmr-node.cakewallet.com:18081",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: get_info"
+  },
+  {
+   "chain": "base",
+   "endpoint": "https://base-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "base",
+   "endpoint": "https://mainnet.base.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "base",
+   "endpoint": "https://1rpc.io/base",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "base",
+   "endpoint": "https://base.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://base.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1: HTTP 403: <!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=Edge\"><meta name=\"robots\" content=\"noindex,nofollow\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"content-security-policy\" content=\"default-src &#39;none&#39;; script-src &#39;nonce-E0lHi5ZINWWZtggQr81pWV&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;\"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial,\"Noto Sans\",sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\",\"Segoe UI Symbol\",\"Noto Color Emoji\"}body{display:flex;flex-direction:column;height:100vh;min-height:100vh}.main-content{margin:8rem auto;padding-left:1.5rem;max-width:60rem}@media (width <= 720px){.main-content{margin-top:4rem}}#challenge-error-text{background-image:url(\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0ibm9uZSI+PHBhdGggZmlsbD0iI0IyMEYwMyIgZD0iTTE2IDNhMTMgMTMgMCAxIDAgMTMgMTNBMTMuMDE1IDEzLjAxNSAwIDAgMCAxNiAzbTAgMjRhMTEgMTEgMCAxIDEgMTEtMTEgMTEuMDEgMTEuMDEgMCAwIDEtMTEgMTEiLz48cGF0aCBmaWxsPSIjQjIwRjAzIiBkPSJNMTcuMDM4IDE4LjYxNUgxNC44N0wxNC41NjMgOS41aDIuNzgzem0tMS4wODQgMS40MjdxLjY2IDAgMS4wNTcuMzg4LjQwNy4zODkuNDA3Ljk5NCAwIC41OTYtLjQwNy45ODQtLjM5Ny4zOS0xLjA1Ny4zODktLjY1IDAtMS4wNTYtLjM4OS0uMzk4LS4zODktLjM5OC0uOTg0IDAtLjU5Ny4zOTgtLjk4NS40MDYtLjM5NyAxLjA1Ni0uMzk3Ii8+PC9zdmc+\");background-repeat:no-repeat;background-size:contain;padding-left:34px}</style><meta http-equiv=\"refresh\" content=\"360\"></head><body><div class=\"main-wrapper\" role=\"main\"><div class=\"main-content\"><noscript><div class=\"h2\"><span id=\"challenge-error-text\">Enable JavaScript and cookies to continue</span></div></noscript></div></div><script nonce=\"E0lHi5ZINWWZtggQr81pWV\">(function(){window._cf_chl_opt = {cFPWv: 'g',cH: 'IK78DTx6jrszhogXDkZqobV5s4zVa597PhJ4sUuSMN8-1795691935-1.2.1.1-0rV30xr28qWyfXsNCfWnTsSUqtmFgXJvmMUxKoA9YTyDY_.ix1KhgncpCDGzte5B',cITimeS: '1795691935',cN: 'E0lHi5ZINWWZtggQr81pWV',cRay: 'a6087ec38f303961',cTplC:0,cTplO:0,cTplV:5,cType: 'managed',cUPMDTk:\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_tk=JAbQZXg_FEy_GeqfHOY_psylSEzI4LIzmhwxE_jCqFE-1795691935-1.0.1.1-2J4tq_1H.5qzOR2uWqSL4uNQ6D14pVKsnStOmxXqOzM\",cvId: '3',cZone: 'base.blockscout.com',fa:\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_f_tk=JAbQZXg_FEy_GeqfHOY_psylSEzI4LIzmhwxE_jCqFE-1795691935-1.0.1.1-2J4tq_1H.5qzOR2uWqSL4uNQ6D14pVKsnStOmxXqOzM\",md: 'cZO.668MY5TUTVi9E1aBieHx6CxrgT29RBUeUFbSHt8-1795691935-1.2.1.1-pfJF6Cl6pyz.jXOztakXBpiy0oiarq5rxxygmHKiGak3lxOtm9PdtCXQ0scBvUOW2x6cUmUqTk6HLyUhNK91vmwkdB26DDtDQqpDwjLaTLRa88i0gHW_T.EJrXgyejmAVWvWu9CbvZMGXh60aLGchHTKs.uHSvgUFXb6nh0Ofxk_ZLJA6FeEAcNP9Vv10G3DvxBDFQ0n8GH54MuoGVYDppmH75YEzWDLjaj._J3FMqpVaXh.8sthrtKWnx1PYxHgdWr0zXvborkRqDyx1a2DNg90OGAnOkd67RtVjaFyYqyEt.FLL2AiK3WRl2sVrfjUpv2sEm5KfdqBmZFZwJv7s3Qc2iuR4KkBjtbuGHSgRhKDYDU52oS1zw7iteDMT3P2Qpo8R1ftfL.ViXCXs2jabqXpu1bvdnUHBSkP4FpHja_A.FiJoLlDfA0OZKsJ.jbEFSfU5aiSaYOqgnaXRkfdw9Erb29JagmaakacfZnDo2DnWYsZE6hP1VL._cmpVzMUOAghsbUKuVzWq0BXKRXkU4IKPk5EhvaEiNSBbhDCngdfT9JUci.Be2HQD1FvfxhXtZU9vTSaLQL_1GYZhlnC_LiPWUMLZP26XTJQXZHcobpf1.i_WhD8aqPoGun6YAXHNLqSAx1.4KMoc_YUmpwqSISbjV4aIiMX_WQB32dwnREXumch_UvXxR_pvsX.t9tnPdlEisAqmpSk_tWFtqlic4VRYmt2H_Vu23m2620se2Oo8L3JDvGJKCvDhH6H0CtF8DegUCNY1xyqizHEePnFkv4N91K4.z64CDL6ZCTp3D6OSzIBzjmR8gviftMYF_BWbS0D8L2Qc4or7mKGno6T0BkNSyYBKZgPfQvtMVbgLbJtzb1I6DVIElvbO9Yp7TLt0DXxPDJsjnpxDs4hPnvVSONiXkHodtGEajnxG27zHAjJyL1WqZJPNx2U711WyrMAitIDN4DtPxlqwqVshJwJPHpIH7qaNLJN3fBVNxW3KbRBHn.Umtk1aT6ABo4V.UYiIzDbBwU3NLvPw5D52bWCl2mnE4GpzZd_4vQjLXgwqhLgcofwvpxHF.XWsnr5BaS0puhs4haTpPqil.1TLDdcdS3XFnNXJyZjhlSh53fNWP1oLGOsIqYvWC_Jg6tHe8ts.t.b.gKMAz.7Nmh2jl1fbHLJW93awuTvVPLx8k9juzo',mdrd: 'VIy_XMmsoCLgljqVW4Rj7ryhZ.3CYRkzGtLjvkc2gzc-1795691935-1.2.1.1-BhKd9bKsEhwxExLrTEeYk1jR_TMlWNTJiy0R.ToeNqGCxUsywD9SRFT9YlzA6D6C43K.U3RlEGj55WGugdfbSIFiix.5ajUjnGnwxHvSgE4iUtX0Z6mWqMgxf5f7.2.Fmx4hj9by7X0QjGFyPDnSxBClj5d.9vgJFZBDkjENaTe3Hy0RVGxb_ny2jDM2xi00NjuT.nkjGx7ZZbwtgF28SlwphbG1L1CtvND4GssOZos',};var a = document.createElement('script');a.nonce = 'E0lHi5ZINWWZtggQr81pWV';a.src = '/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1?ray=a6087ec38f303961';window._cf_chl_opt.cOgUHash = location.hash === '' && location.href.indexOf('#') !== -1 ? '#' : location.hash;window._cf_chl_opt.cOgUQuery = location.search === '' && location.href.slice(0, location.href.length - window._cf_chl_opt.cOgUHash.length).indexOf('?') !== -1 ? '?' : location.search;if (window.history && window.history.replaceState) {var ogU = location.pathname + window._cf_chl_opt.cOgUQuery + window._cf_chl_opt.cOgUHash;history.replaceState(null, null,\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_rt_tk=JAbQZXg_FEy_GeqfHOY_psylSEzI4LIzmhwxE_jCqFE-1795691935-1.0.1.1-2J4tq_1H.5qzOR2uWqSL4uNQ6D14pVKsnStOmxXqOzM\"+ window._cf_chl_opt.cOgUHash);a.onload = function() {history.replaceState(null, null, ogU);}}document.getElementsByTagName('head')[0].appendChild(a);}());</script></body></html>"
+  },
+  {
+   "chain": "ethereum-classic",
+   "endpoint": "https://etc.etcdesktop.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum-classic",
+   "endpoint": "https://etc.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://etc.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://etc.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "bitcoin-sv",
+   "endpoint": "https://api.whatsonchain.com/v1/bsv/main",
+   "api": "whatsonchain",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.whatsonchain.com/v1/bsv/main/chain/info"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-dataseed.bnbchain.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-dataseed1.binance.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-dataseed1.defibit.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-dataseed1.ninicoin.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://bsc-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "bnb",
+   "endpoint": "https://1rpc.io/bnb",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "hyperliquid",
+   "endpoint": "https://rpc.hyperliquid.xyz/evm",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "hyperliquid",
+   "endpoint": "https://hyperliquid-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "hyperliquid",
+   "endpoint": "https://1rpc.io/hyperliquid",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "polygon",
+   "endpoint": "https://polygon-bor-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "polygon",
+   "endpoint": "https://1rpc.io/matic",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "polygon",
+   "endpoint": "https://polygon.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://polygon.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1: HTTP 403: <!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=Edge\"><meta name=\"robots\" content=\"noindex,nofollow\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"content-security-policy\" content=\"default-src &#39;none&#39;; script-src &#39;nonce-4ouF5Sgdl5HP2O0770gJRY&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;\"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial,\"Noto Sans\",sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\",\"Segoe UI Symbol\",\"Noto Color Emoji\"}body{display:flex;flex-direction:column;height:100vh;min-height:100vh}.main-content{margin:8rem auto;padding-left:1.5rem;max-width:60rem}@media (width <= 720px){.main-content{margin-top:4rem}}#challenge-error-text{background-image:url(\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0ibm9uZSI+PHBhdGggZmlsbD0iI0IyMEYwMyIgZD0iTTE2IDNhMTMgMTMgMCAxIDAgMTMgMTNBMTMuMDE1IDEzLjAxNSAwIDAgMCAxNiAzbTAgMjRhMTEgMTEgMCAxIDEgMTEtMTEgMTEuMDEgMTEuMDEgMCAwIDEtMTEgMTEiLz48cGF0aCBmaWxsPSIjQjIwRjAzIiBkPSJNMTcuMDM4IDE4LjYxNUgxNC44N0wxNC41NjMgOS41aDIuNzgzem0tMS4wODQgMS40MjdxLjY2IDAgMS4wNTcuMzg4LjQwNy4zODkuNDA3Ljk5NCAwIC41OTYtLjQwNy45ODQtLjM5Ny4zOS0xLjA1Ny4zODktLjY1IDAtMS4wNTYtLjM4OS0uMzk4LS4zODktLjM5OC0uOTg0IDAtLjU5Ny4zOTgtLjk4NS40MDYtLjM5NyAxLjA1Ni0uMzk3Ii8+PC9zdmc+\");background-repeat:no-repeat;background-size:contain;padding-left:34px}</style><meta http-equiv=\"refresh\" content=\"360\"></head><body><div class=\"main-wrapper\" role=\"main\"><div class=\"main-content\"><noscript><div class=\"h2\"><span id=\"challenge-error-text\">Enable JavaScript and cookies to continue</span></div></noscript></div></div><script nonce=\"4ouF5Sgdl5HP2O0770gJRY\">(function(){window._cf_chl_opt = {cFPWv: 'g',cH: 'BhAY2ph9578RVoqk0IVoV5HmqcxLty4KETSEpGmb05Y-1795691969-1.2.1.1-zfi0Wil1O8doE3lkWiBvTguvZ5ImpJFx5cQGM_zyOo63RBL_vPZRJBODkVDhYDsR',cITimeS: '1795691969',cN: '4ouF5Sgdl5HP2O0770gJRY',cRay: 'a6087f9c3fa3d5ea',cTplC:0,cTplO:0,cTplV:5,cType: 'managed',cUPMDTk:\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_tk=gqcW9l6.j02HiKizeYhGzyU7asLcWmD4XyYxdQIwWNo-1795691969-1.0.1.1-YBzc2jyzMM2NxST3cjW903.dvdcgnc7weAPqL5YZ_Ww\",cvId: '3',cZone: 'polygon.blockscout.com',fa:\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_f_tk=gqcW9l6.j02HiKizeYhGzyU7asLcWmD4XyYxdQIwWNo-1795691969-1.0.1.1-YBzc2jyzMM2NxST3cjW903.dvdcgnc7weAPqL5YZ_Ww\",md: 'ME8lUtEsQfqLPjI9X5qyGqFOojFvROgoNJt_cv0H0cY-1795691969-1.2.1.1-veD9XWjwbq1IEFM8Bum_tHhQQ0qK2TiSp95MXjtmspLuGpP4.H0hhzsY64RJn6AlL15yog2mm3av6oJKjerEtHriTF1yyYWZEUu_NB1fONZwCh6fXAgyEuGq7UTLOcKx_TrgAbZ5jVcBQHeDPoX0Yp4r9ke3vs4bfjTJ5NoDP99xqtn6nYo6gDhRbQP8d.MO77N6N6ovmHcVsrBeOiQb8TeLpUcVau5o8EiDE3dTrV2jAX08BGVpSNFyUJQKIzJgoUPhOjIOybzM2u.HuY1e4H4riCUDy6Kac_kH6tzeZBHIeI8LEabWKM6ZehohSxZ48HUC6P4PxhCpjogPwp_Exo8PRLPMeQZo8taozmuP5Gh36X0NY3TlkjEcl82EsgS3eku7L3ttlxMH2qdcKmIB38XbqKjkFRAnJUCFnlTnb8UpD71oAwEEUQWVv1ysimj49vd0O6556nrrf98UQ7LHTjxbqTcTyGgZr77q_RSEM4lDtiLFKct.ugngG6MTmjrFGPSdGyonpW4D.HjPeUDyVxLUzk4lUxTfDfcwbfc.z7b0t7LK1NbMJxpiYcEfuaxVD5WRY6OLVVlNJk54ZxIbhZpuKpdyVs_gyHR7uutBFf8r6foP1FCsnShsuNBY0H4kwYTyA6RTL3DtvAFoQI7RefRvXj.JYl9KnXv8PaTxNnbcGOHQXyeB7NPxAGYPrdKzO9w7ygfGHOYRLHnia2iRf.rIInaDsGYf0lWhIMmqan4rGJub6mChJ6PbBH7YxZr6Sic_616KdczHjTggRfO0SS72cLHRiyyRyNq8tfU1xpmR_BtVz11DJVdIFpEOpiwR.eOq7l3PgrW9P1Vogk0GdBvOSYn2A86nhwB19Ln6cuYPZ8tyGIlR_779VpqYcwSIttoixbFfL4moqr_TnEJUxy21J89rn8drVqjKqW1v4GOB9HOX8EN.ff3WshpG6t7LcIAagahjXCYKKt45atAKdOETH6GT06GXh.2wH3X0PPNcCyZ4H0yscN9mjwMauF1VBOskO5VMfgpnA12vfbVH0esU8Uo_6SE8hU5WNf5Z_fr5SbtZyotEMlkodE7v_pOPPRypgHmxZcllyNRXadV0yBeCQ7r4i5r1AAK56l48fJxNXSB46ysB0PoQCJdQehZ3WHP5rs05sul.11fnVWAzuvoX6IsFS0nEy93xtTKR5yo',mdrd: '1d79qwLJuOhQyoDS5cMbVMAlsEKmfqsYcqFVQj5Ydk8-1795691969-1.2.1.1-z6Hz81KbNEoIWLY9huaMWUZKCpn8N07U5C52bmTaTQpy9MDGfkCmyZdEvytFx9Tn9ASedjQFF699DGDEaBeAdeX77OM4nJ5jNmZjyM6sElmk6Dn6Pc3Ee.p7tLbQwFFW5YpGpZJiJkIvrmun9FzYll77bPDctTSILCyNXVQwy6ose86LRE_4OURtPR0GeCvKaZgo8Tz7lyn1BpHrQIKT8n0QLxJJheJxutT3Q4EMb4s',};var a = document.createElement('script');a.nonce = '4ouF5Sgdl5HP2O0770gJRY';a.src = '/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1?ray=a6087f9c3fa3d5ea';window._cf_chl_opt.cOgUHash = location.hash === '' && location.href.indexOf('#') !== -1 ? '#' : location.hash;window._cf_chl_opt.cOgUQuery = location.search === '' && location.href.slice(0, location.href.length - window._cf_chl_opt.cOgUHash.length).indexOf('?') !== -1 ? '?' : location.search;if (window.history && window.history.replaceState) {var ogU = location.pathname + window._cf_chl_opt.cOgUQuery + window._cf_chl_opt.cOgUHash;history.replaceState(null, null,\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_rt_tk=gqcW9l6.j02HiKizeYhGzyU7asLcWmD4XyYxdQIwWNo-1795691969-1.0.1.1-YBzc2jyzMM2NxST3cjW903.dvdcgnc7weAPqL5YZ_Ww\"+ window._cf_chl_opt.cOgUHash);a.onload = function() {history.replaceState(null, null, ogU);}}document.getElementsByTagName('head')[0].appendChild(a);}());</script></body></html>"
+  },
+  {
+   "chain": "linea",
+   "endpoint": "https://linea-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "linea",
+   "endpoint": "https://rpc.linea.build",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "linea",
+   "endpoint": "https://1rpc.io/linea",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "scroll",
+   "endpoint": "https://scroll-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "scroll",
+   "endpoint": "https://rpc.scroll.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "scroll",
+   "endpoint": "https://1rpc.io/scroll",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "scroll",
+   "endpoint": "https://scroll.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://scroll.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://scroll.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "blast",
+   "endpoint": "https://blast-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "eth_chainId: HTTP 403: unsupported platform\n"
+  },
+  {
+   "chain": "blast",
+   "endpoint": "https://rpc.blast.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "eth_chainId: all 2 attempts failed: error sending request for url (https://rpc.blast.io/) | client error (Connect) | tls handshake eof | flags=[connect,request]"
+  },
+  {
+   "chain": "blast",
+   "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/81457/etherscan",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://api.routescan.io/v2/network/mainnet/evm/81457/etherscan?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1: invalid health response or wrong network: {\"message\":\"chain not supported\",\"result\":null,\"status\":\"0\"}"
+  },
+  {
+   "chain": "mantle",
+   "endpoint": "https://mantle-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "mantle",
+   "endpoint": "https://rpc.mantle.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "mantle",
+   "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://api.routescan.io/v2/network/mainnet/evm/5000/etherscan?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "zcash",
+   "endpoint": "https://blockbook.zec.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockbook.zec.zelcore.io/api/v2"
+  },
+  {
+   "chain": "zcash",
+   "endpoint": "https://zec.rocks:443",
+   "api": "lightwalletd",
+   "capabilities": [
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "lightwalletd network verified at height 3613597"
+  },
+  {
+   "chain": "zcash",
+   "endpoint": "https://na.zec.rocks:443",
+   "api": "lightwalletd",
+   "capabilities": [
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "lightwalletd network verified at height 3613597"
+  },
+  {
+   "chain": "zcash",
+   "endpoint": "https://eu.zec.rocks:443",
+   "api": "lightwalletd",
+   "capabilities": [
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "lightwalletd network verified at height 3613597"
+  },
+  {
+   "chain": "bitcoin-gold",
+   "endpoint": "https://blockbook.btg.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockbook.btg.zelcore.io/api/v2"
+  },
+  {
+   "chain": "decred",
+   "endpoint": "https://dcrdata.decred.org/insight/api",
+   "api": "insight",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://dcrdata.decred.org/insight/api/status"
+  },
+  {
+   "chain": "kaspa",
+   "endpoint": "https://api.kaspa.org",
+   "api": "kaspa-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.kaspa.org/info/network"
+  },
+  {
+   "chain": "sei",
+   "endpoint": "https://evm-rpc.sei-apis.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "sei",
+   "endpoint": "https://sei-evm-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "celo",
+   "endpoint": "https://forno.celo.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "celo",
+   "endpoint": "https://celo-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "celo",
+   "endpoint": "https://1rpc.io/celo",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "celo",
+   "endpoint": "https://celo.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://celo.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://celo.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "cronos",
+   "endpoint": "https://evm.cronos.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "cronos",
+   "endpoint": "https://cronos-evm-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "cronos",
+   "endpoint": "https://1rpc.io/cro",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "opbnb",
+   "endpoint": "https://opbnb-mainnet-rpc.bnbchain.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "opbnb",
+   "endpoint": "https://opbnb-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "opbnb",
+   "endpoint": "https://1rpc.io/opbnb",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "zksync-era",
+   "endpoint": "https://mainnet.era.zksync.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "zksync-era",
+   "endpoint": "https://1rpc.io/zksync2-era",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "zksync-era",
+   "endpoint": "https://zksync.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://zksync.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://zksync.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "sonic",
+   "endpoint": "https://rpc.soniclabs.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "sonic",
+   "endpoint": "https://sonic-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "sonic",
+   "endpoint": "https://1rpc.io/sonic",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "berachain",
+   "endpoint": "https://rpc.berachain.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "berachain",
+   "endpoint": "https://berachain-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "unichain",
+   "endpoint": "https://mainnet.unichain.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "unichain",
+   "endpoint": "https://unichain-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "unichain",
+   "endpoint": "https://1rpc.io/unichain",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "unichain",
+   "endpoint": "https://unichain.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://unichain.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://unichain.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "ink",
+   "endpoint": "https://rpc-gel.inkonchain.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ink",
+   "endpoint": "https://ink-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ink",
+   "endpoint": "https://explorer.inkonchain.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://explorer.inkonchain.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://explorer.inkonchain.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "dash",
+   "endpoint": "https://api.blockcypher.com/v1/dash/main",
+   "api": "blockcypher",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.blockcypher.com/v1/dash/main"
+  },
+  {
+   "chain": "dash",
+   "endpoint": "https://blockbook.dash.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockbook.dash.zelcore.io/api/v2"
+  },
+  {
+   "chain": "dash",
+   "endpoint": "https://dash.atomicwallet.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://dash.atomicwallet.io/api/v2"
+  },
+  {
+   "chain": "x-layer",
+   "endpoint": "https://rpc.xlayer.tech",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "bittensor",
+   "endpoint": "https://entrypoint-finney.opentensor.ai",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "plasma",
+   "endpoint": "https://rpc.plasma.to",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "plasma",
+   "endpoint": "https://api.routescan.io/v2/network/mainnet/evm/9745/etherscan",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://api.routescan.io/v2/network/mainnet/evm/9745/etherscan?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1: invalid health response or wrong network: {\"message\":\"chain not supported\",\"result\":null,\"status\":\"0\"}"
+  },
+  {
+   "chain": "monad",
+   "endpoint": "https://rpc.monad.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "monad",
+   "endpoint": "https://rpc1.monad.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "world-chain",
+   "endpoint": "https://worldchain-mainnet.g.alchemy.com/public",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "world-chain",
+   "endpoint": "https://worldchain-mainnet.explorer.alchemy.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://worldchain-mainnet.explorer.alchemy.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://worldchain-mainnet.explorer.alchemy.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "peercoin",
+   "endpoint": "https://blockbook.peercoin.net",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Peercoin network and precision verified"
+  },
+  {
+   "chain": "kaia",
+   "endpoint": "https://public-en.node.kaia.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "xdc",
+   "endpoint": "https://rpc.xinfin.network",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "xdc",
+   "endpoint": "https://erpc.xinfin.network",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "robinhood-chain",
+   "endpoint": "https://rpc.mainnet.chain.robinhood.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "kava-evm",
+   "endpoint": "https://evm.kava-rpc.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "kava-evm",
+   "endpoint": "https://evm.kava.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "chiliz",
+   "endpoint": "https://rpc.chiliz.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "chiliz",
+   "endpoint": "https://chiliz-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "chiliz",
+   "endpoint": "https://scan-api.chiliz.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://scan-api.chiliz.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://scan-api.chiliz.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "stable",
+   "endpoint": "https://rpc.stable.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "arc",
+   "endpoint": "https://rpc.mainnet.arc.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "arc",
+   "endpoint": "https://rpc.drpc.mainnet.arc.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "manta-pacific",
+   "endpoint": "https://pacific-rpc.manta.network/http",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "manta-pacific",
+   "endpoint": "https://pacific-explorer.manta.network",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://pacific-explorer.manta.network/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://pacific-explorer.manta.network/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "metis",
+   "endpoint": "https://andromeda.metis.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "metis",
+   "endpoint": "https://metis-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "metis",
+   "endpoint": "https://andromeda-explorer.metis.io",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://andromeda-explorer.metis.io/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://andromeda-explorer.metis.io/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "flare",
+   "endpoint": "https://flare-api.flare.network/ext/C/rpc",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "flare",
+   "endpoint": "https://flare-explorer.flare.network",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://flare-explorer.flare.network/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://flare-explorer.flare.network/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "katana",
+   "endpoint": "https://rpc.katana.network",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "megaeth",
+   "endpoint": "https://mainnet.megaeth.com/rpc",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "megaeth",
+   "endpoint": "https://megaeth.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://megaeth.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://megaeth.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "merlin",
+   "endpoint": "https://rpc.merlinchain.io",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "merlin",
+   "endpoint": "https://scan.merlinchain.io",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://scan.merlinchain.io/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://scan.merlinchain.io/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "peaq",
+   "endpoint": "https://quicknode1.peaq.xyz",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "peaq",
+   "endpoint": "https://peaq-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "somnia",
+   "endpoint": "https://api.infra.mainnet.somnia.network",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "somnia",
+   "endpoint": "https://explorer.somnia.network",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://explorer.somnia.network/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1: invalid health response or wrong network: {\"message\":\"Not available: the explorer cannot answer this request right now\",\"result\":null,\"status\":\"0\"}"
+  },
+  {
+   "chain": "0g",
+   "endpoint": "https://evmrpc.0g.ai",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "0g",
+   "endpoint": "https://0g-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "cosmos-hub",
+   "endpoint": "https://cosmos-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://cosmos-rest.publicnode.com/cosmos/base/tendermint/v1beta1/node_info, https://cosmos-rest.publicnode.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "cosmos-hub",
+   "endpoint": "https://cosmos-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://cosmos-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://cosmos-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "celestia",
+   "endpoint": "https://celestia-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://celestia-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://celestia-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "celestia",
+   "endpoint": "https://public-celestia-lcd.numia.xyz",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://public-celestia-lcd.numia.xyz/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "dydx",
+   "endpoint": "https://dydx-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://dydx-rest.publicnode.com/cosmos/base/tendermint/v1beta1/node_info, https://dydx-rest.publicnode.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "dydx",
+   "endpoint": "https://dydx-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://dydx-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://dydx-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "dydx",
+   "endpoint": "https://dydx-rest.kingnodes.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://dydx-rest.kingnodes.com/cosmos/base/tendermint/v1beta1/node_info, https://dydx-rest.kingnodes.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "terra",
+   "endpoint": "https://terra-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://terra-rest.publicnode.com/cosmos/base/tendermint/v1beta1/node_info, https://terra-rest.publicnode.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "terra",
+   "endpoint": "https://terra-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://terra-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://terra-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "kava",
+   "endpoint": "https://api.data.kava.io",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.data.kava.io/cosmos/base/tendermint/v1beta1/node_info, https://api.data.kava.io/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "kava",
+   "endpoint": "https://kava-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://kava-rest.publicnode.com/cosmos/base/tendermint/v1beta1/node_info, https://kava-rest.publicnode.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "kava",
+   "endpoint": "https://kava-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://kava-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://kava-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "injective",
+   "endpoint": "https://injective-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://injective-rest.publicnode.com/cosmos/base/tendermint/v1beta1/node_info, https://injective-rest.publicnode.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "injective",
+   "endpoint": "https://injective-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://injective-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://injective-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "injective",
+   "endpoint": "https://sentry.lcd.injective.network",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://sentry.lcd.injective.network/cosmos/base/tendermint/v1beta1/node_info, https://sentry.lcd.injective.network/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "akash",
+   "endpoint": "https://akash-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://akash-rest.publicnode.com/cosmos/base/tendermint/v1beta1/node_info, https://akash-rest.publicnode.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "akash",
+   "endpoint": "https://akash-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://akash-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://akash-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "akash",
+   "endpoint": "https://api.akashnet.net",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.akashnet.net/cosmos/base/tendermint/v1beta1/node_info, https://api.akashnet.net/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "akash",
+   "endpoint": "https://rest-akash.ecostake.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://rest-akash.ecostake.com/cosmos/base/tendermint/v1beta1/node_info, https://rest-akash.ecostake.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "babylon",
+   "endpoint": "https://babylon-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://babylon-rest.publicnode.com/cosmos/base/tendermint/v1beta1/node_info, https://babylon-rest.publicnode.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "babylon",
+   "endpoint": "https://babylon-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://babylon-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://babylon-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "babylon",
+   "endpoint": "https://api.babylon.validatus.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.babylon.validatus.com/cosmos/base/tendermint/v1beta1/node_info, https://api.babylon.validatus.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "osmosis",
+   "endpoint": "https://lcd.osmosis.zone",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://lcd.osmosis.zone/cosmos/base/tendermint/v1beta1/node_info, https://lcd.osmosis.zone/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "osmosis",
+   "endpoint": "https://osmosis-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://osmosis-rest.publicnode.com/cosmos/base/tendermint/v1beta1/node_info, https://osmosis-rest.publicnode.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "osmosis",
+   "endpoint": "https://osmosis-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://osmosis-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://osmosis-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "dymension",
+   "endpoint": "https://dymension-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://dymension-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://dymension-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "dymension",
+   "endpoint": "https://api.dymension.nodestake.org",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://api.dymension.nodestake.org/cosmos/base/tendermint/v1beta1/node_info: all 2 attempts failed: error sending request for url (https://api.dymension.nodestake.org/cosmos/base/tendermint/v1beta1/node_info) | client error (Connect) | tls handshake eof | flags=[connect,request]"
+  },
+  {
+   "chain": "dymension",
+   "endpoint": "https://dymension-mainnet-api.crouton.digital",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://dymension-mainnet-api.crouton.digital/cosmos/base/tendermint/v1beta1/node_info, https://dymension-mainnet-api.crouton.digital/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "saga",
+   "endpoint": "https://saga-rest.publicnode.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://saga-rest.publicnode.com/cosmos/base/tendermint/v1beta1/node_info, https://saga-rest.publicnode.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "saga",
+   "endpoint": "https://saga-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://saga-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://saga-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "saga",
+   "endpoint": "https://api.saga.nodestake.org",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://api.saga.nodestake.org/cosmos/base/tendermint/v1beta1/node_info: all 2 attempts failed: error sending request for url (https://api.saga.nodestake.org/cosmos/base/tendermint/v1beta1/node_info) | client error (Connect) | tls handshake eof | flags=[connect,request]"
+  },
+  {
+   "chain": "allora",
+   "endpoint": "https://allora-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://allora-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://allora-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "allora",
+   "endpoint": "https://allora-api.mainnet.allora.network",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://allora-api.mainnet.allora.network/cosmos/base/tendermint/v1beta1/node_info, https://allora-api.mainnet.allora.network/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "band",
+   "endpoint": "https://band-api.polkachu.com",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://band-api.polkachu.com/cosmos/base/tendermint/v1beta1/node_info, https://band-api.polkachu.com/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "band",
+   "endpoint": "https://laozi1.bandchain.org/api",
+   "api": "cosmos-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://laozi1.bandchain.org/api/cosmos/base/tendermint/v1beta1/node_info, https://laozi1.bandchain.org/api/cosmos/base/tendermint/v1beta1/blocks/latest"
+  },
+  {
+   "chain": "kusama",
+   "endpoint": "https://kusama-asset-hub-rpc.polkadot.io",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "kusama",
+   "endpoint": "https://asset-hub-kusama-rpc.n.dwellir.com",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "kusama",
+   "endpoint": "https://ksm-rpc.stakeworld.io/assethub",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "astar",
+   "endpoint": "https://rpc.astar.network",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "astar",
+   "endpoint": "https://astar.api.onfinality.io/public",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "algorand",
+   "endpoint": "https://mainnet-api.4160.nodely.dev",
+   "api": "algod",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet-api.4160.nodely.dev/v2/transactions/params, https://mainnet-api.4160.nodely.dev/v2/status"
+  },
+  {
+   "chain": "algorand",
+   "endpoint": "https://mainnet-api.algonode.cloud",
+   "api": "algod",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet-api.algonode.cloud/v2/transactions/params, https://mainnet-api.algonode.cloud/v2/status"
+  },
+  {
+   "chain": "algorand",
+   "endpoint": "https://mainnet-idx.4160.nodely.dev",
+   "api": "algorand-indexer",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet-idx.4160.nodely.dev/v2/blocks/0, https://mainnet-idx.4160.nodely.dev/health"
+  },
+  {
+   "chain": "algorand",
+   "endpoint": "https://mainnet-idx.algonode.cloud",
+   "api": "algorand-indexer",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet-idx.algonode.cloud/v2/blocks/0, https://mainnet-idx.algonode.cloud/health"
+  },
+  {
+   "chain": "qtum",
+   "endpoint": "https://qtum.atomicwallet.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://qtum.atomicwallet.io/api/v2"
+  },
+  {
+   "chain": "fractal-bitcoin",
+   "endpoint": "https://mempool.fractalbitcoin.io/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mempool.fractalbitcoin.io/api/blocks/tip/height"
+  },
+  {
+   "chain": "fractal-bitcoin",
+   "endpoint": "https://open-api-fractal.unisat.io",
+   "api": "unisat-open-api",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://open-api-fractal.unisat.io/v1/indexer/blockchain/info"
+  },
+  {
+   "chain": "ecash",
+   "endpoint": "https://chronik.e.cash",
+   "api": "chronik",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Chronik network verified"
+  },
+  {
+   "chain": "ecash",
+   "endpoint": "https://chronik-native1.fabien.cash",
+   "api": "chronik",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Chronik network verified"
+  },
+  {
+   "chain": "ecash",
+   "endpoint": "https://chronik-native2.fabien.cash",
+   "api": "chronik",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Chronik network verified"
+  },
+  {
+   "chain": "digibyte",
+   "endpoint": "https://digiexplorer.info/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://digiexplorer.info/api/blocks/tip/height"
+  },
+  {
+   "chain": "digibyte",
+   "endpoint": "https://digibyte.atomicwallet.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://digibyte.atomicwallet.io/api/v2"
+  },
+  {
+   "chain": "digibyte",
+   "endpoint": "https://blockbook.dgb.zelcore.io",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockbook.dgb.zelcore.io/api/v2"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://mainnet.vechain.org",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet.vechain.org/blocks/0, https://mainnet.vechain.org/blocks/best"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://mainnet.vecha.in",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet.vecha.in/blocks/0, https://mainnet.vecha.in/blocks/best"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://mainnetc1.vechain.network",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnetc1.vechain.network/blocks/0, https://mainnetc1.vechain.network/blocks/best"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://mainnetc2.vechain.network",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnetc2.vechain.network/blocks/0, https://mainnetc2.vechain.network/blocks/best"
+  },
+  {
+   "chain": "vechain",
+   "endpoint": "https://node-mainnet.vechain.energy",
+   "api": "thor-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "token-balance",
+    "fee",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://node-mainnet.vechain.energy/blocks/0, https://node-mainnet.vechain.energy/blocks/best"
+  },
+  {
+   "chain": "filecoin",
+   "endpoint": "https://api.node.glif.io/rpc/v1",
+   "api": "lotus-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: Filecoin.StateNetworkName, Filecoin.ChainGetGenesis, Filecoin.ChainHead"
+  },
+  {
+   "chain": "filecoin",
+   "endpoint": "https://filfox.info/rpc/v1",
+   "api": "lotus-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: Filecoin.StateNetworkName, Filecoin.ChainGetGenesis, Filecoin.ChainHead"
+  },
+  {
+   "chain": "filecoin",
+   "endpoint": "https://filecoin.drpc.org",
+   "api": "lotus-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: Filecoin.StateNetworkName, Filecoin.ChainGetGenesis, Filecoin.ChainHead"
+  },
+  {
+   "chain": "filecoin",
+   "endpoint": "https://filfox.info/api/v1",
+   "api": "filfox",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://filfox.info/api/v1/address/f099/transfers?pageSize=1&page=0&type=transfer"
+  },
+  {
+   "chain": "tezos",
+   "endpoint": "https://rpc.tzkt.io/mainnet",
+   "api": "tezos-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://rpc.tzkt.io/mainnet/chains/main/chain_id, https://rpc.tzkt.io/mainnet/chains/main/blocks/head/header"
+  },
+  {
+   "chain": "tezos",
+   "endpoint": "https://rpc.tzbeta.net",
+   "api": "tezos-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://rpc.tzbeta.net/chains/main/chain_id, https://rpc.tzbeta.net/chains/main/blocks/head/header"
+  },
+  {
+   "chain": "tezos",
+   "endpoint": "https://mainnet.smartpy.io",
+   "api": "tezos-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet.smartpy.io/chains/main/chain_id, https://mainnet.smartpy.io/chains/main/blocks/head/header"
+  },
+  {
+   "chain": "tezos",
+   "endpoint": "https://api.tzkt.io",
+   "api": "tzkt",
+   "capabilities": [
+    "history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.tzkt.io/v1/head"
+  },
+  {
+   "chain": "starknet",
+   "endpoint": "https://starknet-rpc.publicnode.com",
+   "api": "starknet-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: starknet_chainId, starknet_blockNumber"
+  },
+  {
+   "chain": "starknet",
+   "endpoint": "https://api.zan.top/public/starknet-mainnet",
+   "api": "starknet-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: starknet_chainId, starknet_blockNumber"
+  },
+  {
+   "chain": "hedera",
+   "endpoint": "https://mainnet-public.mirrornode.hedera.com",
+   "api": "hedera-mirror",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet-public.mirrornode.hedera.com/api/v1/blocks/0, https://mainnet-public.mirrornode.hedera.com/api/v1/network/exchangerate"
+  },
+  {
+   "chain": "hedera",
+   "endpoint": "https://mainnet-public.mirrornode.hedera.com/api/v1/network/nodes",
+   "api": "hedera-hapi",
+   "capabilities": [
+    "broadcast"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mainnet-public.mirrornode.hedera.com/api/v1/blocks/0, https://mainnet-public.mirrornode.hedera.com/api/v1/network/nodes"
+  },
+  {
+   "chain": "bitcoin-testnet",
+   "endpoint": "https://blockstream.info/testnet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockstream.info/testnet/api/blocks/tip/height"
+  },
+  {
+   "chain": "bitcoin-testnet",
+   "endpoint": "https://mempool.space/testnet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mempool.space/testnet/api/blocks/tip/height"
+  },
+  {
+   "chain": "bitcoin-testnet-4",
+   "endpoint": "https://mempool.space/testnet4/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mempool.space/testnet4/api/blocks/tip/height"
+  },
+  {
+   "chain": "bitcoin-testnet-4",
+   "endpoint": "https://mempool.emzy.de/testnet4/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mempool.emzy.de/testnet4/api/blocks/tip/height"
+  },
+  {
+   "chain": "bitcoin-signet",
+   "endpoint": "https://blockstream.info/signet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://blockstream.info/signet/api/blocks/tip/height"
+  },
+  {
+   "chain": "bitcoin-signet",
+   "endpoint": "https://mempool.space/signet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mempool.space/signet/api/blocks/tip/height"
+  },
+  {
+   "chain": "bitcoin-signet",
+   "endpoint": "https://mempool.emzy.de/signet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://mempool.emzy.de/signet/api/blocks/tip/height"
+  },
+  {
+   "chain": "litecoin-testnet",
+   "endpoint": "https://litecoinspace.org/testnet/api",
+   "api": "esplora",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://litecoinspace.org/testnet/api/blocks/tip/height"
+  },
+  {
+   "chain": "litecoin-testnet",
+   "endpoint": "tcp://dnsseed-testnet.thrasher.io:19335",
+   "api": "litecoin-p2p",
+   "capabilities": [
+    "history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Litecoin node at height 5061202 offers MWEB light-client service"
+  },
+  {
+   "chain": "bitcoin-sv-testnet",
+   "endpoint": "https://api.whatsonchain.com/v1/bsv/test",
+   "api": "whatsonchain",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.whatsonchain.com/v1/bsv/test/chain/info"
+  },
+  {
+   "chain": "zcash-testnet",
+   "endpoint": "https://testnet.zec.rocks:443",
+   "api": "lightwalletd",
+   "capabilities": [
+    "history",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "lightwalletd network verified at height 4667226"
+  },
+  {
+   "chain": "kaspa-testnet",
+   "endpoint": "https://api-tn10.kaspa.org",
+   "api": "kaspa-rest",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api-tn10.kaspa.org/info/network"
+  },
+  {
+   "chain": "peercoin-testnet",
+   "endpoint": "https://tblockbook.peercoin.net",
+   "api": "blockbook",
+   "capabilities": [
+    "balance",
+    "history",
+    "utxo",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Peercoin network and precision verified"
+  },
+  {
+   "chain": "ethereum-sepolia",
+   "endpoint": "https://ethereum-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum-sepolia",
+   "endpoint": "https://1rpc.io/sepolia",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum-sepolia",
+   "endpoint": "https://eth-sepolia.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://eth-sepolia.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://eth-sepolia.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "ethereum-hoodi",
+   "endpoint": "https://ethereum-hoodi-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum-hoodi",
+   "endpoint": "https://1rpc.io/hoodi",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum-hoodi",
+   "endpoint": "https://eth-hoodi.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://eth-hoodi.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://eth-hoodi.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "arbitrum-sepolia",
+   "endpoint": "https://arbitrum-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "arbitrum-sepolia",
+   "endpoint": "https://arbitrum-sepolia.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://arbitrum-sepolia.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1: HTTP 403: <!DOCTYPE html><html lang=\"en-US\"><head><title>Just a moment...</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\"><meta http-equiv=\"X-UA-Compatible\" content=\"IE=Edge\"><meta name=\"robots\" content=\"noindex,nofollow\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"content-security-policy\" content=\"default-src &#39;none&#39;; script-src &#39;nonce-kH7t6kXiXUjNOBd8v4v1aN&#39; &#39;unsafe-eval&#39; https://challenges.cloudflare.com; script-src-attr &#39;none&#39;; style-src &#39;unsafe-inline&#39;; img-src &#39;self&#39; https://challenges.cloudflare.com; connect-src &#39;self&#39; https://challenges.cloudflare.com; frame-src &#39;self&#39; https://challenges.cloudflare.com blob:; child-src &#39;self&#39; https://challenges.cloudflare.com blob:; worker-src blob:; form-action http: https:; base-uri &#39;self&#39;\"><style>*{box-sizing:border-box;margin:0;padding:0}html{line-height:1.15;-webkit-text-size-adjust:100%;color:#313131;font-family:system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",Arial,\"Noto Sans\",sans-serif,\"Apple Color Emoji\",\"Segoe UI Emoji\",\"Segoe UI Symbol\",\"Noto Color Emoji\"}body{display:flex;flex-direction:column;height:100vh;min-height:100vh}.main-content{margin:8rem auto;padding-left:1.5rem;max-width:60rem}@media (width <= 720px){.main-content{margin-top:4rem}}#challenge-error-text{background-image:url(\"data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0ibm9uZSI+PHBhdGggZmlsbD0iI0IyMEYwMyIgZD0iTTE2IDNhMTMgMTMgMCAxIDAgMTMgMTNBMTMuMDE1IDEzLjAxNSAwIDAgMCAxNiAzbTAgMjRhMTEgMTEgMCAxIDEgMTEtMTEgMTEuMDEgMTEuMDEgMCAwIDEtMTEgMTEiLz48cGF0aCBmaWxsPSIjQjIwRjAzIiBkPSJNMTcuMDM4IDE4LjYxNUgxNC44N0wxNC41NjMgOS41aDIuNzgzem0tMS4wODQgMS40MjdxLjY2IDAgMS4wNTcuMzg4LjQwNy4zODkuNDA3Ljk5NCAwIC41OTYtLjQwNy45ODQtLjM5Ny4zOS0xLjA1Ny4zODktLjY1IDAtMS4wNTYtLjM4OS0uMzk4LS4zODktLjM5OC0uOTg0IDAtLjU5Ny4zOTgtLjk4NS40MDYtLjM5NyAxLjA1Ni0uMzk3Ii8+PC9zdmc+\");background-repeat:no-repeat;background-size:contain;padding-left:34px}</style><meta http-equiv=\"refresh\" content=\"360\"></head><body><div class=\"main-wrapper\" role=\"main\"><div class=\"main-content\"><noscript><div class=\"h2\"><span id=\"challenge-error-text\">Enable JavaScript and cookies to continue</span></div></noscript></div></div><script nonce=\"kH7t6kXiXUjNOBd8v4v1aN\">(function(){window._cf_chl_opt = {cFPWv: 'g',cH: 'jGi06oPKWZnIxPEt4_Agcww2IE73UaoH4XILlTbJB0Q-1795692194-1.2.1.1-fXCP2KPackOTl_oFr3FK4oiU_Vs3QzzuJrXRGLNN9brwlouxCejfgLCSos3CZT9r',cITimeS: '1795692194',cN: 'kH7t6kXiXUjNOBd8v4v1aN',cRay: 'a60885196edf3968',cTplC:0,cTplO:0,cTplV:5,cType: 'managed',cUPMDTk:\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_tk=7kIt90Wu.hUOIhBblK5xLBPqFF5p0p9fapSOk9UhjLY-1795692194-1.0.1.1-oprdmU4CWRiurQgjZhqiilswQOYd4Wgllx8NEPQ8Whg\",cvId: '3',cZone: 'arbitrum-sepolia.blockscout.com',fa:\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_f_tk=7kIt90Wu.hUOIhBblK5xLBPqFF5p0p9fapSOk9UhjLY-1795692194-1.0.1.1-oprdmU4CWRiurQgjZhqiilswQOYd4Wgllx8NEPQ8Whg\",md: 'iaKmmoGRu0Bz4YSLJYsrtEB8u.iVArJozd14daibXuI-1795692194-1.2.1.1-c3Hm0aNMFfU8NNm0Gdct27KXGnJGrO_CooaZb6U77Ug43elp7I9ZJUCxLT5.SEltD9Um586YysW0vshRcRZxedVklhbuAEJnoWURho7YhIuerMLjCOH0YRzdmoxGNXPdTYpyHxzTlXpIqJnr02_viSCSEm8opuGm6SYP8ovuLxTl8MUrhEUZ_hizNrNDdCqC0KKDpn.yBzmP6l2k.YFJhFQ05OBc7Pt4pED412slGDk7TXr7pEK9wPgdDafhfAm5TvtcACkoZpLV7bvuj3DxnvUHEskf2id6kuH6341iMAt5yvAOqGrb6eQWy8dRNr3UUfCDJfBoGXY5DmaDGW3xyKdcuNto9TadIFJBujXT2GL69unMacRCOxC1bebMSwnLAfk5WRLfIhhmYJzyD.Mi1MuzRrHXrppwWhIA5y3Y6C0vHRDB4TO_v1WSZRQOJEHpsaJBs4N4yRMhbMGAZ9a9mtvf9pKt8XH3uLgzgj8d.s1b4dk0xCroQmnFZ2oxjHpAxKgLAyu6Lt5AS7H.txsIWYBMT0mwgZqj.DRzB6ofNMfD0.CB_xVvt9E6QbKvSC8no1fO8.4dWv_OpDDvevXxTwVWba6L3l0PpjCDvydwZSxDrmnVKNMfDTzI2_W9ElZUCeZLsLG4EdcZ7N4j74Cwmq0iBVHB7_TlmNMeD0LlEbWeSqt3fhtV_WadcI0yfT3hOyfyDoqjaq_tIdD_ycJ3UVyZ80v5OEo5k7v5m3_hdEgQe6cVXDxnWCTNUasa9oxVUPXiBW_SH0GslehtIgE8n2SNjOUcw.A2Vew8DIfFvOwQHlP5tEquYeBt2SMNoYUffHMFpevWwoJDPSJ.OMcrrvewV78Mt1b6Yv1dPKq92HbWL31vLjelCWwTHjU_RZeQ4JjEU7IN4owkqpvrzz0qasWYV1Wce6mFyoFrWa0laikfZjXM05Avr9pRzhMBDbRJKJ6f010ewX1ZZz6u9w3DQV5XWV.WZMP9adUUYh1DcfnBgwXgd90DDvczDjxBEpPBfUHHK8JPfD4wBBz17A69oK_1FLDJ84eSLrZ5Gq1GIhIckueoOHsxIm3hI7WozfRZ_0b8eNphtvq5XZIaW2tsCM5z47gupo9QpUrSdu1LiFbFxu9RQpmIzcSBDWzRw_xT9Fg7VV5KdK3.d5X5mwGo9H0ZPQyENOu7i37EcVtNo7X0JvRuAB0c7TA8Ha3yQ6L4',mdrd: '27wfNf8IXC.n2.uDEsFfAN8b_zOR00Mi4wIPfADIQ28-1795692194-1.2.1.1-tO4LpFdD6QBkcQKiG97BrxskE0iclVbGQh9GHDCx96vanbcr5q9PcOsT4yh7BHNB_KAZnkQ3qyW20OxmbjPBJgNeXwYY05sHa0erSrfX0HmmtQLTWfnRRZZnLSEmR5bRhmM7yBDtIvs6Pail7XLJlerCdJZ5fUMD8HAq9x15z.c.yzr3e53q9RyK0iWpqdPNjRDtoBDfosc8H6WFobKdeCnFro7BD4b8WcmikOYLxCwqtIB5v8pjXizMfam81Og8',};var a = document.createElement('script');a.nonce = 'kH7t6kXiXUjNOBd8v4v1aN';a.src = '/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1?ray=a60885196edf3968';window._cf_chl_opt.cOgUHash = location.hash === '' && location.href.indexOf('#') !== -1 ? '#' : location.hash;window._cf_chl_opt.cOgUQuery = location.search === '' && location.href.slice(0, location.href.length - window._cf_chl_opt.cOgUHash.length).indexOf('?') !== -1 ? '?' : location.search;if (window.history && window.history.replaceState) {var ogU = location.pathname + window._cf_chl_opt.cOgUQuery + window._cf_chl_opt.cOgUHash;history.replaceState(null, null,\"/api?module=account\\u0026action=txlist\\u0026address=0x0000000000000000000000000000000000000000\\u0026sort=desc\\u0026page=1\\u0026offset=1\\u0026__cf_chl_rt_tk=7kIt90Wu.hUOIhBblK5xLBPqFF5p0p9fapSOk9UhjLY-1795692194-1.0.1.1-oprdmU4CWRiurQgjZhqiilswQOYd4Wgllx8NEPQ8Whg\"+ window._cf_chl_opt.cOgUHash);a.onload = function() {history.replaceState(null, null, ogU);}}document.getElementsByTagName('head')[0].appendChild(a);}());</script></body></html>"
+  },
+  {
+   "chain": "optimism-sepolia",
+   "endpoint": "https://optimism-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "optimism-sepolia",
+   "endpoint": "https://testnet-explorer.optimism.io",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://testnet-explorer.optimism.io/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://testnet-explorer.optimism.io/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "base-sepolia",
+   "endpoint": "https://base-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "base-sepolia",
+   "endpoint": "https://base-sepolia.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://base-sepolia.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://base-sepolia.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "bnb-testnet",
+   "endpoint": "https://bsc-testnet-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "avalanche-fuji",
+   "endpoint": "https://avalanche-fuji-c-chain-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "avalanche-fuji",
+   "endpoint": "https://api.routescan.io/v2/network/testnet/evm/43113/etherscan",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.routescan.io/v2/network/testnet/evm/43113/etherscan?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://api.routescan.io/v2/network/testnet/evm/43113/etherscan?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "polygon-amoy",
+   "endpoint": "https://polygon-amoy-bor-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "hyperliquid-testnet",
+   "endpoint": "https://rpc.hyperliquid-testnet.xyz/evm",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "hyperliquid-testnet",
+   "endpoint": "https://hyperliquid-testnet.drpc.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "linea-sepolia",
+   "endpoint": "https://linea-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "celo-sepolia",
+   "endpoint": "https://forno.celo-sepolia.celo-testnet.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "celo-sepolia",
+   "endpoint": "https://celo-sepolia.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://celo-sepolia.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://celo-sepolia.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "cronos-testnet",
+   "endpoint": "https://evm-t3.cronos.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "zksync-era-sepolia",
+   "endpoint": "https://sepolia.era.zksync.dev",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "zksync-era-sepolia",
+   "endpoint": "https://zksync-sepolia.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://zksync-sepolia.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://zksync-sepolia.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "sonic-testnet",
+   "endpoint": "https://rpc.testnet.soniclabs.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ink-sepolia",
+   "endpoint": "https://rpc-gel-sepolia.inkonchain.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ink-sepolia",
+   "endpoint": "https://ink-sepolia-rpc.publicnode.com",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ink-sepolia",
+   "endpoint": "https://explorer-sepolia.inkonchain.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://explorer-sepolia.inkonchain.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://explorer-sepolia.inkonchain.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "x-layer-testnet",
+   "endpoint": "https://testrpc.xlayer.tech/terigon",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "x-layer-testnet",
+   "endpoint": "https://xlayertestrpc.okx.com/terigon",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum-classic-mordor",
+   "endpoint": "https://rpc.mordor.etccooperative.org",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum-classic-mordor",
+   "endpoint": "https://geth-mordor.etc-network.info",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum-classic-mordor",
+   "endpoint": "https://0xrpc.io/mordor",
+   "api": "evm-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: eth_chainId, eth_blockNumber, eth_getBalance"
+  },
+  {
+   "chain": "ethereum-classic-mordor",
+   "endpoint": "https://etc-mordor.blockscout.com",
+   "api": "blockscout",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://etc-mordor.blockscout.com/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1, https://etc-mordor.blockscout.com/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&sort=desc&page=1&offset=1"
+  },
+  {
+   "chain": "tron-nile",
+   "endpoint": "https://nile.trongrid.io/v1/accounts",
+   "api": "trongrid-v1",
+   "capabilities": [
+    "history",
+    "token-discovery",
+    "token-history"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://nile.trongrid.io/v1/accounts/T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb"
+  },
+  {
+   "chain": "tron-nile",
+   "endpoint": "https://nile.trongrid.io",
+   "api": "tron-http",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://nile.trongrid.io/wallet/getnowblock"
+  },
+  {
+   "chain": "solana-devnet",
+   "endpoint": "https://api.devnet.solana.com",
+   "api": "solana-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: getHealth, getSlot"
+  },
+  {
+   "chain": "xrp-testnet",
+   "endpoint": "https://s.altnet.rippletest.net:51234/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: server_info"
+  },
+  {
+   "chain": "xrp-testnet",
+   "endpoint": "https://testnet.xrpl-labs.com/",
+   "api": "xrpl-json-rpc",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: server_info"
+  },
+  {
+   "chain": "stellar-testnet",
+   "endpoint": "https://horizon-testnet.stellar.org",
+   "api": "horizon",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://horizon-testnet.stellar.org/fee_stats"
+  },
+  {
+   "chain": "cardano-preprod",
+   "endpoint": "https://graph.xray.app/output/services/koios/preprod/api/v1",
+   "api": "koios",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification",
+    "utxo"
+   ],
+   "checked": true,
+   "reachable": false,
+   "detail": "https://graph.xray.app/output/services/koios/preprod/api/v1/tip: HTTP 404: Endpoint not found"
+  },
+  {
+   "chain": "sui-testnet",
+   "endpoint": "https://graphql.testnet.sui.io/graphql",
+   "api": "sui-graphql",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Sui network verified at checkpoint 410902099"
+  },
+  {
+   "chain": "sui-testnet",
+   "endpoint": "https://api.zan.top/public/sui-testnet/graphql",
+   "api": "sui-graphql",
+   "capabilities": [
+    "balance",
+    "history",
+    "token-history",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "token-discovery",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Sui network verified at checkpoint 410902104"
+  },
+  {
+   "chain": "aptos-testnet",
+   "endpoint": "https://api.testnet.aptoslabs.com/v1",
+   "api": "aptos-rest",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api.testnet.aptoslabs.com/v1"
+  },
+  {
+   "chain": "aptos-testnet",
+   "endpoint": "https://api.testnet.aptoslabs.com/v1/graphql",
+   "api": "aptos-indexer",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Aptos indexer network verified"
+  },
+  {
+   "chain": "ton-testnet",
+   "endpoint": "https://testnet.toncenter.com/api/v2",
+   "api": "toncenter-v2",
+   "capabilities": [
+    "balance",
+    "history",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://testnet.toncenter.com/api/v2/getMasterchainInfo"
+  },
+  {
+   "chain": "ton-testnet",
+   "endpoint": "https://testnet.toncenter.com/api/v3",
+   "api": "toncenter-v3",
+   "capabilities": [
+    "token-balance",
+    "token-discovery",
+    "token-history",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://testnet.toncenter.com/api/v3/masterchainInfo"
+  },
+  {
+   "chain": "near-testnet",
+   "endpoint": "https://rpc.testnet.near.org",
+   "api": "near-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: status"
+  },
+  {
+   "chain": "near-testnet",
+   "endpoint": "https://test.rpc.fastnear.com",
+   "api": "near-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "token-balance",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: status"
+  },
+  {
+   "chain": "near-testnet",
+   "endpoint": "https://api-testnet.nearblocks.io/v3",
+   "api": "nearblocks",
+   "capabilities": [
+    "history",
+    "token-history",
+    "token-discovery"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: https://api-testnet.nearblocks.io/v3/stats"
+  },
+  {
+   "chain": "polkadot-westend",
+   "endpoint": "https://westend-asset-hub-rpc.polkadot.io",
+   "api": "substrate-json-rpc",
+   "capabilities": [
+    "balance",
+    "fee",
+    "broadcast",
+    "verification",
+    "token-balance"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "Genesis and runtime metadata verified"
+  },
+  {
+   "chain": "monero-stagenet",
+   "endpoint": "http://stagenet.xmr-tw.org:38081",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: get_info"
+  },
+  {
+   "chain": "monero-stagenet",
+   "endpoint": "http://node.monerodevs.org:38089",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: get_info"
+  },
+  {
+   "chain": "monero-stagenet",
+   "endpoint": "http://node2.monerodevs.org:38089",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: get_info"
+  },
+  {
+   "chain": "monero-stagenet",
+   "endpoint": "http://xmr-lux.boldsuck.org:38081",
+   "api": "monero-daemon-rpc",
+   "capabilities": [
+    "fee",
+    "broadcast",
+    "verification"
+   ],
+   "checked": true,
+   "reachable": true,
+   "detail": "read checks passed: get_info"
+  }
+ ]
+}

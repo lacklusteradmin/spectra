@@ -336,14 +336,14 @@ impl IcpClient {
                 &json!({"network_identifier":network_identifier(),"operations":operations}),
             )
             .await?;
-        let options = preprocess
-            .get("options")
-            .or_decode("Missing ICP construction options")?;
+        // Rosetta's `options` are optional, and the ICP node answers none
+        // for a transfer (2026-11-26): metadata is asked without them then.
+        let mut request = json!({"network_identifier":network_identifier()});
+        if let Some(options) = preprocess.get("options") {
+            request["options"] = options.clone();
+        }
         let metadata: Value = self
-            .rosetta_post(
-                "/construction/metadata",
-                &json!({"network_identifier":network_identifier(),"options":options}),
-            )
+            .rosetta_post("/construction/metadata", &request)
             .await?;
         let fees = metadata["suggested_fee"]
             .as_array()

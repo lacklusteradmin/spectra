@@ -31,6 +31,12 @@ impl AlgorandIndexerClient {
         self.client.get_path(&self.endpoints, path).await
     }
 
+    /// Refuse an indexer that is not on `chain`'s network: its first block
+    /// names the genesis every transaction binds.
+    pub(crate) async fn verify_network(&self, chain: Chain) -> Result<(), ApiError> {
+        check_genesis(chain, &self.get("/v2/blocks/0").await?)
+    }
+
     /// The round `txid` was committed in, or `None` while the indexer has
     /// not seen it.
     pub(crate) async fn fetch_confirmed_round(

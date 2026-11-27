@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::endpoint::EndpointCapability;
 
 #[test]
 fn peercoin_networks_use_native_precision_and_protocol_rules() {
@@ -112,7 +113,7 @@ fn the_bitcoin_derived_networks_carry_their_nodes_parameters() {
     assert_eq!(Chain::Qtum.generated_output_maturity().unwrap(), 2_000);
     assert_eq!(Chain::Ecash.generated_output_maturity().unwrap(), 100);
     assert!(Chain::Qtum.verifies_spent_outputs() && !Chain::Ecash.verifies_spent_outputs());
-    assert!(!Chain::Qtum.indexers_estimate_fee_rate());
+    assert!(!Chain::Qtum.reads_indexer_fee_rate());
     // Taproot: spent on Fractal and DigiByte, not on Qtum.
     assert!(Chain::FractalBitcoin.account_spends_witness(1));
     assert!(Chain::Digibyte.account_spends_witness(1));
@@ -537,10 +538,6 @@ fn verified_new_chain_tokens_have_exact_deployment_identity() {
 fn new_mainnet_indexers_declare_their_verified_account_methods() {
     for (chain, endpoint) in [
         (
-            Chain::Plasma,
-            "https://api.routescan.io/v2/network/mainnet/evm/9745/etherscan",
-        ),
-        (
             Chain::WorldChain,
             "https://worldchain-mainnet.explorer.alchemy.com",
         ),
@@ -555,7 +552,6 @@ fn new_mainnet_indexers_declare_their_verified_account_methods() {
         (Chain::Merlin, "https://scan.merlinchain.io"),
         (Chain::Somnia, "https://explorer.somnia.network"),
     ] {
-        assert_eq!(chain.evm_history_source(), EvmHistorySource::Open(endpoint));
         let record = crate::catalog::endpoints::catalog()
             .records
             .iter()
@@ -613,7 +609,7 @@ fn rollup_fees_follow_deployed_oracle_methods() {
     assert_eq!(Chain::WorldChain.evm_gas_buffer_bps(), 2000);
 }
 
-/// Three networks' nodes decode no typed envelope; two need a tip the fee
+/// Four networks' nodes decode no typed envelope; two need a tip the fee
 /// history's lowest sample does not show; five give their coin an ERC-20
 /// face over the same balance.
 #[test]
@@ -621,7 +617,16 @@ fn per_network_evm_transaction_rules() {
     let legacy: Vec<_> = Chain::all()
         .filter(|c| c.evm_legacy_transactions())
         .collect();
-    assert_eq!(legacy, [Chain::KavaEvm, Chain::Metis, Chain::Merlin]);
+    assert_eq!(
+        legacy,
+        [
+            Chain::EthereumClassic,
+            Chain::KavaEvm,
+            Chain::Metis,
+            Chain::Merlin,
+            Chain::EthereumClassicMordor
+        ]
+    );
     let floors: Vec<_> = Chain::all()
         .filter(|c| c.evm_min_priority_fee_wei() > 0)
         .map(|c| (c, c.evm_min_priority_fee_wei()))
@@ -877,6 +882,10 @@ mod catalog_agreement_tests {
             (
                 Chain::Litecoin,
                 "12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2",
+            ),
+            (
+                Chain::Zcash,
+                "00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08",
             ),
         ] {
             assert_eq!(chain.genesis_block_hash().unwrap(), hash, "{chain}");

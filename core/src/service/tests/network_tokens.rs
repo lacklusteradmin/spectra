@@ -247,7 +247,7 @@ mod a_listing_answers_for_every_known_token {
             chain_id,
             endpoints: vec![server.uri()],
         };
-        let service = WalletService::new(vec![
+        let service = WalletService::serving(vec![
             endpoints(Chain::SolanaDevnet, &devnet),
             endpoints(Chain::Solana, &mainnet),
         ])
@@ -390,7 +390,7 @@ mod decimals_come_from_the_chain {
             .mount(&server)
             .await;
 
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: crate::api::endpoint::EndpointCapability::ALL.to_vec(),
             chain_id: crate::registry::Chain::Ethereum,
             endpoints: vec![server.uri()],
@@ -461,7 +461,7 @@ mod decimals_come_from_the_chain {
                 .await;
         }
 
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: crate::api::endpoint::EndpointCapability::ALL.to_vec(),
             chain_id: Chain::Aptos,
             endpoints: vec![server.uri()],
@@ -510,7 +510,7 @@ mod decimals_come_from_the_chain {
      {
         use wiremock::MockServer;
         let server = MockServer::start().await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             chain_id: Chain::Tron,
             endpoints: vec![server.uri()],
             capabilities: crate::api::endpoint::EndpointCapability::ALL.to_vec(),
@@ -614,7 +614,7 @@ mod decimals_come_from_the_chain {
             chain_id,
             endpoints: vec![server.uri()],
         };
-        let service = WalletService::new(vec![
+        let service = WalletService::serving(vec![
             endpoints(Chain::NearTestnet, &testnet),
             endpoints(Chain::Near, &mainnet),
         ])

@@ -114,7 +114,7 @@ async fn known_utxo_addresses_deduplicate_witness_addresses_by_their_canonical_c
 
 async fn scanning_service(endpoint: String) -> (Arc<WalletService>, String) {
     use crate::secrets::backends::InMemorySecretStore;
-    let service = WalletService::new(vec![crate::service::ChainEndpoints {
+    let service = WalletService::serving(vec![crate::service::ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: crate::registry::Chain::Bitcoin,
         endpoints: vec![endpoint],
@@ -244,7 +244,7 @@ async fn activity_probes_include_pending_and_spent_addresses_without_transaction
             .expect(1)
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![crate::service::ChainEndpoints {
+        let service = WalletService::serving(vec![crate::service::ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],
@@ -268,7 +268,7 @@ async fn activity_probes_include_pending_and_spent_addresses_without_transaction
         .expect(1)
         .mount(&server)
         .await;
-    let service = WalletService::new(vec![crate::service::ChainEndpoints {
+    let service = WalletService::serving(vec![crate::service::ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::BitcoinSV,
         endpoints: vec![server.uri()],
@@ -362,7 +362,7 @@ async fn litecoin_segwit_recovers_receive_and_change_past_the_old_scan_bound() {
                     .mount(&server)
                     .await;
             }
-            let service = WalletService::new(vec![crate::service::ChainEndpoints {
+            let service = WalletService::serving(vec![crate::service::ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: chain,
                 endpoints: vec![server.uri()],
@@ -528,7 +528,7 @@ async fn imported_litecoin_root_paths_raise_receive_and_change_floors() {
             )
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![crate::service::ChainEndpoints {
+        let service = WalletService::serving(vec![crate::service::ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],

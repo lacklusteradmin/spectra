@@ -137,6 +137,12 @@ class Node(Handler):
         raise AssertionError(call)
 
     def do_POST(self):
+        if self.path.startswith('/horizon/transactions'):
+            envelope = self.horizon_submission()
+            if envelope is not None:
+                self.state['submitted'].append(envelope)
+                self.reply({'hash': 'cc' * 32})
+            return
         body = self.raw_body()
         if self.path.startswith('/solana'):
             call = json.loads(body)
@@ -146,9 +152,7 @@ class Node(Handler):
         if self.path.startswith('/near'):
             call = json.loads(body)
             return self.reply({'jsonrpc': '2.0', 'id': call['id'], 'result': self.near(call)})
-        if self.path.startswith('/horizon/transactions'):
-            self.state['submitted'].append(json.loads(body)['tx'])
-            return self.reply({'hash': 'cc' * 32})
+
         call = json.loads(body)
         method, params = call['method'], (call.get('params') or [{}])[0]
         state = self.state

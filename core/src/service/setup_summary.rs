@@ -115,7 +115,13 @@ impl WalletService {
     /// limits from the registry — and the endpoints its first refresh reads
     /// from as configured now. Contacts nothing.
     pub async fn wallet_setup_summary(&self, chain: Chain) -> WalletSetupSummary {
-        let custom_endpoints_only = self.uses_custom_endpoints_only(chain).await;
+        let custom_endpoints_only = self
+            .wallet_state
+            .read()
+            .await
+            .settings
+            .custom_endpoints_only
+            .contains(&chain);
         let apis = chain.compatible_endpoint_apis();
         let configured = self.configured_endpoints_on(chain).await;
         let coverage = |capability: EndpointCapability| {
@@ -235,36 +241,19 @@ impl WalletService {
 }
 
 impl WalletService {
-    /// Every endpoint configured on `chain` in an API it speaks: the user's
-    /// first, then the catalog's unless the user uses only theirs there.
+    /// Every endpoint configured on `chain`, as requests use them.
     pub(crate) async fn configured_endpoints_on(&self, chain: Chain) -> Vec<SetupEndpoint> {
-        let settings = self.wallet_state.read().await.settings.clone();
-        let apis = chain.compatible_endpoint_apis();
-        let mut configured: Vec<SetupEndpoint> = settings
-            .custom_endpoints
-            .iter()
-            .filter(|endpoint| endpoint.chain_id == chain && apis.contains(&endpoint.api))
-            .map(|endpoint| SetupEndpoint {
-                endpoint: endpoint.endpoint.clone(),
-                api: endpoint.api,
-                capabilities: endpoint.capabilities.clone(),
-                is_built_in: false,
+        let built_in = self.built_in_endpoints();
+        self.endpoint_records(chain)
+            .await
+            .into_iter()
+            .map(|record| SetupEndpoint {
+                is_built_in: built_in.iter().any(|b| b.id == record.id),
+                endpoint: record.endpoint,
+                api: record.api,
+                capabilities: record.capabilities,
             })
-            .collect();
-        if !settings.custom_endpoints_only.contains(&chain) {
-            configured.extend(
-                crate::catalog::endpoints::records_for_chain(chain, &[])
-                    .into_iter()
-                    .filter(|record| apis.contains(&record.api))
-                    .map(|record| SetupEndpoint {
-                        endpoint: record.endpoint,
-                        api: record.api,
-                        capabilities: record.capabilities,
-                        is_built_in: true,
-                    }),
-            );
-        }
-        configured
+            .collect()
     }
 }
 
@@ -349,9 +338,7 @@ mod tests {
                 &[EndpointCapability::History],
             )
         };
-        assert!(reaches_catalog(
-            &service.configured_endpoint_urls(chain).await
-        ));
+        assert!(reaches_catalog(&service.endpoints_for(chain, &[]).await));
         assert!(reaches_catalog(&history().await.unwrap()));
         service
             .apply_state_command(set(AppSettingUpdate::CustomEndpointsOnly {
@@ -361,7 +348,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            *service.configured_endpoint_urls(chain).await,
+            *service.endpoints_for(chain, &[]).await,
             ["http://127.0.0.1:1/rpc"]
         );
         assert_eq!(history().await.unwrap(), ["http://127.0.0.1:1/scout"]);
@@ -381,7 +368,7 @@ mod tests {
             }))
             .await
             .unwrap();
-        let urls = service.configured_endpoint_urls(chain).await;
+        let urls = service.endpoints_for(chain, &[]).await;
         assert_eq!(urls[0], "http://127.0.0.1:1/rpc");
         assert!(reaches_catalog(&urls));
         drop(service);
@@ -430,7 +417,7 @@ mod tests {
             chain_id: chain,
             endpoints: vec![server.uri()],
         };
-        let service = WalletService::new(vec![
+        let service = WalletService::serving(vec![
             endpoints(Chain::Xrp, &xrpl),
             endpoints(Chain::Stellar, &horizon),
             endpoints(Chain::XrpTestnet, &xrpl),
@@ -477,7 +464,7 @@ mod tests {
     async fn a_read_no_configured_endpoint_serves_needs_a_custom_one() {
         use crate::store::state::{AppSettingUpdate, StateCommand};
         use CapabilityCoverage::{Configured, NeedsCustomEndpoint};
-        let service = WalletService::new(vec![]).unwrap();
+        let service = WalletService::new_catalog().unwrap();
         let dash = service.wallet_setup_summary(Chain::DashTestnet).await;
         assert_eq!(
             (dash.balance, dash.history),

@@ -2,7 +2,7 @@ use super::*;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::body_partial_json};
 
 async fn service(server: &MockServer) -> std::sync::Arc<WalletService> {
-    WalletService::new(vec![ChainEndpoints {
+    WalletService::serving(vec![ChainEndpoints {
         chain_id: Chain::WorldChain,
         capabilities: vec![EndpointCapability::Verification],
         endpoints: vec![server.uri()],
@@ -115,7 +115,7 @@ async fn wrong_block_cannot_establish_a_historical_zero_charge() {
 async fn fee_model_without_operator_charge_needs_no_operator_oracle() {
     let server = MockServer::start().await;
     mount_receipt(&server, "0x1", json!("0x64")).await;
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         chain_id: Chain::CeloSepolia,
         capabilities: vec![EndpointCapability::Verification],
         endpoints: vec![server.uri()],
@@ -219,7 +219,7 @@ mod receipt_cost_completeness {
                 .expect(if chain == Chain::WorldChain { 2 } else { 1 })
                 .mount(&server)
                 .await;
-                let service = WalletService::new(vec![ChainEndpoints {
+                let service = WalletService::serving(vec![ChainEndpoints {
                     chain_id: chain,
                     capabilities: vec![EndpointCapability::Verification],
                     endpoints: vec![server.uri()],
@@ -311,7 +311,7 @@ mod transaction_reads {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn service(chain: crate::registry::Chain, server: &MockServer) -> Arc<WalletService> {
-        WalletService::new(vec![ChainEndpoints {
+        WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],

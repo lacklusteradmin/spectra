@@ -295,7 +295,10 @@ impl KoiosClient {
     ) -> Result<crate::api::transaction_status::TransactionStatus, ApiError> {
         crate::api::transaction_status::validate_hex_hash(hash)?;
         let rows: Vec<serde_json::Value> = self
-            .post("/tx_info", &serde_json::json!({"_tx_hashes":[hash]}))
+            .post(
+                "/tx_info",
+                &serde_json::json!({"_tx_hashes":[hash],"_scripts":true}),
+            )
             .await?;
         cardano_transaction_status(&rows, hash)
     }
@@ -613,10 +616,19 @@ fn cardano_transaction_status(
             "Cardano status: transaction hash mismatch",
         ));
     }
-    Ok(TransactionStatus::Confirmed {
-        succeeded: row["valid_contract"]
+    // Koios 1.4 reports each Plutus script's phase-2 result; a transaction
+    // that runs none cannot fail phase 2, so being in a block is success.
+    let contracts = row["plutus_contracts"]
+        .as_array()
+        .or_decode("Cardano status: missing Plutus contracts")?;
+    let mut succeeded = true;
+    for contract in contracts {
+        succeeded &= contract["valid_contract"]
             .as_bool()
-            .or_decode("Cardano status: missing contract validation result")?,
+            .or_decode("Cardano status: missing contract validation result")?;
+    }
+    Ok(TransactionStatus::Confirmed {
+        succeeded,
         block: Some(
             row["block_height"]
                 .as_u64()
@@ -860,18 +872,32 @@ mod transaction_status_tests {
             cardano_transaction_status(&[], "h").unwrap(),
             TransactionStatus::Pending
         );
-        let rows = vec![json!({"tx_hash":"h","block_height":100,"valid_contract":false})];
-        assert_eq!(
-            cardano_transaction_status(&rows, "h").unwrap(),
-            TransactionStatus::Confirmed {
-                succeeded: false,
-                block: Some(100)
-            }
-        );
-        assert!(cardano_transaction_status(&rows, "other").is_err());
-        assert!(
-            cardano_transaction_status(&[json!({"tx_hash":"h","block_height":100})], "h").is_err()
-        );
+        // Koios 1.4's answers: a script failing phase 2, scripts all
+        // passing, and no script at all (2026-11-26).
+        let row =
+            |contracts| json!({"tx_hash":"h","block_height":100,"plutus_contracts":contracts});
+        for (contracts, succeeded) in [
+            (
+                json!([{"valid_contract":true},{"valid_contract":false}]),
+                false,
+            ),
+            (json!([{"valid_contract":true}]), true),
+            (json!([]), true),
+        ] {
+            assert_eq!(
+                cardano_transaction_status(&[row(contracts)], "h").unwrap(),
+                TransactionStatus::Confirmed {
+                    succeeded,
+                    block: Some(100)
+                }
+            );
+        }
+        assert!(cardano_transaction_status(&[row(json!([]))], "other").is_err());
+        // An answer without the contracts, or a contract without its
+        // result, is not a success.
+        for unsaid in [json!({"tx_hash":"h","block_height":100}), row(json!([{}]))] {
+            assert!(cardano_transaction_status(&[unsaid], "h").is_err());
+        }
     }
 }
 

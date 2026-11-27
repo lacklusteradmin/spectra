@@ -11,7 +11,7 @@ const SEED: &str =
 /// A wallet on `chain` at `path`'s account, its own address the path's,
 /// reading from `server`.
 async fn account(chain: Chain, server: &MockServer, path: &str) -> Arc<WalletService> {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: chain,
         endpoints: vec![server.uri()],

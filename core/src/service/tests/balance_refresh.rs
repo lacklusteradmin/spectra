@@ -109,7 +109,7 @@ async fn trc10_and_trc20_refresh_as_distinct_assets_and_survive_reopen() {
         .expect(1)
         .mount(&server)
         .await;
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         chain_id: Chain::Tron,
         endpoints: vec![server.uri()],
         capabilities: EndpointCapability::ALL.to_vec(),
@@ -120,6 +120,17 @@ async fn trc10_and_trc20_refresh_as_distinct_assets_and_survive_reopen() {
         crate::store::new_id()
     ));
     service.opened(db.to_string_lossy().into()).await.unwrap();
+    service
+        .apply_state_command(StateCommand::SetAppSetting {
+            update: crate::store::state::AppSettingUpdate::AddCustomEndpoint {
+                chain_id: Chain::Tron,
+                api: crate::api::endpoint::EndpointApi::TrongridV1,
+                endpoint: format!("{}/v1/accounts", server.uri()),
+                capabilities: vec![EndpointCapability::TokenDiscovery],
+            },
+        })
+        .await
+        .unwrap();
     service
         .apply_state_command(StateCommand::AddCustomToken {
             chain_id: Chain::Tron,
@@ -372,7 +383,7 @@ async fn requested_refresh_is_bounded_and_shares_overlapping_wallet_reads() {
         .iter()
         .all(|t| t.is_native())
     );
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: crate::registry::Chain::StellarTestnet,
         endpoints: vec![endpoint],

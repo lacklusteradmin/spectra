@@ -84,7 +84,7 @@ pub(crate) async fn node() -> (SubstrateClient, Arc<Mutex<NodeState>>, MockServe
                             let (_, amount) = <(u32, u128)>::decode(&mut input.as_slice()).unwrap();
                             (amount * 10 / 9).encode()
                         }
-                        "NominationPoolsApi_pending_rewards" => Some(30_000_000_000u128).encode(),
+                        "NominationPoolsApi_pending_rewards" => 30_000_000_000u128.encode(),
                         "NominationPoolsApi_member_needs_delegate_migration" => {
                             state.member_migration.encode()
                         }

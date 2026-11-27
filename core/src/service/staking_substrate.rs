@@ -321,7 +321,7 @@ mod tests {
     #[tokio::test]
     async fn all_pool_actions_build_reviewed_calls_from_owned_current_state() {
         let (_, state, server) = node().await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             chain_id: Chain::Polkadot,
             capabilities: vec![EndpointCapability::Staking],
             endpoints: vec![server.uri()],
@@ -462,7 +462,7 @@ mod tests {
     #[tokio::test]
     async fn a_pool_fee_above_the_reviewed_one_is_refused_at_signing() {
         let (_, state, server) = node().await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             chain_id: Chain::Polkadot,
             capabilities: vec![EndpointCapability::Staking],
             endpoints: vec![server.uri()],

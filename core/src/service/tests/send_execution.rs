@@ -254,7 +254,7 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
         })
         .mount(&server)
         .await;
-    let service = WalletService::new(vec![crate::service::ChainEndpoints {
+    let service = WalletService::serving(vec![crate::service::ChainEndpoints {
         chain_id: Chain::Near,
         capabilities: vec![EndpointCapability::Verification],
         endpoints: vec![server.uri()],
@@ -414,7 +414,7 @@ async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
             };
             ResponseTemplate::new(200).set_body_json(if body["method"].is_string(){json!({"jsonrpc":"2.0","id":body["id"],"result":result})}else{result})
         }).mount(&server).await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],
@@ -611,7 +611,7 @@ async fn aptos_build_and_sign_bind_the_reviewed_total_gas_budget() {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],
@@ -712,7 +712,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
         .join(format!("audit-fix5-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: crate::registry::Chain::Ethereum,
         endpoints: vec![server.uri()],
@@ -808,7 +808,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     assert_eq!(first.nonce, Some(7));
     assert!(first.failure_reason.is_some());
     drop(service);
-    let reopened = WalletService::new(vec![ChainEndpoints {
+    let reopened = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: crate::registry::Chain::Ethereum,
         endpoints: vec![server.uri()],
@@ -960,7 +960,7 @@ mod signed_world_chain_fee_budget {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],
@@ -1101,7 +1101,7 @@ mod owned_world_chain_nonce_rollover {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],
@@ -1237,7 +1237,7 @@ fn request(chain_id: Chain, token_standard: Option<&str>) -> SendExecutionReques
 }
 
 fn service(server: &MockServer) -> std::sync::Arc<WalletService> {
-    WalletService::new(vec![ChainEndpoints {
+    WalletService::serving(vec![ChainEndpoints {
         chain_id: Chain::Tron,
         endpoints: vec![server.uri()],
         capabilities: EndpointCapability::ALL.to_vec(),

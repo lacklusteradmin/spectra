@@ -93,7 +93,7 @@ async fn service(
         std::env::temp_dir().join(format!("spectra-peercoin-{}", crate::store::new_id())),
     );
     std::fs::create_dir_all(directory.path()).unwrap();
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: chain,
         endpoints: vec![endpoint],
@@ -268,7 +268,7 @@ async fn protected_peercoin_account_quotes_and_signs_all_sources_after_restart()
                     .any(|input| input.source.address == parents[0].0)
             );
             drop(wallet);
-            let resumed = WalletService::new(vec![ChainEndpoints {
+            let resumed = WalletService::serving(vec![ChainEndpoints {
                 capabilities: EndpointCapability::ALL.to_vec(),
                 chain_id: chain,
                 endpoints: vec![server.uri()],
@@ -355,7 +355,7 @@ async fn peercoin_custom_broadcast_endpoint_proves_network_before_submission() {
                 })))
                 .mount(&server)
                 .await;
-            let wallet = WalletService::new(vec![ChainEndpoints {
+            let wallet = WalletService::serving(vec![ChainEndpoints {
                 capabilities: vec![EndpointCapability::Broadcast],
                 chain_id: chain,
                 endpoints: vec![server.uri()],

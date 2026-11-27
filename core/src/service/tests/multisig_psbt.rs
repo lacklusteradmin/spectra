@@ -88,7 +88,7 @@ async fn indexer(funds: Funds, posted: Posted) -> MockServer {
 /// A fresh data directory on `chain` reading `server`: Dogecoin's through
 /// Blockbook, one of its indexers, rather than its default.
 async fn service(chain: Chain, server: &MockServer) -> Arc<WalletService> {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: chain,
         endpoints: vec![server.uri()],

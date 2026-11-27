@@ -44,6 +44,25 @@ impl ToncenterV3Client {
         }
     }
 
+    /// Refuse an indexer that is not on `chain`'s network: its first
+    /// masterchain block must be the network's.
+    pub(crate) async fn verify_network(
+        &self,
+        chain: crate::registry::Chain,
+    ) -> Result<(), ApiError> {
+        race(&self.endpoints, |base| async move {
+            let network: serde_json::Value = self
+                .client
+                .get_json(
+                    &format!("{}/masterchainInfo", base.trim_end_matches('/')),
+                    RetryProfile::ChainRead,
+                )
+                .await?;
+            verify_first_block(chain, &network)
+        })
+        .await
+    }
+
     /// `sendBocReturnHash` identifies an external message, not a transaction.
     /// Follow that exact message into a committed trace. Jetton success needs
     /// the receiver jetton wallet's execution; a wallet seqno increment alone

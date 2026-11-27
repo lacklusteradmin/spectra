@@ -8,10 +8,9 @@ use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use spectra_core::api::endpoint::EndpointCapability;
 use spectra_core::registry::Chain;
 use spectra_core::secrets::backends::FileSecretStore;
-use spectra_core::service::{ChainEndpoints, WalletService};
+use spectra_core::service::WalletService;
 use spectra_core::store::state::{ResidentState, StateCommand, StateTransition, WalletState};
 
 use crate::error::{CliError, CliResult};
@@ -189,11 +188,7 @@ impl Ctx {
         let service = self.service()?;
         if !endpoints.is_empty() {
             self.rt
-                .block_on(service.update_endpoints(vec![ChainEndpoints {
-                    capabilities: EndpointCapability::ALL.to_vec(),
-                    chain_id: chain,
-                    endpoints,
-                }]))?;
+                .block_on(service.use_only_endpoints(chain, endpoints))?;
         }
         Ok(service)
     }

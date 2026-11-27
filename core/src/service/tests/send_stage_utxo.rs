@@ -245,11 +245,13 @@ struct Ledger {
 
 impl Ledger {
     /// The outputs of the address a path names, whatever form of it the
-    /// client sends (Bitcoin Cash's without its prefix).
-    fn held(&self, address: &str) -> Vec<(String, u32, u64)> {
+    /// client sends (Bitcoin Cash's CashAddr for a legacy address).
+    fn held(&self, chain: Chain, address: &str) -> Vec<(String, u32, u64)> {
         self.outputs
             .iter()
-            .find(|(held, _)| *held == address || held.rsplit(':').next() == Some(address))
+            .find(|(held, _)| {
+                crate::service::send_stage_support::same_utxo_address(chain, held, address)
+            })
             .map(|(_, outputs)| outputs.clone())
             .unwrap_or_default()
     }
@@ -341,7 +343,7 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
         }
         (EndpointApi::Blockbook, ["api", "v2", "utxo", address]) => json!(
             ledger
-                .held(address)
+                .held(chain, address)
                 .iter()
                 .map(|(txid, vout, value)| json!({
                     "txid": txid, "vout": vout, "value": value.to_string(),
@@ -360,7 +362,7 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
         }
         (EndpointApi::Esplora, ["address", address, "utxo"]) => json!(
             ledger
-                .held(address)
+                .held(chain, address)
                 .iter()
                 .map(|(txid, vout, value)| json!({
                     "txid": txid, "vout": vout, "value": value,
@@ -370,7 +372,7 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
         ),
         (EndpointApi::Whatsonchain, ["address", address, "unspent"]) => json!(
             ledger
-                .held(address)
+                .held(chain, address)
                 .iter()
                 .map(|(txid, vout, value)| json!({
                     "tx_hash": txid, "tx_pos": vout, "value": value, "height": 1,
@@ -378,14 +380,14 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
                 .collect::<Vec<_>>()
         ),
         (EndpointApi::Blockcypher, ["addrs", address]) if query.contains("unspentOnly") => {
-            json!({"txrefs": ledger.held(address).iter().map(|(txid, vout, value)| json!({
+            json!({"txrefs": ledger.held(chain, address).iter().map(|(txid, vout, value)| json!({
                 "tx_hash": txid, "tx_output_n": vout, "value": value,
                 "block_height": 1, "confirmations": 6,
             })).collect::<Vec<_>>()})
         }
         (EndpointApi::Insight, ["addr", address, "utxo"]) => json!(
             ledger
-                .held(address)
+                .held(chain, address)
                 .iter()
                 .map(|(txid, vout, value)| json!({
                     "txid": txid, "vout": vout, "satoshis": value, "confirmations": 6,
@@ -393,14 +395,22 @@ fn indexer_answer(chain: Chain, ledger: &mut Ledger, request: &Request) -> Value
                 .collect::<Vec<_>>()
         ),
         (EndpointApi::KaspaRest, ["addresses", address, "utxos"]) => {
+            // As api.kaspa.org answers (2026-11-26): no script version, it
+            // being protobuf's default 0.
             let script = crate::send::account_utxo::source_script(chain, address).unwrap();
-            json!(ledger.held(address).iter().map(|(txid, vout, value)| json!({
-                "address": address,
-                "outpoint": {"transactionId": txid, "index": vout},
-                "utxoEntry": {"amount": value.to_string(),
-                    "scriptPublicKey": {"version": 0, "scriptPublicKey": hex::encode(&script)},
-                    "blockDaaScore": "1", "isCoinbase": false},
-            })).collect::<Vec<_>>())
+            json!(
+                ledger
+                    .held(chain, address)
+                    .iter()
+                    .map(|(txid, vout, value)| json!({
+                        "address": address,
+                        "outpoint": {"transactionId": txid, "index": vout},
+                        "utxoEntry": {"amount": value.to_string(),
+                            "scriptPublicKey": {"scriptPublicKey": hex::encode(&script)},
+                            "blockDaaScore": "1", "isCoinbase": false},
+                    }))
+                    .collect::<Vec<_>>()
+            )
         }
         (api, _) => panic!("unexpected {} read {path}?{query}", api.as_str()),
     }
@@ -435,7 +445,7 @@ impl Account {
             })
             .mount(&server)
             .await;
-        let service = WalletService::new(vec![ChainEndpoints {
+        let service = WalletService::serving(vec![ChainEndpoints {
             capabilities: EndpointCapability::ALL.to_vec(),
             chain_id: chain,
             endpoints: vec![server.uri()],

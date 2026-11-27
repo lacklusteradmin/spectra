@@ -427,7 +427,7 @@ async fn a_utxo_wallet_whose_address_did_not_answer_stores_nothing() {
         .mount(&server)
         .await;
 
-    let service = WalletService::new(vec![crate::service::ChainEndpoints {
+    let service = WalletService::serving(vec![crate::service::ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Litecoin,
         endpoints: vec![server.uri()],
@@ -797,7 +797,7 @@ fn history_tokens_with_the_same_symbol_keep_distinct_contract_identities() {
 
 /// A service over `endpoints` on a fresh store.
 async fn opened(endpoints: Vec<crate::service::ChainEndpoints>) -> std::sync::Arc<WalletService> {
-    let service = WalletService::new(endpoints).expect("service");
+    let service = WalletService::serving(endpoints).expect("service");
     let path = std::env::temp_dir()
         .join(format!("history-paging-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
@@ -930,8 +930,8 @@ async fn a_full_token_page_of_unknown_contracts_is_not_the_end_of_the_history() 
 /// A page of Solana signatures none of which moved anything for the wallet
 /// is still a full page: the refresh stores nothing, is not exhausted, and
 /// keeps the page's last signature as its cursor. Loading more asks for the
-/// signatures before it, and a later refresh of the newest page keeps the
-/// older record.
+/// signatures before it, whose version 1 transaction is read, and a later
+/// refresh of the newest page keeps the older record.
 #[tokio::test]
 async fn a_solana_page_that_stores_nothing_still_pages_on_from_its_last_signature() {
     use serde_json::{Value, json};
@@ -957,11 +957,21 @@ async fn a_solana_page_that_stores_nothing_still_pages_on_from_its_last_signatur
                         }
                     }
                     Some("getTransaction") => {
-                        let after = if call["params"][0] == older.as_str() {
-                            200
-                        } else {
-                            100
-                        };
+                        // The older one is a version 1 transaction, which a
+                        // node refuses to a client supporting less, as
+                        // mainnet's did on 2026-11-26.
+                        let version_one = call["params"][0] == older.as_str();
+                        if version_one
+                            && call["params"][1]["maxSupportedTransactionVersion"]
+                                .as_u64()
+                                .is_none_or(|supported| supported < 1)
+                        {
+                            return ResponseTemplate::new(200).set_body_json(json!({
+                                "jsonrpc": "2.0", "id": call["id"],
+                                "error": {"code": -32015, "message": "Transaction version (1) is not supported by the requesting client"},
+                            }));
+                        }
+                        let after = if version_one { 200 } else { 100 };
                         json!({"slot": 42, "blockTime": 1_700_000_000,
                             "transaction": {"message": {"accountKeys": [OWNER]}},
                             "meta": {"fee": 0, "preBalances": [100], "postBalances": [after]}})

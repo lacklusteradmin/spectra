@@ -73,7 +73,7 @@ async fn node() -> (MockServer, Arc<Mutex<Node>>) {
 /// wallet whose phrase holds none of its keys; and a watched wallet at its
 /// secp256k1 member's own address.
 async fn wallets(endpoint: String) -> Arc<WalletService> {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         capabilities: EndpointCapability::ALL.to_vec(),
         chain_id: Chain::Sui,
         endpoints: vec![endpoint],

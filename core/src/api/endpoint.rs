@@ -172,12 +172,6 @@ impl EndpointCapability {
             Self::Staking => "staking",
         }
     }
-
-    /// A chain's primary endpoint list holds only URLs that answer one of
-    /// these; anything else there is an operation-only URL, not a base.
-    pub(crate) fn is_primary_read(self) -> bool {
-        matches!(self, Self::Balance | Self::Fee | Self::Broadcast)
-    }
 }
 
 impl std::str::FromStr for EndpointCapability {
@@ -201,60 +195,9 @@ pub fn endpoint_capability_id(capability: EndpointCapability) -> String {
     capability.as_str().into()
 }
 
-/// A configured URL must speak one of the chain's APIs. If it is already in
-/// the catalog, reject a known mismatch before retaining or sending to it.
-pub(crate) fn validate_configured_endpoint(
-    chain: crate::registry::Chain,
-    url: &str,
-) -> Result<(), crate::error::SpectraBridgeError> {
-    if url.is_empty() {
-        return Ok(());
-    }
-    let expected = chain.endpoint_apis();
-    let catalog = crate::catalog::endpoints::catalog();
-    let matching: Vec<_> = catalog
-        .records
-        .iter()
-        .filter(|record| record.endpoint.trim_end_matches('/') == url.trim_end_matches('/'))
-        .collect();
-    if !matching.is_empty()
-        && !matching.iter().any(|record| {
-            expected.contains(&record.api)
-                && record.capabilities.iter().any(|c| c.is_primary_read())
-        })
-    {
-        let names: Vec<_> = expected.iter().map(|api| api.as_str()).collect();
-        return Err(crate::error::SpectraBridgeError::invalid(format!(
-            "{} requires {} endpoints; {url} uses a different API",
-            chain.str_id(),
-            if names.is_empty() {
-                "a supported API".to_string()
-            } else {
-                names.join(" or ")
-            }
-        )));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::Chain;
-
-    #[test]
-    fn known_incompatible_urls_are_rejected_before_configuration() {
-        assert!(
-            validate_configured_endpoint(Chain::Bitcoin, "https://ethereum-rpc.publicnode.com")
-                .is_err()
-        );
-        assert!(
-            validate_configured_endpoint(Chain::Bitcoin, "https://blockstream.info/api/").is_ok()
-        );
-        assert!(
-            validate_configured_endpoint(Chain::Monero, "https://blockstream.info/api").is_err()
-        );
-    }
 
     #[test]
     fn capability_names_round_trip() {
@@ -360,19 +303,23 @@ pub fn endpoint_capability_options(
         ],
         TronHttp => &[Balance, Fee, Broadcast, Verification, TokenBalance],
         MoneroDaemonRpc => &[Fee, Broadcast, Verification],
-        Esplora | Blockbook | Blockcypher | Whatsonchain | Insight => {
+        // A fee rate is read where the network prices sends at it
+        // (`Chain::reads_indexer_fee_rate`); Kaspa, Decred, WhatsOnChain's
+        // and the other indexers' networks pay the registry's fee.
+        Esplora | Blockbook | Blockcypher if chain.reads_indexer_fee_rate() => {
             &[Balance, History, Utxo, Fee, Broadcast, Verification]
         }
-        KaspaRest => &[Balance, History, Utxo, Fee, Broadcast, Verification],
-        // Neither estimates a fee rate.
-        BchRestV2 | Chronik | UnisatOpenApi => &[Balance, History, Utxo, Broadcast, Verification],
+        Esplora | Blockbook | Blockcypher | Whatsonchain | Insight | KaspaRest | BchRestV2
+        | Chronik | UnisatOpenApi => &[Balance, History, Utxo, Broadcast, Verification],
         // The compact blocks a shielded wallet scans are its history; the
         // server also takes the wallet's transactions.
         Lightwalletd => &[History, Broadcast, Verification],
         // A node's MWEB outputs are what an MWEB wallet scans.
         LitecoinP2p => &[History],
         Blockscout => &[History, TokenHistory, TokenDiscovery],
-        ToncenterV2 => &[Balance, History, Fee, Broadcast, Verification, TokenBalance],
+        // A transfer's fee is the registry's, and a jetton's balance is read
+        // from TON Center v3's holder listing.
+        ToncenterV2 => &[Balance, History, Broadcast, Verification],
         ToncenterV3 => &[Verification, TokenBalance, TokenDiscovery, TokenHistory],
         // An address's outputs name the native assets they hold, and its
         // transactions the assets they moved.

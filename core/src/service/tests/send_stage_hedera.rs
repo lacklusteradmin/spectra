@@ -139,7 +139,7 @@ async fn wallet(
     let book = format!("{}/api/v1/network/nodes", server.uri());
     wallet
         .service
-        .update_endpoints(vec![ChainEndpoints {
+        .serve(vec![ChainEndpoints {
             chain_id: Chain::Hedera,
             endpoints: vec![server.uri(), book.clone()],
             capabilities: EndpointCapability::ALL.to_vec(),
@@ -347,7 +347,7 @@ fn commit(kind: WalletImportKind, secret: &str, named: Option<&str>) -> WalletIm
 }
 
 async fn service(endpoint: &str) -> Arc<WalletService> {
-    let service = WalletService::new(vec![ChainEndpoints {
+    let service = WalletService::serving(vec![ChainEndpoints {
         chain_id: Chain::Hedera,
         endpoints: vec![endpoint.to_string()],
         capabilities: vec![

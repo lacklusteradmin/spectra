@@ -62,7 +62,10 @@ class Horizon(Handler):
         self.reply({'status': 404}, 404)
 
     def do_POST(self):
-        envelope = base64.b64decode(self.body()['tx'])
+        submitted = self.horizon_submission()
+        if submitted is None:
+            return
+        envelope = base64.b64decode(submitted)
         self.state['submitted'].append(envelope)
         self.reply({'hash': transaction_hash(envelope), 'successful': True})
 

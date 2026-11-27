@@ -312,7 +312,7 @@ pub(crate) mod tests {
         std::fs::create_dir_all(&directory).unwrap();
         // A Hedera import reads its key's account from a mirror node: the
         // test one holds an account for every key.
-        let service = WalletService::new(vec![crate::service::ChainEndpoints {
+        let service = WalletService::serving(vec![crate::service::ChainEndpoints {
             chain_id: Chain::Hedera,
             endpoints: vec![crate::api::hedera_mirror::test_mirror::url().await],
             capabilities: vec![
