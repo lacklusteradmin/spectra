@@ -1,5 +1,23 @@
 # Changelog
 
+## Beta Commit 263
+
+- **The apps' string tables live here** (`strings/`)
+  - `RuntimeStrings.<locale>.json` for `en`, `zh-Hans` and `zh-Hant`, with
+    `RuntimeStrings.manifest.json`, are the one copy both apps sync from
+    (before: spectra-apple's `resources/strings/`, copied by hand into
+    spectra-android).
+  - 2231 keys in each: spectra-apple's 2226, and five sentences it shows that
+    only spectra-android's copy translated ("Approve", "Sort and Filter",
+    "This wallet has no password." and the unknown-outcome sentences for a
+    submission and a rebroadcast).
+- Docs: `AGENTS.md` (Repositories, a new Strings section),
+  `ARCHITECTURE.md` (Workspace), `FFI-BOUNDARY.md` (Export shapes: where the
+  string tables are).
+- Total: no .rs files changed; data files: `strings/RuntimeStrings.en.json`,
+  `.zh-Hans.json`, `.zh-Hant.json`, `.manifest.json` (new); dependencies
+  unchanged; `cargo test` not run (no code changed).
+
 ## Beta Commit 262
 
 - **The endpoint catalog keeps only what answered as claimed**

@@ -43,7 +43,7 @@ a package built here:
 
 | Repository | Holds |
 |---|---|
-| `spectra` (this one) | `core/`, `cli/`, `tools/`, `tests/`, `icons/crypto/` |
+| `spectra` (this one) | `core/`, `cli/`, `tools/`, `tests/`, `icons/crypto/`, `strings/` |
 | `spectra-apple` | The iOS and macOS app |
 | `spectra-android` | The Android app |
 
@@ -56,8 +56,8 @@ and run that app's checks, with this checkout as spectra-apple's `SPECTRA`.
 
 A change here is finished only when the apps match it. In the same task, check
 spectra-apple and spectra-android for anything that depends on what changed (an
-FFI export, a registry or catalog fact the apps render, an icon, a shared doc,
-Makefile or script convention) and update them too; bindings are rebuilt, never
+FFI export, a registry or catalog fact the apps render, an icon, a string
+table, a shared doc, Makefile or script convention) and update them too; bindings are rebuilt, never
 hand-edited. Report which app repositories changed and which checks ran there.
 On my machine the three
 checkouts sit side by side: `~/Code/Spectra`, `~/Code/SpectraApple`,
@@ -238,3 +238,26 @@ scripts/normalize-icons.sh
 - Formatting is owned by `scripts/svgo.config.mjs`; use
   `scripts/normalize-icons.sh --check` to detect drift. Non-square artwork needs
   manual layout; `userSpaceOnUse` gradients may retain transforms.
+
+## Strings
+
+`strings/` holds the string tables both apps read:
+`RuntimeStrings.<locale>.json` for `en`, `zh-Hans` and `zh-Hant`, and
+`RuntimeStrings.manifest.json`, which names them. A key is the English
+sentence a screen shows or a dotted name (`settings.aboutTitle`), and a value
+uses Apple's format specifiers (`%@`, `%1$@`, `%lld`), which spectra-android
+reads as Java's. Each app syncs a copy it never edits: spectra-apple into
+`resources/strings/` with `scripts/export-swift-strings.sh`, spectra-android
+into `app/src/main/assets/strings/` with `make strings`; both take this
+checkout as `SPECTRA`.
+
+- A sentence spectra-apple shows, and a sentence of core's that a front end
+  translates, goes here, in all three tables. spectra-apple's
+  `unused-strings.py` holds the tables to that: it fails on a key it cannot
+  trace to its Swift or to core, and on a core sentence they lack.
+- A sentence only spectra-android shows goes in its own
+  `AndroidStrings.<locale>.json`, not here. One that spectra-apple stops
+  showing while spectra-android still shows it moves there.
+- After editing a table, sync both apps and run their string scans:
+  spectra-apple's `make lint` and spectra-android's
+  `scripts/missing-strings.py`.

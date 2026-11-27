@@ -37,8 +37,9 @@ their `reason`: an English `template` with a `%@` for each of its `args`. The te
 front end looks up in its string tables, so a sentence a person reads names its
 values as `args` (`SpectraBridgeError::refused`, `failed`,
 `DerivationError::refused`) rather than interpolating them with `format!`.
-The string tables are the app's: spectra-apple's `scripts/unused-strings.py`
-fails on a templated sentence its tables do not translate. Transport, parser and library text arrives with no args and reads
+The string tables are the apps' shared `strings/`: spectra-apple's
+`scripts/unused-strings.py` fails on a templated sentence they do not
+translate. Transport, parser and library text arrives with no args and reads
 as sent.
 
 Borrowed types, lifetimes, generics, closures and unexported trait objects do

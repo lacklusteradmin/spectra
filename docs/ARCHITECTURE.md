@@ -16,6 +16,7 @@ authoritative copy, and the CLI can drive every domain operation.
 | `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the apps' native library |
 | `cli/` | Argument parsing, password prompting and each command's report, as text or `--json` |
 | `icons/crypto/` | The SVG library the apps draw tokens and chains with, one file per artwork name in the catalog |
+| `strings/` | The string tables both apps read, one per locale, with the manifest naming the locales |
 | `scripts/` | Source-check, icon and runtime-data tools |
 | `tests/` | CLI acceptance suites on one harness (`tests/acceptance/`) and independent SDK test-data generators (`tests/vectors/`) |
 | `tools/uniffi-bindgen/` | Binding generation binary |
