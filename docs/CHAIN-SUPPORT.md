@@ -526,7 +526,7 @@ Litecoin holds transparent and [MWEB funds](#litecoin-mweb-funds).
 
 The [follow-up source audit](audits/token-verification-2026-10-04/README.md)
 verifies and reactivates 58 of the 59 preserved deployments, along with all 21
-previously commented identities and wiki descriptions. The reactivated records
+previously commented identities and their descriptions. The reactivated records
 retain their original addresses, standards and precision. Primary issuer/protocol
 documents, official bridge lists and exact bridge mappings establish identity; all 59 original
 contracts also pass fixed-block chain-ID, bytecode and decimals reads.

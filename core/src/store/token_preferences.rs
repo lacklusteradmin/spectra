@@ -149,6 +149,24 @@ pub fn with_custom_tokens(
     merged
 }
 
+/// Known Tokens: the catalog's tokens, native coins included, then each token
+/// the user added as one of its own. `preferences` are the tracked tokens,
+/// which hold the user's.
+pub(crate) fn known_tokens(
+    preferences: &[wallet_domain::TokenPreferenceEntry],
+) -> Vec<crate::catalog::tokens::KnownToken> {
+    crate::catalog::tokens::built_in_known_tokens()
+        .iter()
+        .cloned()
+        .chain(
+            preferences
+                .iter()
+                .filter(|entry| !entry.is_built_in)
+                .map(|entry| crate::catalog::tokens::KnownToken::custom(entry.token.clone())),
+        )
+        .collect()
+}
+
 /// The catalog's own rows before the user's, then symbol, then token, then
 /// chain: one token's deployments sit together, so a list grouped by token
 /// keeps this order without sorting again. Every writer of the list sorts

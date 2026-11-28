@@ -130,16 +130,19 @@ Front ends read the whole catalog once as `list_all_chains`, one `ChainEntry`
 per network carrying the `Chain` itself, its identity, the capabilities a
 screen branches on and its presentation; there is no second per-chain table.
 Network rules and presentation live on the same `chains.toml` row: search
-keywords, picker rank, tags, color, artwork and address hints have no separate
+keywords, picker rank, tags, color, artwork, address hints and what the chain
+is for a reader (description, family, consensus, state model) have no separate
 catalog or join key. Every network requires its own presentation fields;
-testnets inherit rank and tags from their mainnet. Display classifications
+testnets inherit rank, tags and the description from their mainnet. Display classifications
 do not determine protocol capabilities. EVM membership is having an EIP-155 id
 (`Chain::evm_chain_id`), so the EVM list is written once; the catalog projects
 `is_evm` for clients without a configurable TOML flag. Address validation
 dispatches on the `Chain` itself (`validation::address::validate_address`),
 not on a string naming a format.
-The chain picker and wiki share `ChainTag` and the catalog's resolved tags;
-`chain-wiki.toml` holds prose only and cannot restate a tag list.
+The chain picker filters by `ChainTag` and the catalog's resolved tags.
+A token's description and supply model sit on its `tokens.toml` identity, not
+on its deployments; `KnownToken` joins them to every network the token is on,
+native coins included, for Known Tokens.
 Address formats, derivation paths, address slots, EVM membership and routing
 facts belong there rather than in caller-owned lists.
 
@@ -231,8 +234,8 @@ nothing else sits at the root. `registry/` is `Chain` with one `impl Chain` sibl
 `algorand`, `vechain`, `tezos`, `starknet`, `hedera`), and the asset identities a token is named by
 (`NftStandard` in `tokens`, `xrpl_amount`, `stellar_asset`,
 `cardano_asset`), which `catalog/`, `api/` and `send/` share; `catalog/` parses the embedded `core/data/` files (chains
-with their wiki and staking copy, tokens and test-network tokens, endpoints,
-explorers, donations, the crypto wiki and restore heights);
+with their staking copy, tokens and test-network tokens, endpoints,
+explorers, donations and restore heights);
 `amount/` holds exact decimals, typed input and optional presentation;
 `secrets/` holds the `SecretStore`, its backends, the device key, envelopes
 and password stretching. Chain names and topic prefixes identify siblings:

@@ -1,17 +1,16 @@
 //! Concrete network registry embedded from `chains.toml`.
 //! Mainnets and testnets are equal records. Native token metadata in the public
 //! projection is joined from `tokens.toml`; it is never stored as a network fact.
-//! Network rules and presentation share each catalog row; `chain-wiki.toml`
-//! and `staking.toml` hold prose.
+//! Network rules, presentation and what the chain is for a reader share each
+//! catalog row; `staking.toml` holds the staking prose.
 
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 
 static CHAINS_TOML: &str = include_str!("../../data/chains.toml");
-static CHAIN_WIKI_TOML: &str = include_str!("../../data/chain-wiki.toml");
 static STAKING_TOML: &str = include_str!("../../data/staking.toml");
 
-/// A shared classification for the chain picker and wiki. Presentation only:
+/// A classification for the chain picker. Presentation only:
 /// it never decides a protocol capability.
 ///
 /// Declaration order is the order the picker shows the filters in.
@@ -132,6 +131,15 @@ pub(crate) struct TomlChain {
     /// A test network's faucet page, where its coins are free. Testnets only.
     #[serde(default)]
     pub(crate) faucet: Option<String>,
+    /// What the chain is, for a reader. Written on mainnets only.
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    family: Option<String>,
+    #[serde(default)]
+    consensus: Option<String>,
+    #[serde(default)]
+    state_model: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,13 +148,6 @@ struct TomlDerivationPathEntry {
     path: String,
     #[serde(default)]
     is_default: bool,
-}
-
-/// The wiki file: one row per chain, joined to `chains.toml` by `chain`.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TomlWikiFile {
-    chains: Vec<TomlWikiChain>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -162,16 +163,6 @@ struct TomlStakingChain {
     unbonding_period: String,
     minimum_stake: String,
     explanation: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TomlWikiChain {
-    chain: String,
-    comment: String,
-    family: String,
-    consensus: String,
-    state_model: String,
 }
 
 /// One token protocol a network supports, with what a token of it is
@@ -280,7 +271,7 @@ pub struct ChainEntry {
     /// per-chain fact in a caller-owned list; every chain is ranked so the
     /// whole list has one order rather than eight ranked rows and the rest.
     pub popular_rank: u16,
-    /// The shared picker/wiki tags, in [`ChainTag::ALL`] order.
+    /// The picker's tags, in [`ChainTag::ALL`] order.
     /// A testnet carries its mainnet's tags and `Testnet`.
     pub tags: Vec<ChainTag>,
     pub color: CatalogColor,
@@ -292,28 +283,10 @@ pub struct ChainEntry {
     pub native_decimals: u32,
     pub native_asset_display_name: String,
     pub derivation_path: Vec<ChainDerivationPathEntry>,
-}
-
-/// What a *chain* is — the facts that have no coin to belong to.
-///
-/// Ten chains share ETH, so "Base is an optimistic rollup" cannot live on an
-/// asset page; that is what this is for. What a *coin* is lives on
-/// [`crate::catalog::wiki::AssetWikiEntry`], which is the wiki's index — a holder thinks
-/// in coins, and this is one level down from there.
-///
-/// Kept out of [`ChainEntry`] so that nothing in the send, derive or fetch
-/// paths can read it, and so the prose does not cross the FFI with every
-/// `list_all_chains()` call.
-///
-/// There is a row per chain and none per network: the table is the filter.
-#[derive(Debug, Clone, Serialize, uniffi::Record)]
-pub struct ChainWikiEntry {
-    pub id: String,
-    pub name: String,
-    pub native_deployment_id: String,
-    /// The same tags as the chain's mainnet catalog entry.
-    pub tags: Vec<ChainTag>,
-    pub comment: String,
+    /// What the chain is used for, in a sentence or two. This and the three
+    /// below describe the chain for a reader and decide nothing; a testnet
+    /// shows its mainnet's.
+    pub description: String,
     pub family: String,
     pub consensus: String,
     pub state_model: String,
@@ -428,9 +401,9 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
             c.id
         );
     }
-    // A testnet's rank and tags are its mainnet's. Resolve mainnet placement
+    // A testnet's rank, tags and description are its mainnet's. Resolve them
     // independently of the testnet's position in the catalog.
-    let placement: std::collections::HashMap<&str, (u16, Vec<ChainTag>)> = parsed
+    let placement: std::collections::HashMap<&str, Inherited> = parsed
         .chains
         .iter()
         .filter(|c| c.mainnet.is_none())
@@ -447,7 +420,21 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
             tags.sort_unstable();
             tags.dedup();
             assert_eq!(tags.len(), c.tags.len(), "{id} repeats a tag");
-            (id, (rank, tags))
+            let prose = |field: &Option<String>, name: &str| {
+                field
+                    .clone()
+                    .filter(|text| !text.trim().is_empty())
+                    .unwrap_or_else(|| panic!("mainnet {id} has no {name}"))
+            };
+            let inherited = Inherited {
+                popular_rank: rank,
+                tags,
+                description: prose(&c.description, "description"),
+                family: prose(&c.family, "family"),
+                consensus: prose(&c.consensus, "consensus"),
+                state_model: prose(&c.state_model, "state_model"),
+            };
+            (id, inherited)
         })
         .collect();
 
@@ -474,7 +461,22 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 "testnet {} restates its mainnet's rank or tags",
                 c.id
             );
-            let (popular_rank, mut tags) = placement
+            assert!(
+                !is_testnet
+                    || [&c.description, &c.family, &c.consensus, &c.state_model]
+                        .iter()
+                        .all(|field| field.is_none()),
+                "testnet {} restates its mainnet's description",
+                c.id
+            );
+            let Inherited {
+                popular_rank,
+                mut tags,
+                description,
+                family,
+                consensus,
+                state_model,
+            } = placement
                 .get(c.mainnet.as_deref().unwrap_or(&c.id))
                 .cloned()
                 .expect("every network has a mainnet placement");
@@ -538,40 +540,25 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                         is_default: d.is_default,
                     })
                     .collect(),
+                description,
+                family,
+                consensus,
+                state_model,
             }
         })
         .collect()
 }
 
-static WIKI: LazyLock<Vec<ChainWikiEntry>> = LazyLock::new(|| {
-    let parsed: TomlWikiFile = toml::from_str(CHAIN_WIKI_TOML)
-        .expect("chain-wiki.toml is embedded at compile time and must be valid TOML");
-
-    let mut rows: Vec<ChainWikiEntry> = parsed
-        .chains
-        .into_iter()
-        .map(|w| {
-            // A wiki row naming a chain the catalog does not define is a
-            // build-time mistake, not a row to skip: the page would have prose
-            // and no name to put it under.
-            let chain = chain_by_str_id(&w.chain)
-                .unwrap_or_else(|| panic!("chain-wiki.toml: unknown chain {}", w.chain));
-            ChainWikiEntry {
-                id: chain.id.clone(),
-                name: chain.name.clone(),
-                native_deployment_id: chain.native_deployment_id.clone(),
-                tags: chain.tags.clone(),
-                comment: w.comment,
-                family: w.family,
-                consensus: w.consensus,
-                state_model: w.state_model,
-            }
-        })
-        .collect();
-    // The library lists chains beside coins, which are alphabetical.
-    rows.sort_by(|a, b| a.name.cmp(&b.name));
-    rows
-});
+/// What a testnet takes from its mainnet's row.
+#[derive(Clone)]
+struct Inherited {
+    popular_rank: u16,
+    tags: Vec<ChainTag>,
+    description: String,
+    family: String,
+    consensus: String,
+    state_model: String,
+}
 
 static STAKING: LazyLock<Vec<StakingChainEntry>> = LazyLock::new(|| {
     let parsed: TomlStakingFile = toml::from_str(STAKING_TOML)
@@ -640,12 +627,6 @@ pub fn chain_matches_search(chain: crate::registry::Chain, query: String) -> boo
         || entry.tags.iter().any(|tag| tag.as_str().contains(&query))
 }
 
-/// Return the chain wiki rows — one per chain, never one per network, by name.
-#[uniffi::export]
-pub fn list_chain_wiki() -> Vec<ChainWikiEntry> {
-    WIKI.clone()
-}
-
 /// What staking means on each chain that supports it, in catalog order.
 #[uniffi::export]
 pub fn list_staking_chains() -> Vec<StakingChainEntry> {
@@ -655,11 +636,6 @@ pub fn list_staking_chains() -> Vec<StakingChainEntry> {
 /// Return a reference to the static catalog slice.
 pub(crate) fn catalog() -> &'static [ChainEntry] {
     &CATALOG
-}
-
-/// Return the entry for a specific string id, or `None` if not found.
-pub fn chain_by_str_id(id: &str) -> Option<&'static ChainEntry> {
-    CATALOG.iter().find(|c| c.id == id)
 }
 
 /// The catalog's default derivation path template for a chain id.
@@ -849,8 +825,6 @@ mod explicit_network_catalog {
         assert!(toml::from_str::<TomlFile>(&wrong_core).is_err());
         let configured_evm = CHAINS_TOML.replacen("[[chains]]", "[[chains]]\nis_evm = true", 1);
         assert!(toml::from_str::<TomlFile>(&configured_evm).is_err());
-        let wrong_wiki = CHAIN_WIKI_TOML.replacen("[[chains]]", "[[chains]]\ntags = [\"EVM\"]", 1);
-        assert!(toml::from_str::<TomlWikiFile>(&wrong_wiki).is_err());
     }
 
     #[test]
@@ -954,51 +928,49 @@ mod explicit_network_catalog {
         );
     }
 
-    /// The wiki documents chains, not networks, and it says so by having a
-    /// table rather than by testing a field for emptiness.
+    /// Every mainnet says what it is; a testnet says it through its mainnet.
     #[test]
-    fn the_wiki_covers_every_chain_and_no_network() {
-        let ids: std::collections::HashSet<&str> = WIKI.iter().map(|w| w.id.as_str()).collect();
-        assert_eq!(ids.len(), WIKI.len(), "a chain has two wiki rows");
+    fn every_network_has_its_mainnets_description() {
         for chain in Chain::all() {
-            let documented = ids.contains(chain.str_id());
-            if chain.is_testnet() {
-                assert!(
-                    !documented,
-                    "{} is a network and has a wiki row",
-                    chain.str_id()
-                );
-            } else {
-                assert!(documented, "{} has no wiki row", chain.str_id());
+            let (e, main) = (
+                entry(chain.str_id()),
+                entry(chain.mainnet_counterpart().str_id()),
+            );
+            for field in [&e.description, &e.family, &e.consensus, &e.state_model] {
+                assert!(!field.is_empty(), "{}", e.id);
             }
-        }
-        assert_eq!(WIKI.len(), Chain::all().filter(|c| !c.is_testnet()).count());
-    }
-
-    /// The wiki joins to the catalog rather than restating it.
-    #[test]
-    fn a_wiki_row_takes_its_name_from_the_catalog() {
-        let dot = WIKI
-            .iter()
-            .find(|w| w.id == "polkadot")
-            .expect("a wiki row");
-        let catalog = entry("polkadot");
-        assert_eq!(dot.name, catalog.name);
-        assert_eq!(dot.native_deployment_id, catalog.native_deployment_id);
-        assert!(!dot.family.is_empty());
-    }
-
-    #[test]
-    fn wiki_and_picker_share_one_tag_classification() {
-        for wiki in WIKI.iter() {
-            assert_eq!(wiki.tags, entry(&wiki.id).tags, "{}", wiki.id);
+            assert_eq!(
+                (&e.description, &e.family, &e.consensus, &e.state_model),
+                (
+                    &main.description,
+                    &main.family,
+                    &main.consensus,
+                    &main.state_model
+                ),
+                "{}",
+                e.id
+            );
         }
     }
 
-    /// The library shows chains under coins, which are alphabetical.
     #[test]
-    fn the_chain_wiki_is_sorted_by_name() {
-        assert!(WIKI.windows(2).all(|pair| pair[0].name <= pair[1].name));
+    #[should_panic(expected = "mainnet bitcoin has no family")]
+    fn every_mainnet_is_described() {
+        load_catalog_text(&CHAINS_TOML.replacen(
+            "family = \"UTXO / base-layer settlement network\"\n",
+            "",
+            1,
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "testnet bitcoin-testnet restates its mainnet's description")]
+    fn a_testnet_cannot_restate_its_mainnets_description() {
+        load_catalog_text(&CHAINS_TOML.replacen(
+            "id = \"bitcoin-testnet\"\n",
+            "id = \"bitcoin-testnet\"\nconsensus = \"Proof of Work\"\n",
+            1,
+        ));
     }
 
     /// Each network's standards are the registry's, in its order, and every

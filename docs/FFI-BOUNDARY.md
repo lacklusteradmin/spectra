@@ -58,7 +58,7 @@ record: scrub its owned strings on the receiving call path.
   column derived from it both use Unix seconds, including fractional seconds.
   Swift renders with `Date(timeIntervalSince1970:)`; there is no epoch conversion.
 - **Committed state:** a front end mirrors `CommittedState` (revision,
-  settings, address book, token preferences, price alerts), which every
+  settings, address book, known tokens, price alerts), which every
   command, the store opening, a reset and each portfolio snapshot return.
   `ResidentState` stays in Rust; wallets, quotes and diagnostics reach a front
   end through their own projections.

@@ -1,6 +1,6 @@
 # What staking on a chain means, for a reader: the staking tab's copy.
 #
-# Editorial, like `chain-wiki.toml`: nothing computes anything from these
+# Editorial, like a chain's description in `chains.toml`: nothing computes anything from these
 # fields, and they are reachable only from `list_staking_chains()`. They are
 # per-chain facts all the same, so they live beside the catalog rather than in
 # a front end, where the CLI could not show them and a second front end would

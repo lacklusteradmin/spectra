@@ -6,6 +6,8 @@
 # Symbols are display labels. Precision belongs to the deployment.
 # Core derives deployment IDs from network, standard and contract; no stored deployment ID.
 # A deployment with a `standard` and `contract` is a token; one with neither is the network's own coin.
+# Every token says what it is in `description`; `supply` states how its supply is
+# bounded, where the coin has a model to state. Known Tokens shows both.
 # Keep each token immediately followed by its deployments; both tables are top-level.
 
 [[tokens]]
@@ -17,6 +19,8 @@ coinpaprika_id = "btc-bitcoin"
 color = "orange"
 artwork_name = "bitcoin"
 tags = []
+description = "The first cryptocurrency, and what Bitcoin's miners are paid in. Held mostly as a long-horizon store of value and moved for final settlement rather than day-to-day spending."
+supply = "Protocol-capped at 21,000,000 BTC."
 
 [[deployments]]
 token_id = "bitcoin"
@@ -37,6 +41,8 @@ coinpaprika_id = "eth-ethereum"
 color = "purple"
 artwork_name = "ethereum"
 tags = []
+description = "Pays for computation on Ethereum and on every rollup that settles to it, and is staked by the validators securing the network. A holder usually needs some simply to transact."
+supply = "No fixed maximum supply. Supply changes with validator issuance and fee burn, so long-run circulation is not statically estimatable."
 
 [[deployments]]
 token_id = "ethereum"
@@ -124,6 +130,8 @@ coinpaprika_id = "sol-solana"
 color = "green"
 artwork_name = "solana"
 tags = []
+description = "Pays fees and account rent on Solana and is staked to validators. Fees are small enough that it is spent freely rather than budgeted."
+supply = "No fixed maximum supply. Inflation, staking economics, and unlock schedules make long-run live circulation dynamic."
 
 [[deployments]]
 token_id = "solana"
@@ -139,6 +147,8 @@ coinpaprika_id = "doge-dogecoin"
 color = "yellow"
 artwork_name = "dogecoin"
 tags = []
+description = "Began as a joke in 2013 and became a widely held payments coin. Issuance is a fixed number of new coins per block, so it inflates slowly and never stops."
+supply = "No fixed terminal cap. Issuance is bounded per block and per year, but the lifetime supply is not protocol-capped."
 
 [[deployments]]
 token_id = "dogecoin"
@@ -154,6 +164,8 @@ coinpaprika_id = "xrp-xrp"
 color = "cyan"
 artwork_name = "xrp"
 tags = []
+description = "Pays the XRP Ledger's very small transaction fees and acts as a bridge asset between issued currencies. The fee is destroyed rather than paid to anyone."
+supply = "Fixed at 100,000,000,000 XRP total created supply."
 
 [[deployments]]
 token_id = "ripple"
@@ -169,6 +181,8 @@ coinpaprika_id = "ltc-litecoin"
 color = "blue"
 artwork_name = "litecoin"
 tags = []
+description = "An early fork of Bitcoin aimed at faster and cheaper transfers, keeping the supply-capped design and changing the mining algorithm."
+supply = "Protocol-capped at 84,000,000 LTC."
 
 [[deployments]]
 token_id = "litecoin"
@@ -184,6 +198,8 @@ coinpaprika_id = "bch-bitcoin-cash"
 color = "orange"
 artwork_name = "bitcoincash"
 tags = []
+description = "A 2017 fork of Bitcoin that raised the block size to keep on-chain payments cheap. It shares Bitcoin's supply cap and halving schedule."
+supply = "Protocol-capped at 21,000,000 BCH."
 
 [[deployments]]
 token_id = "bitcoin-cash"
@@ -199,6 +215,8 @@ coinpaprika_id = "trx-tron"
 color = "red"
 artwork_name = "tron"
 tags = []
+description = "Pays for bandwidth and energy on Tron, the network carrying a large share of the world's USDT transfers. Staking it grants those resources instead of paying per transaction."
+supply = "No fixed supply statement is surfaced here. Effective circulating supply changes over time, so it is treated as not statically estimatable."
 
 [[deployments]]
 token_id = "tron"
@@ -214,6 +232,8 @@ coinpaprika_id = "xlm-stellar"
 color = "teal"
 artwork_name = "stellar"
 tags = []
+description = "Pays Stellar's tiny fees and the minimum reserve every account must hold, and bridges between currencies issued on the network."
+supply = "No fixed terminal cap is surfaced here. Circulating supply is dynamic and partly shaped by foundation-controlled holdings and burns, so this page treats live circulation as non-static."
 
 [[deployments]]
 token_id = "stellar"
@@ -229,6 +249,8 @@ coinpaprika_id = "ada-cardano"
 color = "indigo"
 artwork_name = "cardano"
 tags = []
+description = "Staked to Cardano's delegated proof-of-stake and used to pay fees. Delegating does not lock the coins or hand them to anyone."
+supply = "Protocol-capped at 45,000,000,000 ADA."
 
 [[deployments]]
 token_id = "cardano"
@@ -244,6 +266,8 @@ coinpaprika_id = "dot-polkadot-token"
 color = "pink"
 artwork_name = "polkadot"
 tags = []
+description = "Secures Polkadot through staking, votes on protocol changes, and buys the coretime that parachains run on."
+supply = "Capped at 2,100,000,000 DOT by Referendum 1710 (2025). Issuance has stepped down every two years since March 2026."
 
 [[deployments]]
 token_id = "polkadot"
@@ -259,6 +283,8 @@ coinpaprika_id = "avax-avalanche"
 color = "red"
 artwork_name = "avalanche"
 tags = []
+description = "Pays fees across Avalanche's chains and is staked by its validators. Fees paid in AVAX are burned rather than collected."
+supply = "AVAX supply is capped at 720,000,000 with live circulating supply changing over time as issuance and fee burn continue."
 
 [[deployments]]
 token_id = "avalanche-2"
@@ -274,6 +300,8 @@ coinpaprika_id = "sui-sui"
 color = "mint"
 artwork_name = "sui"
 tags = []
+description = "Pays gas and storage on Sui and is staked to validators. Part of the storage fee is returned when the data it paid for is deleted."
+supply = "Total supply capped at 10,000,000,000 SUI, with circulation released over time."
 
 [[deployments]]
 token_id = "sui"
@@ -289,6 +317,8 @@ coinpaprika_id = "apt-aptos"
 color = "cyan"
 artwork_name = "aptos"
 tags = []
+description = "Pays gas on Aptos and is staked to the validators securing it."
+supply = "APT circulation changes over time with staking emissions, unlocks, and protocol economics, so this page treats live circulation as dynamic."
 
 [[deployments]]
 token_id = "aptos"
@@ -304,6 +334,8 @@ coinpaprika_id = "toncoin-the-open-network"
 color = "blue"
 artwork_name = "gram"
 tags = []
+description = "Pays fees on TON and buys its name-service and storage services. Widely distributed through Telegram-linked wallets."
+supply = "Gram supply is dynamic over time, so this page treats live circulation as non-static."
 
 [[deployments]]
 token_id = "the-open-network"
@@ -319,6 +351,8 @@ coinpaprika_id = "near-near-protocol"
 color = "indigo"
 artwork_name = "near"
 tags = []
+description = "Pays gas on NEAR and is staked to validators. Contracts can cover a user's fees, so holding it is not always required to transact."
+supply = "No fixed terminal cap is surfaced here. Supply changes over time, so live circulation is treated as dynamic."
 
 [[deployments]]
 token_id = "near"
@@ -334,6 +368,8 @@ coinpaprika_id = "icp-internet-computer"
 color = "indigo"
 artwork_name = "internetcomputer"
 tags = []
+description = "Converted into cycles to pay for computation and storage on the Internet Computer, and locked in neurons to vote on governance."
+supply = "Supply is dynamic and tied to governance, staking, and protocol economics, so this page treats live circulation as non-static."
 
 [[deployments]]
 token_id = "internet-computer"
@@ -349,6 +385,8 @@ coinpaprika_id = "xmr-monero"
 color = "orange"
 artwork_name = "monero"
 tags = []
+description = "A privacy coin where amounts, senders and recipients are concealed by default rather than by choice. Emission never reaches zero, so mining stays rewarded."
+supply = "No fixed terminal cap. Monero uses tail emission after main emission, so long-run lifetime supply is not capped."
 
 [[deployments]]
 token_id = "monero"
@@ -364,6 +402,8 @@ coinpaprika_id = "etc-ethereum-classic"
 color = "green"
 artwork_name = "ethereumclassic"
 tags = []
+description = "The coin of the original Ethereum chain, which kept proof-of-work after the 2016 fork and again after Ethereum moved to proof-of-stake."
+supply = "Capped near 210,700,000 ETC: ECIP-1017 cuts the block reward by 20% every 5,000,000 blocks."
 
 [[deployments]]
 token_id = "ethereum-classic"
@@ -379,6 +419,8 @@ coinpaprika_id = "bsv-bitcoin-sv"
 color = "orange"
 artwork_name = "bitcoinsv"
 tags = []
+description = "A 2018 fork of Bitcoin Cash pursuing very large blocks and on-chain data storage."
+supply = "Protocol-capped at 21,000,000 BSV."
 
 [[deployments]]
 token_id = "bitcoin-cash-sv"
@@ -394,6 +436,8 @@ coinpaprika_id = "bnb-binance-coin"
 color = "yellow"
 artwork_name = "bnb"
 tags = []
+description = "Pays fees on BNB Chain and opBNB and is used throughout the surrounding exchange ecosystem. Periodic burns reduce the supply over time."
+supply = "Genesis supply began at 200,000,000 BNB, with protocol and ecosystem burn mechanisms targeting a lower long-run supply. Live circulation is dynamic, so this page treats it as not statically estimatable."
 
 [[deployments]]
 token_id = "binancecoin"
@@ -414,6 +458,8 @@ coinpaprika_id = "hype-hyperliquid"
 color = "mint"
 artwork_name = "hyperliquid"
 tags = []
+description = "Pays fees and is staked on Hyperliquid, a chain built around an on-chain order-book exchange."
+supply = "HYPE circulation is dynamic over time, so this page treats live circulating supply as non-static."
 
 [[deployments]]
 token_id = "hyperliquid"
@@ -429,6 +475,8 @@ coinpaprika_id = "pol-polygon-ecosystem-token"
 color = "purple"
 artwork_name = "polygon"
 tags = []
+description = "Polygon's native coin for fees and staking. It replaced MATIC one-for-one."
+supply = "POL replaced MATIC as the gas/staking token following the 2024 token migration; circulating supply is dynamic."
 
 [[deployments]]
 token_id = "polygon-ecosystem-token"
@@ -451,6 +499,8 @@ coinpaprika_id = "mnt-mantle"
 color = "green"
 artwork_name = "mantle"
 tags = []
+description = "Pays gas on Mantle and carries its governance rights."
+supply = "Mantle uses MNT as its native gas/governance token (formerly BIT). Circulating supply is dynamic."
 
 [[deployments]]
 token_id = "mantle"
@@ -473,6 +523,8 @@ coinpaprika_id = "zec-zcash"
 color = "yellow"
 artwork_name = "zcash"
 tags = []
+description = "A privacy coin with shielded addresses whose amounts and parties are encrypted, alongside transparent ones that behave much like Bitcoin's."
+supply = "Zcash mirrors Bitcoin's 21M cap with halvings; total ZEC supply is capped at 21,000,000."
 
 [[deployments]]
 token_id = "zcash"
@@ -488,6 +540,8 @@ coinpaprika_id = "btg-bitcoin-gold"
 color = "yellow"
 artwork_name = "bitcoingold"
 tags = []
+description = "A 2017 fork of Bitcoin that changed the mining algorithm to favour consumer graphics cards over purpose-built hardware."
+supply = "21,000,000 BTG cap mirroring Bitcoin's halving schedule."
 
 [[deployments]]
 token_id = "bitcoin-gold"
@@ -503,6 +557,8 @@ coinpaprika_id = "dcr-decred"
 color = "indigo"
 artwork_name = "decred"
 tags = []
+description = "Combines proof-of-work with proof-of-stake: ticket holders vote on the blocks miners produce and on changes to the protocol."
+supply = "Capped near 21,000,000 DCR with declining block reward and PoS subsidy."
 
 [[deployments]]
 token_id = "decred"
@@ -518,6 +574,8 @@ coinpaprika_id = "kas-kaspa"
 color = "teal"
 artwork_name = "kaspa"
 tags = []
+description = "Mined on a block DAG rather than a single chain, so blocks are produced in parallel and confirm in about a second."
+supply = "Capped at ~28,700,000,000 KAS with monthly chromatic emission decay."
 
 [[deployments]]
 token_id = "kaspa"
@@ -533,6 +591,8 @@ coinpaprika_id = "sei-sei"
 color = "red"
 artwork_name = "sei"
 tags = []
+description = "Pays gas on Sei and is staked to its validators on a chain built for trading."
+supply = "10,000,000,000 SEI cap with staking and governance unlocks."
 
 [[deployments]]
 token_id = "sei-network"
@@ -548,6 +608,8 @@ coinpaprika_id = "celo-celo"
 color = "yellow"
 artwork_name = "celo"
 tags = []
+description = "Pays fees on Celo — which also accepts its stablecoins as fee currency — and is staked to validators."
+supply = "1,000,000,000 CELO cap with epoch rewards."
 
 [[deployments]]
 token_id = "celo"
@@ -563,6 +625,8 @@ coinpaprika_id = "cro-cryptocom-chain"
 color = "blue"
 artwork_name = "cronos"
 tags = []
+description = "Utility token for the Cronos and Crypto.com ecosystem, used across network fees, staking, and platform services."
+supply = "100,000,000,000 CRO maximum. The 70 billion burned in 2021 were reissued to a vesting strategic reserve after a 2025 governance vote."
 
 [[deployments]]
 token_id = "crypto-com-chain"
@@ -585,6 +649,8 @@ coinpaprika_id = "s-sonic"
 color = "gray"
 artwork_name = "sonic"
 tags = []
+description = "Sonic's coin for fees and staking. It replaced FTM one-for-one when Fantom relaunched as Sonic."
+supply = "Migrated 1:1 from FTM at launch with continuing inflation."
 
 [[deployments]]
 token_id = "sonic-3"
@@ -600,6 +666,8 @@ coinpaprika_id = "bera-berachain"
 color = "orange"
 artwork_name = "bera"
 tags = []
+description = "Pays gas on Berachain and is staked under its proof-of-liquidity design, where providing liquidity is what earns block rewards."
+supply = "500,000,000 BERA initial supply with PoL emissions."
 
 [[deployments]]
 token_id = "berachain-bera"
@@ -615,6 +683,8 @@ coinpaprika_id = "dash-dash"
 color = "blue"
 artwork_name = "dash"
 tags = []
+description = "A payments coin whose masternodes provide near-instant settlement and optional coin mixing."
+supply = "Capped near 18,900,000 DASH with -7.14% annual emission decay."
 
 [[deployments]]
 token_id = "dash"
@@ -630,6 +700,8 @@ coinpaprika_id = "okb-okb"
 color = "gray"
 artwork_name = "okb"
 tags = []
+description = "An exchange token that also pays gas on X Layer."
+supply = "Pays gas in OKB; OKB is OKX's exchange/utility token with periodic burns."
 
 [[deployments]]
 token_id = "okb"
@@ -652,6 +724,8 @@ coinpaprika_id = "tao-bittensor"
 color = "gray"
 artwork_name = "bittensor"
 tags = []
+description = "Pays for and rewards machine-learning work contributed to Bittensor's subnets, on an issuance schedule modelled on Bitcoin's."
+supply = "Capped at 21,000,000 TAO with 4-year halvings, mirroring Bitcoin emission economics."
 
 [[deployments]]
 token_id = "bittensor"
@@ -667,6 +741,7 @@ coinpaprika_id = "xpl-plasma"
 color = "green"
 artwork_name = "plasma"
 tags = []
+description = "Pays ordinary transaction fees on Plasma, the network built for stablecoin payments and settlement."
 
 [[deployments]]
 token_id = "plasma"
@@ -682,6 +757,7 @@ coinpaprika_id = "mon-monad"
 color = "purple"
 artwork_name = "monad"
 tags = []
+description = "Pays gas on Monad and can secure its validators through staking. Monad fees charge the chosen transaction gas limit."
 
 [[deployments]]
 token_id = "monad"
@@ -697,6 +773,7 @@ coinpaprika_id = "1inch-1inch"
 color = "blue"
 artwork_name = "1inch"
 tags = []
+description = "Governs 1inch, the exchange aggregator that splits a swap across many decentralized exchanges for a better price."
 
 [[deployments]]
 token_id = "1inch"
@@ -742,6 +819,7 @@ coinpaprika_id = "aave-new"
 color = "indigo"
 artwork_name = "aave"
 tags = []
+description = "Governance token for Aave, a decentralized liquidity protocol for lending and borrowing crypto assets."
 
 [[deployments]]
 token_id = "aave"
@@ -801,6 +879,7 @@ coinpaprika_id = ""
 color = "blue"
 artwork_name = "aero"
 tags = []
+description = "The token of Aero, the exchange Aerodrome and Velodrome merged into in October 2026, trading across several Ethereum networks. Staked as sAERO, it directs where rewards go and earns the trading fees of the pools it backs."
 
 [[deployments]]
 token_id = "aero"
@@ -818,6 +897,7 @@ coinpaprika_id = "ape-apecoin"
 color = "blue"
 artwork_name = "apecoin"
 tags = []
+description = "Token of the ApeCoin DAO, created around the Bored Ape Yacht Club NFT collection, and the gas coin of ApeChain."
 
 [[deployments]]
 token_id = "apecoin"
@@ -877,6 +957,7 @@ coinpaprika_id = "arb-arbitrum"
 color = "cyan"
 artwork_name = "arbitrum"
 tags = []
+description = "Governs Arbitrum through its DAO, which controls the chain's treasury and protocol upgrades. It does not pay gas — Arbitrum charges fees in ETH."
 
 [[deployments]]
 token_id = "arbitrum"
@@ -901,6 +982,7 @@ coinpaprika_id = "aster-aster"
 color = "orange"
 artwork_name = ""
 tags = []
+description = "Governs Aster, a decentralized perpetuals exchange on BNB Chain."
 
 [[deployments]]
 token_id = "aster-2"
@@ -918,6 +1000,7 @@ coinpaprika_id = "axs-axie-infinity"
 color = "blue"
 artwork_name = "axieinfinity"
 tags = []
+description = "Governs Axie Infinity, the creature-battling game on Ronin, and is spent there to breed new creatures."
 
 [[deployments]]
 token_id = "axie-infinity"
@@ -949,6 +1032,7 @@ coinpaprika_id = "bat-basic-attention-token"
 color = "orange"
 artwork_name = "bat"
 tags = []
+description = "Token of the Brave browser's advertising system: viewers who opt in to its ads are paid in BAT and can pass it on to sites and creators."
 
 [[deployments]]
 token_id = "basic-attention-token"
@@ -987,6 +1071,7 @@ coinpaprika_id = "bgb-bitget-token"
 color = "yellow"
 artwork_name = "bgb"
 tags = []
+description = "Utility token for the Bitget exchange and Bitget Wallet ecosystem, used for platform perks and services."
 
 [[deployments]]
 token_id = "bitget-token"
@@ -1004,6 +1089,7 @@ coinpaprika_id = "bonk-bonk"
 color = "orange"
 artwork_name = ""
 tags = ["meme"]
+description = "A Solana memecoin airdropped to the network's users and builders at the end of 2022, now spent and burned across many Solana applications."
 
 [[deployments]]
 token_id = "bonk"
@@ -1021,6 +1107,7 @@ coinpaprika_id = "bttc-bittorrent-chain"
 color = "red"
 artwork_name = "btt"
 tags = ["meme"]
+description = "Utility token for the BitTorrent ecosystem, designed around peer-to-peer file sharing, bandwidth, and storage incentives."
 
 [[deployments]]
 token_id = "bittorrent"
@@ -1038,6 +1125,7 @@ coinpaprika_id = ""
 color = "red"
 artwork_name = "btt"
 tags = []
+description = "The original TRC-10 BitTorrent token, retained as BTTOLD after its redenomination. One BTTOLD converts to 1,000 of the newer TRC-20 BTT; these are separate assets with different precision and pricing."
 
 [[deployments]]
 token_id = "bittorrent-old"
@@ -1055,6 +1143,7 @@ coinpaprika_id = "honey-honey1"
 color = "orange"
 artwork_name = "berausd"
 tags = ["stablecoin"]
+description = "Berachain's native stablecoin, minted against whitelisted collateral deposited on the chain. It launched as HONEY and was renamed Bera USD; it is unrelated to the discontinued Binance BUSD."
 
 [[deployments]]
 token_id = "honey-3"
@@ -1072,6 +1161,7 @@ coinpaprika_id = "cake-pancakeswap"
 color = "cyan"
 artwork_name = "cake"
 tags = []
+description = "Governs PancakeSwap, the largest decentralized exchange on BNB Chain, and is staked to direct its liquidity rewards."
 
 [[deployments]]
 token_id = "pancakeswap-token"
@@ -1152,6 +1242,7 @@ coinpaprika_id = "cbbtc-coinbase-wrapped-btc"
 color = "blue"
 artwork_name = "cbbtc"
 tags = []
+description = "Coinbase's wrapped Bitcoin, backed one-for-one by BTC the exchange custodies. Redemption runs through Coinbase, so holding it is a claim on the company rather than on the chain."
 
 [[deployments]]
 token_id = "coinbase-wrapped-btc"
@@ -1190,6 +1281,7 @@ coinpaprika_id = "cbeth-coinbase-wrapped-staked-eth"
 color = "blue"
 artwork_name = "cbeth"
 tags = []
+description = "Coinbase's liquid staking token: ETH the exchange stakes on its customers' behalf, with rewards accruing to the token's value rather than its balance."
 
 [[deployments]]
 token_id = "coinbase-wrapped-staked-eth"
@@ -1235,6 +1327,7 @@ coinpaprika_id = "cetus-cetus-protocol"
 color = "mint"
 artwork_name = "cetus"
 tags = []
+description = "Governs Cetus, a concentrated-liquidity exchange that is one of the main venues for swapping on Sui."
 
 [[deployments]]
 token_id = "cetus-protocol"
@@ -1252,6 +1345,7 @@ coinpaprika_id = "comp-compoundd"
 color = "green"
 artwork_name = "compound"
 tags = []
+description = "Governs Compound, one of the first on-chain lending markets, including which assets it lists and their interest-rate models."
 
 [[deployments]]
 token_id = "compound-governance-token"
@@ -1311,6 +1405,7 @@ coinpaprika_id = "crv-curve-dao-token"
 color = "yellow"
 artwork_name = "crv"
 tags = []
+description = "Governs Curve, the exchange built for assets meant to hold the same price as one another. Locking it votes on which pools receive emissions."
 
 [[deployments]]
 token_id = "curve-dao-token"
@@ -1405,6 +1500,7 @@ coinpaprika_id = "crvusd-curvefi-usd-stablecoin"
 color = "yellow"
 artwork_name = "crvusd"
 tags = ["stablecoin"]
+description = "Curve's dollar stablecoin, minted against crypto collateral whose loans are liquidated gradually rather than all at once."
 
 [[deployments]]
 token_id = "crvusd"
@@ -1464,6 +1560,7 @@ coinpaprika_id = "dai-dai"
 color = "yellow"
 artwork_name = "dai"
 tags = ["stablecoin"]
+description = "Decentralized U.S. dollar stablecoin from Sky, formerly MakerDAO, backed by crypto and real-world collateral."
 
 [[deployments]]
 token_id = "dai"
@@ -1551,6 +1648,7 @@ coinpaprika_id = "deep-deepbook-protocol"
 color = "blue"
 artwork_name = "deepbook"
 tags = []
+description = "Pays trading fees and governs DeepBook, the order-book exchange built into Sui."
 
 [[deployments]]
 token_id = "deep"
@@ -1568,6 +1666,7 @@ coinpaprika_id = "dogs-dogs"
 color = "gray"
 artwork_name = ""
 tags = ["meme"]
+description = "A TON memecoin built around Telegram's dog mascot, airdropped to Telegram users in 2024."
 
 [[deployments]]
 token_id = "dogs-2"
@@ -1585,6 +1684,7 @@ coinpaprika_id = "eigen-eigenlayer"
 color = "indigo"
 artwork_name = "eigen"
 tags = []
+description = "Token of EigenCloud, formerly EigenLayer, the restaking protocol whose staked ETH secures other services. EIGEN can be slashed for faults that cannot be proven on-chain."
 
 [[deployments]]
 token_id = "eigenlayer"
@@ -1609,6 +1709,7 @@ coinpaprika_id = "ena-ethena"
 color = "blue"
 artwork_name = "ethena"
 tags = []
+description = "Governance token for Ethena, the protocol behind the USDe crypto-native synthetic dollar."
 
 [[deployments]]
 token_id = "ethena"
@@ -1717,6 +1818,7 @@ coinpaprika_id = "ens-ethereum-name-service"
 color = "blue"
 artwork_name = "ens"
 tags = []
+description = "Governs the Ethereum Name Service, the registry behind .eth names. A name is a record that resolves to an address, so it can stand in for one when sending."
 
 [[deployments]]
 token_id = "ethereum-name-service"
@@ -1734,6 +1836,7 @@ coinpaprika_id = "ethfi-etherfi"
 color = "purple"
 artwork_name = "ethfi"
 tags = []
+description = "Governs ether.fi, a liquid restaking protocol whose stakers keep control of their own validator withdrawal keys."
 
 [[deployments]]
 token_id = "ether-fi"
@@ -1779,6 +1882,7 @@ coinpaprika_id = "euroc-euro-coin"
 color = "blue"
 artwork_name = "eurc"
 tags = ["stablecoin"]
+description = "Euro-backed stablecoin issued by Circle and designed to be redeemable 1:1 for euros through supported channels."
 
 [[deployments]]
 token_id = "euro-coin"
@@ -1852,6 +1956,7 @@ coinpaprika_id = "fdusd-first-digital-usd"
 color = "green"
 artwork_name = "fdusd"
 tags = ["stablecoin"]
+description = "U.S. dollar stablecoin issued by First Digital, designed for trading, payments, and DeFi settlement."
 
 [[deployments]]
 token_id = "first-digital-usd"
@@ -1904,6 +2009,7 @@ coinpaprika_id = "fetch-ai"
 color = "gray"
 artwork_name = "asi"
 tags = []
+description = "Token of the Artificial Superintelligence Alliance, which merged Fetch.ai and SingularityNET's tokens into one in 2024. It keeps Fetch.ai's FET ticker and contract."
 
 [[deployments]]
 token_id = "fetch-ai"
@@ -1928,6 +2034,7 @@ coinpaprika_id = "floki-floki-inu"
 color = "orange"
 artwork_name = "floki"
 tags = ["meme"]
+description = "A memecoin named after a dog, with a game and staking products built around it on Ethereum and BNB Chain."
 
 [[deployments]]
 token_id = "floki"
@@ -1952,6 +2059,7 @@ coinpaprika_id = "gala-gala"
 color = "gray"
 artwork_name = "gala"
 tags = []
+description = "Currency of Gala Games, a publisher of blockchain games, and of the GalaChain network its games run on."
 
 [[deployments]]
 token_id = "gala"
@@ -1969,6 +2077,7 @@ coinpaprika_id = "gho-gho"
 color = "teal"
 artwork_name = "gho"
 tags = ["stablecoin"]
+description = "Aave's dollar stablecoin. It is minted by borrowing against collateral already deposited in the protocol and burned when the loan is repaid, so its supply is Aave's loan book."
 
 [[deployments]]
 token_id = "gho"
@@ -2035,6 +2144,7 @@ coinpaprika_id = "gmx-gmx"
 color = "indigo"
 artwork_name = "gmx"
 tags = []
+description = "Governs GMX, a decentralized perpetuals exchange on Arbitrum and Avalanche, and is staked for a share of its trading fees."
 
 [[deployments]]
 token_id = "gmx"
@@ -2066,6 +2176,7 @@ coinpaprika_id = "gno-gnosis"
 color = "teal"
 artwork_name = "gnosis"
 tags = []
+description = "Governs GnosisDAO and is staked by the validators of Gnosis Chain, the network that grew out of the xDai sidechain."
 
 [[deployments]]
 token_id = "gnosis"
@@ -2097,6 +2208,7 @@ coinpaprika_id = "grt-the-graph"
 color = "indigo"
 artwork_name = "thegraph"
 tags = []
+description = "Pays the indexers that serve blockchain data through The Graph's query network, and is staked or delegated to them as security."
 
 [[deployments]]
 token_id = "the-graph"
@@ -2128,6 +2240,7 @@ coinpaprika_id = "hnt-helium"
 color = "indigo"
 artwork_name = "helium"
 tags = []
+description = "Token of Helium, a network of independently run wireless hotspots. Data credits for using the network are made by burning HNT."
 
 [[deployments]]
 token_id = "helium"
@@ -2145,6 +2258,7 @@ coinpaprika_id = "imx-immutable-x"
 color = "gray"
 artwork_name = "immutable"
 tags = []
+description = "Pays fees and is staked on Immutable, the gaming network made of Immutable X and its zkEVM chain."
 
 [[deployments]]
 token_id = "immutable-x"
@@ -2162,6 +2276,7 @@ coinpaprika_id = "jst-just"
 color = "red"
 artwork_name = "just"
 tags = []
+description = "Governs JUST, a DeFi platform on Tron best known for the JustLend lending market."
 
 [[deployments]]
 token_id = "just"
@@ -2179,6 +2294,7 @@ coinpaprika_id = "jto-jito"
 color = "gray"
 artwork_name = "jito"
 tags = []
+description = "Governs Jito, the Solana liquid-staking protocol behind JitoSOL and the block engine many validators run for MEV."
 
 [[deployments]]
 token_id = "jito-governance-token"
@@ -2196,6 +2312,7 @@ coinpaprika_id = "jup-jupiter-exchange-token"
 color = "orange"
 artwork_name = "jupiter"
 tags = []
+description = "Governance token for Jupiter, a Solana DeFi platform best known for swap aggregation and liquidity routing."
 
 [[deployments]]
 token_id = "jupiter-exchange-solana"
@@ -2213,6 +2330,7 @@ coinpaprika_id = "kcs-kucoin-token"
 color = "yellow"
 artwork_name = "kcs"
 tags = []
+description = "Native utility token of the KuCoin exchange ecosystem, used for platform rewards, fees, and services."
 
 [[deployments]]
 token_id = "kucoin-shares"
@@ -2230,6 +2348,7 @@ coinpaprika_id = "lbtc-lombard-staked-btc"
 color = "green"
 artwork_name = "lombardbitcoin"
 tags = []
+description = "Lombard's receipt for Bitcoin staked through Babylon. It earns staking rewards and can be used as collateral while the BTC behind it stays locked."
 
 [[deployments]]
 token_id = "lombard-staked-btc"
@@ -2289,6 +2408,7 @@ coinpaprika_id = "ldo-lido-dao"
 color = "cyan"
 artwork_name = "lido"
 tags = []
+description = "Governs Lido, the largest ETH staking protocol, including which node operators run its validators and what they are paid."
 
 [[deployments]]
 token_id = "lido-dao"
@@ -2327,6 +2447,7 @@ coinpaprika_id = "leo-leo-token"
 color = "orange"
 artwork_name = "leo"
 tags = []
+description = "Utility token for the iFinex and Bitfinex ecosystem, built around exchange fee benefits and platform utility."
 
 [[deployments]]
 token_id = "leo-token"
@@ -2344,6 +2465,7 @@ coinpaprika_id = "linea-linea"
 color = "blue"
 artwork_name = "linea"
 tags = []
+description = "Linea's ecosystem token, distributed to fund builders and users on the network. It carries no governance rights and does not pay gas; Linea charges fees in ETH."
 
 [[deployments]]
 token_id = "linea"
@@ -2368,6 +2490,7 @@ coinpaprika_id = "link-chainlink"
 color = "blue"
 artwork_name = "chainlink"
 tags = []
+description = "Token for Chainlink, the decentralized oracle network that connects smart contracts with external data and services."
 
 [[deployments]]
 token_id = "chainlink"
@@ -2483,6 +2606,7 @@ coinpaprika_id = "mana-decentraland"
 color = "yellow"
 artwork_name = "decentraland"
 tags = []
+description = "Currency of Decentraland, a virtual world whose land parcels and wearables are NFTs bought and sold in MANA."
 
 [[deployments]]
 token_id = "decentraland"
@@ -2507,6 +2631,7 @@ coinpaprika_id = "morpho-morpho"
 color = "blue"
 artwork_name = "morpho"
 tags = []
+description = "Governs Morpho, a lending protocol whose markets are isolated — each pair sets its own collateral and rate curve instead of sharing one pool's risk."
 
 [[deployments]]
 token_id = "morpho"
@@ -2545,6 +2670,7 @@ coinpaprika_id = "nexo-nexo"
 color = "blue"
 artwork_name = "nexo"
 tags = []
+description = "Token of Nexo, a centralized crypto lending platform. Holding it raises a customer's loyalty tier, and with it the rates Nexo offers."
 
 [[deployments]]
 token_id = "nexo"
@@ -2576,6 +2702,7 @@ coinpaprika_id = "not-notcoin"
 color = "gray"
 artwork_name = "notcoin"
 tags = ["meme"]
+description = "A TON memecoin that began as a Telegram tap-to-earn game, whose players received it at its 2024 launch."
 
 [[deployments]]
 token_id = "notcoin"
@@ -2593,6 +2720,7 @@ coinpaprika_id = "ondo-ondo"
 color = "blue"
 artwork_name = "ondo"
 tags = []
+description = "Governance token for Ondo Finance, which issues tokenized US Treasury and money-market funds on-chain."
 
 [[deployments]]
 token_id = "ondo-finance"
@@ -2610,6 +2738,7 @@ coinpaprika_id = "op-optimism"
 color = "red"
 artwork_name = "optimism"
 tags = []
+description = "Governs the OP Stack chains through the Optimism Collective's token house. Gas on Optimism is paid in ETH, so holding OP is a vote rather than a fuel."
 
 [[deployments]]
 token_id = "optimism"
@@ -2627,6 +2756,7 @@ coinpaprika_id = "orca-orca"
 color = "yellow"
 artwork_name = ""
 tags = []
+description = "Governs Orca, a concentrated-liquidity exchange on Solana."
 
 [[deployments]]
 token_id = "orca"
@@ -2644,6 +2774,7 @@ coinpaprika_id = "paxg-pax-gold"
 color = "yellow"
 artwork_name = "paxg"
 tags = []
+description = "Gold-backed token from Paxos, with each token representing one fine troy ounce of London Good Delivery gold."
 
 [[deployments]]
 token_id = "pax-gold"
@@ -2675,6 +2806,7 @@ coinpaprika_id = "pendle-pendle"
 color = "teal"
 artwork_name = "pendle"
 tags = []
+description = "Governs Pendle, which splits a yield-bearing token into its principal and its future yield so the two can be traded and priced separately."
 
 [[deployments]]
 token_id = "pendle"
@@ -2776,6 +2908,7 @@ coinpaprika_id = "pengu-pudgy-penguins"
 color = "blue"
 artwork_name = ""
 tags = ["meme"]
+description = "The token of the Pudgy Penguins NFT brand, launched on Solana in 2024 and airdropped to its holders and community."
 
 [[deployments]]
 token_id = "pudgy-penguins"
@@ -2807,6 +2940,7 @@ coinpaprika_id = "pepe-pepe"
 color = "green"
 artwork_name = "pepe"
 tags = ["meme"]
+description = "A 2023 memecoin with no stated utility, no team allocation and no presale. It is among the most widely held tokens on Ethereum by holder count."
 
 [[deployments]]
 token_id = "pepe"
@@ -2838,6 +2972,7 @@ coinpaprika_id = "pump-pumpfun"
 color = "pink"
 artwork_name = "pumpfun"
 tags = ["meme"]
+description = "Token for pump.fun, the Solana memecoin launchpad and trading ecosystem."
 
 [[deployments]]
 token_id = "pump-fun"
@@ -2855,6 +2990,7 @@ coinpaprika_id = "pyth-pyth-network"
 color = "purple"
 artwork_name = "pythnetwork"
 tags = []
+description = "Governs Pyth, an oracle network whose prices are published by the trading firms and exchanges that see the orders, rather than by anonymous relayers."
 
 [[deployments]]
 token_id = "pyth-network"
@@ -2872,6 +3008,7 @@ coinpaprika_id = "pyusd-paypal-usd"
 color = "blue"
 artwork_name = "pyusd"
 tags = ["stablecoin"]
+description = "PayPal USD stablecoin issued by Paxos, designed as a fully backed U.S. dollar payment token."
 
 [[deployments]]
 token_id = "paypal-usd"
@@ -2931,6 +3068,7 @@ coinpaprika_id = "qnt-quant"
 color = "gray"
 artwork_name = "quant"
 tags = []
+description = "Token of Quant, whose Overledger software connects enterprise and bank systems to several blockchains. Licences to that software are paid for in QNT."
 
 [[deployments]]
 token_id = "quant-network"
@@ -2962,6 +3100,7 @@ coinpaprika_id = "ray-raydium"
 color = "indigo"
 artwork_name = "raydium"
 tags = []
+description = "Governs Raydium, a Solana automated market maker, and is earned by providing liquidity to its pools."
 
 [[deployments]]
 token_id = "raydium"
@@ -2979,6 +3118,7 @@ coinpaprika_id = "rndr-render-token"
 color = "red"
 artwork_name = "render"
 tags = []
+description = "Pays for GPU rendering and AI compute on the Render Network, whose node operators are paid in it. It moved from Ethereum to Solana in 2023."
 
 [[deployments]]
 token_id = "render-token"
@@ -2996,6 +3136,7 @@ coinpaprika_id = "reth-rocket-pool-eth"
 color = "orange"
 artwork_name = "rocketpooleth"
 tags = []
+description = "Rocket Pool's liquid staking receipt for ETH, issued against validators run by a permissionless operator set. It does not rebase; each token grows in ETH terms."
 
 [[deployments]]
 token_id = "rocket-pool-eth"
@@ -3069,6 +3210,7 @@ coinpaprika_id = "rlusd-ripple-usd"
 color = "indigo"
 artwork_name = "rlusd"
 tags = ["stablecoin"]
+description = "Ripple USD stablecoin, a U.S. dollar-backed token designed for payments, trading, and settlement use cases."
 
 [[deployments]]
 token_id = "ripple-usd"
@@ -3100,6 +3242,7 @@ coinpaprika_id = "safe-safe"
 color = "green"
 artwork_name = "safe"
 tags = []
+description = "Governs Safe, the multisignature smart-account standard that holds a large share of the assets kept by teams and treasuries on Ethereum."
 
 [[deployments]]
 token_id = "safe"
@@ -3117,6 +3260,7 @@ coinpaprika_id = "sand-the-sandbox"
 color = "cyan"
 artwork_name = "sandbox"
 tags = []
+description = "Currency and governance token of The Sandbox, a voxel game world where players own land and assets as NFTs."
 
 [[deployments]]
 token_id = "the-sandbox"
@@ -3155,6 +3299,7 @@ coinpaprika_id = "scr-scroll"
 color = "orange"
 artwork_name = "scroll"
 tags = []
+description = "Governs Scroll through its DAO. The chain itself runs on ETH, so SCR is held for votes and ecosystem programs rather than to transact."
 
 [[deployments]]
 token_id = "scroll"
@@ -3172,6 +3317,7 @@ coinpaprika_id = "shib-shiba-inu"
 color = "orange"
 artwork_name = "shibainu"
 tags = ["meme"]
+description = "Community-driven meme token at the center of the Shiba Inu ecosystem."
 
 [[deployments]]
 token_id = "shiba-inu"
@@ -3189,6 +3335,7 @@ coinpaprika_id = "sky-sky"
 color = "blue"
 artwork_name = "sky"
 tags = []
+description = "Governance token of the Sky Protocol, replacing MKR for protocol voting and parameter decisions."
 
 [[deployments]]
 token_id = "sky"
@@ -3206,6 +3353,7 @@ coinpaprika_id = "snek-snek-crd"
 color = "purple"
 artwork_name = "snek"
 tags = ["meme"]
+description = "A community memecoin on Cardano, launched in 2023 without a presale, and one of the network's most widely held native tokens."
 
 [[deployments]]
 token_id = "snek"
@@ -3223,6 +3371,7 @@ coinpaprika_id = "snx-synthetix-network-token"
 color = "cyan"
 artwork_name = "synthetix"
 tags = []
+description = "Governs Synthetix, a derivatives protocol on Ethereum and Optimism whose synthetic assets SNX holders once backed by staking it as collateral."
 
 [[deployments]]
 token_id = "havven"
@@ -3254,6 +3403,7 @@ coinpaprika_id = "spx-spx6900"
 color = "pink"
 artwork_name = "spx6900"
 tags = ["meme"]
+description = "A memecoin named as a parody of the S&P 500 index, with no stated utility."
 
 [[deployments]]
 token_id = "spx6900"
@@ -3292,6 +3442,7 @@ coinpaprika_id = "steth-lido-staked-ether"
 color = "cyan"
 artwork_name = "steth"
 tags = []
+description = "Lido's liquid staking receipt for ETH. The balance rebases upward as staking rewards accrue, and the token can be traded or lent while the ETH behind it stays staked."
 
 [[deployments]]
 token_id = "staked-ether"
@@ -3309,6 +3460,7 @@ coinpaprika_id = "sun-sun"
 color = "orange"
 artwork_name = "sun"
 tags = []
+description = "Governs SUN.io, the Tron exchange and stablecoin-swap platform, and is staked there for a share of its revenue."
 
 [[deployments]]
 token_id = "sun-token"
@@ -3326,6 +3478,7 @@ coinpaprika_id = "susde-ethena-staked-usde"
 color = "cyan"
 artwork_name = "susde"
 tags = ["stablecoin"]
+description = "The staked form of USDe, which collects the funding-rate yield behind Ethena's position. Like sUSDS it appreciates rather than rebasing, so its price drifts above a dollar."
 
 [[deployments]]
 token_id = "ethena-staked-usde"
@@ -3455,6 +3608,7 @@ coinpaprika_id = "susds-susds"
 color = "teal"
 artwork_name = "susds"
 tags = ["stablecoin"]
+description = "The savings form of USDS. The balance stays fixed and the redemption value grows at the Sky Savings Rate, so the price sits above a dollar and climbs rather than holding the peg."
 
 [[deployments]]
 token_id = "susds"
@@ -3507,6 +3661,7 @@ coinpaprika_id = "trump-official-trump"
 color = "yellow"
 artwork_name = ""
 tags = ["meme"]
+description = "A memecoin launched in January 2025 by companies affiliated with Donald Trump, which hold most of its supply under a multi-year unlock schedule."
 
 [[deployments]]
 token_id = "official-trump"
@@ -3531,6 +3686,7 @@ coinpaprika_id = "tusd-trueusd"
 color = "blue"
 artwork_name = "tusd"
 tags = ["stablecoin"]
+description = "TrueUSD stablecoin, a U.S. dollar-pegged token designed for trading, payments, and DeFi use."
 
 [[deployments]]
 token_id = "true-usd"
@@ -3569,6 +3725,7 @@ coinpaprika_id = "twt-trust-wallet-token"
 color = "blue"
 artwork_name = "trustwallet"
 tags = []
+description = "Token of Trust Wallet, the self-custody wallet owned by Binance, used for its loyalty programme and fee discounts."
 
 [[deployments]]
 token_id = "trust-wallet-token"
@@ -3586,6 +3743,7 @@ coinpaprika_id = "uni-uniswap"
 color = "pink"
 artwork_name = "uniswap"
 tags = []
+description = "Governance token of the Uniswap protocol, letting holders participate in protocol decision-making."
 
 [[deployments]]
 token_id = "uniswap"
@@ -3680,6 +3838,7 @@ coinpaprika_id = "usat"
 color = "red"
 artwork_name = "usat"
 tags = ["stablecoin"]
+description = "Tether's US-regulated dollar stablecoin, issued by a federally chartered bank under the GENIUS Act. It is a separate token from USDT, with its own reserves and its own contract."
 
 [[deployments]]
 token_id = "usa"
@@ -3711,6 +3870,7 @@ coinpaprika_id = "usd1-usd1"
 color = "green"
 artwork_name = "usd1"
 tags = ["stablecoin"]
+description = "U.S. dollar stablecoin from World Liberty Financial, backed by cash and short-duration U.S. Treasury assets."
 
 [[deployments]]
 token_id = "usd1-wlfi"
@@ -3770,6 +3930,7 @@ coinpaprika_id = "usdc-usd-coin"
 color = "blue"
 artwork_name = "usdc"
 tags = ["stablecoin"]
+description = "Circle-issued U.S. dollar stablecoin, designed to be fully reserved and redeemable 1:1 for dollars."
 
 [[deployments]]
 token_id = "usd-coin"
@@ -4002,6 +4163,7 @@ coinpaprika_id = "usdd-usdd"
 color = "green"
 artwork_name = "usdd"
 tags = ["stablecoin"]
+description = "Over-collateralized decentralized U.S. dollar stablecoin managed by TRON DAO Reserve."
 
 [[deployments]]
 token_id = "usdd"
@@ -4033,6 +4195,7 @@ coinpaprika_id = "usde-ethena-usde"
 color = "cyan"
 artwork_name = "usde"
 tags = ["stablecoin"]
+description = "Ethena USDe synthetic dollar, backed through crypto collateral, stable assets, and delta-hedging strategies."
 
 [[deployments]]
 token_id = "ethena-usde"
@@ -4197,6 +4360,7 @@ coinpaprika_id = "usdg-global-dollar"
 color = "teal"
 artwork_name = "usdg"
 tags = ["stablecoin"]
+description = "Global Dollar stablecoin issued by Paxos Digital Singapore for the Global Dollar Network."
 
 [[deployments]]
 token_id = "global-dollar"
@@ -4256,6 +4420,7 @@ coinpaprika_id = "usds-usds"
 color = "teal"
 artwork_name = "usds"
 tags = ["stablecoin"]
+description = "Sky Dollar stablecoin, the upgraded dollar asset of the Sky Protocol and successor path for DAI users."
 
 [[deployments]]
 token_id = "usds"
@@ -4315,6 +4480,7 @@ coinpaprika_id = "usdt-tether"
 color = "green"
 artwork_name = "usdt"
 tags = ["stablecoin"]
+description = "Tether USD stablecoin, a widely used dollar-pegged token for trading, payments, and on-chain settlement."
 
 [[deployments]]
 token_id = "tether"
@@ -4416,6 +4582,7 @@ coinpaprika_id = "usdt0-usdt0"
 color = "green"
 artwork_name = "usdt0"
 tags = ["stablecoin"]
+description = "The omnichain form of USDT: it crosses chains by being burned on one and minted on the next rather than by a wrapped copy, so one supply spans them all. On the chains Tether upgraded in place, such as Polygon and Arbitrum, it is the contract that used to be USDT."
 
 [[deployments]]
 token_id = "usdt0"
@@ -4529,6 +4696,7 @@ coinpaprika_id = "virtual-virtual-protocol"
 color = "teal"
 artwork_name = "virtuals"
 tags = []
+description = "Token of Virtuals Protocol, a launchpad for AI-agent tokens on Base, each of which is paired against VIRTUAL."
 
 [[deployments]]
 token_id = "virtual-protocol"
@@ -4574,6 +4742,7 @@ coinpaprika_id = "w-wormhole"
 color = "purple"
 artwork_name = "wormhole"
 tags = []
+description = "Governs Wormhole, a cross-chain messaging protocol, and exists natively on several chains at once rather than as bridged copies."
 
 [[deployments]]
 token_id = "wormhole"
@@ -4619,6 +4788,7 @@ coinpaprika_id = "wal-walrus"
 color = "mint"
 artwork_name = "walrus"
 tags = []
+description = "Pays for storage on Walrus, a decentralized storage network built on Sui, and is staked to its storage nodes."
 
 [[deployments]]
 token_id = "walrus-2"
@@ -4636,6 +4806,7 @@ coinpaprika_id = "wbeth-wrapped-beacon-eth"
 color = "gray"
 artwork_name = "wbeth"
 tags = []
+description = "Binance's liquid staking token for ETH staked through the exchange. Rewards accrue to the token's value, and redemption runs through Binance."
 
 [[deployments]]
 token_id = "wrapped-beacon-eth"
@@ -4660,6 +4831,7 @@ coinpaprika_id = "wbtc-wrapped-bitcoin"
 color = "orange"
 artwork_name = "wrappedbitcoin"
 tags = []
+description = "Wrapped Bitcoin token backed 1:1 by BTC, bringing Bitcoin liquidity into Ethereum-compatible DeFi."
 
 [[deployments]]
 token_id = "wrapped-bitcoin"
@@ -4803,6 +4975,7 @@ coinpaprika_id = "weeth-wrapped-eeth"
 color = "purple"
 artwork_name = "weeth"
 tags = []
+description = "The non-rebasing form of ether.fi's eETH, ETH restaked through EigenLayer. Rewards accrue to the token's value, and lending markets take it as collateral."
 
 [[deployments]]
 token_id = "wrapped-eeth"
@@ -4911,6 +5084,7 @@ coinpaprika_id = "weth-weth"
 color = "gray"
 artwork_name = "weth"
 tags = []
+description = "Ether wrapped as an ERC-20, so contracts that only understand the token interface can hold it. One WETH is redeemable for one ETH at any time, in either direction."
 
 [[deployments]]
 token_id = "weth"
@@ -5019,6 +5193,7 @@ coinpaprika_id = "wif-dogwifcoin"
 color = "pink"
 artwork_name = ""
 tags = ["meme"]
+description = "A Solana memecoin whose mascot is a dog wearing a knitted hat, with no stated utility."
 
 [[deployments]]
 token_id = "dogwifcoin"
@@ -5036,6 +5211,7 @@ coinpaprika_id = "wld-worldcoin"
 color = "gray"
 artwork_name = "worldcoin"
 tags = []
+description = "Worldcoin's token, distributed to people who verify a unique human identity with its iris-scanning orb. Issuance and eligibility are controlled by the World Foundation."
 
 [[deployments]]
 token_id = "worldcoin-wld"
@@ -5067,6 +5243,7 @@ coinpaprika_id = "wlfi-official-world-liberty-financial"
 color = "gray"
 artwork_name = "wlfi"
 tags = []
+description = "Governance token of World Liberty Financial, used for protocol participation and voting."
 
 [[deployments]]
 token_id = "world-liberty-financial"
@@ -5098,6 +5275,7 @@ coinpaprika_id = "wsteth-wrapped-liquid-staked-ether-20"
 color = "cyan"
 artwork_name = "wsteth"
 tags = []
+description = "The non-rebasing form of stETH: the balance stays fixed and each token comes to be worth more ETH instead. Most lending markets accept this shape and not the rebasing one."
 
 [[deployments]]
 token_id = "wrapped-steth"
@@ -5192,6 +5370,7 @@ coinpaprika_id = "xaut-tether-gold"
 color = "yellow"
 artwork_name = "xaut"
 tags = []
+description = "Tether Gold token, with each token representing one fine troy ounce of physical gold."
 
 [[deployments]]
 token_id = "tether-gold"
@@ -5209,6 +5388,7 @@ coinpaprika_id = "xaut0-tether-gold-tokens"
 color = "yellow"
 artwork_name = "xaut0"
 tags = []
+description = "The omnichain form of Tether Gold, each token representing one fine troy ounce of physical gold and moving between chains by burn and mint."
 
 [[deployments]]
 token_id = "tether-gold-tokens"
@@ -5303,6 +5483,7 @@ coinpaprika_id = "zk-zksync"
 color = "gray"
 artwork_name = "zksyncera"
 tags = []
+description = "Governs ZKsync through its token assembly, which decides upgrades and treasury spending across the ZK Stack. Fees on ZKsync Era are paid in ETH."
 
 [[deployments]]
 token_id = "zksync"
@@ -5327,6 +5508,7 @@ coinpaprika_id = "zro-layerzero"
 color = "gray"
 artwork_name = "layerzero"
 tags = []
+description = "Governs LayerZero, the messaging protocol that moves a token across chains by burning it on one and minting it on the next. USDT0 and XAUT0 are built on it."
 
 [[deployments]]
 token_id = "layerzero"
@@ -5386,6 +5568,8 @@ coinpaprika_id = "ppc-peercoin"
 color = "green"
 artwork_name = "peercoin"
 tags = []
+description = "The coin of an early proof-of-stake network launched in 2012. PPC pays transaction fees, which are burned, and can participate in coin-age-based minting through a compatible wallet."
+supply = "No fixed lifetime supply cap. Proof-of-work and proof-of-stake create new PPC while transaction fees are destroyed."
 
 [[deployments]]
 token_id = "peercoin"
@@ -5401,6 +5585,7 @@ coinpaprika_id = "kaia-kaia"
 color = "green"
 artwork_name = "kaia"
 tags = []
+description = "Pays transaction fees on Kaia, the network formed from the merger of Klaytn and Finschia, and is staked by its validators."
 
 [[deployments]]
 token_id = "kaia"
@@ -5416,6 +5601,7 @@ coinpaprika_id = "xdc-xdc-network"
 color = "blue"
 artwork_name = "xdc"
 tags = []
+description = "Pays transaction fees on XDC Network and is staked by its masternodes."
 
 [[deployments]]
 token_id = "xdce-crowd-sale"
@@ -5431,6 +5617,7 @@ coinpaprika_id = "kava-kava"
 color = "red"
 artwork_name = "kava"
 tags = []
+description = "Pays fees on the Kava blockchain and its EVM co-chain, and is staked by its validators."
 
 [[deployments]]
 token_id = "kava"
@@ -5451,6 +5638,7 @@ coinpaprika_id = "chz-chiliz"
 color = "red"
 artwork_name = "chiliz"
 tags = []
+description = "Pays fees on Chiliz Chain, where sports and entertainment fan tokens are issued, and is staked by its validators."
 
 [[deployments]]
 token_id = "chiliz"
@@ -5473,6 +5661,7 @@ coinpaprika_id = "metis-metis-token"
 color = "teal"
 artwork_name = "metis"
 tags = []
+description = "Pays fees on the Metis rollup and is staked by its sequencers."
 
 [[deployments]]
 token_id = "metis-token"
@@ -5495,6 +5684,7 @@ coinpaprika_id = "flr-flare-network"
 color = "pink"
 artwork_name = "flare"
 tags = []
+description = "Pays fees on Flare, where all fees are burned, and is staked and delegated to its oracle providers."
 
 [[deployments]]
 token_id = "flare-networks"
@@ -5510,6 +5700,7 @@ coinpaprika_id = "peaq-peaq-network"
 color = "indigo"
 artwork_name = "peaq"
 tags = []
+description = "Pays fees on peaq, a parachain for machine and DePIN applications, and is staked with its collators."
 
 [[deployments]]
 token_id = "peaq-2"
@@ -5525,6 +5716,7 @@ coinpaprika_id = "somi-somnia"
 color = "gray"
 artwork_name = "somnia"
 tags = []
+description = "Pays gas on Somnia and is staked by its validators."
 
 [[deployments]]
 token_id = "somnia"
@@ -5540,6 +5732,7 @@ coinpaprika_id = "zero-gravity-0g"
 color = "gray"
 artwork_name = "0g"
 tags = []
+description = "Pays gas on 0G, an EVM layer 1 built for AI workloads, and is staked by its validators."
 
 [[deployments]]
 token_id = "zero-gravity"
@@ -5555,6 +5748,7 @@ coinpaprika_id = "manta-manta-network"
 color = "cyan"
 artwork_name = "manta"
 tags = []
+description = "Governance and staking token of the Manta Network, an ERC-20 on Manta Pacific and Ethereum."
 
 [[deployments]]
 token_id = "manta-network"
@@ -5572,6 +5766,7 @@ coinpaprika_id = "kat-katana-network"
 color = "yellow"
 artwork_name = "katana"
 tags = []
+description = "Governance token of Katana, an ERC-20 on the Katana network."
 
 [[deployments]]
 token_id = "katana-network-token"
@@ -5589,6 +5784,7 @@ coinpaprika_id = "mega-megaeth"
 color = "gray"
 artwork_name = "megaeth"
 tags = []
+description = "Protocol token of MegaETH, an ERC-20 on the MegaETH network."
 
 [[deployments]]
 token_id = "megaeth"
@@ -5606,6 +5802,7 @@ coinpaprika_id = "merl-merlin-chain"
 color = "purple"
 artwork_name = "merlin"
 tags = []
+description = "Governance token of Merlin Chain, an ERC-20 on the Merlin network."
 
 [[deployments]]
 token_id = "merlin-chain"
@@ -5623,6 +5820,7 @@ coinpaprika_id = "stable-stable"
 color = "teal"
 artwork_name = "stable"
 tags = []
+description = "Governance token of the Stable network, an ERC-20 there; USDT0, not STABLE, pays gas."
 
 [[deployments]]
 token_id = "stable-2"
@@ -5640,6 +5838,7 @@ coinpaprika_id = "atom-cosmos"
 color = "indigo"
 artwork_name = "cosmos"
 tags = []
+description = "Staked to secure the Cosmos Hub and the consumer chains it lends its validators to, and pays the Hub's fees."
 
 [[deployments]]
 token_id = "cosmos"
@@ -5655,6 +5854,7 @@ coinpaprika_id = "tia-celestia"
 color = "purple"
 artwork_name = "celestia"
 tags = []
+description = "Pays for the rollup data published to Celestia's blocks and for its transfers, and is staked by its validators."
 
 [[deployments]]
 token_id = "celestia"
@@ -5670,6 +5870,7 @@ coinpaprika_id = "dydx-dydx-chain"
 color = "purple"
 artwork_name = "dydx"
 tags = []
+description = "Staked to secure the dYdX chain, whose stakers share the exchange's trading fees, and pays its gas."
 
 [[deployments]]
 token_id = "dydx-chain"
@@ -5685,6 +5886,7 @@ coinpaprika_id = "luna-terra-v2"
 color = "yellow"
 artwork_name = "terra"
 tags = []
+description = "Pays fees and is staked on the Terra chain relaunched in 2022. The original chain's coin is LUNC."
 
 [[deployments]]
 token_id = "terra-luna-2"
@@ -5700,6 +5902,7 @@ coinpaprika_id = "inj-injective-protocol"
 color = "cyan"
 artwork_name = "injective"
 tags = []
+description = "Pays gas and is staked on Injective. A share of the protocol's fees buys INJ back in a recurring auction and burns it."
 
 [[deployments]]
 token_id = "injective-protocol"
@@ -5722,6 +5925,7 @@ coinpaprika_id = "akt-akash-network"
 color = "red"
 artwork_name = "akash"
 tags = []
+description = "Staked to secure Akash and accepted as payment for compute leases, a share of which goes to stakers."
 
 [[deployments]]
 token_id = "akash-network"
@@ -5737,6 +5941,7 @@ coinpaprika_id = "baby-babylon"
 color = "orange"
 artwork_name = "babylon"
 tags = []
+description = "Staked to secure Babylon Genesis, alongside the bitcoin staked through the protocol, and pays its fees."
 
 [[deployments]]
 token_id = "babylon"
@@ -5752,6 +5957,7 @@ coinpaprika_id = "osmo-osmosis"
 color = "purple"
 artwork_name = "osmosis"
 tags = []
+description = "Pays fees and is staked on Osmosis, and its holders vote on the incentives its pools receive."
 
 [[deployments]]
 token_id = "osmosis"
@@ -5767,6 +5973,7 @@ coinpaprika_id = "dym-dymension-iou"
 color = "gray"
 artwork_name = "dymension"
 tags = []
+description = "Staked to secure Dymension, where RollApps settle, and pays its fees."
 
 [[deployments]]
 token_id = "dymension"
@@ -5782,6 +5989,7 @@ coinpaprika_id = "saga-saga"
 color = "gray"
 artwork_name = "saga"
 tags = []
+description = "Staked by Saga's validators and pays for the Chainlets they run."
 
 [[deployments]]
 token_id = "saga-2"
@@ -5797,6 +6005,7 @@ coinpaprika_id = "allo-allora"
 color = "indigo"
 artwork_name = "allora"
 tags = []
+description = "Pays for inference requests on Allora, rewards the models it scores, and is staked by its validators."
 
 [[deployments]]
 token_id = "allora"
@@ -5812,6 +6021,7 @@ coinpaprika_id = "band-band-protocol"
 color = "blue"
 artwork_name = "band"
 tags = []
+description = "Pays for oracle requests on BandChain and is staked by its validators, who answer them."
 
 [[deployments]]
 token_id = "band-protocol"
@@ -5827,6 +6037,7 @@ coinpaprika_id = "ksm-kusama"
 color = "gray"
 artwork_name = "kusama"
 tags = []
+description = "Staked to secure Kusama, votes in its referenda, and pays fees on the relay chain and Kusama Asset Hub, where its balances live."
 
 [[deployments]]
 token_id = "kusama"
@@ -5842,6 +6053,7 @@ coinpaprika_id = "astr-astar"
 color = "blue"
 artwork_name = "astar"
 tags = []
+description = "Pays fees on both of Astar's sides and is locked in dApp staking, which rewards stakers and the projects they back."
 
 [[deployments]]
 token_id = "astar"
@@ -5857,6 +6069,7 @@ coinpaprika_id = "algo-algorand"
 color = "gray"
 artwork_name = "algorand"
 tags = []
+description = "Pays fees on Algorand, where every account holds at least 0.1 ALGO, and weighs an online account's chance to propose and certify blocks."
 
 [[deployments]]
 token_id = "algorand"
@@ -5872,6 +6085,8 @@ coinpaprika_id = "qtum-qtum"
 color = "blue"
 artwork_name = "qtum"
 tags = []
+description = "Pays transaction fees and contract gas on Qtum, and is staked to produce its blocks."
+supply = "100,000,000 QTUM were created at launch; block rewards to stakers add more and halve about every four years."
 
 [[deployments]]
 token_id = "qtum"
@@ -5887,6 +6102,8 @@ coinpaprika_id = "fb-fractal-bitcoin"
 color = "gray"
 artwork_name = "fractalbitcoin"
 tags = []
+description = "The coin of Fractal Bitcoin, paid to its miners and spent on its transaction fees. FB is not BTC: the same address can hold either, each on its own chain."
+supply = "Capped at 21,000,000 FB, part of it allocated before launch; the block reward halves every 2,100,000 blocks."
 
 [[deployments]]
 token_id = "fractal-bitcoin"
@@ -5902,6 +6119,8 @@ coinpaprika_id = "xec-ecash"
 color = "blue"
 artwork_name = "ecash"
 tags = []
+description = "The coin of eCash. One XEC is 100 satoshis, so a Bitcoin Cash coin held at the 2020 split became 1,000,000 XEC."
+supply = "Capped at 21,000,000,000,000 XEC; part of each block reward funds development and Avalanche stakers."
 
 [[deployments]]
 token_id = "ecash"
@@ -5917,6 +6136,8 @@ coinpaprika_id = "dgb-digibyte"
 color = "blue"
 artwork_name = "digibyte"
 tags = []
+description = "Pays transaction fees on DigiByte and rewards its miners."
+supply = "Capped at 21,000,000,000 DGB, with the block reward shrinking monthly until issuance ends."
 
 [[deployments]]
 token_id = "digibyte"
@@ -5932,6 +6153,7 @@ coinpaprika_id = "vet-vechain"
 color = "blue"
 artwork_name = "vechain"
 tags = []
+description = "Staked to secure VeChainThor; staked VET generates VTHO, the token its gas is paid in."
 
 [[deployments]]
 token_id = "vechain"
@@ -5947,6 +6169,7 @@ coinpaprika_id = "vtho-vethor-token"
 color = "teal"
 artwork_name = "vtho"
 tags = []
+description = "Pays gas on VeChainThor, a VIP-180 token generated for staked VET. The base fee each transaction pays in it is burned."
 
 [[deployments]]
 token_id = "vethor-token"
@@ -5964,6 +6187,7 @@ coinpaprika_id = "fil-filecoin"
 color = "blue"
 artwork_name = "filecoin"
 tags = []
+description = "Pays Filecoin's gas and storage deals, and is locked by storage providers as pledge collateral for the sectors they commit."
 
 [[deployments]]
 token_id = "filecoin"
@@ -5979,6 +6203,7 @@ coinpaprika_id = "xtz-tezos"
 color = "blue"
 artwork_name = "tezos"
 tags = []
+description = "Pays Tezos's fees and storage burns, and is staked or delegated to the bakers who produce its blocks and vote on its protocol upgrades."
 
 [[deployments]]
 token_id = "tezos"
@@ -5994,6 +6219,7 @@ coinpaprika_id = "strk-starknet"
 color = "indigo"
 artwork_name = "starknet"
 tags = []
+description = "Pays fees on Starknet and is staked by its validators. Like every asset there, it is an ERC-20 contract."
 
 [[deployments]]
 token_id = "starknet"
@@ -6016,6 +6242,8 @@ coinpaprika_id = "hbar-hedera-hashgraph"
 color = "gray"
 artwork_name = "hedera"
 tags = []
+description = "Pays Hedera's fees, which are set in US dollars and charged in HBAR at the network's exchange rate, and is staked to its consensus nodes."
+supply = "Fixed supply of 50 billion HBAR minted at genesis; circulation grows as treasury holdings are released."
 
 [[deployments]]
 token_id = "hedera-hashgraph"

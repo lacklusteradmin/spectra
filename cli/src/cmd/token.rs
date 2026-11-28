@@ -288,26 +288,28 @@ fn add(ctx: &Ctx, out: Out, args: AddArgs) -> CliResult<()> {
 
     let stored = transition
         .state
-        .token_preferences
+        .known_tokens
         .iter()
-        .find(|entry| {
-            entry.token.chain_id == chain_id
-                && entry.token.token_standard.is_some_and(|standard| {
+        .filter(|known| !known.is_built_in)
+        .flat_map(|known| &known.deployments)
+        .find(|token| {
+            token.chain_id == chain_id
+                && token.token_standard.is_some_and(|standard| {
                     spectra_core::catalog::tokens::validate_protocol_identifier(
                         chain_id,
                         standard,
                         &args.contract,
                     )
-                    .is_ok_and(|contract| contract == entry.token.contract)
+                    .is_ok_and(|contract| contract == token.contract)
                 })
         })
         .ok_or_else(|| CliError::failure("core accepted the token but did not store it"))?;
     out.report(&AddedReport {
-        chain: stored.token.chain_id,
-        symbol: stored.token.symbol.clone(),
-        contract: stored.token.contract.clone(),
-        decimals: stored.token.decimals,
-        standard: stored.token.token_standard,
+        chain: stored.chain_id,
+        symbol: stored.symbol.clone(),
+        contract: stored.contract.clone(),
+        decimals: stored.decimals,
+        standard: stored.token_standard,
     })
 }
 
@@ -385,7 +387,7 @@ fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
     }
     let transition = ctx.apply(StateCommand::ResetTokenPreferences)?;
     out.report(&ResetReport {
-        tokens: transition.state.token_preferences.len(),
+        tokens: transition.state.known_tokens.len(),
     })
 }
 

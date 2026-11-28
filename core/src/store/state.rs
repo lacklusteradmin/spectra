@@ -263,7 +263,9 @@ pub struct CommittedState {
     pub revision: u64,
     pub settings: AppSettings,
     pub address_book: Vec<AddressBookEntry>,
-    pub token_preferences: Vec<crate::store::wallet_domain::TokenPreferenceEntry>,
+    /// Known Tokens: every token the catalog ships, native and test coins
+    /// included, then the user's, each with every network it is on.
+    pub known_tokens: Vec<crate::catalog::tokens::KnownToken>,
     pub price_alerts: Vec<crate::store::PriceAlertRule>,
 }
 
@@ -273,7 +275,7 @@ impl ResidentState {
             revision: self.revision,
             settings: self.settings.clone(),
             address_book: self.address_book.clone(),
-            token_preferences: self.token_preferences.clone(),
+            known_tokens: super::token_preferences::known_tokens(&self.token_preferences),
             price_alerts: self.price_alerts.clone(),
         }
     }

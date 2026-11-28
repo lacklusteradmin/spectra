@@ -12,7 +12,7 @@ use clap::{Args, Subcommand};
 use colored::Colorize as _;
 use serde::Serialize;
 use spectra_core::api::endpoint::EndpointApi;
-use spectra_core::catalog::chains::{ChainTag, ChainWikiEntry};
+use spectra_core::catalog::chains::ChainTag;
 use spectra_core::derivation::setup::WalletSetupMethod;
 use spectra_core::registry::{Chain, TokenStandard};
 use spectra_core::service::{CustomEndpoint, WalletService};
@@ -37,9 +37,10 @@ pub struct ChainsArgs {
     /// Only chains with this picker tag (layer-1, evm, utxo, move, …).
     #[arg(long, value_parser = parse_tag)]
     tag: Option<ChainTag>,
-    /// Show mainnet wiki descriptions with the same catalog tags.
-    #[arg(long, conflicts_with = "testnets")]
-    wiki: bool,
+    /// Say what each chain is: its description, family, consensus and
+    /// state model, which a testnet shares with its mainnet.
+    #[arg(long)]
+    describe: bool,
 }
 
 fn parse_tag(value: &str) -> Result<ChainTag, String> {
@@ -148,16 +149,45 @@ impl Report for ChainsReport {
 }
 
 #[derive(Serialize)]
-struct WikiReport {
-    chains: Vec<ChainWikiEntry>,
+struct DescribedChain {
+    id: &'static str,
+    name: &'static str,
+    tags: &'static [ChainTag],
+    description: &'static str,
+    family: &'static str,
+    consensus: &'static str,
+    state_model: &'static str,
 }
 
-impl Report for WikiReport {
+impl From<Chain> for DescribedChain {
+    fn from(chain: Chain) -> Self {
+        let entry = chain.entry();
+        Self {
+            id: chain.str_id(),
+            name: &entry.name,
+            tags: &entry.tags,
+            description: &entry.description,
+            family: &entry.family,
+            consensus: &entry.consensus,
+            state_model: &entry.state_model,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct DescribeReport {
+    chains: Vec<DescribedChain>,
+}
+
+impl Report for DescribeReport {
     fn render(&self) {
         for row in &self.chains {
             let tags: Vec<&str> = row.tags.iter().map(|tag| tag.as_str()).collect();
-            println!("  {}  {}", out::accent(&row.name).bold(), tags.join(" · "));
-            println!("    {}", row.comment);
+            println!("  {}  {}", out::accent(row.name).bold(), tags.join(" · "));
+            println!("    {}", row.description);
+            out::wide_field(11, "family", row.family);
+            out::wide_field(11, "consensus", row.consensus);
+            out::wide_field(11, "state model", row.state_model);
         }
     }
 }
@@ -176,12 +206,10 @@ pub fn chains(out: Out, args: ChainsArgs) -> CliResult<()> {
         .collect();
     listed.sort_by_key(|chain| chain.entry().popular_rank);
 
-    if args.wiki {
-        let chains = spectra_core::catalog::chains::list_chain_wiki()
-            .into_iter()
-            .filter(|row| listed.iter().any(|chain| chain.str_id() == row.id))
-            .collect();
-        return out.report(&WikiReport { chains });
+    if args.describe {
+        return out.report(&DescribeReport {
+            chains: listed.into_iter().map(DescribedChain::from).collect(),
+        });
     }
     out.report(&ChainsReport {
         chains: listed.into_iter().map(ChainRow::from).collect(),

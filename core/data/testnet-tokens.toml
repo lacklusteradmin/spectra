@@ -1,6 +1,7 @@
 # Testnet token identities and deployments, using the same schema as tokens.toml.
 # Faucet coins and testnet tokens have no market identity or price.
 # Every name starts with "Test ", so a test coin never reads as the real one.
+# A test coin has no `description` or `supply`: it is its mainnet's coin at no value.
 # Deployments reference tokens.id via token_id and chains.toml chains.id via chain_id.
 # Symbols are display labels. Precision belongs to the deployment.
 # Core derives deployment IDs from network, standard and contract; no stored deployment ID.

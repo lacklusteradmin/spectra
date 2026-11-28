@@ -1,5 +1,62 @@
 # Changelog
 
+## Beta Commit 266
+
+- **A chain's description is on its `chains.toml` row and on `ChainEntry`**
+  (`description`, `family`, `consensus`, `state_model`; `chain-wiki.toml`,
+  `ChainWikiEntry` and `list_chain_wiki` removed)
+  - Loading refuses a mainnet without the four and a testnet that writes
+    any of them.
+  - A testnet's `ChainEntry` carries its mainnet's (before: the chain wiki
+    had mainnet rows only).
+- **A token's description and supply model are on its `tokens.toml`
+  identity** (`description`, `supply`; `crypto-wiki.toml`,
+  `catalog/wiki.rs`, `AssetWikiEntry` and `list_asset_wiki` removed)
+  - Loading refuses a mainnet token without a description and a test coin
+    with either.
+  - Tron's supply model no longer ends "in this wiki".
+- **`CommittedState.known_tokens` replaces `token_preferences`**
+  (`catalog::tokens::KnownToken`, `built_in_known_tokens`,
+  `store::token_preferences::known_tokens`)
+  - One `KnownToken` per token id, with its description, supply model and
+    every deployment, native coins and test coins included; the catalog's by
+    symbol, then the user's (before: one tracked-token row per contract
+    deployment).
+  - The tracked tokens that balance, history and send read still hold
+    contract tokens only.
+  - `TokenPreferenceEntry` no longer crosses the FFI.
+- **`spectra chains --describe` replaces `--wiki`** (`cli/src/cmd/chain.rs`)
+  - It prints each chain's family, consensus and state model under the
+    description (before: the description alone).
+  - It takes `--testnets`, a testnet showing its mainnet's description
+    (before: mainnets only).
+  - Its JSON names the description `description` and has no
+    `native_deployment_id` (before: `comment`, and the native deployment).
+- **`spectra token reset` reports how many tokens Known Tokens lists**
+  (`cli/src/cmd/token.rs`; before: how many contract deployments the
+  catalog ships)
+- **`chain_by_str_id` removed** (`catalog/chains.rs`; only the chain wiki
+  called it)
+- **String tables: `knownTokens.onChains` replaces `wiki.asset.onChains`,
+  and `Network Details` is new** (`strings/`; `Crypto Wiki`,
+  `Filter by tag`, `Search coins and chains` and the seven strings of the
+  chain picker's Chain Info sheet removed)
+- Tests: 8 new
+  - chain catalog 3: a mainnet without a description, a testnet that writes
+    one, a network whose description is not its mainnet's.
+  - token catalog 5: a mainnet token without a description, a test coin
+    with one, a deployment Known Tokens lists twice, leaves out or files
+    under another token, ETH split by network or missing Ethereum's own
+    coin, a test coin missing from Known Tokens.
+- Docs: `ARCHITECTURE.md` (Chain rules, Core module boundaries),
+  `FFI-BOUNDARY.md` (Runtime and storage traps), `CHAIN-SUPPORT.md`
+  (Fungible assets).
+- Total: 9 .rs files changed (1 removed), +390 −401 lines; data and config
+  files: `chains.toml`, `tokens.toml`, `testnet-tokens.toml`,
+  `staking.toml`, `chain-wiki.toml` and `crypto-wiki.toml` (removed), the
+  three string tables; dependencies unchanged; `cargo test` 1692 → 1691
+  passing; `make test-cli` 62 → 62 passing; `make check-icons` passing.
+
 ## Beta Commit 265
 
 - **The app icon's sources are here, and both apps export them**

@@ -4,7 +4,8 @@
 //! `core/data/testnet-tokens.toml` — both embedded at compile time, and which
 //! file a token sits in is checked against its networks. Call [`list_token_deployments`]
 //! to get typed token entries for a given chain id string (or all chains when
-//! the empty string `""` is passed).
+//! the empty string `""` is passed), and [`built_in_known_tokens`] for one
+//! entry per token with what it is and every network it is on.
 
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
@@ -72,6 +73,13 @@ struct TomlToken {
     color: crate::catalog::chains::CatalogColor,
     artwork_name: String,
     tags: Vec<TokenTag>,
+    /// What the coin is, for a reader. Required on a mainnet token; a test
+    /// coin has none.
+    #[serde(default)]
+    description: String,
+    /// How its supply is bounded, where the coin has a model to state.
+    #[serde(default)]
+    supply: String,
 }
 
 /// Where it lives, and what is true only there. Its catalog id is those facts
@@ -175,25 +183,45 @@ impl TokenDeploymentEntry {
 
 // ── Static catalog
 
-static CATALOG: LazyLock<Vec<TokenDeploymentEntry>> = LazyLock::new(|| {
-    load_catalog(
+/// Both token files as written, parsed once: the deployments and the token
+/// identities, prose included, are read from the same parse.
+static FILES: LazyLock<(TomlFile, TomlFile)> = LazyLock::new(|| {
+    (
         embedded_token_file(TOKENS_TOML, "tokens.toml"),
         embedded_token_file(TESTNET_TOKENS_TOML, "testnet-tokens.toml"),
     )
 });
 
-fn load_catalog(mainnet: TomlFile, testnet: TomlFile) -> Vec<TokenDeploymentEntry> {
+static CATALOG: LazyLock<Vec<TokenDeploymentEntry>> =
+    LazyLock::new(|| load_catalog(&FILES.0, &FILES.1));
+
+fn load_catalog(mainnet: &TomlFile, testnet: &TomlFile) -> Vec<TokenDeploymentEntry> {
     let mut identities = std::collections::HashSet::new();
     let mut protocol_identifiers = std::collections::HashSet::new();
     let files = [(mainnet, "mainnet"), (testnet, "testnet")];
     let mut tokens_by_id = std::collections::HashMap::new();
-    for (file, _) in &files {
+    for (file, environment) in &files {
         for token in &file.tokens {
             assert!(
                 tokens_by_id.insert(token.id.as_str(), token).is_none(),
                 "duplicate token id {}",
                 token.id
             );
+            // A mainnet coin says what it is; a test coin is its mainnet's
+            // coin at no value and says nothing of its own.
+            if *environment == "mainnet" {
+                assert!(
+                    !token.description.trim().is_empty(),
+                    "token {} has no description",
+                    token.id
+                );
+            } else {
+                assert!(
+                    token.description.is_empty() && token.supply.is_empty(),
+                    "testnet token {} has a description",
+                    token.id
+                );
+            }
         }
     }
     files
@@ -293,6 +321,100 @@ pub fn list_token_deployments(chain: Option<crate::registry::Chain>) -> Vec<Toke
 /// Return a reference to the static catalog slice.
 pub fn catalog() -> &'static [TokenDeploymentEntry] {
     &CATALOG
+}
+
+/// One token as Known Tokens lists it: what it is and every network it is on,
+/// its native deployments among them.
+#[derive(Debug, Clone, PartialEq, Serialize, uniffi::Record)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownToken {
+    pub token_id: String,
+    pub name: String,
+    pub symbol: String,
+    pub coingecko_id: String,
+    pub coinpaprika_id: String,
+    /// `None` for a token the user added: the catalog has no colour for it.
+    pub color: Option<crate::catalog::chains::CatalogColor>,
+    pub artwork_name: String,
+    pub tags: Vec<TokenTag>,
+    /// What the coin is; empty for a test coin and for a token the user added.
+    pub description: String,
+    /// How its supply is bounded; empty where the catalog states no model.
+    pub supply: String,
+    /// The catalog ships it; the user cannot edit or delete it.
+    pub is_built_in: bool,
+    /// In the order the catalog lists them, the token's home network first.
+    pub deployments: Vec<TokenDeploymentEntry>,
+}
+
+impl KnownToken {
+    /// A token the user added: one deployment, and nothing the catalog says.
+    pub fn custom(token: TokenDeploymentEntry) -> Self {
+        Self {
+            token_id: token.token_id.clone(),
+            name: token.name.clone(),
+            symbol: token.symbol.clone(),
+            coingecko_id: token.coingecko_id.clone(),
+            coinpaprika_id: token.coinpaprika_id.clone(),
+            color: token.color,
+            artwork_name: token.artwork_name.clone(),
+            tags: token.tags.clone(),
+            description: String::new(),
+            supply: String::new(),
+            is_built_in: false,
+            deployments: vec![token],
+        }
+    }
+}
+
+static KNOWN: LazyLock<Vec<KnownToken>> = LazyLock::new(|| {
+    let mut deployments: std::collections::HashMap<&str, Vec<TokenDeploymentEntry>> =
+        std::collections::HashMap::new();
+    // A contract deployment on a network that cannot host tokens is a data
+    // mistake, and leaving it out is how it stays one.
+    for entry in CATALOG
+        .iter()
+        .filter(|entry| entry.is_native() || entry.chain_id.hosts_tokens())
+    {
+        deployments
+            .entry(entry.token_id.as_str())
+            .or_default()
+            .push(entry.clone());
+    }
+    let mut known: Vec<KnownToken> = FILES
+        .0
+        .tokens
+        .iter()
+        .chain(&FILES.1.tokens)
+        .filter_map(|token| {
+            Some(KnownToken {
+                token_id: token.id.clone(),
+                name: token.name.clone(),
+                symbol: token.symbol.clone(),
+                coingecko_id: token.coingecko_id.clone(),
+                coinpaprika_id: token.coinpaprika_id.clone(),
+                color: Some(token.color),
+                artwork_name: token.artwork_name.clone(),
+                tags: token.tags.clone(),
+                description: token.description.clone(),
+                supply: token.supply.clone(),
+                is_built_in: true,
+                deployments: deployments.remove(token.id.as_str())?,
+            })
+        })
+        .collect();
+    known.sort_by(|lhs, rhs| {
+        lhs.symbol
+            .cmp(&rhs.symbol)
+            .then_with(|| lhs.token_id.cmp(&rhs.token_id))
+    });
+    known
+});
+
+/// Every token the catalog ships, test coins and native coins included, by
+/// symbol and then token id.
+pub fn built_in_known_tokens() -> &'static [KnownToken] {
+    &KNOWN
 }
 
 // ── Token-id + endpoint URL normalization helpers ─────────────────
@@ -874,6 +996,7 @@ coinpaprika_id = "usdc-usd-coin"
 color = "blue"
 artwork_name = "usdc"
 tags = []
+description = "A coin."
 
 [[tokens]]
 id = "ether"
@@ -884,6 +1007,7 @@ coinpaprika_id = "eth-ethereum"
 color = "purple"
 artwork_name = "ethereum"
 tags = []
+description = "A coin."
 "#;
 
     fn empty_file() -> TomlFile {
@@ -897,7 +1021,7 @@ tags = []
         file.deployments[1].chain_id = Chain::Tron;
         file.deployments[1].standard = Some(crate::registry::TokenStandard::Trc20);
         file.deployments[1].contract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t".into();
-        let entries = load_catalog(file, empty_file());
+        let entries = load_catalog(&file, &empty_file());
         assert_eq!(
             entries[1].token_standard,
             Some(crate::registry::TokenStandard::Trc20)
@@ -1002,7 +1126,7 @@ tags = []
         use crate::registry::Chain;
         let mut file = parse_token_file(SAMPLE).unwrap();
         file.deployments[1].chain_id = Chain::BnbChain;
-        let entries = load_catalog(file, empty_file());
+        let entries = load_catalog(&file, &empty_file());
         let token = &entries[1];
         assert_eq!(
             Chain::BnbChain.token_standards(),
@@ -1039,7 +1163,7 @@ tags = []
             contract: file.deployments[1].contract.clone(),
             decimals: 6,
         });
-        load_catalog(file, empty_file());
+        load_catalog(&file, &empty_file());
     }
 
     #[test]
@@ -1100,7 +1224,7 @@ tags = []
     fn deployment_references_do_not_depend_on_table_order() {
         let mut file = parse_token_file(SAMPLE).unwrap();
         file.tokens.reverse();
-        let entries = load_catalog(file, empty_file());
+        let entries = load_catalog(&file, &empty_file());
         assert_eq!(entries[0].token_id, "ether");
         assert_eq!(entries[0].symbol, "ETH");
         assert_eq!(entries[0].deployment_id, "ethereum:native");
@@ -1108,7 +1232,7 @@ tags = []
         assert_eq!(entries[1].decimals, 6);
         assert_eq!(
             entries,
-            load_catalog(parse_token_file(SAMPLE).unwrap(), empty_file())
+            load_catalog(&parse_token_file(SAMPLE).unwrap(), &empty_file())
         );
     }
 
@@ -1163,7 +1287,7 @@ tags = []
         ] {
             assert!(
                 std::panic::catch_unwind(|| {
-                    load_catalog(parse_token_file(&file).unwrap(), empty_file())
+                    load_catalog(&parse_token_file(&file).unwrap(), &empty_file())
                 })
                 .is_err()
             );
@@ -1172,21 +1296,23 @@ tags = []
         duplicate
             .deployments
             .push(parse_token_file(SAMPLE).unwrap().deployments.remove(0));
-        assert!(std::panic::catch_unwind(|| load_catalog(duplicate, empty_file())).is_err());
+        assert!(std::panic::catch_unwind(|| load_catalog(&duplicate, &empty_file())).is_err());
         assert!(
             std::panic::catch_unwind(|| {
                 load_catalog(
-                    parse_token_file(SAMPLE).unwrap(),
-                    parse_token_file(SAMPLE).unwrap(),
+                    &parse_token_file(SAMPLE).unwrap(),
+                    &parse_token_file(SAMPLE).unwrap(),
                 )
             })
             .is_err()
         );
         // Testnet assets still cannot borrow a mainnet market identity.
-        let testnet = SAMPLE.replace("chain_id = \"ethereum\"", "chain_id = \"ethereum-sepolia\"");
+        let testnet = SAMPLE
+            .replace("chain_id = \"ethereum\"", "chain_id = \"ethereum-sepolia\"")
+            .replace("description = \"A coin.\"\n", "");
         assert!(
             std::panic::catch_unwind(|| {
-                load_catalog(empty_file(), parse_token_file(&testnet).unwrap())
+                load_catalog(&empty_file(), &parse_token_file(&testnet).unwrap())
             })
             .is_err()
         );
@@ -1232,7 +1358,7 @@ tags = []
         second.chain_id = crate::registry::Chain::Arbitrum;
         second.decimals = 9;
         file.deployments.push(second);
-        let entries = load_catalog(file, empty_file());
+        let entries = load_catalog(&file, &empty_file());
         assert_eq!(entries[1].token_id, entries[2].token_id);
         assert_eq!(entries[1].decimals, 6);
         assert_eq!(entries[2].decimals, 9);
@@ -1256,14 +1382,79 @@ tags = []
 
     #[test]
     fn every_declared_deployment_reaches_the_catalog() {
-        let files = [
-            embedded_token_file(TOKENS_TOML, "tokens.toml"),
-            embedded_token_file(TESTNET_TOKENS_TOML, "testnet-tokens.toml"),
-        ];
         assert_eq!(
             CATALOG.len(),
-            files.iter().map(|f| f.deployments.len()).sum::<usize>()
+            FILES.0.deployments.len() + FILES.1.deployments.len()
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "token usdc has no description")]
+    fn a_mainnet_token_says_what_it_is() {
+        let file = SAMPLE.replacen("description = \"A coin.\"\n", "", 1);
+        load_catalog(&parse_token_file(&file).unwrap(), &empty_file());
+    }
+
+    #[test]
+    #[should_panic(expected = "testnet token usdc has a description")]
+    fn a_test_coin_says_nothing_of_its_own() {
+        let testnet = SAMPLE.replace("chain_id = \"ethereum\"", "chain_id = \"ethereum-sepolia\"");
+        load_catalog(&empty_file(), &parse_token_file(&testnet).unwrap());
+    }
+
+    /// Known Tokens lists each listed deployment once, under its own token,
+    /// and each token once.
+    #[test]
+    fn every_deployment_is_known_under_its_token_once() {
+        let mut tokens = std::collections::HashSet::new();
+        let mut deployments = std::collections::HashSet::new();
+        for known in built_in_known_tokens() {
+            assert!(tokens.insert(known.token_id.as_str()), "{}", known.token_id);
+            assert!(known.is_built_in);
+            for entry in &known.deployments {
+                assert_eq!(entry.token_id, known.token_id);
+                assert!(deployments.insert(entry.deployment_id.as_str()));
+            }
+        }
+        let listed: std::collections::HashSet<&str> = CATALOG
+            .iter()
+            .filter(|entry| entry.is_native() || entry.chain_id.hosts_tokens())
+            .map(|entry| entry.deployment_id.as_str())
+            .collect();
+        assert_eq!(deployments, listed);
+    }
+
+    /// ETH is one token on Ethereum, its rollups and Starknet, and Ethereum's
+    /// own coin comes first: a native coin is a known token like any other.
+    #[test]
+    fn a_coin_native_to_many_networks_is_one_known_token() {
+        let eth = built_in_known_tokens()
+            .iter()
+            .find(|known| known.token_id == "ethereum")
+            .expect("ETH is known");
+        assert_eq!(eth.deployments[0].deployment_id, "ethereum:native");
+        assert!(
+            eth.deployments
+                .iter()
+                .any(|d| d.chain_id == crate::registry::Chain::Arbitrum && d.is_native())
+        );
+        assert!(
+            eth.deployments
+                .iter()
+                .any(|d| d.chain_id == crate::registry::Chain::Starknet && !d.is_native())
+        );
+        assert!(!eth.description.is_empty() && !eth.supply.is_empty());
+    }
+
+    /// A test coin is known, with no description of its own.
+    #[test]
+    fn a_test_coin_is_known_without_a_description() {
+        let test_btc = built_in_known_tokens()
+            .iter()
+            .find(|known| known.token_id == "bitcoin-testnet")
+            .expect("test bitcoin is known");
+        assert!(test_btc.description.is_empty() && test_btc.supply.is_empty());
+        assert!(test_btc.deployments.iter().all(|d| d.is_native()));
     }
 }
 
