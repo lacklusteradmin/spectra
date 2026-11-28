@@ -100,7 +100,6 @@ declare_chains! {
     Polygon,
     Linea,
     Scroll,
-    Blast,
     Mantle,
     Zcash,
     BitcoinGold,

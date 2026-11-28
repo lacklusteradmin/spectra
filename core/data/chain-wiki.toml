@@ -219,13 +219,6 @@ consensus = "zkEVM rollup posting to Ethereum"
 state_model = "EVM account state"
 
 [[chains]]
-chain = "blast"
-comment = "EVM transfers and yield-bearing ETH/USDB on Blast."
-family = "Ethereum layer-2 (yield-bearing)"
-consensus = "Optimistic rollup posting to Ethereum"
-state_model = "EVM account state"
-
-[[chains]]
 chain = "mantle"
 comment = "Low-fee EVM transfers and ERC-20 settlement on Mantle."
 family = "Ethereum layer-2 (modular rollup)"

@@ -17,7 +17,6 @@ impl Chain {
             Chain::Polygon => 137,
             Chain::Linea => 59144,
             Chain::Scroll => 534352,
-            Chain::Blast => 81457,
             Chain::Mantle => 5000,
             Chain::Sei => 1329,
             Chain::Celo => 42220,
@@ -140,7 +139,7 @@ impl Chain {
             | Self::Katana
             | Self::MegaEth => Some(OpStackFeeModel::FjordWithOperator),
             Self::OpBnb => Some(OpStackFeeModel::Fjord),
-            Self::Blast | Self::Metis => Some(OpStackFeeModel::Bedrock),
+            Self::Metis => Some(OpStackFeeModel::Bedrock),
             _ => None,
         }
     }

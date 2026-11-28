@@ -323,7 +323,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/236'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Bitcoin SV", "BSV"]
-popular_rank = 39
+popular_rank = 38
 tags = ["utxo", "pow"]
 color = "orange"
 artwork_name = "bitcoinsv"
@@ -376,7 +376,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Linea"]
-popular_rank = 42
+popular_rank = 41
 tags = ["layer-2"]
 color = "blue"
 artwork_name = "linea"
@@ -394,20 +394,6 @@ popular_rank = 35
 tags = ["layer-2"]
 color = "orange"
 artwork_name = "scroll"
-address_prefix_hint = "0x…"
-
-[[chains]]
-id = "blast"
-name = "Blast"
-token_standards = ["ERC-20"]
-derivation_path = [
-  { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
-]
-search_keywords = ["Blast"]
-popular_rank = 36
-tags = ["layer-2"]
-color = "yellow"
-artwork_name = "blast"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -446,7 +432,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/156'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Bitcoin Gold", "BTG"]
-popular_rank = 46
+popular_rank = 45
 tags = ["utxo", "pow"]
 color = "yellow"
 artwork_name = "bitcoingold"
@@ -460,7 +446,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/42'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Decred", "DCR"]
-popular_rank = 44
+popular_rank = 43
 tags = ["utxo", "pow"]
 color = "indigo"
 artwork_name = "decred"
@@ -488,7 +474,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Sei", "SEI"]
-popular_rank = 38
+popular_rank = 37
 color = "red"
 artwork_name = "sei"
 address_prefix_hint = "0x…"
@@ -501,7 +487,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Celo", "CELO"]
-popular_rank = 45
+popular_rank = 44
 tags = ["layer-2"]
 color = "yellow"
 artwork_name = "celo"
@@ -542,7 +528,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["zkSync Era", "zkSync"]
-popular_rank = 41
+popular_rank = 40
 tags = ["layer-2"]
 color = "gray"
 artwork_name = "zksyncera"
@@ -556,7 +542,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Sonic", "S"]
-popular_rank = 40
+popular_rank = 39
 color = "gray"
 artwork_name = "sonic"
 address_prefix_hint = "0x…"
@@ -569,7 +555,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Berachain", "BERA"]
-popular_rank = 43
+popular_rank = 42
 color = "orange"
 artwork_name = "bera"
 address_prefix_hint = "0x…"
@@ -610,7 +596,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/5'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Dash", "DASH"]
-popular_rank = 37
+popular_rank = 36
 tags = ["utxo", "pow", "privacy"]
 color = "blue"
 artwork_name = "dash"
@@ -650,7 +636,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Plasma", "XPL", "stablecoin"]
-popular_rank = 47
+popular_rank = 46
 tags = ["payments"]
 color = "green"
 artwork_name = "plasma"
@@ -664,7 +650,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Monad", "MON"]
-popular_rank = 48
+popular_rank = 47
 color = "purple"
 artwork_name = "monad"
 address_prefix_hint = "0x…"
@@ -677,7 +663,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["World Chain", "Worldcoin", "WLD", "ETH"]
-popular_rank = 49
+popular_rank = 48
 tags = ["layer-2"]
 color = "gray"
 artwork_name = "worldcoin"
@@ -694,7 +680,7 @@ derivation_path = [
   { tag = "taproot", path = "m/86'/6'/{account}'/0/0" },
 ]
 search_keywords = ["Peercoin", "PPC", "PPcoin"]
-popular_rank = 50
+popular_rank = 49
 tags = ["utxo", "pow", "payments"]
 color = "green"
 artwork_name = "peercoin"
@@ -708,7 +694,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Kaia", "KAIA", "Klaytn", "KLAY"]
-popular_rank = 51
+popular_rank = 50
 color = "green"
 artwork_name = "kaia"
 address_prefix_hint = "0x…"
@@ -721,7 +707,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["XDC Network", "XDC", "XinFin"]
-popular_rank = 52
+popular_rank = 51
 color = "blue"
 artwork_name = "xdc"
 address_prefix_hint = "0x… / xdc…"
@@ -734,7 +720,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Robinhood Chain", "Robinhood", "ETH"]
-popular_rank = 53
+popular_rank = 52
 tags = ["layer-2"]
 color = "green"
 artwork_name = "robinhood"
@@ -748,7 +734,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Kava EVM", "Kava", "KAVA"]
-popular_rank = 54
+popular_rank = 53
 color = "red"
 artwork_name = "kava"
 address_prefix_hint = "0x…"
@@ -761,7 +747,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Chiliz Chain", "Chiliz", "CHZ", "Socios"]
-popular_rank = 55
+popular_rank = 54
 color = "red"
 artwork_name = "chiliz"
 address_prefix_hint = "0x…"
@@ -774,7 +760,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Stable", "STABLE", "USDT0", "USDT"]
-popular_rank = 56
+popular_rank = 55
 tags = ["payments"]
 color = "teal"
 artwork_name = "stable"
@@ -788,7 +774,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Arc", "Circle", "USDC"]
-popular_rank = 57
+popular_rank = 56
 tags = ["payments"]
 color = "indigo"
 artwork_name = "arc"
@@ -802,7 +788,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Manta Pacific", "Manta", "MANTA", "ETH"]
-popular_rank = 58
+popular_rank = 57
 tags = ["layer-2"]
 color = "cyan"
 artwork_name = "manta"
@@ -816,7 +802,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Metis", "Metis Andromeda", "METIS"]
-popular_rank = 59
+popular_rank = 58
 tags = ["layer-2"]
 color = "teal"
 artwork_name = "metis"
@@ -830,7 +816,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Flare", "FLR"]
-popular_rank = 60
+popular_rank = 59
 color = "pink"
 artwork_name = "flare"
 address_prefix_hint = "0x…"
@@ -843,7 +829,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Katana", "KAT", "ETH"]
-popular_rank = 61
+popular_rank = 60
 tags = ["layer-2"]
 color = "yellow"
 artwork_name = "katana"
@@ -857,7 +843,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["MegaETH", "MEGA", "ETH"]
-popular_rank = 62
+popular_rank = 61
 tags = ["layer-2"]
 color = "gray"
 artwork_name = "megaeth"
@@ -871,7 +857,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Merlin Chain", "Merlin", "MERL", "BTC"]
-popular_rank = 63
+popular_rank = 62
 tags = ["layer-2"]
 color = "purple"
 artwork_name = "merlin"
@@ -885,7 +871,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["peaq", "PEAQ"]
-popular_rank = 64
+popular_rank = 63
 color = "indigo"
 artwork_name = "peaq"
 address_prefix_hint = "0x…"
@@ -898,7 +884,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Somnia", "SOMI"]
-popular_rank = 65
+popular_rank = 64
 color = "gray"
 artwork_name = "somnia"
 address_prefix_hint = "0x…"
@@ -911,7 +897,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["0G", "Zero Gravity"]
-popular_rank = 66
+popular_rank = 65
 color = "gray"
 artwork_name = "0g"
 address_prefix_hint = "0x…"
@@ -924,7 +910,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/118'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Cosmos Hub", "Cosmos", "ATOM"]
-popular_rank = 67
+popular_rank = 66
 color = "indigo"
 artwork_name = "cosmos"
 address_prefix_hint = "cosmos1…"
@@ -937,7 +923,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/118'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Celestia", "TIA", "Cosmos"]
-popular_rank = 68
+popular_rank = 67
 color = "purple"
 artwork_name = "celestia"
 address_prefix_hint = "celestia1…"
@@ -950,7 +936,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/118'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["dYdX", "DYDX", "Cosmos"]
-popular_rank = 69
+popular_rank = 68
 color = "purple"
 artwork_name = "dydx"
 address_prefix_hint = "dydx1…"
@@ -963,7 +949,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/330'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Terra", "LUNA", "Cosmos"]
-popular_rank = 70
+popular_rank = 69
 color = "yellow"
 artwork_name = "terra"
 address_prefix_hint = "terra1…"
@@ -976,7 +962,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/459'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Kava", "KAVA", "Cosmos"]
-popular_rank = 71
+popular_rank = 70
 color = "red"
 artwork_name = "kava"
 address_prefix_hint = "kava1…"
@@ -989,7 +975,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Injective", "INJ", "Cosmos"]
-popular_rank = 72
+popular_rank = 71
 color = "cyan"
 artwork_name = "injective"
 address_prefix_hint = "inj1…"
@@ -1002,7 +988,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/118'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Akash", "AKT", "Cosmos"]
-popular_rank = 73
+popular_rank = 72
 color = "red"
 artwork_name = "akash"
 address_prefix_hint = "akash1…"
@@ -1015,7 +1001,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/118'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Babylon", "BABY", "Cosmos"]
-popular_rank = 74
+popular_rank = 73
 color = "orange"
 artwork_name = "babylon"
 address_prefix_hint = "bbn1…"
@@ -1028,7 +1014,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/118'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Osmosis", "OSMO", "Cosmos"]
-popular_rank = 75
+popular_rank = 74
 color = "purple"
 artwork_name = "osmosis"
 address_prefix_hint = "osmo1…"
@@ -1041,7 +1027,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/60'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Dymension", "DYM", "Cosmos"]
-popular_rank = 76
+popular_rank = 75
 color = "gray"
 artwork_name = "dymension"
 address_prefix_hint = "dym1…"
@@ -1054,7 +1040,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/118'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Saga", "SAGA", "Cosmos"]
-popular_rank = 77
+popular_rank = 76
 color = "gray"
 artwork_name = "saga"
 address_prefix_hint = "saga1…"
@@ -1067,7 +1053,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/118'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Allora", "ALLO", "Cosmos"]
-popular_rank = 78
+popular_rank = 77
 color = "indigo"
 artwork_name = "allora"
 address_prefix_hint = "allo1…"
@@ -1080,7 +1066,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/494'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Band", "BandChain", "BAND", "Cosmos"]
-popular_rank = 79
+popular_rank = 78
 color = "blue"
 artwork_name = "band"
 address_prefix_hint = "band1…"
@@ -1091,7 +1077,7 @@ name = "Kusama"
 token_standards = []
 derivation_path = []
 search_keywords = ["Kusama", "KSM", "Kusama Asset Hub"]
-popular_rank = 80
+popular_rank = 79
 tags = ["substrate"]
 color = "gray"
 artwork_name = "kusama"
@@ -1103,7 +1089,7 @@ name = "Astar"
 token_standards = []
 derivation_path = []
 search_keywords = ["Astar", "ASTR"]
-popular_rank = 81
+popular_rank = 80
 tags = ["substrate"]
 color = "blue"
 artwork_name = "astar"
@@ -1117,7 +1103,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/283'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Algorand", "ALGO"]
-popular_rank = 82
+popular_rank = 81
 color = "gray"
 artwork_name = "algorand"
 address_prefix_hint = "58-char base32"
@@ -1132,7 +1118,7 @@ derivation_path = [
   { tag = "nestedSegWit", path = "m/49'/88'/{account}'/0/0" },
 ]
 search_keywords = ["Qtum", "QTUM"]
-popular_rank = 83
+popular_rank = 82
 tags = ["utxo"]
 color = "blue"
 artwork_name = "qtum"
@@ -1149,7 +1135,7 @@ derivation_path = [
   { tag = "taproot", path = "m/86'/0'/{account}'/0/0" },
 ]
 search_keywords = ["Fractal Bitcoin", "FB", "Fractal"]
-popular_rank = 84
+popular_rank = 83
 tags = ["utxo", "pow"]
 color = "gray"
 artwork_name = "fractalbitcoin"
@@ -1164,7 +1150,7 @@ derivation_path = [
   { tag = "legacy", path = "m/44'/899'/{account}'/0/0" },
 ]
 search_keywords = ["eCash", "XEC", "Bitcoin ABC", "BCHA"]
-popular_rank = 85
+popular_rank = 84
 tags = ["utxo", "pow", "payments"]
 color = "blue"
 artwork_name = "ecash"
@@ -1181,7 +1167,7 @@ derivation_path = [
   { tag = "taproot", path = "m/86'/20'/{account}'/0/0" },
 ]
 search_keywords = ["DigiByte", "DGB"]
-popular_rank = 86
+popular_rank = 85
 tags = ["utxo", "pow", "payments"]
 color = "blue"
 artwork_name = "digibyte"
@@ -1195,7 +1181,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/818'/0'/0/{account}", is_default = true },
 ]
 search_keywords = ["VeChain", "VeChainThor", "VET", "VTHO", "VeThor"]
-popular_rank = 87
+popular_rank = 86
 color = "blue"
 artwork_name = "vechain"
 address_prefix_hint = "0x…"
@@ -1208,7 +1194,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/461'/{account}'/0/0", is_default = true },
 ]
 search_keywords = ["Filecoin", "FIL"]
-popular_rank = 88
+popular_rank = 87
 color = "blue"
 artwork_name = "filecoin"
 address_prefix_hint = "f1…"
@@ -1221,7 +1207,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/1729'/{account}'/0'", is_default = true },
 ]
 search_keywords = ["Tezos", "XTZ", "tez"]
-popular_rank = 89
+popular_rank = 88
 color = "blue"
 artwork_name = "tezos"
 address_prefix_hint = "tz1…"
@@ -1234,7 +1220,7 @@ derivation_path = [
   { tag = "standard", path = "m/44'/9004'/0'/0/{account}", is_default = true },
 ]
 search_keywords = ["Starknet", "STRK", "Ready", "Argent"]
-popular_rank = 90
+popular_rank = 89
 tags = ["layer-2"]
 color = "indigo"
 artwork_name = "starknet"
@@ -1250,7 +1236,7 @@ derivation_path = [
   { tag = "evm", path = "m/44'/60'/0'/0/{account}" },
 ]
 search_keywords = ["Hedera", "HBAR", "Hashgraph"]
-popular_rank = 91
+popular_rank = 90
 color = "gray"
 artwork_name = "hedera"
 address_prefix_hint = "0.0.…"

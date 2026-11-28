@@ -1,0 +1,2464 @@
+{
+  "checked_at_utc": "2026-11-27",
+  "web3icons_reference": "0xa3k5/web3icons@172f57f38fca75007002a4d707e08f33d82ba3a5",
+  "review": [
+    {
+      "artwork_name": "0g",
+      "project": "0G (0G, zero-gravity)",
+      "verdict": "current",
+      "ours_before": "white '0G' mark on black disc",
+      "official": "'0G' logomark, black or white (brand kit); 2026 homepage mark is the same 0G knocked out of a white disc",
+      "evidence": [
+        "https://0g.ai/brandkit",
+        "https://0g.ai/assets/681c472ba991e2e4ca164fe6_Black-OG-Logo.svg",
+        "https://0g.ai/assets/home-2026-mark-zerog.svg"
+      ],
+      "notes": "Brand kit lists a purple logo under 'Logo Misuse' (Logo-Misuse---Purple.svg), although 0G-500x500.png on the same page is purple. Ours (black/white) follows the kit.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "1inch",
+      "project": "1inch (1INCH)",
+      "verdict": "outdated",
+      "ours_before": "white unicorn head on navy #1b314f disc (pre-2025 mark)",
+      "official": "Unicorn retired in the 2025-09-30 rebrand (TOKEN2049, move to 1inch.com); new identity is black-and-white only: the '1\"' sign, and a 1INCH token icon that is a black square inside a white square",
+      "evidence": [
+        "https://1inch.com/press-room",
+        "https://1inch.com/assets/images/landing/press-room/assets/1INCH_token.svg",
+        "https://1inch.com/assets/images/landing/press-room/assets/1inch_sign_black.svg",
+        "https://1inch.com/blog/post/1inch-rebrand",
+        "https://tokens.1inch.io/0x111111111117dc0aa78b770fa6a738034120c302.png"
+      ],
+      "notes": "Press room labels 1INCH_token.svg '1INCH token black logo'; 1inch's own token list (tokens.1inch.io) serves the same black square. Alternative: the brand sign (local copy) (sha256 b03d119c23df6adfd855b4ca6c335ff07e124cbb2b9885e5cd1fd01714a7d650). Neither has a disc; the library's full-disc rule needs a layout decision. web3icons 1INCH still shows the unicorn (stale).",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "aave",
+      "project": "Aave (AAVE)",
+      "verdict": "current",
+      "ours_before": "white arc-and-two-dots mark on #9391f7 disc",
+      "official": "Aave Token Round.svg in the brand zip: same mark, #9391f7 disc",
+      "evidence": [
+        "https://aave.com/brand",
+        "https://aave.com/aave-brand-assets.zip"
+      ],
+      "notes": "Zip files dated 2026-07-01; design and colour identical.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "aerodrome",
+      "project": "Aerodrome Finance (AERO) -> Aero",
+      "verdict": "outdated",
+      "ours_before": "Aerodrome's striped propeller/swoosh mark on #ebe8e1 disc",
+      "official": "Aero launched 2026-10-21, unifying Aerodrome and Velodrome behind one token, AERO; the brand kit's AERO token image is the Aero 'pinwheel mark on a light circle' (#F1F1F1 disc, blue/red rings)",
+      "evidence": [
+        "https://aero.xyz/brand/",
+        "https://aero.xyz/brand-kit/aero-token.svg",
+        "https://aero.xyz/articles/aero-launches-today/",
+        "https://aero.xyz/aero-upgrade/"
+      ],
+      "notes": "aerodrome.finance still serves the old favicon, but only as the legacy app hosting the upgrade portal; it links to aero.xyz. The catalog name 'Aerodrome Finance' probably wants to become 'Aero'. Check whether the AERO contract/CoinGecko id changed: the article says new AERO goes to existing AERO and VELO holders. Not checked here. Brand zip: https://aero.xyz/downloads/aero-brand-kit.zip.",
+      "outcome": "kept: the catalog's AERO is the Aerodrome token 0x9401...8631, whose mark this is. Aero (launched 2026-10-21) is a new AERO that holders upgrade to; the catalog does not list it."
+    },
+    {
+      "artwork_name": "akash",
+      "project": "Akash Network (AKT)",
+      "verdict": "outdated",
+      "ours_before": "white three-piece sign with a 60%-opacity lower piece on #db4533 disc (pre-2026 sign)",
+      "official": "2026 brand guidelines: solid single-colour sign (the lower piece is opaque and notched, no translucency) and Akash Red ~#FF4141; the favicon is the solid red sign",
+      "evidence": [
+        "https://akash.network/brand/resources/",
+        "https://akash.network/brand-resources/akash-logos.zip",
+        "https://akash.network/brand-resources/akash-brand-book.pdf",
+        "https://akash.network/favicon.ico"
+      ],
+      "notes": "Zip sha256 d5da9e15c18fb014472cea05e762d4abf93fbf62b829ce5aa13524610800fac3; zip files dated 2026-05-14; brand book Last-Modified 2026-11-25. The kit has a sign-only image only as PNG (akash-sign-dark.png white, akash-sign-w.png black). Akash Red was sampled from the brand-book swatch (#FF4141); the favicon is close to that. The brand book shows the app icon as a white sign on red, and 'Akash Red ... never used as a full background'. web3icons AKT is the old translucent sign.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "algorand",
+      "project": "Algorand (ALGO)",
+      "verdict": "current",
+      "ours_before": "white Algorand 'A' logomark on #000 disc",
+      "official": "Algorand logomark (2023), black #001324 / white",
+      "evidence": [
+        "https://algorand.co/media-kit",
+        "https://algorand.co/hubfs/Algorand%20Logomark%20black%20and%20white.zip",
+        "https://algorand.co/hubfs/raw_assets/public/algorand-co/images/favicon.svg"
+      ],
+      "notes": "Slight drift: the official dark is navy-black #001324 vs our #000. The site moved to algorand.co.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "allora",
+      "project": "Allora (ALLO)",
+      "verdict": "current",
+      "ours_before": "white ring-and-fan mark on #171717 disc",
+      "official": "Same ring-and-fan mark in the site header logo, drawn in cream #F5ECE2",
+      "evidence": [
+        "https://www.allora.network/assets/brand/allora-logo.svg",
+        "https://tmcds.notion.site/Allora-Public-Brand-Guidelines-9ae91392698d436b914f1be3b40c6394"
+      ],
+      "notes": "Minor drift: the official mark colour is cream #F5ECE2, ours is pure white. The Notion brand guidelines were not opened.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "apecoin",
+      "project": "ApeCoin (APE)",
+      "verdict": "current",
+      "ours_before": "outlined white gorilla on #0054fa disc with orange/blue ripple contour lines (64 KB SVG: 9 filters, masks, gradients)",
+      "official": "Gorilla mark (AIP-555, Dec 2024, replaced the ape skull); apecoin.com now shows a flat white gorilla on a #0054FA disc, with no outline or ripples",
+      "evidence": [
+        "https://apecoin.com/favicon.png",
+        "https://apecoin.com/assets/apecoin-full-logo-Uq9aBGGF.svg"
+      ],
+      "notes": "Same mark and colour, so current, but ours is a decorative variant. Three variants exist: ours (outline + ripples), CoinGecko's APECOIN.png (2025-08-30, blue ripples), and the official flat one. Practical concern: our SVG relies on feGaussianBlur filters and masks, and ImageMagick's MSVG renders it as a broken white blob (render/ours/apecoin.png); check that it renders correctly in the apps. A flat replacement is in the vector lockup apecoin-full-logo.svg (gorilla-in-disc paths at its left; sha256 faa3e32024ac43ffc1cc5827ab3210334e36392ee4985846f381f0bff822598c) or favicon.png (1290 px; sha256 d78d223ba0240715f5cf3ded4b686e83e5d7c09af95676945d6640601c4a93cd). forum.apecoin.com no longer resolves (the DAO was wound down in 2025).",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "aptos",
+      "project": "Aptos (APT)",
+      "verdict": "current",
+      "ours_before": "black stripes-in-circle mark on #daf6d4 mint disc",
+      "official": "Same stripes-in-circle logomark (aptos.dev logomark: cream stripes, mint #d5fad3 ring; Aptos Network logo)",
+      "evidence": [
+        "https://aptos.dev/_astro/aptos-logomark-dark.EYGMeFeK.svg",
+        "https://www.datocms-assets.com/131589/1761293554-aptos-network-logo.svg"
+      ],
+      "notes": "aptosfoundation.org/brand is behind a Vercel security checkpoint (HTTP 429); not bypassed. aptoslabs.com's favicon is the Aptos Labs company mark, not the network. web3icons tokens/APT.svg is a different token.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "arbitrum",
+      "project": "Arbitrum (ARB / Arbitrum One)",
+      "verdict": "current",
+      "ours_before": "hexagon mark (navy #213147, light-blue border, white and #12aaff strokes) on #213147 disc",
+      "official": "Same 2023 hexagon mark",
+      "evidence": [
+        "https://docs.arbitrum.io/img/logo.svg",
+        "https://docs.arbitrum.io/icon.png",
+        "https://arbitrumfoundation.notion.site/Arbitrum-Brand-Kit-48751dc5e03240a5872496283f088f79"
+      ],
+      "notes": "arbitrum.io (including /brandkit) and portal.arbitrum.io sit behind a Cloudflare challenge; not bypassed. web3icons tokens/ARB.svg is a different token.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "arc",
+      "project": "Arc (Circle's Arc network)",
+      "verdict": "current",
+      "ours_before": "arc mark with navy-to-plum gradient (#182680 -> #842d56) on white disc",
+      "official": "Same arc mark; header logo gradient #1C2998 -> #3E2B63 -> #942753; favicon is a white mark on a navy rounded square",
+      "evidence": [
+        "https://www.arc.io/brand-guidelines-and-partner-toolkit",
+        "https://cdn.prod.website-files.com/685311a976e7c248b5dfde95/692db66fe108e2e715e258f0_logo-color-gradient.svg"
+      ],
+      "notes": "arc.network redirects to www.arc.io. Minor gradient drift. Guidelines: \"Don't modify or distort the logo, change its colors, add new elements...\" and use is \"permitted only in accordance with the Circle Brand Use Policy\"; logo files are in the Circle Brand Kit (https://www.circle.com/pressroom#brandkit), not fetched.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "asi",
+      "project": "Artificial Superintelligence Alliance (FET)",
+      "verdict": "wrong",
+      "ours_before": "malformed ASI mark: a centre dot plus side shapes whose arcs are broken (two lobes and a detached sliver per side instead of the symmetric three-lobed '<' and '>' shapes)",
+      "official": "ASI Alliance mark: two mirrored three-lobed shapes around a centre dot, #151A1A",
+      "evidence": [
+        "https://superintelligence.io/wp-content/uploads/2025/01/mobile-logo.svg",
+        "https://superintelligence.io/wp-content/uploads/2025/01/logo.svg",
+        "https://coin-images.coingecko.com/coins/images/5681/large/ASI.png?1719827289"
+      ],
+      "notes": "Our path is a lossy arc conversion of the official cubic path; it shows the same way in WebKit and ImageMagick, so it is not a renderer quirk. No brand page found (/brand, /brand-kit, /media-kit, /press-kit all 404). The CoinGecko image (2024-07-01) is the black mark on white. web3icons tokens/background/FET.svg draws the correct shape on a green tile.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "astar",
+      "project": "Astar (ASTR)",
+      "verdict": "wrong",
+      "ours_before": "flat white simplified knot (ring with a three-lobed inner figure) on cyan #0ae2ff disc",
+      "official": "Astar symbol: a 3D trefoil knot inside a ring, blue-to-magenta gradient; the ASTR token icon in the official portal is the same gradient knot",
+      "evidence": [
+        "https://astar.network/brand-asset-kit/",
+        "https://astar.network/favicon.svg",
+        "https://astar.network/brand-kit/astar/Symbol_Color.png",
+        "https://portal.astar.network/assets/astr-B7RR6UeN.png"
+      ],
+      "notes": "Ours is a recoloured and simplified redraw (it matches web3icons' flat style), and its inner figure is not the interlaced knot. The brand guide forbids recolouring and reconfiguring the logo. The brand-kit zip (files 2024-03-15) has PNGs only: Symbol_Color.png and Symbol_White.png (white with grey 3D shading); favicon.svg is the only vector. Palette: black #020617, pink #E6007A, blue #0075FF, purple #5928B1, gradient #0047FF -> #00D1FF.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "avalanche",
+      "project": "Avalanche (AVAX)",
+      "verdict": "current",
+      "ours_before": "white Avalanche mark (large and small triangles) on #ff394a disc",
+      "official": "Same mark; avalanche.com (avax.network redirects there) draws it in #E6212F",
+      "evidence": [
+        "https://www.avalanche.com/favicon-light.svg",
+        "https://www.avalanche.com/touchicon.svg",
+        "https://support.avax.network/en/articles/4132288-avalanche-brand-media-kit"
+      ],
+      "notes": "Colour drift: ours #FF394A vs official #E6212F (CIE76 dE ~9.5, visibly pinker); web3icons uses the older #E84142. The candidate is given only for the colour; recolouring our disc to #E6212F would do. Official brand guidelines and logos are Google Drive folders linked from the support article (updated 2026-10-08), not fetched.",
+      "outcome": "recoloured"
+    },
+    {
+      "artwork_name": "axieinfinity",
+      "project": "Axie Infinity (AXS)",
+      "verdict": "current",
+      "ours_before": "white AXS bow/infinity mark on #00d2f7 -> #004cdc gradient disc",
+      "official": "Same AXS mark, shown above the Axie Infinity wordmark on Sky Mavis's site",
+      "evidence": [
+        "https://cdn.skymavis.com/skymavis-home/public//homepage/axie-logo.png"
+      ],
+      "notes": "Moderate confidence. axieinfinity.com, app.axieinfinity.com and app.roninchain.com are behind a Cloudflare challenge; not bypassed. No official standalone AXS token SVG found; ours matches web3icons AXS. The earlier render/ours PNG showed a black disc, an ImageMagick gradient-rendering artefact; WebKit renders the blue gradient.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "babylon",
+      "project": "Babylon (BABY / Babylon Genesis)",
+      "verdict": "current",
+      "ours_before": "white Babylon symbol on #ce6533 disc",
+      "official": "Symbol Babylon Orange.svg (#CE6533) in the brand kit",
+      "evidence": [
+        "https://babylonlabs.io/media",
+        "https://cdn.prod.website-files.com/671f8903fede075d021ba774/6a69ce72a51fb5381f6a5039_Babylon%20Brand%20Kit-20260729T095640Z-1-001.zip"
+      ],
+      "notes": "Kit files dated 2026-07-27; same symbol and colour.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "band",
+      "project": "Band Protocol (BAND / BandChain)",
+      "verdict": "current",
+      "ours_before": "white Band mark on #8f8fff disc",
+      "official": "band-token.svg: same mark on #8F8FFF disc",
+      "evidence": [
+        "https://www.bandprotocol.com/brand-assets",
+        "https://www.bandprotocol.com/static/brand-asset/band-token.svg"
+      ],
+      "notes": "Identical. Terms: \"Avoid variations in logo proportions, colors, and spacing\".",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "base",
+      "project": "Base (chain)",
+      "verdict": "current",
+      "ours_before": "blue #00f rounded square on white disc",
+      "official": "'The Square' (Base_square_blue.svg, fill blue), the 2025 Base mark",
+      "evidence": [
+        "https://brand.base.org/",
+        "https://brand.base.org/base-brand.zip"
+      ],
+      "notes": "Zip assets dated 2025-07-02; zip Last-Modified 2026-11-26.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "bat",
+      "project": "Basic Attention Token (BAT)",
+      "verdict": "current",
+      "ours_before": "single-colour variant: white triangle (three facets) on #ff4724 disc",
+      "official": "BAT triangle in three colours (#FF4724, #9E1F63, #662D91) around a white centre",
+      "evidence": [
+        "https://basicattentiontoken.org/static-assets/images/bat-logo.svg",
+        "https://basicattentiontoken.org/static-assets/images/cropped-bat-192x192.png"
+      ],
+      "notes": "The mark is unchanged since launch, so current, but ours drops two of the three brand colours (the same mono variant as web3icons BAT). Candidate given for the colour choice only. No BAT brand or media page exists (404); brave.com/press redirects to the blog.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "bera",
+      "project": "Berachain (BERA)",
+      "verdict": "wrong",
+      "ours_before": "Berachain network logo (bear silhouette + two chain links) in white on #814625 disc",
+      "official": "BERA token icon in Berachain's official token list: white bear-face outline (ears, eyes, nose) on #78350F disc; the bear+chains logo is the network/brand logo",
+      "evidence": [
+        "https://github.com/berachain/metadata/blob/1cd819a51e50ec2d603f2409f382232c99ec1de0/src/tokens/mainnet.json",
+        "https://raw.githubusercontent.com/berachain/metadata/1cd819a51e50ec2d603f2409f382232c99ec1de0/src/assets/tokens/0x0000000000000000000000000000000000000000.png",
+        "https://docs.berachain.com/"
+      ],
+      "notes": "This artwork serves both the BERA token and the 'Berachain' chain. Ours is still Berachain's current network logo (docs header), and CoinGecko's BERA.png (2025-02-06) also uses bear+chains, so only the token use is wrong. A split into token and chain artwork may be wanted. The token-list image has been unchanged since 2025-06-18 (commit b7646d58da). berachain.com and hub/honey are behind a Vercel security checkpoint (429); not bypassed. No official SVG; web3icons has no BERA token icon.",
+      "outcome": "kept: this is Berachain's network logo, and the artwork serves the chain as well as BERA, whose token-list icon (PNG) is a bear face."
+    },
+    {
+      "artwork_name": "berausd",
+      "project": "Bera USD (BUSD, formerly HONEY; CoinGecko honey-3)",
+      "verdict": "current",
+      "ours_before": "white bear head with '$' on #ff5600 disc",
+      "official": "Berachain token list, contract 0xFCBD14DC51f0A4d49d5E53C2E0950e0bC26d0Dce, now 'Bera USD' (BUSD): white bear head with '$' on #FF5600 disc",
+      "evidence": [
+        "https://github.com/berachain/metadata/blob/1cd819a51e50ec2d603f2409f382232c99ec1de0/src/tokens/mainnet.json",
+        "https://raw.githubusercontent.com/berachain/metadata/1cd819a51e50ec2d603f2409f382232c99ec1de0/src/assets/tokens/0xfcbd14dc51f0a4d49d5e53c2e0950e0bc26d0dce.png",
+        "https://github.com/berachain/metadata/commit/0b10a310fb"
+      ],
+      "notes": "This is the right mark: HONEY was renamed Bera USD (BUSD) and its icon replaced in berachain/metadata commit 0b10a310fb (2026-08-19, 'chore: rebrand Honey metadata to BUSD (#436)'). Ours matches the new icon and colour. The official icon is PNG only (local copy (local copy) sha256 8e28120e11d14ad1fb0fd146e7cfe57c7717ff814937d0829c4aa7e5d88d9b9c). web3icons HONEY.svg is the old Honey bee mark: do not use it.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "bgb",
+      "project": "Bitget Token (BGB)",
+      "verdict": "current",
+      "ours_before": "black Bitget mark on #00f0ff disc",
+      "official": "Bitget mark black on #00F0FF (favicon); the BGB whitepaper cover shows a cyan BGB coin with the same mark",
+      "evidence": [
+        "https://www.bitget.com/baseasset/favicon4.png",
+        "https://img.bitgetimg.com/multiLang/events/BGB-whitepaper-en-20241227.pdf",
+        "https://www.bitget.com/blog/articles/bitget-unveils-rebranding-initiative-to-reinforce-leadership-in-smart-crypto-trading"
+      ],
+      "notes": "Last Bitget rebrand was 2023-07-25; ours postdates it. No BGB-specific logo kit found; the Bitget Wallet kit (https://web3.bitget.com/brand-kit) covers the wallet only.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "bitcoin",
+      "project": "Bitcoin (BTC)",
+      "verdict": "current",
+      "ours_before": "white tilted B on #f7931a disc",
+      "official": "Same: bitcoin.org logo, #f7931a disc, white B",
+      "evidence": [
+        "https://bitcoin.org/img/icons/logotop.svg"
+      ],
+      "notes": "Public-domain mark; unchanged.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "bitcoincash",
+      "project": "Bitcoin Cash (BCH)",
+      "verdict": "current",
+      "ours_before": "white rotated B on #0ac18e disc",
+      "official": "bitcoin-cash-circle.svg: same B on #0AC18E",
+      "evidence": [
+        "https://bitcoincash.org/graphics/",
+        "https://bitcoincash.org/img/green/bitcoin-cash-circle.svg"
+      ],
+      "notes": "Identical.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "bitcoingold",
+      "project": "Bitcoin Gold (BTG)",
+      "verdict": "current",
+      "ours_before": "flat gold #fcb207 ring, white disc, thin blue ring and blue #06236b B",
+      "official": "Press-kit icon: gold gradient ring (#FFDA00 -> #FF8300), white disc, blue #00206B ring and B",
+      "evidence": [
+        "https://bitcoingold.org/press-kit/",
+        "http://www.bitcoingold.org/wp-content/uploads/Icon-Bitcoin-Gold-Color-300x300-1.png",
+        "http://www.bitcoingold.org/wp-content/uploads/Bitcoin-Gold-Color-Palette.png"
+      ],
+      "notes": "Same mark. Minor drift: our flat ring stands in for the official gradient. The press kit offers PNG only.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "bitcoinsignet",
+      "project": "Bitcoin Signet (sBTC test network; Spectra's own derivative)",
+      "verdict": "current",
+      "ours_before": "Bitcoin B on #b028aa purple disc",
+      "official": "No official mark; derived from the Bitcoin mark",
+      "evidence": [
+        "https://bitcoin.org/img/icons/logotop.svg"
+      ],
+      "notes": "The B path is byte-identical to bitcoin.svg; only the disc fill differs (diff checked), and bitcoin.svg is current.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "bitcoinsv",
+      "project": "Bitcoin SV (BSV)",
+      "verdict": "outdated",
+      "ours_before": "white upright B (2019 bComm coin logo) on #eab300 gold disc",
+      "official": "The BSV Association site (bitcoinsv.com and bsvblockchain.org redirect there) represents the BSV blockchain with a 'BSV' wordmark tile: white on #003FFF square (favicon, app icon, and the BSV icon in its tokenomics table); the gold B appears nowhere on the site",
+      "evidence": [
+        "https://bsvblockchain.com/images/bsv-mark.svg",
+        "https://bsvblockchain.com/tokenomics",
+        "https://bsvblockchain.com/apple-icon.png",
+        "https://www.prnewswire.com/news-releases/bsv-association-unveils-new-focus-and-new-brand-look-in-drive-to-greater-blockchain-adoption-302486164.html"
+      ],
+      "notes": "Medium confidence. The BSV Association announced a new brand look in June 2025. No official statement retires the 2019 gold-B coin logo; CoinGecko (BSV.png, 2023) and web3icons still use it. Choose between following the official site and the market convention. No brand-asset page on bsvblockchain.com (/brand, /media, /press, /brand-assets all 404).",
+      "outcome": "kept, open: the BSV Association's site shows a 'BSV' wordmark tile; exchanges and CoinGecko keep the gold B."
+    },
+    {
+      "artwork_name": "bitcointestnet",
+      "project": "Bitcoin Testnet 3/4 (tBTC; Spectra's own derivative)",
+      "verdict": "current",
+      "ours_before": "Bitcoin B on #5fd15c green disc",
+      "official": "No official mark; derived from the Bitcoin mark",
+      "evidence": [
+        "https://bitcoin.org/img/icons/logotop.svg"
+      ],
+      "notes": "The B path is byte-identical to bitcoin.svg; only the disc fill differs (diff checked), and bitcoin.svg is current.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "bittensor",
+      "project": "Bittensor (TAO)",
+      "verdict": "current",
+      "ours_before": "dark #292929 tau on white disc",
+      "official": "Same tau mark (site header inline SVG and favicon), black",
+      "evidence": [
+        "https://www.bittensor.com/",
+        "https://www.bittensor.com/favicon.ico"
+      ],
+      "notes": "No brand page (/brand, /media, /press-kit 404). web3icons tokens/TAO.svg is a different token.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "blast",
+      "project": "Blast (BLAST / Blast L2)",
+      "verdict": "unverified",
+      "ours_before": "black angular B on #fcfc03 yellow disc (last known Blast mark)",
+      "official": "None displayed: Blast wound down its L2 (announced 2026-10-02; network taken down 2026-11-04). blast.io is now a logo-less 'Blast Fund Recovery' page (claims until 2027-11-04)",
+      "evidence": [
+        "https://blast.io/",
+        "https://www.theblock.co/news/business/2026-10-02-blast-ethereum-layer-2-shutting-down-417583"
+      ],
+      "notes": "Tried: blast.io (no logo, /favicon.ico and /brand 404) and docs.blast.io (no DNS). The mark was never replaced, but no official source shows it any more. Beyond the icon: the 'Blast' chain no longer runs, so the catalog's chain and BLAST token entries may need retiring. Users with funds there must claim on Ethereum mainnet via blast.io. Not verified against the catalog.",
+      "outcome": "kept: Blast wound down its L2 (taken down 2026-11-04); no official source shows a mark."
+    },
+    {
+      "artwork_name": "bnb",
+      "project": "BNB (BNB Smart Chain / opBNB)",
+      "verdict": "current",
+      "ours_before": "white BNB cube mark on #f0b90b disc",
+      "official": "BNB Chain_Symbol_Yellow.svg: same mark, #f0b90b",
+      "evidence": [
+        "https://www.bnbchain.org/en/brand-guidelines",
+        "https://static.bnbchain.org/home-ui/static/images/brand-guidelines/svg/BNB%20Chain_Symbol_Yellow.svg"
+      ],
+      "notes": "Identical mark and hex.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "btt",
+      "project": "BitTorrent (BTT, cg=bittorrent)",
+      "verdict": "current",
+      "ours_before": "black disc, white outer ring, white three-arc BitTorrent swirl",
+      "official": "same mark: bt.io favicon and the BTT token icon in the bt.io bundle (static/media/n-btt.png) are a black disc with white ring and arcs",
+      "evidence": [
+        "https://bt.io/favicon.png",
+        "https://bt.io/static/media/n-btt.edd40763a0e1d219347a.png"
+      ],
+      "notes": "No brand kit found; bt.io only serves PNGs (80px/78px). Same icon also serves BTTOLD.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "cake",
+      "project": "PancakeSwap (CAKE, cg=pancakeswap-token)",
+      "verdict": "current",
+      "ours_before": "bunny head on cyan gradient disc #53dee9 to #1fc7d4 (same paths as the official cake-token.svg scaled to 64)",
+      "official": "CAKE Token/cake-token.svg in the official PancakeSwap Logos.zip: bunny on #53DEE9 to #1FC7D4 gradient disc; tokens.pancakeswap.finance serves the same",
+      "evidence": [
+        "https://docs.pancake.xyz/welcome-to-pancake/about-us/brand",
+        "https://docs.pancake.xyz/files/pancakeswap-logos-0f919191.zip",
+        "https://tokens.pancakeswap.finance/images/symbol/cake.png"
+      ],
+      "notes": "Docs now brand the project 'Pancake' (docs.pancake.xyz) but the CAKE icon is unchanged (zip files dated 2021-10). Rendering artefact: our cake.svg puts transform=\"scale(.66667)\" on <defs>; ImageMagick then draws the disc black (render/ours/cake.png is misleading), WebKit draws cyan. Transforms on <defs> do not apply to a userSpaceOnUse gradient, so the gradient runs 0..96 over a 64 box (bottom stops at ~2/3 of the ramp). Brand terms: 'Do not modify our Brand Assets'.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "cardano",
+      "project": "Cardano (ADA, cg=cardano)",
+      "verdict": "current",
+      "ours_before": "#0033ad disc with white starburst dots",
+      "official": "Cardano starburst, core Blue #0033AD (cardano.org brand assets)",
+      "evidence": [
+        "https://cardano.org/brand-assets/",
+        "https://cardano.org/img/brand-assets/cardano-starburst-white.svg"
+      ],
+      "notes": "Colour matches exactly. Brand rules: use only brand colours, do not stretch/rotate/distort, do not recolour outside brand colours; Cardano Foundation Trademark Policy applies.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "cbbtc",
+      "project": "Coinbase Wrapped BTC (cbBTC, cg=coinbase-wrapped-btc)",
+      "verdict": "current",
+      "ours_before": "white disc, thick #0052ff ring, #0052ff bitcoin B",
+      "official": "Coinbase wrapped-assets style: white disc, blue ring, blue B (hero image on coinbase.com/cbbtc shows cbBTC this way)",
+      "evidence": [
+        "https://www.coinbase.com/cbbtc",
+        "https://images.ctfassets.net/o10es7wu5gm1/37aAVi9OD30wGKYdDLbEw5/461cb88bc46ceff5422897a44392b42b/Group_316123501.png"
+      ],
+      "notes": "No SVG or standalone cbBTC icon found from Coinbase (coinbase.com returns 403 to curl; checked in a browser). Coinbase's asset-search API did not return cbBTC. Official ring looks slightly thinner than ours.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "cbeth",
+      "project": "Coinbase Wrapped Staked ETH (cbETH, cg=coinbase-wrapped-staked-eth)",
+      "verdict": "outdated",
+      "ours_before": "inverted colourway: #0052ff disc, white ring, flat white ETH diamond",
+      "official": "white disc, #0052FF ring, two-tone blue ETH diamond (#0052FF/#6697FF/#CCDCFF); this is what Coinbase's asset API and the coinbase.com/cbeth page show, matching cbBTC's wrapped-asset style",
+      "evidence": [
+        "https://www.coinbase.com/cbeth",
+        "https://www.coinbase.com/api/v2/assets/search?base=USD&query=cbeth&limit=3",
+        "https://dynamic-assets.coinbase.com/55517c7b84cff054d0bf84f6d82680b5368915854f855ec4fe0178478a637b18a985ec85b87387beb2ae2a1b276fcb320ac7451c358302ceebb179c58934ff65/asset_icons/93aa525880c2df46f3d5404cff1844a42f1a5d1fc812128ae3f70f2ce4a882e1.png"
+      ],
+      "notes": "When Coinbase switched is unclear: the white-disc design was already in the Optimism token list on 2023-01-27; ours matches CoinGecko/web3icons, probably the 2022 launch icon. Coinbase itself offers only a 320px PNG (saved as dl/cbeth/coinbase-cbeth-asset-icon.png, sha256 45297452a478e77fe0bd19e397fc6e8705a783795eefb8ad0cafa7df86262639). The token-list SVG has a thicker ring and smaller diamond than Coinbase's PNG; its ring is a stroke (ImageMagick drops it; WebKit draws it).",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "celestia",
+      "project": "Celestia (TIA, cg=celestia)",
+      "verdict": "current",
+      "ours_before": "#7a2bf9 violet disc with white globe/orbit symbol",
+      "official": "same symbol; brand kit palette now Frost #FDFCFF, Void #0E1014, Indigo #5640D1, Amethyst #7C68F2; symbol variants black on Frost, white on Void, Indigo",
+      "evidence": [
+        "https://celestia.org/brand/",
+        "https://celestia.org/images/brand/celestia-symbol-white.svg"
+      ],
+      "notes": "Colour drift: ours #7A2BF9 (the older Celestia purple) vs brand Indigo #5640D1 (or Amethyst #7C68F2, which is close to ours in lightness but bluer). The symbol shape is unchanged. Brand page (c) 2026; no rebrand date found. White symbol would go on an Indigo #5640D1 disc.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "celo",
+      "project": "Celo (CELO, cg=celo)",
+      "verdict": "current",
+      "ours_before": "Prosperity Yellow #fcff52 disc with black Celo symbol",
+      "official": "Celo Brand Kit: symbol in Onyx over a Prosperity Yellow circle is the prescribed avatar",
+      "evidence": [
+        "https://celo.org/brand-kit",
+        "https://framerusercontent.com/images/VXH8lvDu0xllVcpPHQUFOhvufY.webp"
+      ],
+      "notes": "Our symbol is drawn larger relative to the disc than the brand-kit avatar (about 60% vs 45% of the diameter). Brand terms: 'Modify Celo Brand Assets in any way such as by changing a design or color' is forbidden. Assets also in a Google Drive linked from the Symbol tab.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "cetus",
+      "project": "Cetus Protocol (CETUS, cg=cetus-protocol)",
+      "verdict": "current",
+      "ours_before": "Baby Green #68ffd8 disc with a flat white speech-bubble/whale emblem",
+      "official": "same emblem, two-tone green (#00FFD6 front, #00D89A shadow) per Brand Guidelines v1.0 (Nov 2025); the CETUS coin metadata icon on Sui is the two-tone emblem (#68FFD8/#00D49E) on a black disc",
+      "evidence": [
+        "https://www.cetus.zone/ (footer 'Brand Kit')",
+        "https://drive.google.com/drive/folders/1z6r9aySzPpjAVpYg2EOMYru3z3lT-7Gq",
+        "https://drive.google.com/file/d/1ngUCy6UUQHCUJztBHE04jCK8Z_LtWY04/view",
+        "https://uxcdefo3r2uemooidt2kk2stykakvwd2m6nasg5lhbfaxemm4i3a.arweave.net/pcQyFduOqEY5yBz0pWpTwoCq2HpnmgkbqzhKC5GM4jY"
+      ],
+      "notes": "Large colourway difference rather than a new mark: no official asset shows a white emblem on a #68FFD8 disc, and white on Baby Green is low contrast. Official token icon = emblem on black/dark disc (on-chain PNG saved as dl/cetus/cetus-onchain-icon, 256px, sha256 6da8694f5ee771bd9936a67d25a5dad37d1c2241f96c830174e1d0effc39f8c8). Brand palette lists Baby Green #68FFD8, so our disc colour is a brand colour.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "chainlink",
+      "project": "Chainlink (LINK, cg=chainlink)",
+      "verdict": "current",
+      "ours_before": "#2a5ada disc with white hexagon ring",
+      "official": "same hexagon symbol; Chainlink Blue #0847F7 (brand page; symbol SVGs uploaded 2026-09, same colour already in the 2024-05 brand-icon-blue.svg)",
+      "evidence": [
+        "https://chain.link/brand-assets",
+        "https://cdn.prod.website-files.com/5f6b7190899f41fb70882d08/6aa7fef7f56d1f1d953c589d_Chainlink-Symbol-Blue.svg"
+      ],
+      "notes": "Colour drift: ours #2A5ADA (old LINK token-icon blue) vs Chainlink Blue #0847F7, visibly more saturated. White symbol would go on a #0847F7 disc; a Blue symbol (#0847F7) SVG also exists (sha256 baf12d3c3c62a86c7ae649f5126d8055141d0927954fa355292c18f4a8e0f12e).",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "chiliz",
+      "project": "Chiliz (CHZ, cg=chiliz)",
+      "verdict": "current",
+      "ours_before": "#f60250 pink-red disc with white chili-pepper mark",
+      "official": "Chiliz docs 'CHZ Square Icon': white pepper on #ED145A; chiliz.com uses the same pepper (favicon on a navy gradient)",
+      "evidence": [
+        "https://docs.chiliz.com/",
+        "https://702624341-files.gitbook.io/~/files/v0/b/gitbook-x-prod.appspot.com/o/collections%2FEcN1NveIcFEPGuwVgBgo%2Ficon%2FgH0g4DQaH1SB2SuNi5Kx%2FCHZ%20Square%20Icon.png?alt=media&token=c34024d6-2e22-44b8-b5e6-03cecbb755e0",
+        "https://www.chiliz.com/wp-content/uploads/2024/10/cropped-icon-512x512-1-192x192.png"
+      ],
+      "notes": "Minor colour drift: ours #F60250 vs docs icon #ED145A. No brand kit page found on chiliz.com (/brand, /media-kit 404). web3icons CHZ still shows the pre-2023 network-triangle mark; ours is the newer pepper.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "compound",
+      "project": "Compound (COMP, cg=compound-governance-token)",
+      "verdict": "current",
+      "ours_before": "#00d395 disc with white stacked-bars symbol",
+      "official": "same symbol in #00D395 (compound.xyz icons: green symbol on #051116); compound.finance now redirects to compound.xyz",
+      "evidence": [
+        "https://compound.xyz/",
+        "https://framerusercontent.com/images/x8ucYPoXUJ7RBzf3cRaPV1rnhc.png"
+      ],
+      "notes": "Colour matches exactly. No brand kit found; Coinbase's cbETH page also shows COMP as white bars on a green disc.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "cosmos",
+      "project": "Cosmos Hub (ATOM, cg=cosmos)",
+      "verdict": "current",
+      "ours_before": "light lavender #a3a9d0 disc with flat white atom (three orbits, nucleus, electrons)",
+      "official": "Cosmos Hub assetlist ATOM icon in cosmos/chain-registry: navy #2E3148 disc, darker #1B1E36 inner disc, #B7B9C8 orbits and electrons",
+      "evidence": [
+        "https://github.com/cosmos/chain-registry/blob/a23d024879483ef9a57c200e0f8a4776835b5334/cosmoshub/assetlist.json",
+        "https://raw.githubusercontent.com/cosmos/chain-registry/a23d024879483ef9a57c200e0f8a4776835b5334/cosmoshub/images/atom.svg"
+      ],
+      "notes": "Large colour drift (light lavender vs dark navy), same atom mark. No Cosmos Hub brand page exists now: cosmos.network/brand is a 404 and the cosmos/cosmos-brand-guide repo is gone; cosmos.network's own brand is the 'CØSMOS' wordmark with an Ø icon, which is the ecosystem brand, not ATOM. chain-registry (cosmos GitHub org) is the canonical token metadata wallets use; atom.svg unchanged since 2022-04.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "cronos",
+      "project": "Cronos (CRO, cg=crypto-com-chain; chains Cronos EVM / testnet)",
+      "verdict": "outdated",
+      "ours_before": "white disc with navy #002d74 hexagon outline and inner C (the 2021-2025 Cronos/CRO mark)",
+      "official": "Cronos brand kit (cronos.com/brand, (c) 2026): new ribbon-style hexagonal C in a cyan-to-blue gradient (#96EDFF/#4CDBFF to #08548A/#022339), offered as the CRO logo and the Cronos icon; Cronos Accent Blue #4CDBFF",
+      "evidence": [
+        "https://cronos.com/brand",
+        "https://cronos.com/brand/cro-logo.svg",
+        "https://cronos.com/brand/cronos-app-icon.svg"
+      ],
+      "notes": "cronos.org now redirects to cronos.com. Rebrand appears tied to the 2026 Cronos/Ult relaunch (Ult app launch reported for 2026-09-17); exact logo date not found. cro-logo.svg is 75x85 and transparent; the kit's cronos-app-icon.svg places the same mark on a #090909 square (sha256 73f56e4862850d821329ce2d2948e38f5876cd56333d6fc4d65769c165d1f087), which suggests a black disc for our icon. The same mark applies to the Cronos EVM chain entries.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "crv",
+      "project": "Curve DAO (CRV, cg=curve-dao-token)",
+      "verdict": "current",
+      "ours_before": "rainbow 3D torus with grey grid lines on white disc",
+      "official": "same rainbow torus (curvefi/curve-assets branding/logo.svg, unchanged since 2022; curve.finance OG image is branding/logo.png)",
+      "evidence": [
+        "https://www.curve.finance/",
+        "https://raw.githubusercontent.com/curvefi/curve-assets/4ef7cc6e7b8debd57d2def50069e70c9c544093d/branding/logo.svg"
+      ],
+      "notes": "Rendering artefact: our crv.svg (218 KB) puts transform=\"scale(.26667)\" on <mask> as well as on the masked path; ImageMagick draws a tiny shape in the top-left (render/ours/crv.png is misleading) while WebKit/QuickLook draws it correctly. transform on <mask> is not standard SVG 1.1; worth checking in each app's renderer.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "crvusd",
+      "project": "Curve USD (crvUSD, cg=crvusd)",
+      "verdict": "wrong",
+      "ours_before": "flat low-poly rainbow Curve torus on white (a CRV-style mark)",
+      "official": "crvUSD has its own icon: white wireframe torus on green. curvefi/curve-assets branding/crvusd.svg (2024-02) is a green disc (#468949/#2E6C49 gradient); the mainnet token icon images/assets/0xf939...png was redrawn 2025-05-07 ('crvUSD icon update to new style') as a white wireframe on a green square. Every version since 2023-06 is green/white, never rainbow",
+      "evidence": [
+        "https://raw.githubusercontent.com/curvefi/curve-assets/4ef7cc6e7b8debd57d2def50069e70c9c544093d/branding/crvusd.svg",
+        "https://raw.githubusercontent.com/curvefi/curve-assets/4ef7cc6e7b8debd57d2def50069e70c9c544093d/images/assets/0xf939e0a03fb07f59a73314e73794be0e57ac1b4e.png",
+        "https://github.com/curvefi/curve-assets/commits/main/images/assets/0xf939e0a03fb07f59a73314e73794be0e57ac1b4e.png"
+      ],
+      "notes": "Candidate SVG is 324 KB (dense wireframe), versus 12.6 KB for ours; it may need simplification. The newest mainnet icon is PNG only (green square, saved as dl/crvusd/curve-assets-0xf939e0a03fb07f59a73314e73794be0e57ac1b4e.png, sha256 7e2246adbecf6cb1f5ac8f7e0958a1594a9e91f38bd374458efca3f6b574e9f6). web3icons CRVUSD matches ours, so web3icons is likely where ours came from.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "dai",
+      "project": "Dai (DAI, cg=dai)",
+      "verdict": "current",
+      "ours_before": "#f4b731 disc with white D-with-two-bars symbol",
+      "official": "makerdao.com still shows DAI as white D-with-bars on a yellow-orange disc",
+      "evidence": [
+        "https://makerdao.com/",
+        "https://makerdao.com/dai.png"
+      ],
+      "notes": "Sky (ex-MakerDAO) brand kit (sky.money, Google Drive) covers Sky/USDS, not DAI. The makerdao.com disc has a light gradient around our colour.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "dash",
+      "project": "Dash (DASH, cg=dash)",
+      "verdict": "current",
+      "ours_before": "#008ce7 disc with white Dash D",
+      "official": "Dash 'D' (Circle): #008DE4 disc with white D (dash.org brand guidelines)",
+      "evidence": [
+        "https://www.dash.org/brand-guidelines/",
+        "https://media.dash.org/wp-content/uploads/dash-d-circle.svg"
+      ],
+      "notes": "Negligible colour difference (#008CE7 vs #008DE4).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "decentraland",
+      "project": "Decentraland (MANA, cg=decentraland)",
+      "verdict": "current",
+      "ours_before": "flat #ffc95b yellow disc with the Decentraland scene (suns, pyramids, bars) in white only",
+      "official": "full-colour Decentraland logo: #FF2D55 to #FFBC5B gradient disc, white and purple (#A524B3) pyramids, yellow #FFC95B suns and bars; decentraland.org serves DCL_icon_fullcolor.png (uploaded 2026-05-08) and the same design as favicon",
+      "evidence": [
+        "https://decentraland.org/",
+        "https://marketing-files.decentraland.org/uploads/1778267186976_DCL_icon_fullcolor.png",
+        "https://github.com/decentraland/ui/blob/5399973b7fd7cfebdb0ca79486af3f5e2916a4e5/src/assets/logo.svg"
+      ],
+      "notes": "Large colour drift: ours is a single-colour simplification no official asset uses (it matches web3icons MANA). Same composition, so not a new mark. The candidate is a 36px Sketch export; ImageMagick drops its gradient disc, check it in WebKit. No official press kit found.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "decred",
+      "project": "Decred (DCR, cg=decred)",
+      "verdict": "current",
+      "ours_before": "Dark Blue #091440 disc, mark halves in Key Blue #2970ff and Turquoise #2dd8a3",
+      "official": "decred.org/brand primary colours #2970FF, #2ED6A1, #091440; same mark (site logo uses a blue-to-turquoise gradient)",
+      "evidence": [
+        "https://decred.org/brand/",
+        "https://decred.org/images/256.png"
+      ],
+      "notes": "Colours match. Logo package: https://github.com/decred/dcrdesign/files/2160933/decred.-.logo.package.zip (not downloaded).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "deepbook",
+      "project": "DeepBook (DEEP, cg=deep)",
+      "verdict": "current",
+      "ours_before": "white disc with #1e6ef3 two-bar D symbol",
+      "official": "DeepBook media kit (DeepBook_Logos.zip, 2026-05): DeepBook_Symbol_Blue.svg is the same two-bar D in #1E6EF3",
+      "evidence": [
+        "https://live.standards.site/deepbook-media-kit",
+        "https://images.deepbook.tech/icon.svg"
+      ],
+      "notes": "Colour matches exactly. The DEEP coin metadata icon on Sui (images.deepbook.tech/icon.svg) is the inverse: white symbol on a #1349EC disc; either is official.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "digibyte",
+      "project": "DigiByte (DGB, cg=digibyte)",
+      "verdict": "current",
+      "ours_before": "flat #006ad2 disc with white DigiByte D",
+      "official": "DigiByte Symbol: #0066CC outer ring, #002352 navy inner disc, white D (DigiByte-Core/digibyte-logos; digibyte.org dgb-logo.png matches)",
+      "evidence": [
+        "https://www.digibyte.org/",
+        "https://github.com/DigiByte-Core/digibyte-logos/blob/a04c1838dfd87fcf62d5bfe30fbda9cf2c0b590d/Logos%20Vector/DigiByte%20Symbol.svg",
+        "https://www.digibyte.org/images/dgb-logo.png"
+      ],
+      "notes": "Same D glyph; ours omits the navy inner disc and ring, a visibly different look. The symbol is unchanged since 2017 (not a rebrand). digibyte.org also serves a white-centre variant (images/digibyte_symbol_06c.svg).",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "dogecoin",
+      "project": "Dogecoin (DOGE, cg=dogecoin)",
+      "verdict": "current",
+      "ours_before": "gold coin with Shiba Inu and white D",
+      "official": "same coin artwork (dogecoin.com apple-touch-icon)",
+      "evidence": [
+        "https://dogecoin.com/apple-touch-icon.png"
+      ],
+      "notes": "No brand kit on dogecoin.com (/assets, /brand, /press-kit 404).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "dydx",
+      "project": "dYdX (DYDX, cg=dydx-chain; chain dYdX Chain)",
+      "verdict": "current",
+      "ours_before": "#6966ff purple disc with flat white X",
+      "official": "dYdX X mark on a dark disc: main stroke white/grey, top-left leg white gradient, bottom-right leg purple (#7774FF); dYdX's own frontend serves it as the DYDX icon (v4-web public/currencies/dydx.png, src/icons/dydx-protocol.svg)",
+      "evidence": [
+        "https://www.dydx.foundation/brand",
+        "https://github.com/dydxprotocol/v4-web/blob/6f74c55cbf9602664c04b9b00a675ab49c98249b/public/currencies/dydx.png",
+        "https://raw.githubusercontent.com/dydxprotocol/v4-web/6f74c55cbf9602664c04b9b00a675ab49c98249b/src/icons/dydx-protocol.svg"
+      ],
+      "notes": "Large colourway drift (purple disc vs dark disc with a purple accent leg); same X geometry. dydx.foundation/brand blocks curl (403); checked in a browser, it shows the wordmark only. chain-registry dydx.svg is the same mark on a dark rounded square.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "dymension",
+      "project": "Dymension (DYM, cg=dymension)",
+      "verdict": "current",
+      "ours_before": "black disc with cream #f1e1d4 knot symbol",
+      "official": "same knot in #F1E1D4 on #24201F (dymension.xyz logo SVG; Brand-Kit.zip logo-dark-bg.png)",
+      "evidence": [
+        "https://dymension.xyz/",
+        "https://firebasestorage.googleapis.com/v0/b/dymension-mainnet.appspot.com/o/landing-page%2FBrand-Kit.zip?alt=media"
+      ],
+      "notes": "Minor: official dark is #24201F, ours #000. Brand kit zip is 91 MB, dated 2023-01; only three logo PNGs were kept (dl/dymension/kit/).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "ecash",
+      "project": "eCash (XEC, cg=ecash)",
+      "verdict": "current",
+      "ours_before": "#1355ae disc with white hexagonal e",
+      "official": "eCash Round Icon: blue #0074C2 disc (or #00ABE7 to #0074C2 to #273498 gradient) with white e",
+      "evidence": [
+        "https://e.cash/brand",
+        "https://e.cash/logos/ecash-circle-icon-blue.svg",
+        "https://e.cash/logos/ecash-circle-icon-blue-gradient.svg"
+      ],
+      "notes": "Moderate colour drift: ours #1355AE (royal blue) vs official #0074C2 (azure). Our e is also drawn larger. The gradient variant's sha256 is e904d200615b3f4d49c28d6f5b1672e6b536415d700456fa69b6ceac815e49bc.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "eigen",
+      "project": "EigenCloud, formerly EigenLayer (EIGEN, cg=eigenlayer)",
+      "verdict": "current",
+      "ours_before": "white disc with navy #1a0c6d pixel-E symbol",
+      "official": "the 2025 EigenCloud rebrand kept the pixel-E symbol: eigencloud.xyz favicon is the white symbol on #1A0C6D, the EIGEN token page (eigencloud.xyz/eigen) uses the same symbol as a 3D cube and in its header logo",
+      "evidence": [
+        "https://www.eigencloud.xyz/eigen",
+        "https://www.eigencloud.xyz/favicon.png",
+        "https://www.eigencloud.xyz/images/token-header.svg"
+      ],
+      "notes": "eigenlayer.xyz redirects to eigencloud.xyz. No brand kit found (eigencloud.xyz/brand 404). Eigen Foundation uses a separate 'EgF' mark that is not the token's. Ours is the inverse colourway of the favicon, in the same colours.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "ens",
+      "project": "Ethereum Name Service (ENS, cg=ethereum-name-service)",
+      "verdict": "current",
+      "ours_before": "#0080bc disc with #f6f6f6 ENS mark",
+      "official": "ens.domains/brand token-icon.svg: #0080BC disc with #F6F6F6 mark",
+      "evidence": [
+        "https://ens.domains/brand",
+        "https://ens.domains/assets/brand/token-icon.svg"
+      ],
+      "notes": "Matches the official token icon exactly.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "ethena",
+      "project": "Ethena (ENA, cg=ethena)",
+      "verdict": "current",
+      "ours_before": "#1c1c1c disc with white diamond-sigma mark",
+      "official": "same mark on a dark disc (ethena.fi apple-touch-icon, final-ena.svg; docs media assets)",
+      "evidence": [
+        "https://docs.ethena.fi/resources/media-assets",
+        "https://ethena.fi/shared/apple-touch-icon.png",
+        "https://ethena.fi/finalcta/final-ena.svg"
+      ],
+      "notes": "Official ENA disc has a subtle dark gradient and rim; ours is flat. More assets in a linked Figma file.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "ethereum",
+      "project": "Ethereum (ETH, cg=ethereum)",
+      "verdict": "current",
+      "ours_before": "#627eea disc with white/lilac faceted ETH diamond",
+      "official": "Ethereum diamond, unchanged on ethereum.org/assets (eth-diamond-* variants)",
+      "evidence": [
+        "https://ethereum.org/en/assets/"
+      ],
+      "notes": "ethereum.org offers no disc token icon; the #627EEA disc is the long-standing ecosystem convention (CoinGecko/Trust Wallet), not an ethereum.org colour.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "ethereumclassic",
+      "project": "Ethereum Classic (ETC, cg=ethereum-classic)",
+      "verdict": "current",
+      "ours_before": "#328332 green disc with white/pale-green faceted ETC diamond",
+      "official": "ETC diamond, unchanged: official Media_Kit 2016 logo in greens #3CBA3C/#0C8412; ethereumclassic.org and its 2020 website logo use a flat aqua-green #49FCD4 diamond",
+      "evidence": [
+        "https://github.com/ethereumclassic/Media_Kit/tree/1378ca4ce727d603bc54983340650ec10a80b861",
+        "https://raw.githubusercontent.com/ethereumclassic/Media_Kit/1378ca4ce727d603bc54983340650ec10a80b861/Logo_ETC/etc_logo_green.png",
+        "https://raw.githubusercontent.com/ethereumclassic/Media_Kit/1378ca4ce727d603bc54983340650ec10a80b861/Logo_ETC_Website/etc_logo_website_green.svg"
+      ],
+      "notes": "Ours is the common token-icon rendering (white diamond on a green disc) of the official mark; its green is within the 2016 palette. The website colourway (#49FCD4) differs.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "ethfi",
+      "project": "ether.fi (ETHFI, cg=ether-fi)",
+      "verdict": "current",
+      "ours_before": "#302a92 indigo disc with the isometric e symbol in a cyan-to-violet gradient outline (#54c9fb/#8383e9/#c37bfb)",
+      "official": "same symbol; the ether.fi Media Kit (Notion, Etherfi_Logo.zip dated 2025-04) uses a flat purple #655EA8 outline on near-black #0A0A0D ('App logo dark'), or black on cream; the older gradient version is still the GitBook docs icon",
+      "evidence": [
+        "https://etherfi.notion.site/ether-fi-media-kit",
+        "https://etherfi.gitbook.io/etherfi"
+      ],
+      "notes": "Colour drift, uncertain: www.ether.fi and app.ether.fi return 429 to automated clients, so the ETHFI icon the app currently shows could not be checked. The kit's Tokens.zip covers eETH/weETH/eBTC/etc. but has no ETHFI icon. The symbol-only purple outline is kit-Light_etherfi_icon-purple-outline.svg (sha256 d539965fcd02ed7bc02dcacb18368dba8f5bf075049e007d0e1933a691a61a37). ImageMagick drops our gradient stroke (render/ours/ethfi.png shows black lines); WebKit draws it.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "eurc",
+      "project": "Euro Coin (EURC, Circle)",
+      "verdict": "current",
+      "ours_before": "#0b53bf disc, white euro sign between two white arcs",
+      "official": "Circle brand kit 'EURC Token.svg': #0B53BF disc, white euro sign and arcs; identical design",
+      "evidence": [
+        "https://www.circle.com/pressroom#brandkit",
+        "https://6778953.fs1.hubspotusercontent-na1.net/hubfs/6778953/Pressroom/brandkit/logo-downloads/eurc.zip"
+      ],
+      "notes": "Usage governed by https://6778953.fs1.hubspotusercontent-na1.net/hubfs/6778953/CircleBrandUsePolicy.pdf (not read).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "fdusd",
+      "project": "First Digital USD (FDUSD)",
+      "verdict": "outdated",
+      "ours_before": "black disc, blocky white square-bracket shape upper right, wide #00e98d green bar lower left (the 2023-24 FDUSD mark)",
+      "official": "#101010 disc, white slanted 'F' (#F6F8F9) with a small #4AFAB4 green parallelogram foot; introduced with the late-2024 First Digital Labs site relaunch (Webflow asset id dates it 2024-12-10)",
+      "evidence": [
+        "https://www.firstdigitallabs.com/brand-assets (Cloudflare-blocked; read via http://web.archive.org/web/20260417165942/https://www.firstdigitallabs.com/brand-assets)",
+        "https://cdn.prod.website-files.com/67343e8ae0825a566f704bb0/6758189ee5e3d9e58710ba78_fdusd-currency.svg",
+        "http://web.archive.org/web/20240119045457/https://firstdigitallabs.com/ (old site: workspace/img/logo/fdusd.svg shows the blocky mark ours uses)"
+      ],
+      "notes": "The brand-assets page's own 'FDUSD Logo Symbol'/'Plain token' downloads (brand-img-03/04.svg, also in 'FD Branding.zip') are SVGs that only wrap embedded PNGs, so the homepage fdusd-currency.svg (48x48, pure vector, disc + F + foot) is the usable vector. firstdigitallabs.com sits behind a Cloudflare challenge; the page was read from the Wayback copy of 2026-04-17, the asset itself downloads directly from the Webflow CDN. web3icons FDUSD still shows the old mark.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "filecoin",
+      "project": "Filecoin (FIL)",
+      "verdict": "current",
+      "ours_before": "#0090ff disc, white script f with two bars",
+      "official": "filecoin.io serves /assets/brand/filecoin-mark.svg: #0090FF disc with the same f",
+      "evidence": [
+        "https://filecoin.io/",
+        "https://filecoin.io/assets/brand/filecoin-mark.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "flare",
+      "project": "Flare (FLR)",
+      "verdict": "current",
+      "ours_before": "#e62058 disc, white two-bar F with dot",
+      "official": "flare.network logo /api/media/file/Flare.svg: same F, #E62058",
+      "evidence": [
+        "https://flare.network/",
+        "https://flare.network/api/media/file/Flare.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "floki",
+      "project": "FLOKI",
+      "verdict": "current",
+      "ours_before": "white disc, Floki shiba head in grey viking helmet with orange horns",
+      "official": "floki.com header logo floki-logo.svg: same dog head",
+      "evidence": [
+        "https://floki.com/",
+        "https://cdn.prod.website-files.com/62c5b02ab108966a252dfe8e/631797108d2470db4d67a646_floki-logo.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "fractalbitcoin",
+      "project": "Fractal Bitcoin (FB)",
+      "verdict": "current",
+      "ours_before": "black disc, orange #f96c04 F joined to white bitcoin B",
+      "official": "fractalbitcoin.io favicon.svg: same F-B ligature, orange #F96C04 F, white B on black",
+      "evidence": [
+        "https://fractalbitcoin.io/",
+        "https://fractalbitcoin.io/favicon.svg"
+      ],
+      "notes": "The site's 'Get FB' button uses an alternative orange-coin rendering (/img/header/header-fractal-icon.svg, #F39800 disc); the favicon matches ours.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "gala",
+      "project": "Gala (GALA)",
+      "verdict": "current",
+      "ours_before": "black disc, white isometric cube outline forming a G",
+      "official": "gala.com favicon.svg: same cube mark, white on #0B0D14",
+      "evidence": [
+        "https://gala.com/favicon.svg"
+      ],
+      "notes": "No brand kit page found; gala.com is a JS app.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "gho",
+      "project": "GHO (Aave)",
+      "verdict": "current",
+      "ours_before": "#28d358 disc, white ghost-G with two eyes",
+      "official": "Aave brand kit 'GHO/GHO Token.svg': #28d358 disc, same ghost-G; geometry identical",
+      "evidence": [
+        "https://aave.com/brand",
+        "https://aave.com/aave-brand-assets.zip"
+      ],
+      "notes": "Aave brand page: logos should be used in their original form without modification. web3icons GHO (lavender) differs from the official token.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "gmx",
+      "project": "GMX",
+      "verdict": "current",
+      "ours_before": "gradient disc (#03d1cf to #4e09f8), white GMX triangle",
+      "official": "gmx-io/gmx-assets 'GMX_LOGO ONLY CIRCLE.svg': same triangle, filled with the #03d1cf to #4e09f8 gradient, on a #192631 navy disc",
+      "evidence": [
+        "https://github.com/gmx-io/gmx-assets/blob/6ca89def873126e2d46bab65651cf940b2597923/GMX-Assets/SVG/GMX_LOGO%20ONLY%20CIRCLE.svg"
+      ],
+      "notes": "Same mark, colour scheme inverted: ours puts the gradient on the disc with a white glyph; the official circle (added 2024-02-15) has a #192631 disc with the gradient glyph. Candidate given for that drift.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "gnosis",
+      "project": "Gnosis (GNO)",
+      "verdict": "outdated",
+      "ours_before": "#00a6c4 teal disc, white inner disc carrying the teal owl outline (2020-era GNO colours)",
+      "official": "Same owl glyph, now in the 2026 Gnosis identity: Purple 800 #3F2ACD disc with the owl cut out (gnosis.io favicon, Gnosis Chain docs 'gnosis-owl-purple.svg'). Between them the 2023 media kit used black/moss. Docs switched on 2026-10-17 ('align the docs with the Gnosis visual identity ... 2026 identity').",
+      "evidence": [
+        "https://www.gnosis.io/media#brand-assets",
+        "https://framerusercontent.com/images/FZ8vRzehBcEomECpCflFZNcIe0.png (gnosis.io favicon)",
+        "https://github.com/gnosischain/documentation/blob/7590b11d7f18406c0c6dc92efcd400ab521ba26b/static/img/brand/gnosis-owl-purple.svg",
+        "https://github.com/gnosischain/media-kit (2023 kit, Owl_Logo - Mark.svg)"
+      ],
+      "notes": "The glyph is unchanged; the change is the colour identity (teal → purple #3F2ACD), so this is a recolour more than a new symbol. gnosis.io/media offers only wordmark lockups (GNOSIS with owl as the O) for download; there is no separate GNO token file. web3icons GNO is still teal, its gnosis network icon moss #3E6957 (2023).",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "gram",
+      "project": "Gram (GRAM, formerly Toncoin; TON native coin)",
+      "verdict": "current",
+      "ours_before": "#30a1f5 disc, white gem with a #30a1f5 four-point star",
+      "official": "TON media page 'Gram Circular Badge.svg': #30A1F5 disc, white gem, blue star; same paths (scaled)",
+      "evidence": [
+        "https://ton.org/media",
+        "https://ton.org/assets/media/gram_circular_badge.zip"
+      ],
+      "notes": "Rename took effect 2026-06-15. ton.org/media also offers gram_diamond_mark.zip (gem without disc) and gram_full_logo.zip. gram.org uses a 3D raster gem for its own app icon.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "hedera",
+      "project": "Hedera (HBAR)",
+      "verdict": "current",
+      "ours_before": "black disc, white H with two crossbars",
+      "official": "Hedera logomark (H in a circle), primary black; brand page says it 'is also used to represent HBAR on third-party exchanges'",
+      "evidence": [
+        "https://brand.hedera.com/ (hedera.com/brand)"
+      ],
+      "notes": "Hedera also publishes an HBAR currency symbol ħ (HBAR-Symbol.zip 2026/08, icon_HBAR.zip 2026/11) but states it 'should never be used to replace the Hedera logomark'. Brand rules: do not recreate the logomark, change its colour or shape.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "helium",
+      "project": "Helium (HNT)",
+      "verdict": "current",
+      "ours_before": "#4655f6 blue-violet disc, white Helium link mark (ring with two lobes)",
+      "official": "helium.com/hnt shows the same mark (white disc cut-out mark lSJfdGfRoUw2iIXuGmxYkcZHNE.svg) and a 3D indigo HNT coin",
+      "evidence": [
+        "https://www.helium.com/hnt",
+        "https://framerusercontent.com/images/lSJfdGfRoUw2iIXuGmxYkcZHNE.svg"
+      ],
+      "notes": "No official brand kit found (helium.com/brand 404). The site's accent is purple #5E25FD and the 3D coin reads indigo; no flat official HNT token colour to compare, so colour unverified.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "hyperliquid",
+      "project": "Hyperliquid (HYPE / HyperEVM)",
+      "verdict": "current",
+      "ours_before": "#072723 dark teal disc, #97fce4 mint blob",
+      "official": "Brand kit 'Hyperliquid SVG format.zip' Hyperliquid_Blob_Green.svg: same blob, #97FCE4; dark variant #011916",
+      "evidence": [
+        "https://hyperliquid.gitbook.io/hyperliquid-docs/brand-kit"
+      ],
+      "notes": "Blob logo is a Hyper Foundation trademark; usage under the Foundation trademark guidelines linked from that page.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "immutable",
+      "project": "Immutable (IMX)",
+      "verdict": "current",
+      "ours_before": "black ring around a white disc carrying the black hexagonal-twist Immutable symbol",
+      "official": "immutable.com favicon icon-light.png: white hexagonal-twist symbol filling a black disc; same symbol",
+      "evidence": [
+        "https://www.immutable.com/",
+        "https://www.immutable.com/icon-light.png"
+      ],
+      "notes": "Same symbol, different container (ours white disc inside a black ring, from web3icons; official white glyph on black). Official only as PNG; the header logo-black.svg has the symbol-on-disc inside a lockup. Immutable's own token list still points IMX at an old X-mark (checkout-cdn.immutable.com/v1/blob/img/tokens/imx.svg) which is stale, not a candidate.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "injective",
+      "project": "Injective (INJ)",
+      "verdict": "current",
+      "ours_before": "#4d3dff disc, white Injective double-wave mark",
+      "official": "Brand kit injective_token.zip 'Injective Token.svg': #4D3DFF disc, same mark",
+      "evidence": [
+        "https://injective.com/brand",
+        "https://injective.com/brand/injective_token.zip"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "ink",
+      "project": "Ink (Kraken L2)",
+      "verdict": "current",
+      "ours_before": "#7132f5 disc, white ink mark (half disc with three bars)",
+      "official": "Ink brand kit: same mark. Swatch 'Ink Purple' #7132F5 remains primary, but the 2026-10-05 kit refresh ('new logo, colors and Satoshi') draws its purple mark/avatar files in 'Ink Light' #9E70FF",
+      "evidence": [
+        "https://docs.inkonchain.com/work-with-ink/brand-kit",
+        "https://github.com/inkonchain/docs/blob/afbb9bc8d22429467c97e70ced937a0d07cd6537/public/downloads/ink-brand-kit.zip",
+        "https://github.com/inkonchain/docs/blob/afbb9bc8d22429467c97e70ced937a0d07cd6537/src/components/BrandKit.tsx"
+      ],
+      "notes": "Mark geometry unchanged. If matching the kit file rather than the primary swatch, use ink-brand-kit/mark/svg/ink-mark-purple.svg (#9E70FF disc, white mark), extracted at (local copy)",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "internetcomputer",
+      "project": "Internet Computer (ICP)",
+      "verdict": "current",
+      "ours_before": "white disc, ICP infinity loop: orange-yellow and pink-purple gradients with #29abe2 blue",
+      "official": "internetcomputer.org favicon.svg and icp-logo-horizontal.svg: same infinity with #F15A24/#FBB03B, #ED1E79/#522785, #29ABE2",
+      "evidence": [
+        "https://internetcomputer.org/favicon.svg",
+        "https://internetcomputer.org/img/icp-logo-horizontal.svg"
+      ],
+      "notes": "Our 160px render shows the gradients wrong because ImageMagick's MSVG ignores userSpaceOnUse gradients; the SVG source matches.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "jito",
+      "project": "Jito (JTO)",
+      "verdict": "current",
+      "ours_before": "black disc, thin white ring, white four-arm Jito X",
+      "official": "jito.network/jto 'JTO_icon.svg': same geometry (black disc, white ring stroke, four arms)",
+      "evidence": [
+        "https://www.jito.network/jto/",
+        "https://www.jito.network/jto-ds/JTO_icon.svg"
+      ],
+      "notes": "Site is Cloudflare-protected for curl; read in a browser. Official brand assets are a Google Drive folder linked from the footer (https://drive.google.com/drive/u/0/folders/1KuEn60FLsmQZDSDDZ15dCPyxFgQAaAtL), not opened.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "jupiter",
+      "project": "Jupiter (JUP)",
+      "verdict": "current",
+      "ours_before": "#141726 navy disc, Jupiter planet stripes in #c6f462 to #33d9ff gradient",
+      "official": "Jupiter's token API icon for JUP and static.jup.ag/jup/icon.png: same navy disc with green-to-cyan stripes",
+      "evidence": [
+        "https://static.jup.ag/jup/icon.png",
+        "https://lite-api.jup.ag/tokens/v2/search?query=JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+        "https://jup.ag/favicon.svg"
+      ],
+      "notes": "No brand kit page found (jup.ag/brand 404). Our 160px render shows black stripes only because MSVG drops the gradients.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "just",
+      "project": "JUST (JST)",
+      "verdict": "current",
+      "ours_before": "#b41514 disc, white JUST symbol (dot in cup, bar, dot)",
+      "official": "just.network/jst 'JST token logo' just-logo.svg: same symbol on #A42921 red",
+      "evidence": [
+        "https://just.network/jst",
+        "https://just.network/just-pages/assets/just-logo.svg"
+      ],
+      "notes": "Slight drift: ours #b41514, official SVG #A42921 (the site's grants-jst-token raster reads closer to ours). Proportions differ a little (official top dot smaller, sits inside the cup).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "kaia",
+      "project": "Kaia (KAIA)",
+      "verdict": "current",
+      "ours_before": "black disc, neon lime #bff009 Kaia symbol",
+      "official": "Kaia brand guidelines: default colour combination neon lime on black; same symbol",
+      "evidence": [
+        "https://docs.kaia.io/misc/brand/",
+        "https://www.kaia.io/media-center"
+      ],
+      "notes": "Asset files are in a Google Drive folder linked from the docs page (not opened).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "kaspa",
+      "project": "Kaspa (KAS)",
+      "verdict": "outdated",
+      "ours_before": "perfect #6fc7ba teal disc with a dark #1a1a1a K-arrow (pre-2023 mark)",
+      "official": "Teal #6FC7BA rounded-octagon 'blob' with a white K-arrow; introduced in the June 2023 'Kaspa Logo Set 2023' and still served as kaspa.org's icon",
+      "evidence": [
+        "https://kaspa.org/icon.svg?icon.2mq9y8vb0g1m8.svg",
+        "http://web.archive.org/web/20231001114538/https://kaspa.org/media-kit/ (2023 media kit, Kaspa-Logo-Set-2023.zip, Kaspa-Icon-Dark-Green-on-White.svg)"
+      ],
+      "notes": "Same paths as the 2023 kit's Kaspa-Icon-Dark-Green-on-White.svg (also at (local copy) from Wayback, sha256 914c4797a08efca86da67fcc03425de45a28ba1ea55fe88b2286226c3d03944b; differs only in viewBox). The mark is a blob, not a circle, with a white circle under the K; fitting the repo's full-disc rule means placing it on a disc, which the no-recolour/reconfigure rule may be read to forbid. Current kaspa.org (operated by Kasmedia) has no media-kit page; the 2023 kit URLs on kaspa.org now 404. web3icons KAS already shows the blob.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "katana",
+      "project": "Katana (KAT)",
+      "verdict": "current",
+      "ours_before": "flat #101631 navy disc, #f6ff0d yellow K",
+      "official": "Katana brand kit 'Katana Token.svg': same yellow #F6FF0D K on a vertical-gradient disc (#101631 → #0541B2 → #059EED → #C5EAFC)",
+      "evidence": [
+        "https://brand.katana.network/ (ClickUp doc 'Katana Brand Kit', last updated 2025-06-06)",
+        "https://t90131276658.p.clickup-attachments.com/t90131276658/217f2f32-2627-4857-b06d-5dd04028ce8b/00%20LOGO.zip"
+      ],
+      "notes": "Glyph identical; ours drops the token's gradient and keeps only its top colour, so the lower half of the official disc (bright blue to pale) is missing. katana.network's favicon is a different variant (white K on #0424DC square).",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "kava",
+      "project": "Kava (KAVA)",
+      "verdict": "current",
+      "ours_before": "#ff564f red disc, white K",
+      "official": "kava.io/branding Kava-Coin.svg: #FF433E disc, same white K",
+      "evidence": [
+        "https://www.kava.io/branding",
+        "https://cdn.prod.website-files.com/61e9c71623b1f0311abcbbbc/622b68fc6c920e4466196240_Kava-Coin.svg"
+      ],
+      "notes": "Minor colour drift: ours #FF564F, official #FF433E.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "kcs",
+      "project": "KuCoin Token (KCS)",
+      "verdict": "current",
+      "ours_before": "#24ae8f teal-green disc, white KuCoin KC mark (small)",
+      "official": "KuCoin's own KCS currency icon (assets-currency.kucoin.com, PNG): same KC mark, larger, on a mint #41E6AF disc; KuCoin's site logo green is #00B47D",
+      "evidence": [
+        "https://www.kucoin.com/price/KCS",
+        "https://assets-currency.kucoin.com/60c74375db892b0006d819a9_KCS.png",
+        "https://assets.staticimg.com/kc-v2-config/site-config/693bcdd4680db10001fa9856_logo_general_green.svg"
+      ],
+      "notes": "Mark unchanged; colour drift ours #24AE8F vs KCS icon #41E6AF (brand green #00B47D). Official source is PNG only; no SVG with the official colour found (web3icons KCS uses #23AF91 like ours). KuCoin media-kit page 404s.",
+      "outcome": "recoloured"
+    },
+    {
+      "artwork_name": "kusama",
+      "project": "Kusama (KSM)",
+      "verdict": "current",
+      "ours_before": "black disc, white canary",
+      "official": "kusama.network header logo kusama-logo-canary-white.png: same canary",
+      "evidence": [
+        "https://kusama.network/",
+        "https://kusama.network/images/kusama-logo-canary-white.png"
+      ],
+      "notes": "No brand kit page found (kusama.network/brand 404); site serves only a PNG.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "layerzero",
+      "project": "LayerZero (ZRO)",
+      "verdict": "current",
+      "ours_before": "black disc, white LayerZero 'zero' mark (two offset halves)",
+      "official": "layerzero.network / layerzero.foundation apple-touch-icon: same mark white on black",
+      "evidence": [
+        "https://layerzero.network/apple-touch-icon.png",
+        "https://publicdocs.notion.site/publicdocs/Layer-Zero-Media-Kit-bd838df13f864a4b9f403c789c670d9a"
+      ],
+      "notes": "Media kit is a Notion page (Logos subpage and LayerZero_Brandbook.pdf); its logo files were not reachable without Notion interaction.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "leo",
+      "project": "UNUS SED LEO (LEO, Bitfinex/iFinex)",
+      "verdict": "current",
+      "ours_before": "#11021e near-black disc, orange-to-yellow gradient LEO lion-cube mark",
+      "official": "leo.bitfinex.com favicon and share images: same gradient lion-cube on black / dark slate disc",
+      "evidence": [
+        "https://leo.bitfinex.com/",
+        "https://leo.bitfinex.com/favicon.ico",
+        "https://leo.bitfinex.com/leo-thumbnail-2.png"
+      ],
+      "notes": "Bitfinex publishes no SVG; our render looks dark only because MSVG drops the gradients.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "lido",
+      "project": "Lido DAO (LDO)",
+      "verdict": "current",
+      "ours_before": "#ffaa7d peach disc, white Lido drop",
+      "official": "Lido press kit 'Lido/Tokens/LDO/LDO.svg': #FFAA7D disc, same drop",
+      "evidence": [
+        "https://lido.fi/static/LIDO_press_kit.zip"
+      ],
+      "notes": "The Lido logomark is blue #0085FF, but the LDO token icon in the same kit is peach, matching ours.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "linea",
+      "project": "Linea (LINEA token and network)",
+      "verdict": "current",
+      "ours_before": "#61dfff cyan disc, #190066 L with dot",
+      "official": "linea.build/assets brand kit 'Token/Linea-Token_Round.svg': #61DFFF disc, #190066 L and dot; identical",
+      "evidence": [
+        "https://linea.build/assets",
+        "https://linea.build/media/46y5rC2mj5Ocekur7vMSdP/c972526b87afa927a2e0bf2f506e8f75/Linea-Brand-Assets.zip"
+      ],
+      "notes": "The 2025 refresh is what ours already shows: the kit's token file matches exactly. The logomark files are #121212 L on #61DFFF.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "litecoin",
+      "project": "Litecoin (LTC)",
+      "verdict": "current",
+      "ours_before": "white L-with-bar on #345d9d blue disc",
+      "official": "Litecoin Foundation brand guidelines (linked from litecoin.com/resources): coin icon is the same L mark, 'silver primary logo, or blue logo' preferred; blue is PMS 7684 C #345D9D, silver #A6A9AA. litecoin.org favicon uses the same mark in black.",
+      "evidence": [
+        "https://litecoin.com/resources",
+        "https://cdn.prod.website-files.com/621ec1b30feeb6cd8bb9ec25/62468af0292e31d5fc3a6d58_LC18-007%20Brand%20guidelines.pdf",
+        "https://litecoin.org/assets/ltc-DIEMRQHk.svg"
+      ],
+      "notes": "Our blue #345d9d matches the guideline hex exactly. Guidelines prefer silver #A6A9AA for the coin icon but explicitly allow the blue one. litecoin.com is behind a Cloudflare check for curl; read via the browser pane. PDF saved at (local copy)",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "lombardbitcoin",
+      "project": "Lombard Staked Bitcoin (LBTC)",
+      "verdict": "current",
+      "ours_before": "black #121514 bitcoin B on green #00e676 disc",
+      "official": "LBTC token icon on Lombard's brand assets page: same black B on #00E676 green disc (PNG only).",
+      "evidence": [
+        "https://docs.lombard.finance/resources/brand",
+        "https://docs.lombard.finance/lbtc.png"
+      ],
+      "notes": "Exact colour match (#00E676, #121514). The brand page offers LBTC only as PNG (lbtc.png, lbtc-square.png); Lombard's own mark (lombard-icon-green.svg) is a different, company logo.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "manta",
+      "project": "Manta Network (MANTA) / Manta Pacific",
+      "verdict": "current",
+      "ours_before": "teal-blue-pink gradient manta/wave in an open ring on white disc",
+      "official": "manta.network header logo (assets/img/new-logo.png, the 'Logo Assets Update July 2024' mark): same gradient wave-in-ring symbol.",
+      "evidence": [
+        "https://manta.network/assets/img/new-logo.png",
+        "https://mantanetwork.notion.site/Logo-Assets-Update-July-2024-fa251dfac771481a888fc1c8f15daae7"
+      ],
+      "notes": "The render in render/ours/manta.png is wrong (ImageMagick MSVG drops the gradient and draws it black); rendered with Quick Look it shows the gradient correctly. The Notion asset page is a JS database and could not be read.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "mantle",
+      "project": "Mantle (MNT)",
+      "verdict": "current",
+      "ours_before": "white radial-bar sunburst on dark green #092c24 disc",
+      "official": "mantle.xyz header logo and favicon: same radial-bar ring mark.",
+      "evidence": [
+        "https://www.mantle.xyz/",
+        "https://www.mantle.xyz/favicon.ico"
+      ],
+      "notes": "No brand/press page found (/brand, /media-kit, /brand-kit, /press all 404). Site palette is dark greens (#06110d, #1e2925, #040f0b) with accent #06b680; our #092c24 disc is within that family, small drift only.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "megaeth",
+      "project": "MegaETH (MEGA)",
+      "verdict": "current",
+      "ours_before": "dark #302c2d ring with M and two dots, on white disc",
+      "official": "megaeth.com favicon: same ringed M-with-two-dots mark, on a light warm-grey #DFD9D9 disc.",
+      "evidence": [
+        "https://www.megaeth.com/favicon.ico",
+        "https://www.megaeth.com/token"
+      ],
+      "notes": "Minor colour drift: official disc #DFD9D9 vs ours #fff. No brand kit found; favicon is PNG only.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "merlin",
+      "project": "Merlin Chain (MERL)",
+      "verdict": "current",
+      "ours_before": "white eight-point star with wand on blue-violet gradient disc (#2a2cbf to #aa68ff)",
+      "official": "merlinchain.io favicon/logo: same star-and-wand on a #392ED0 to #9559FF gradient disc.",
+      "evidence": [
+        "https://merlinchain.io/favicon.ico",
+        "https://merlinchain.io/_next/static/media/logo.b7447843.png"
+      ],
+      "notes": "render/ours/merlin.png shows a black disc because ImageMagick MSVG ignores the gradient fill; the SVG itself is fine. Official assets are PNG only.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "metis",
+      "project": "Metis (METIS)",
+      "verdict": "outdated",
+      "ours_before": "black disc, teal #00d8c1 open ring with the woman's-head profile and olive branch cut into it",
+      "official": "Metis brand assets (GitHub MetisProtocol/brand-assets, Jan 2024) 'Symbol': cyan #00D2FF full disc with a larger black head silhouette and cyan olive branch; docs.metis.io uses the same cyan icon.",
+      "evidence": [
+        "https://github.com/MetisProtocol/brand-assets/tree/3b70004621ada3fa4f8b499d40b65a661162e083/SVG",
+        "https://docs.metis.io/icon.png?bd4825f408a204ae"
+      ],
+      "notes": "Same concept (head + olive branch), but the official symbol is drawn differently and in cyan #00D2FF, not teal #00d8c1 on black; web3icons METIS lags with the teal variant ours matches. metis.io itself is behind a Cloudflare bot check (not bypassed). The kit also has 'Symbol black version.svg' (black disc, cyan head) and 'Symbol white.svg'.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "monad",
+      "project": "Monad (MON)",
+      "verdict": "current",
+      "ours_before": "white rounded-diamond ring on #6e54ff disc",
+      "official": "Monad Brand & Media Kit 'Token' SVG: same mark on #6E54FF disc (with a subtle drop shadow).",
+      "evidence": [
+        "https://monad.xyz/brand-and-media-kit",
+        "https://monad.xyz/brand-page-assets/Token.svg"
+      ],
+      "notes": "Exact colour match. Official Token.svg saved at (local copy) (sha256 5ad0b4aa249fa5c3034dd4656195db01c9f0a95320f4aace24309a705d96ea28) if a re-import is ever wanted.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "monero",
+      "project": "Monero (XMR)",
+      "verdict": "current",
+      "ours_before": "white M on orange #f26822 with grey #4d4d4d lower band",
+      "official": "getmonero.org press kit symbol: same mark and colours.",
+      "evidence": [
+        "https://www.getmonero.org/press-kit/",
+        "https://www.getmonero.org/press-kit/symbols/monero-symbol-480.png"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "morpho",
+      "project": "Morpho (MORPHO)",
+      "verdict": "current",
+      "ours_before": "white/translucent butterfly on #2470ff disc",
+      "official": "Morpho token icon (brand.morpho.org, morpho-token-icon.zip, May 2024): identical, #2470FF.",
+      "evidence": [
+        "https://brand.morpho.org/",
+        "https://cdn.morpho.org/assets/brand-kit/morpho-token-icon.zip"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "near",
+      "project": "NEAR Protocol (NEAR)",
+      "verdict": "current",
+      "ours_before": "black N on NEAR green #00ec97 disc",
+      "official": "near.org uses the same N mark (black on white apple-touch-icon, header lockup); site CSS still defines --color-green:#00ec97.",
+      "evidence": [
+        "https://near.org/apple-touch-icon.png",
+        "https://near.org/"
+      ],
+      "notes": "No official brand page found (near.org/brand, /brand-kit, /media-kit, /press all 404). No official token-on-disc asset located; mark and green match.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "nexo",
+      "project": "Nexo (NEXO)",
+      "verdict": "outdated",
+      "ours_before": "pre-2024 3D blue isometric N (#2853c3/#3ca9e5/#60beff) on white disc",
+      "official": "Nexo rebranded 2024-10-31: new N built from a spiral of thin diagonal lines. NEXO token icon served by nexo.com: beige #E1D8C7 line-N on near-black #0A0D11 disc with a #544B40 rim.",
+      "evidence": [
+        "https://nexo.com/brand",
+        "https://static.nexo.com/_v2/common/currencies/NEXO.svg",
+        "https://content.nexo.com/logos/nexo-logo-small.svg"
+      ],
+      "notes": "NEXO.svg is 32x32 viewBox and already a disc with a thin rim. nexo.com/brand is the rebrand story page; no downloadable kit or usage terms found.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "notcoin",
+      "project": "Notcoin (NOT)",
+      "verdict": "current",
+      "ours_before": "white outlined triangle with centre line on black disc",
+      "official": "notco.in header logo notcoin-logo-rounded.svg: same white triangle on black rounded disc.",
+      "evidence": [
+        "https://notcoin.org/",
+        "https://cdn.joincommunity.xyz/explore/icons/notcoin-logo-rounded.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "okb",
+      "project": "OKB (OKX) / X Layer",
+      "verdict": "current",
+      "ours_before": "white OKX five-square checker on black disc",
+      "official": "OKX currency icon for OKB: same white checker on black disc (PNG).",
+      "evidence": [
+        "https://static.okx.com/cdn/oksupport/asset/currency/icon/okb.png",
+        "https://web3.okx.com/xlayer"
+      ],
+      "notes": "Current for the OKB token. The same artwork also stands for the X Layer chains; X Layer has its own network mark in web3icons (networks/branded/x-layer.svg: OKX checker with trailing bars), but no official X Layer brand asset was found (www.okx.com/okb redirects to web3.okx.com/xlayer; okx.com /media-kit and /brand-guidelines 404). Whether X Layer should keep using the OKB icon is a catalog decision, not a staleness issue.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "ondo",
+      "project": "Ondo Finance (ONDO)",
+      "verdict": "current",
+      "ours_before": "black concentric-arc 'O' rings on white disc",
+      "official": "ondo.finance icon.svg: same concentric-arc mark in black on white.",
+      "evidence": [
+        "https://ondo.finance/icon.svg?8db0fc230e9baadd",
+        "https://ondo-finance.notion.site/Ondo-Media-Kit-3bc0a5aced014cc4b0ef62f1638bbf8e"
+      ],
+      "notes": "Media kit is a JS-rendered Notion page, not read.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "optimism",
+      "project": "Optimism (OP) / OP Mainnet",
+      "verdict": "current",
+      "ours_before": "white italic OP on Optimism Red #ff0421 disc",
+      "official": "Optimism brand page (kit files dated Dec 2025): 'OP Token Round Avatar' is the same OP on #FF0421 disc; the brand also defines a separate 'OP Mainnet' symbol (white swirl-with-sparkle on red) with the rule 'Use only when referring to the Optimism blockchain', and says of the OP icon 'Use the icon only for avatars and tokens.'",
+      "evidence": [
+        "https://optimism.io/brand",
+        "https://cdn.sanity.io/files/y6ka751a/production/5a7eaedf4e0c96529342e556b52cb05da12d9f23.zip"
+      ],
+      "notes": "Token icon is current (exact #FF0421/#FAFAF9 match with kit Token.svg). The candidate is only for the chain entries ('Optimism', 'Optimism Sepolia'), which per the official guidance should use the OP Mainnet symbol rather than the OP token icon; that is a catalog split, not a stale token icon.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "osmosis",
+      "project": "Osmosis (OSMO)",
+      "verdict": "wrong",
+      "ours_before": "simplified white line-art potion flask on purple #5e12a0 disc (last touched Beta Commit 257)",
+      "official": "Osmosis's mark is the full-colour glossy purple potion flask: osmosis.zone header icon, the official brand kit (osmosis.zone/brand downloads 'Osmosis Brand Kit' zip from Google Drive) and the chain-registry OSMO token image all show it. No monochrome/line variant exists in the kit.",
+      "evidence": [
+        "https://osmosis.zone/assets/icons/osmo-logo-icon.svg",
+        "https://osmosis.zone/brand",
+        "https://raw.githubusercontent.com/cosmos/chain-registry/a23d024879483ef9a57c200e0f8a4776835b5334/osmosis/images/osmo.svg"
+      ],
+      "notes": "Ours is a home-made line redrawing of the flask, not the official artwork; not a rebrand. Alternatives: chain-registry osmo.svg ((local copy) sha256 372aae2eba9331cea0b6e01c2f746e8aed4c0f1180826085e969c2fce17345bd) and the brand-kit zip ((local copy) sha256 40ff7b8a83cdc3896291b72b3ef4fd9fa6b65e7eae21ba82ac2d5021cd2d3231; icon-only is PNG there, SVGs are lockups). The official flask uses userSpaceOnUse gradients and is not square, so it needs manual layout on a disc. web3icons OSMO is the official flask too.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "paxg",
+      "project": "PAX Gold (PAXG)",
+      "verdict": "outdated",
+      "ours_before": "old PAXG logo: translucent yellow wavy blobs with a gold ring, on white disc",
+      "official": "Current PAXG token logo: white wavy Paxos-style ring mark on solid gold #DBBA08 disc. Shown on paxg.com/brand ('PAXG Token Logo'), paxos.com/brand-resources and the paxos.com/assets/paxg page; PNG hosted under 'PAXG Metadata 2026'.",
+      "evidence": [
+        "https://www.paxg.com/brand",
+        "https://424565.fs1.hubspotusercontent-na1.net/hubfs/424565/PAXG%20Metadata%202026/PAXG-Symbol-512x512px-Circle.png",
+        "https://www.paxos.com/brand-resources",
+        "https://www.paxos.com/assets/paxg"
+      ],
+      "notes": "The 'SVG' button on paxg.com/brand links to a .webp (site bug); the SVG candidate is the same token logo that paxg.com serves as its light-mode favicon (64x64, #DBBA08 disc + white mark). Official PNG: (local copy) (sha256 b6f5f117c9fe3883d64107ec380aa71b15bfed04c296439d4095d401186a1c38). The 'do not alter' request argues for using it as is.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "peaq",
+      "project": "peaq (PEAQ)",
+      "verdict": "current",
+      "ours_before": "white looped 'eq' infinity mark on #6666fe disc",
+      "official": "peaq.xyz icon-192/favicon: same mark in #6666FE on white.",
+      "evidence": [
+        "https://www.peaq.xyz/icon-192.png",
+        "https://www.peaq.xyz/media"
+      ],
+      "notes": "Exact colour match. Media page links a Google Drive kit folder (not opened).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "peercoin",
+      "project": "Peercoin (PPC)",
+      "verdict": "current",
+      "ours_before": "white leaf on #3cb054 disc",
+      "official": "peercoin.net resources/graphics 'icon only, inside circle' SVG: same leaf, rgb(60,176,84) = #3CB054.",
+      "evidence": [
+        "https://www.peercoin.net/data/graphics.json",
+        "https://www.peercoin.net/img/logos/icononly/insidecircle/Transparent/GreenIcon/peercoin-icon-green-transparent.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "pendle",
+      "project": "Pendle (PENDLE)",
+      "verdict": "wrong",
+      "ours_before": "light-grey #dedede circle blown up to fill the whole disc, with the navy pendulum line touching the top edge and the bob clipped by the disc edge",
+      "official": "Pendle media kit logo (blue-light.svg): a smaller grey #DEDEDE circle with the navy #152E51 pendulum line and #1E4480 bob hanging out past its lower-left edge, i.e. the bob is fully visible outside the circle.",
+      "evidence": [
+        "https://www.pendle.finance/brand-guide/",
+        "https://www.pendle.finance/images/logos/blue-light.svg"
+      ],
+      "notes": "Mark and colours are current; the composition is malformed (scale 1.90374 plus a disc clip cuts off the bob). Re-fit the whole symbol inside the disc (or put it on a neutral disc) instead of using the grey circle as the disc. Kit also has glow variants (blue-glow, green-glow, no-glow) which are white marks on glow; web3icons PENDLE matches the official layout.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "pepe",
+      "project": "Pepe (PEPE)",
+      "verdict": "current",
+      "ours_before": "black line-art smirking Pepe (hand on chin) on #4f9843 green disc",
+      "official": "pepe.vip uses the same smirking hand-on-chin Pepe as its main character art (full colour), favicon is a colour Pepe illustration with 'pepe' text; the line-art face is the widely listed PEPE token image.",
+      "evidence": [
+        "https://www.pepe.vip/",
+        "https://static.wixstatic.com/media/c267fc_29f2c0df100a457f8389688896626c8b~mv2.jpg"
+      ],
+      "notes": "No official token-icon file or brand kit exists on pepe.vip (Wix site). Same character and pose; no evidence of a replacement mark. Lower confidence than other 'current' verdicts.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "plasma",
+      "project": "Plasma (XPL)",
+      "verdict": "current",
+      "ours_before": "white radial-bar crescent ring on dark green #162f29 disc",
+      "official": "plasma.org brand kit logomark: same radial-bar ring. Official icon (icon.svg / apple-icon) is the light mark #FEFCF9 on warm near-black #251D1D; kit logomark colours are #251D1D (dark) and #FAF6F0 (light).",
+      "evidence": [
+        "https://www.plasma.org/brand-kit",
+        "https://www.plasma.org/icon.svg?icon.3saomr_e5kyu3.svg",
+        "https://www.plasma.org/brand/plasma-logomark-light.svg"
+      ],
+      "notes": "Colour drift: official background #251D1D (warm near-black) vs ours dark green #162f29; mark #FAF6F0/#FEFCF9 vs ours #fff. Candidate given only for recolouring; the mark itself is unchanged. Official square icon: (local copy) (sha256 a99b8dc2ae346524f845227f08926f53d5204dede0bd38747a4143126deff0d6).",
+      "outcome": "recoloured"
+    },
+    {
+      "artwork_name": "polkadot",
+      "project": "Polkadot (DOT)",
+      "verdict": "outdated",
+      "ours_before": "2023 mark: six equal white ellipses in a ring on Polkadot pink #e6007a disc",
+      "official": "polkadot.com/brand (current site, redirect target of polkadot.network/brand-assets): new mark of six ellipses of varying size arranged in a ring, supplied only in black and white; new palette #F2517A, #FF7600, #FFF044, #E0E1DE, #3D82F1, #102133 (no #E6007A). Introduced by Dec 2025 (forum thread 2026-01-19 asking for 'the new logos'; an unofficial kit reverse-engineered from the site was created 2025-12-17).",
+      "evidence": [
+        "https://polkadot.com/brand/",
+        "https://polkadot.com/figma/brand/polkadot-mark-black.svg",
+        "https://polkadot.com/figma/brand/polkadot-mark-white.svg",
+        "https://forum.polkadot.network/t/polkadot-branding-kit/16755"
+      ],
+      "notes": "No official coloured token icon exists in the new brand; the brand only ships black/white marks, so a disc version needs a colour choice (e.g. white mark polkadot-mark-white.svg, sha256 3f8bc06f6f70dca744cbbf44f2ad0e1a0b7be6684a8199b2dd8625de9370d58c, on a dark/brand-colour disc). The pink-dot token icon is still common on exchanges and in web3icons, but the official source has replaced it.",
+      "outcome": "kept, open: polkadot.com/brand (now the Polkadot app's site) ships a new black-and-white mark and no token icon."
+    },
+    {
+      "artwork_name": "polygon",
+      "project": "Polygon (POL) / Polygon PoS",
+      "verdict": "current",
+      "ours_before": "white Polygon loop mark on #670de5 purple disc",
+      "official": "polygon.technology/brand-guidelines: same logomark, core purple #670DE5; 'Avatars and icons' show the white mark on a purple circle.",
+      "evidence": [
+        "https://polygon.technology/brand-guidelines",
+        "https://polygon.technology/favicon.svg"
+      ],
+      "notes": "Exact colour match. Brand rules: icon 'only available in our core palette of purple, black or white'; don't alter colours, stretch, add gradients/effects/strokes, or put the logo in a container or frame. Logo kit is a Google Drive folder linked from the page.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "pumpfun",
+      "project": "pump.fun (PUMP)",
+      "verdict": "current",
+      "ours_before": "green-and-white pill with dark outline on white disc",
+      "official": "pump.fun logomark (pump-logomark.svg, logo.png): same pill.",
+      "evidence": [
+        "https://pump.fun/pump-logomark.svg",
+        "https://pump.fun/logo.png"
+      ],
+      "notes": "pump.fun HTML is Cloudflare-protected (403) but its static logo files are fetchable.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "pythnetwork",
+      "project": "Pyth Network (PYTH)",
+      "verdict": "current",
+      "ours_before": "dark #110f23 P mark on light lavender #e6dafe disc",
+      "official": "Same P mark. Current pyth.network uses it white on purple (apple-touch-icon gradient #8044DE to #7736DB; site accent rgb(104,91,199) #685BC7); legacy brand page logomark is lavender.",
+      "evidence": [
+        "https://framerusercontent.com/images/wbVGNRExoWHr9jEjGPdn4Bn8ZA.png",
+        "https://www.pyth.network/",
+        "https://legacy.pyth.network/brand"
+      ],
+      "notes": "Mark unchanged; colour treatment has moved from lavender/dark to purple/white on the current site. The brand-asset zips linked from legacy.pyth.network/brand now 404 on www.pyth.network, so no current official SVG was found. Possible moderate colour drift, not a mark change.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "pyusd",
+      "project": "PayPal USD (PYUSD)",
+      "verdict": "current",
+      "ours_before": "white double-P mark on blue #0071f3 disc",
+      "official": "Issuer Paxos's brand resources 'PYUSD Token Logo' (Dec 2025): same double-P mark, white on black disc. PayPal newsroom's 2026 PYUSD tile is also black; PayPal's app UI (newsroom screenshot, Mar 2026) still shows a blue disc.",
+      "evidence": [
+        "https://www.paxos.com/brand-resources",
+        "https://framerusercontent.com/assets/vXDoVdrCxwitP7OwVU8Vr2hCd4.zip",
+        "https://newsroom.paypal-corp.com/image/PP-Newsroom-PYUSD-1x1.jpg",
+        "https://newsroom.paypal-corp.com/image/PYUSD-Global-800x534.jpeg"
+      ],
+      "notes": "Large colour drift: official downloadable token logo is black #000 disc with #FEFEFE mark vs ours blue #0071f3. Both colours appear in official PayPal material, so this is a judgement call rather than a clear replacement. paypal.com pages are 403 to automated fetches.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "qtum",
+      "project": "Qtum (QTUM)",
+      "verdict": "outdated",
+      "ours_before": "white geodesic-sphere network mark on blue #2e9ad0 disc",
+      "official": "qtum.org now uses a new logo: a blue #2563EB circuit-chip 'Q' symbol with a pixel-style QTUM wordmark (header /img/qtum-logo-new.svg, first archived 2025-09-18); favicon shows the chip symbol on black.",
+      "evidence": [
+        "https://qtum.org/",
+        "https://qtum.org/img/qtum-logo-new.svg",
+        "https://web.archive.org/web/20250918181458/https://qtum.org/img/qtum-logo-new.svg"
+      ],
+      "notes": "Only a lockup SVG was found (viewBox 0 0 493.3 156.28; the symbol is the first ~157 units, drawn from <use> shapes in #2563eb). qtum.org/brand is 404; no announcement located. Favicon ((local copy) has the symbol on a black disc as PNG frames only.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "quant",
+      "project": "Quant (QNT)",
+      "verdict": "current",
+      "ours_before": "white six-shard pinwheel around a hexagonal hole on black disc",
+      "official": "quant.network header logo symbol: same six-shard mark (logo pack and visual guidelines on quant.network/media-centre, 2022).",
+      "evidence": [
+        "https://quant.network/",
+        "https://quant.network/media-centre/",
+        "https://quant.network/assets/uploads/2022/07/Quant-Logo-Pack.zip"
+      ],
+      "notes": "quant.network is 403 to curl; read via the browser pane. Logo pack not downloaded (mark already matches).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "raydium",
+      "project": "Raydium (RAY)",
+      "verdict": "current",
+      "ours_before": "purple-blue-teal gradient hexagon with R on dark #0f0f1a disc",
+      "official": "Raydium token icon (img-v1.raydium.io RAY mint icon) and docs logo raydium-r.png: same gradient hex R.",
+      "evidence": [
+        "https://img-v1.raydium.io/icon/4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R.png",
+        "https://mintlify.s3.us-west-1.amazonaws.com/raydium/logo/raydium-r.png"
+      ],
+      "notes": "render/ours/raydium.png shows the mark without its gradient (ImageMagick MSVG); the SVG is fine. Official assets found are PNG only.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "render",
+      "project": "Render (RENDER, Render Network)",
+      "verdict": "current",
+      "ours_before": "red gradient disc (#e92121 to #9c0403) with white circle-and-orbit symbol",
+      "official": "Render Network symbol (filled circle inside an open orbit with a node); RENDER token icon is a flat red (~#cf1011) disc with the white symbol",
+      "evidence": [
+        "https://rendernetwork.com/apple-touch-icon.png",
+        "https://rendernetwork.com/api/medias/file/logo-footer.svg",
+        "https://renderfoundation.com/press",
+        "https://static.datapi.jup.ag/token-icons/aca530a6e0393e07e52c06c30a61cf29367377a6dc8c70abcf75cbcc42996c98.webp (Solana mint rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof metadata icon)"
+      ],
+      "notes": "Same mark. Ours uses a red gradient where the token icon is flat red; minor. Press page lists logo PNGs only (no download links, no usage rules).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "rlusd",
+      "project": "Ripple USD (RLUSD)",
+      "verdict": "current",
+      "ours_before": "blue #008cff disc with white Ripple three-node mark",
+      "official": "blue coin with white Ripple mark (RLUSD product page hero/og image); issuer-submitted Etherscan logo is the same blue disc with white Ripple mark",
+      "evidence": [
+        "https://ripple.com/products/stablecoin/",
+        "https://cdn.sanity.io/images/ior4a5y3/production/2d68bddfdadc14c0f89edee840ab78a579d19aa9-1200x630.jpg",
+        "https://etherscan.io/token/images/rippleusd_32.png"
+      ],
+      "notes": "No downloadable RLUSD token icon found: ripple.com/media-kit points to brand.ripple.com (Frontify, not readable without JS) and covers the Ripple company logo.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "robinhood",
+      "project": "Robinhood Chain",
+      "verdict": "current",
+      "ours_before": "black (#1c180d) Robinhood feather on lime #ccff00 disc",
+      "official": "Robinhood Chain brand kit feather symbol avatar: black feather on #CCFF00 square (Robinhood_Avatar.jpg); feather-dark.svg on docs",
+      "evidence": [
+        "https://docs.robinhood.com/chain/brand-guidelines/",
+        "https://cdn.robinhood.com/robinhood_chain/brand_assets/robinhood-chain-brand-assets-v1.zip",
+        "https://cdn.robinhood.com/assets/generated_assets/hoodchain_docsite/feather-dark.svg"
+      ],
+      "notes": "Guidelines: 'Use the Robinhood Chain logo exactly as provided. You must not alter, recolor, crop, or combine it with other imagery or text'; the feather symbol is for compact spaces such as app icons. Ours is a circular crop of the avatar with near-black #1c180d instead of #000000.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "rocketpooleth",
+      "project": "Rocket Pool ETH (rETH)",
+      "verdict": "outdated",
+      "ours_before": "orange gradient disc with a faint square-tile texture and white ETH diamond (older rETH icon, same as CoinGecko's)",
+      "official": "rETH brand kit: smooth orange gradient disc (#f89863 to #f2681d) with white ETH diamond, no texture; primary variant adds a lighter outer ring (also served as rocketpool.net/files/rETH-icon-200x200.png)",
+      "evidence": [
+        "https://rocketpool.net/protocol/brand-kit",
+        "https://cdn-rocketpool.s3.us-west-2.amazonaws.com/reth.zip",
+        "https://rocketpool.net/files/rETH-icon-200x200.png"
+      ],
+      "notes": "Change is a texture/ring refresh, not a new symbol. Zip Last-Modified 2025-08-25. RETH-logo_secondary.svg (same disc without the ring, sha256 8eedac1301d96b93c79c7ad6669a0424107324461dbf22a95dc2900bb0be6717) may fit the full-disc rule better; black/white 'accessible' variants also in the kit.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "safe",
+      "project": "Safe (SAFE)",
+      "verdict": "wrong",
+      "ours_before": "dark green #049f67 disc with white Safe symbol",
+      "official": "SAFE token logo: green-to-cyan gradient disc with black Safe symbol (Safe media kit 'Token Logo'); issuer-listed Etherscan icon is black symbol on #12FF80",
+      "evidence": [
+        "https://safe-global.notion.site/Safe-Media-Kit-35ce7ffc829c4bedbbf828464a1b7c00",
+        "https://etherscan.io/token/images/safenet_txaction_64.png",
+        "https://safefoundation.org/token (coin imagery is bright green with the symbol)"
+      ],
+      "notes": "Ours inverts the symbol colour and uses a green that no official asset uses. The media kit now opens with a notice (added ~2026-10-28) that it is the legacy kit and predates the 'Safe{Labs} 2026 brand' (Safe Black #0A0A0A, Safe Labs Green #7FFAB7); it links the new brand kit as a claude.ai artifact that could not be opened, so a 2026 SAFE token icon may exist. Only PNG found; web3icons SAFE does not match the official token logo.",
+      "outcome": "recoloured"
+    },
+    {
+      "artwork_name": "saga",
+      "project": "Saga (SAGA)",
+      "verdict": "current",
+      "ours_before": "black disc; white rounded diamond containing a black rounded square containing a white diamond",
+      "official": "same nested rounded-diamond/rounded-square mark (saga.xyz apple-touch-icon, safari-pinned-tab.svg); CoinGecko icon is the same white-on-black arrangement",
+      "evidence": [
+        "https://www.saga.xyz/apple-touch-icon.png",
+        "https://www.saga.xyz/safari-pinned-tab.svg"
+      ],
+      "notes": "The company now presents itself as 'Saga AI Labs' (site is about AI agents) but the mark is unchanged. No brand kit page found.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "sandbox",
+      "project": "The Sandbox (SAND)",
+      "verdict": "current",
+      "ours_before": "white blocky S on flat #00aeef disc",
+      "official": "The Sandbox isotype: white S on #00ADEF (official docs favicon TheSandboxIsotype1024.png)",
+      "evidence": [
+        "https://docs.sandbox.game/ (icon TheSandboxIsotype1024.png)",
+        "https://etherscan.io/token/images/sandboxrplce_32.svg"
+      ],
+      "notes": "sandbox.game and press.sandbox.game sit behind a Cloudflare challenge (not bypassed). Etherscan's replaced icon uses a #00ADEF to #0084FF gradient; ours is flat #00aeef. Minor.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "scroll",
+      "project": "Scroll (SCR)",
+      "verdict": "current",
+      "ours_before": "black-outlined parchment scroll with tan roll on cream #ffeeda disc",
+      "official": "same scroll mark (scroll.io/logo.png, monochrome); the colour scroll on cream is the SCR token icon (CoinGecko)",
+      "evidence": [
+        "https://scroll.io/logo.png"
+      ],
+      "notes": "No brand-kit page found (scroll.io/brand-kit is 404).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "sei",
+      "project": "Sei (SEI)",
+      "verdict": "current",
+      "ours_before": "three white wave lines on brick-red #9e1f19 disc",
+      "official": "same three-wave mark; SEI token mark is on Maroon #600014 ('The token appears in Maroon. Black and white are fallbacks')",
+      "evidence": [
+        "https://brand.sei.io/",
+        "https://brand.sei.io/brand/logo/sei-token-maroon.svg",
+        "https://www.sei.io/ (icon.svg is the maroon token mark)"
+      ],
+      "notes": "Large colour drift: #9e1f19 vs #600014. Brand kit also ships sei-brand-assets.zip. CoinGecko replaced its SEI image with the maroon version (timestamp 2026-11).",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "shibainu",
+      "project": "Shiba Inu (SHIB)",
+      "verdict": "current",
+      "ours_before": "classic SHIB Shiba face (orange #ff9300, black eyes) drawn small inside a solid red #f00500 disc",
+      "official": "classic artwork on Etherscan ('shibainu_ofc') and CoinGecko: the head fills a red ring and breaks out at the top. shib.io's SHIB token page uses a redrawn icon (images/redesign/shib_token.svg): #d3202f red ring, #f2903c/#e85f24 orange head, navy #22263f eyes",
+      "evidence": [
+        "https://shib.io/tokens/shib",
+        "https://shib.io/images/redesign/shib_token.svg",
+        "https://etherscan.io/token/images/shibainu_ofc_32.svg"
+      ],
+      "notes": "Same character, so not called outdated; but ours shrinks the head to fit inside the disc and the official site now shows the redesign with different reds/orange. Candidate offered for the refresh; its head breaks the circle, so it needs layout work for the full-disc rule.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "sky",
+      "project": "Sky (SKY, formerly MakerDAO)",
+      "verdict": "current",
+      "ours_before": "multicolour gradient pinwheel of wedges on white",
+      "official": "identical pinwheel token icon served by the Sky app",
+      "evidence": [
+        "https://app.sky.money/tokens/sky.svg"
+      ],
+      "notes": "sky.money also links a media-kit Google Drive folder (not opened).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "snek",
+      "project": "Snek (SNEK, Cardano)",
+      "verdict": "outdated",
+      "ours_before": "purple-blue scaled snake head with a smoking pipe (older SNEK logo, same as web3icons)",
+      "official": "new mascot: light-blue cartoon 'snek' (gecko-like, red eyes) on pale-blue square; issuer-signed Cardano Token Registry logo updated 2026-01-16; snek.com share image shows the same mascot",
+      "evidence": [
+        "https://github.com/cardano-foundation/cardano-token-registry/commit/87e784503480dc871c6d15f2043b273468404ca8 (Update SNEK, 2026-01-16)",
+        "https://raw.githubusercontent.com/cardano-foundation/cardano-token-registry/bf4f70e475945561321fcf36b2021b107d2466e2/mappings/279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f534e454b.json",
+        "https://www.snek.com/snek-thumbnail.webp"
+      ],
+      "notes": "snek.com's favicon is a black 'S' squiggle, a separate wordmark-like glyph. CoinGecko switched to the new mascot on 2026-01-17. No official SVG found; the PNG needs a disc crop.",
+      "outcome": "kept, open: the new mascot exists only as PNG."
+    },
+    {
+      "artwork_name": "solana",
+      "project": "Solana (SOL)",
+      "verdict": "current",
+      "ours_before": "three slanted bars on black disc, gradient #cb4ee8 to #10f4b1",
+      "official": "same three-bar logomark; current gradient #9945FF to #19FB9B (six stops)",
+      "evidence": [
+        "https://raw.githubusercontent.com/solana-foundation/solana-com/1c33e55b0b08548b8d85d648aab4f8b76db06711/apps/web/public/src/img/branding/solanaLogoMark.svg",
+        "https://solana.com/branding"
+      ],
+      "notes": "Moderate colour drift: our purple end is pink-violet #cb4ee8 (older gradient) vs #9945FF. Candidate only if you want to match the gradient; place it on the black disc.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "somnia",
+      "project": "Somnia (SOMI)",
+      "verdict": "current",
+      "ours_before": "white '{s}' on near-black #0c0a08 disc",
+      "official": "same '{s}' mark on black (somnia.network icon.svg; CoinGecko 'somi-token-roundel')",
+      "evidence": [
+        "https://somnia.network/icon.svg"
+      ],
+      "notes": "No brand-kit page found.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "sonic",
+      "project": "Sonic (S)",
+      "verdict": "current",
+      "ours_before": "white converging arcs on black disc",
+      "official": "same Sonic symbol (white in soniclabs.com header logo, black outline in apple-touch-icon)",
+      "evidence": [
+        "https://www.soniclabs.com/sonic-logo.svg",
+        "https://www.soniclabs.com/apple-touch-icon.png",
+        "https://mediakit.soniclabs.com"
+      ],
+      "notes": "Media kit is a Notion database that could not be parsed; mark verified from the site.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "spx6900",
+      "project": "SPX6900 (SPX)",
+      "verdict": "outdated",
+      "ours_before": "magenta #fd00ff to cyan #0bf2fe gradient disc with white 'SP' monogram in a ring",
+      "official": "gold coin bearing the 3D 'SPX 6900' lettering logo (spx6900.com favicon-192.png; header logo spxlogo-sm.png); issuer Etherscan icon and CoinGecko (replaced 2025-01-16) show the same gold coin",
+      "evidence": [
+        "https://spx6900.com/favicon-192.png",
+        "https://spx6900.com/spxlogo-sm.png",
+        "https://etherscan.io/token/images/spx6900_32.png"
+      ],
+      "notes": "Could not confirm the gradient SP monogram was ever an official SPX6900 mark (web3icons uses it); if not, this is 'wrong' rather than 'outdated'. Only low-res raster found; spxlogo-sm.png (280x280 lettering lockup, sha256 0e35c0c102cc6017569373e077a8c9646711f51c693a6a2d0d49ffb9ab31b126) is the logo without the coin.",
+      "outcome": "kept, open: the gold coin exists only as PNG."
+    },
+    {
+      "artwork_name": "stable",
+      "project": "Stable (STABLE)",
+      "verdict": "current",
+      "ours_before": "pale mint #e8fbf7 split S on dark green gradient (#011f1e to #044030) disc",
+      "official": "same split-S mark on dark green (stable.xyz favicon.png and og-image.png)",
+      "evidence": [
+        "https://stable.xyz/images/favicon.png",
+        "https://stable.xyz/images/og-image.png"
+      ],
+      "notes": "No brand-kit page found; site ships /images/identity/stable-wordmark.svg.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "starknet",
+      "project": "Starknet (STRK)",
+      "verdict": "current",
+      "ours_before": "navy #0c0c4f disc, white/pink swoosh, white star, coral dot",
+      "official": "same symbol (media kit 'SN-Symbol-Gradient')",
+      "evidence": [
+        "https://www.starknet.io/media-kit/",
+        "https://www.starknet.io/assets/starknet-logos-svg.zip"
+      ],
+      "notes": "Kit files dated 2023-04; still the offered kit.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "stellar",
+      "project": "Stellar (XLM)",
+      "verdict": "current",
+      "ours_before": "white Stellar orbit-and-stripes symbol on black disc",
+      "official": "same symbol in the Logo Press Kit 2026 (files dated 2026-03-20)",
+      "evidence": [
+        "https://stellar.org/brand-resources",
+        "https://cdn.sanity.io/files/e2r40yh6/production-i18n/9ef5ab890833c2571489b41a23a0ffc29307300c.zip"
+      ],
+      "notes": "Kit has PNG/AI/EPS/PDF only, no SVG.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "steth",
+      "project": "Lido Staked Ether (stETH)",
+      "verdict": "current",
+      "ours_before": "blue faceted droplet with ETH split on white",
+      "official": "identical stETH.svg in Lido's logos repo",
+      "evidence": [
+        "https://github.com/lidofinance/logos/blob/8e6f1a1e0f03937656f7f845bf8315923ce17768/stETH/stETH.svg"
+      ],
+      "notes": "Repo last changed 2022-01; no newer stETH mark found on lido.fi.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "sui",
+      "project": "Sui (SUI)",
+      "verdict": "current",
+      "ours_before": "blue #4da2ff droplet on white disc",
+      "official": "same droplet; Sui brand kit (Dec 2025) colour is 'Sui Blue 500' #298DFF",
+      "evidence": [
+        "https://sui.io/media-kit",
+        "https://firebasestorage.googleapis.com/v0/b/standards-site-beta.appspot.com/o/documents%2F39ccba157de%2Fc1fde51c170%2F01_Sui_Logo.zip?alt=media&token=963da9ba-a101-43fd-8288-57fee667243e"
+      ],
+      "notes": "Colour drift #4da2ff vs #298DFF (visible). Kit also has a white droplet for use on Sui Blue.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "sun",
+      "project": "SUN (SUN, TRON)",
+      "verdict": "wrong",
+      "ours_before": "malformed: sun face filled pale #f0f3fa with no yellow left half, artwork shrunk to ~65% of the disc and off-centre (same flaw as web3icons SUN)",
+      "official": "sun face split yellow (left) / white (right), teal sunglasses, orange rays reaching the disc edge (sun.io favicon; issuer TRC20 logo on Tronscan)",
+      "evidence": [
+        "https://sun.io/favicon.ico",
+        "https://static.tronscan.org/production/logo/TSSMHYeV2uE9qYH95DqyoCuNCzEL1NvU3S.png"
+      ],
+      "notes": "Same character, but ours is visibly broken. No official SVG found; sun.io favicon.ico (128px, sha256 ecf2e5d11d3c1a764377cacb9854ce3d97488d571fd3e2832a08ae0a9c3cbef6) is the same art. Our SVG contains a #f8ba3a fill that is apparently covered or mis-shaped.",
+      "outcome": "repaired"
+    },
+    {
+      "artwork_name": "susde",
+      "project": "Ethena Staked USDe (sUSDe)",
+      "verdict": "current",
+      "ours_before": "black $ between bracket arcs, black ring, white disc",
+      "official": "same $-in-brackets mark on light grey/white disc with soft ring (ethena.fi /shared/sUSDe.svg)",
+      "evidence": [
+        "https://ethena.fi/shared/sUSDe.svg",
+        "https://ethena.fi/savings/sUSDe.svg"
+      ],
+      "notes": "Ours is a flat rendering of the official icon. Ethena docs Media Assets page covers the company logo only.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "susds",
+      "project": "Savings USDS (sUSDS)",
+      "verdict": "current",
+      "ours_before": "white double-S on green gradient disc (#02c2a1 to #9fde88)",
+      "official": "identical sUSDS token icon",
+      "evidence": [
+        "https://app.sky.money/tokens/susds.svg",
+        "https://cdn.prod.website-files.com/6a046b1b3c0a7bdcc5d0e321/6a1db01193401e34d504be3c_susds%20icon.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "synthetix",
+      "project": "Synthetix (SNX)",
+      "verdict": "outdated",
+      "ours_before": "white rounded 'S' monogram with grey diagonal slash on dark purple #1b1230 disc",
+      "official": "Synthetix brand kit 'Token': cyan #00D1FF Synthetix X mark on navy #0E052F disc (snx-token.svg)",
+      "evidence": [
+        "https://synthetix.io/brand",
+        "https://synthetix.io/brand/brand-kit/token/snx-token.svg"
+      ],
+      "notes": "The S monogram matches web3icons SNX; I could not date when Synthetix used it. CoinGecko also shows the X token icon. Kit also has icon/logo SVGs and snx-brand.zip.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "terra",
+      "project": "Terra (LUNA, Terra 2.0)",
+      "verdict": "current",
+      "ours_before": "Terra 2.0 LUNA flame-moon (orange-red gradient with yellow #f2e373) on white disc",
+      "official": "same Luna.svg in terra-money/assets (replaced 2022-08-23 for Terra 2.0)",
+      "evidence": [
+        "https://github.com/terra-money/assets/blob/1749bb5e987ab36b5d152008a3ddebce0c2d5308/icon/svg/Luna.svg",
+        "https://www.terra.money/"
+      ],
+      "notes": "Terraform Labs has been winding down since 2024-09-30 (terra.money is a shutdown notice), so no newer mark. The icon is also used for the 'Terra' chain, whose own logo (blue planet, terra.money/terra.svg) differs; that is a catalog choice, not staleness.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "tezos",
+      "project": "Tezos (XTZ)",
+      "verdict": "current",
+      "ours_before": "white ꜩ glyph on blue #2e84fd disc",
+      "official": "Tezos brand kit (files dated 2026-09-08) 'Token (XTZ)' tezos-token-round.svg: same white ꜩ on #0D61FF disc",
+      "evidence": [
+        "https://tezos.com/brand/",
+        "https://light-power-29443cc779.media.strapiapp.com/tezos_brand_kit_d4e51f83e7.zip"
+      ],
+      "notes": "Large colour drift #2e84fd vs #0D61FF; the glyph is the same, slightly smaller in the official token. The 2026 kit's logomark uses a different (violet) blue.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "thegraph",
+      "project": "The Graph (GRT)",
+      "verdict": "outdated",
+      "ours_before": "#6f4cff ring around a white inner disc with a purple Graph glyph",
+      "official": "'GRT Token symbol' in The Graph brand kit (files 2023-12-19): white Graph glyph directly on a #6F4CFF disc (Color), plus Dark/Light variants",
+      "evidence": [
+        "https://thegraph.com/brand/",
+        "https://storage.thegraph.com/brand/The%20Graph%20-%20GRT%20Symbol.zip"
+      ],
+      "notes": "Same glyph and purple; the token treatment differs (ours inverts glyph/disc inside a ring). Could not confirm ours was ever an official variant, so this is 'outdated' at best and possibly 'wrong'.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "ton",
+      "project": "TON (The Open Network, chain)",
+      "verdict": "current",
+      "ours_before": "white TON diamond on #0098ea disc",
+      "official": "ton.org Media Assets 'TON Logo — the default logo to represent the TON blockchain' (kit files 2026-09-11): white diamond on #0098EA circle",
+      "evidence": [
+        "https://ton.org/media",
+        "https://ton.org/assets/media/ton_logo.zip"
+      ],
+      "notes": "The coin is now Gram (GRAM, formerly Toncoin) with separate Gram assets (#30A1F5 blue diamond with white star; ton.org favicon is #30A1F5). The TON Logo SVG in the kit embeds the blue circle as a raster pattern, so ours is the better vector.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "tron",
+      "project": "TRON (TRX)",
+      "verdict": "current",
+      "ours_before": "white TRON triangle mark on red #ff060a disc",
+      "official": "same mark; brand red #EA0029 (tron.network favicon.svg, share-logo.png)",
+      "evidence": [
+        "https://tron.network/favicon.svg",
+        "https://tron.network/static/images/share-logo.png"
+      ],
+      "notes": "Minor colour drift #ff060a vs #EA0029. tron.network/mediakit is a JS app; no downloadable kit read.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "trustwallet",
+      "project": "Trust Wallet Token (TWT)",
+      "verdict": "outdated",
+      "ours_before": "white outline shield on #3375bb disc (2020 TWT logo)",
+      "official": "TWT logo updated 2023-10-16 in Trust Wallet's own assets repo: #0500FF shield, left half solid, right half outline, on transparent (matches Trust's 2023 rebrand)",
+      "evidence": [
+        "https://github.com/trustwallet/assets/commit/c43c2d1730 (Update logo for TWT, 2023-10-16)",
+        "https://raw.githubusercontent.com/trustwallet/assets/4f6a9325e93d269538e085f75594280b7393d87e/blockchains/smartchain/assets/0x4B0F1812e5Df2A09796481Ff14017e6005508003/logo.png",
+        "https://trustwallet.com/press"
+      ],
+      "notes": "No official TWT SVG found; press-kit logos.zip has Trust/Trust Wallet SVG logos (gradient shield), not the TWT token mark. CoinGecko and web3icons still show the old shield.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "tusd",
+      "project": "TrueUSD (TUSD)",
+      "verdict": "current",
+      "ours_before": "blue #1b5aff disc, white geometric T",
+      "official": "blue #1A5AFF disc, white T (tusd.io header logo)",
+      "evidence": [
+        "https://tusd.io/",
+        "https://tusd.io/imgs/tusd_logo.svg"
+      ],
+      "notes": "Same mark and colour.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "uniswap",
+      "project": "Uniswap (UNI) / Unichain",
+      "verdict": "current",
+      "ours_before": "hot-pink #ff007a disc with white unicorn head",
+      "official": "Unicorn unchanged. Brand kit (Uniswap/brand-assets, 'add new brand assets' 2024-02-05) colours the unicorn pink #F50DB4; Uniswap Labs' own default token list (tokens.uniswap.org, 2026-11-25) shows UNI as a #FF007A unicorn on a pale-pink #FDEBF3 disc",
+      "evidence": [
+        "https://github.com/Uniswap/brand-assets/tree/1d829912a8b1c154b700984f88baa83142ee1a1b",
+        "https://tokens.uniswap.org/ (UNI logoURI ipfs://QmXttGpZrECX5qCyXbBQiqgQNytVGeZW5Anewvh2jc4psg)",
+        "https://www.unichain.org/brand-kit"
+      ],
+      "notes": "Colour drift only: ours #ff007a vs brand-kit #F50DB4 (2024). Separate issue: the catalog's 'Unichain' chain reuses this UNI unicorn, but Unichain has its own official mark (pink sparkle, unichain.org brand kit); web3icons networks/unichain.svg agrees. Consider a separate unichain artwork. Uniswap_icon_white.svg (sha256 18ffd691...b613b2) is the white unicorn if keeping a pink disc.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "usat",
+      "project": "USA₮ / Tether America USD (USAT)",
+      "verdict": "current",
+      "ours_before": "white disc with red-bordered navy shield and white star",
+      "official": "usat.io media kit token.svg: red #E70505 bordered navy #132A55 shield with #E5EAEE star (no disc)",
+      "evidence": [
+        "https://usat.io/media",
+        "https://usat.io/wp-content/uploads/usat_icons/token.svg"
+      ],
+      "notes": "Same artwork and hexes; ours adds a white backing disc.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "usd1",
+      "project": "World Liberty Financial USD (USD1)",
+      "verdict": "current",
+      "ours_before": "gold coin with '1' and engraved eagle",
+      "official": "same gold coin (worldlibertyfinancial.com token icon and static .../assets/brand/usd1.svg)",
+      "evidence": [
+        "https://worldlibertyfinancial.com/usd1",
+        "https://static.worldlibertyfinancial.com/assets/brand/usd1.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "usdb",
+      "project": "USD Blast (USDB)",
+      "verdict": "unverified",
+      "ours_before": "yellow #fcfc03-style disc with black angular '$'",
+      "official": "no live official source: blast.io now serves only 'Blast L2 Fund Recovery' (claim ETH/WETH/USDB held on Blast); docs.blast.io no longer resolves",
+      "evidence": [
+        "https://blast.io/",
+        "https://coin-images.coingecko.com/coins/images/35595/large/65c67f0ebf2f6a1bd0feb13c_usdb-icon-yellow.png (third-party, filename shows it came from Blast's Webflow site)"
+      ],
+      "notes": "Ours matches the CoinGecko icon taken from Blast's own site in 2024. Tried blast.io, docs.blast.io, Wayback CDX, blast-io GitHub org (no assets). Bigger point: Blast L2 appears shut down (fund-recovery page only), so USDB/Blast support itself may be worth reviewing.",
+      "outcome": "kept: Blast wound down its L2; no official source shows a mark."
+    },
+    {
+      "artwork_name": "usdc",
+      "project": "USD Coin (USDC)",
+      "verdict": "current",
+      "ours_before": "blue #0b53bf disc, white $ with side arcs",
+      "official": "Circle brand kit 'USDC Token.svg' (2025): #0B53BF disc, same glyph",
+      "evidence": [
+        "https://www.circle.com/pressroom#brandkit",
+        "https://6778953.fs1.hubspotusercontent-na1.net/hubfs/6778953/Pressroom/brandkit/logo-downloads/usdc.zip"
+      ],
+      "notes": "Exact match.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "usdd",
+      "project": "USDD",
+      "verdict": "current",
+      "ours_before": "green #216c58 disc, white ring and $ with top bar",
+      "official": "usdd.io Brand Kit logomark (prod-home-cdn-new.usdd.io/resource/usdd-logomark.svg): same design, #216C58",
+      "evidence": [
+        "https://usdd.io/brand-kit",
+        "https://prod-home-cdn-new.usdd.io/resource/usdd-logomark.svg"
+      ],
+      "notes": "Brand kit links terms at https://docs.usdd.io/legals/usdd-brand-assets-license-and-terms-of-use (not read).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "usde",
+      "project": "Ethena USDe (USDE)",
+      "verdict": "current",
+      "ours_before": "near-black #1c1c1c disc, white $ with side arcs",
+      "official": "ethena.fi/shared/usde.svg: #111111 disc, same glyph, subtle #B6CDF0 gradient on the ring",
+      "evidence": [
+        "https://ethena.fi/",
+        "https://ethena.fi/shared/usde.svg",
+        "https://docs.ethena.fi/resources/media-assets (Figma)"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "usdg",
+      "project": "Global Dollar (USDG, Paxos)",
+      "verdict": "current",
+      "ours_before": "dark green #314012 disc, lime #c7e36c G",
+      "official": "globaldollar.com/brand 'USDG Token Logo' GDN_USDG_Token.svg: identical (#314012 / #C7E36C)",
+      "evidence": [
+        "https://globaldollar.com/brand",
+        "https://framerusercontent.com/assets/llo5qqG8OQbvOU2QpFJPTdUyn0.zip"
+      ],
+      "notes": "Brand page: 'we request that partners only use the provided USDG token logo'.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "usds",
+      "project": "Sky Dollar (USDS)",
+      "verdict": "current",
+      "ours_before": "radial #ffd232->#ff6d6d disc with white double S",
+      "official": "skyeco.com usds-coin.svg: same gradient and S",
+      "evidence": [
+        "https://www.skyeco.com/",
+        "https://cdn.prod.website-files.com/699db887d1579eba78acdbca/6a8ef9c8686b131da15fa9d9_usds-coin.svg"
+      ],
+      "notes": "Our pre-rendered PNG in render/ours shows a black disc because ImageMagick's MSVG drops the gradient; the SVG itself is correct.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "usdt",
+      "project": "Tether USD (USDT)",
+      "verdict": "current",
+      "ours_before": "teal #009393 disc, white diamond with T",
+      "official": "tether.io/media USDt token (tether_USDt_token_w-background@3x.svg): #009393, same mark",
+      "evidence": [
+        "https://tether.io/media",
+        "https://tether.io/wp-content/uploads/tether-io_logos/tether_USDt_token_w-background_SVG/tether_USDt_token_w-background@3x.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "usdt0",
+      "project": "USDT0",
+      "verdict": "current",
+      "ours_before": "green #00805e disc, pixel T0",
+      "official": "docs.usdt0.to media kit (2026-04-24): same pixel T0; flat 'Icon' variant matches ours, primary asset mark uses a #00664B->#00CC96 gradient disc",
+      "evidence": [
+        "https://docs.usdt0.to/resources/mediakit",
+        "https://usdt0.to/static/logo/asset_USDT0.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "vechain",
+      "project": "VeChain (VET) / VeChainThor chain",
+      "verdict": "current",
+      "ours_before": "white V on purple #582974 disc",
+      "official": "VeChain Brand Guidelines 2025-2026 (logo files dated 2025-12-19): same V, now on 'VeChain Purple' #7266FF (Dark Purple #0C0A1F as the other ground)",
+      "evidence": [
+        "https://vechain.org/brand-assets",
+        "https://files.vechain.org/branding/Logos/VeChain.zip",
+        "https://bin.bnbstatic.com/image/admin_mgs_image_upload/20250711/0d448ed0-8136-4a31-93ae-7678a79a6aea.jpeg (Binance VET icon, updated 2025-07, white V on #7266FF-like disc)"
+      ],
+      "notes": "Large colour drift, rebrand-driven: ours #582974 vs official #7266FF. The V glyph is unchanged, so it is recorded as current with drift; treat as a recolour to #7266FF. The standalone logomark exists only as PNG: VeChain/VeChain_Logomark_Light.png (300px, white V on #7266FF rounded square, sha256 481b9730adb427e2da42f56283913f1f012c257fb42f462ae79fbbc1ebc15686).",
+      "outcome": "recoloured"
+    },
+    {
+      "artwork_name": "virtuals",
+      "project": "Virtuals Protocol (VIRTUAL)",
+      "verdict": "current",
+      "ours_before": "white disc with teal #236d66->#44bcc3 Virtuals mark",
+      "official": "whitepaper brand kit 'Logo Mark Ori' (same mark); the kit's 'Logo Mark Ori Circle BG.svg' (2025-01) puts it on a pale mint #C5F1F3->#F1FFD5 gradient disc",
+      "evidence": [
+        "https://whitepaper.virtuals.io/info-hub/virtuals-protocol-editorial-style-guide-and-brand-kit"
+      ],
+      "notes": "Kit rule: 'Always use the logo as provided in the official brand assets.' Optional: the official circle variant uses a mint gradient disc instead of white. Our render/ours PNG is blank because MSVG drops the gradient.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "vtho",
+      "project": "VeThor Token (VTHO)",
+      "verdict": "outdated",
+      "ours_before": "black disc with two-tone blue/grey lightning bolt (pre-2025 VTHO icon)",
+      "official": "VeChain token-registry VTHO token.png replaced 2025-09-22 ('updated VeThor token with new token logo'): purple (#5F3EDD/#7266FF) angular S-shaped bolt, the VeChainThor logomark, on light #EEF3F7 ground",
+      "evidence": [
+        "https://github.com/vechain/token-registry/commit/4b3a9fb635969b103a3294793d3cac46f88ea33b",
+        "https://files.vechain.org/branding/Logos/VeChain%20Thor.zip",
+        "https://vechain.org/brand-assets"
+      ],
+      "notes": "Official token icon is PNG only. SVG geometry: the bolt is the #7266FF path in VeChain Thor/VeChain_Thor_Dark.svg (lockup, from https://files.vechain.org/branding/Logos/VeChain%20Thor.zip; local (local copy) Thor/VeChain_Thor_Dark.svg, sha256 cd1b4f8a34210c7622e8c4e02de9d9d6b7a6f53053e11d5439e3884a6225c568). Binance's VTHO icon (2025-07) also shows the purple bolt. web3icons VTHO.svg still has the old bolt.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "walrus",
+      "project": "Walrus (WAL)",
+      "verdict": "current",
+      "ours_before": "black heavy W on white disc",
+      "official": "Walrus Media Kit (Google Drive linked from walrus.xyz footer) 03_WAL_Token_Icon: Walrus_Token_Circle_Black.svg is the same black W; the kit also has a Full Color variant (white W on black with cyan/violet glow, PNG only)",
+      "evidence": [
+        "https://drive.google.com/drive/folders/1rklvwojMC0NnpkunNySqLgXizHxcmazl",
+        "https://drive.google.com/uc?export=download&id=10ki5ilen_oaHNemdThjY7T8MPjBAATCI"
+      ],
+      "notes": "Ours equals the official Black variant. Exchanges switched to the Full Color variant in 2026 (Binance icon dated 2026-02-24; CoinGecko 'Walrus_Token_Full_Color' 2026-03). If wanted: Walrus_Token_Circle_Full_Color.png, https://drive.google.com/uc?export=download&id=1a9YCICqRcwly2Ou4HRNv-qVNM5KVxjxi, local (local copy) 1500px PNG, sha256 ef48fbe8f0a1ed89e68a6859d686b039de3aac3fcaedf9c7a5618aa38b2011a4 (no SVG; gradient artwork). Usage terms not stated.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "wbeth",
+      "project": "Wrapped Beacon ETH (WBETH, Binance)",
+      "verdict": "wrong",
+      "ours_before": "grey #868686 disc, white segmented ring and white ETH diamond (matches web3icons tokens/background/WBETH.svg)",
+      "official": "issuer Binance's WBETH asset logo (uploaded 2023-04-27): gold/yellow disc, white segmented ring at the rim, dark ETH diamond",
+      "evidence": [
+        "https://www.binance.com/bapi/asset/v2/public/asset/asset/get-all-asset (WBETH logoUrl)",
+        "https://bin.bnbstatic.com/image/admin_mgs_image_upload/20230427/59f88a2f-6656-4c37-836e-694e0c533c75.png"
+      ],
+      "notes": "Same construction (ring + ETH) but ours is a grey monochrome rendering, not the official gold colourway. No official SVG found (binance.com/en/wbeth blocks bots); web3icons branded/WBETH.svg is only a gold-shaded ETH diamond, background/WBETH.svg is the grey one we copied. Redraw from the PNG.",
+      "outcome": "recoloured"
+    },
+    {
+      "artwork_name": "weeth",
+      "project": "ether.fi Wrapped eETH (weETH)",
+      "verdict": "current",
+      "ours_before": "#29bcfa->#6464e4->#b45afa gradient disc, dark outlined geometric ETH",
+      "official": "ether.fi Media Kit Tokens.zip 'weETH - token.svg' (2025-04): same gradient and mark, outline #0E0B31",
+      "evidence": [
+        "https://etherfi.notion.site/ether-fi-media-kit"
+      ],
+      "notes": "Minor: our outline #120370 vs official #0E0B31.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "weth",
+      "project": "Wrapped Ether (WETH)",
+      "verdict": "unverified",
+      "ours_before": "grey Ethereum diamond on white disc",
+      "official": "WETH has no issuer brand. Uniswap's default list points at Trust Wallet's WETH logo (grey ETH diamond on light-grey #F0F0F5-ish disc), Binance shows a cartoon 'WETH' coin",
+      "evidence": [
+        "https://tokens.uniswap.org/",
+        "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2/logo.png"
+      ],
+      "notes": "No official source exists (weth.io is an unofficial explainer). Ours matches the de-facto Trust Wallet/Uniswap icon.",
+      "outcome": "kept: WETH has no issuer brand; ours matches the Trust Wallet icon Uniswap's list uses."
+    },
+    {
+      "artwork_name": "wlfi",
+      "project": "World Liberty Financial (WLFI)",
+      "verdict": "current",
+      "ours_before": "near-black disc with gold eagle",
+      "official": "worldlibertyfinancial.com token icon (static .../assets/brand/wlfi.svg): same",
+      "evidence": [
+        "https://worldlibertyfinancial.com/",
+        "https://static.worldlibertyfinancial.com/assets/brand/wlfi.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "worldcoin",
+      "project": "Worldcoin / World (WLD) and World Chain",
+      "verdict": "current",
+      "ours_before": "black World logomark (ring with split C) on white",
+      "official": "world.org/brand Logomark.zip (files dated 2026-04-24) '[World] Logomark-Black-RGB.svg': same mark",
+      "evidence": [
+        "https://world.org/brand",
+        "https://worldcoin-company-website.cdn.prismic.io/worldcoin-company-website/agMW8KYofJOwHH3r_Logomark.zip"
+      ],
+      "notes": "World Chain uses the same World mark (world.org/world-chain; web3icons networks/world.svg agrees). Binance shows the inverted variant (white on black).",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "wormhole",
+      "project": "Wormhole (W)",
+      "verdict": "current",
+      "ours_before": "purple #7168be disc, white slanted W",
+      "official": "wormhole.com/brand-and-press 'W Token' (static.wormhole.com/token.svg, last-modified 2026-08-07): identical, #7168BE",
+      "evidence": [
+        "https://wormhole.com/brand-and-press",
+        "https://static.wormhole.com/token.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "wrappedbitcoin",
+      "project": "Wrapped Bitcoin (WBTC)",
+      "verdict": "current",
+      "ours_before": "white disc, dark #282138 rim, grey #5a5564 ring segments, orange #f09242 B",
+      "official": "wbtc.network/brandKit (wbtc-brand-assets.zip, 2025-11) token-white.svg: same construction, black rim/segments, #F7931A B; site favicon.svg uses #221D34 and #FF9500",
+      "evidence": [
+        "https://www.wbtc.network/brandKit",
+        "https://www.wbtc.network/brandkit/wbtc-brand-assets.zip"
+      ],
+      "notes": "Minor colour drift only.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "wsteth",
+      "project": "Lido Wrapped stETH (wstETH)",
+      "verdict": "current",
+      "ours_before": "#00a3ff disc, white/light-blue drop with ETH",
+      "official": "lido.fi LIDO_press_kit.zip Tokens/wstETH/wstETH.svg: same, #00A3FF",
+      "evidence": [
+        "https://lido.fi/static/LIDO_press_kit.zip"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "xaut",
+      "project": "Tether Gold (XAUT)",
+      "verdict": "current",
+      "ours_before": "gold #d3b25a disc, white diamond with T",
+      "official": "tether.io/media XAUt token (tether_XAUt_token_w-background.svg): same mark, #DFBF6A",
+      "evidence": [
+        "https://tether.io/media",
+        "https://tether.io/wp-content/uploads/tether-io_logos/tether_XAUt_token_w-background_SVG/tether_XAUt_token_w-background.svg"
+      ],
+      "notes": "Small colour drift: ours #d3b25a vs official #DFBF6A.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "xaut0",
+      "project": "XAUT0",
+      "verdict": "current",
+      "ours_before": "olive-gold #807148 disc, pixel T0",
+      "official": "docs.usdt0.to media kit XAUT0 icon: same; primary asset mark uses a #665A39->#998756 gradient disc",
+      "evidence": [
+        "https://docs.usdt0.to/resources/mediakit",
+        "https://usdt0.to/static/logo/asset_XAUT0.svg"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "xdc",
+      "project": "XDC Network (XDC)",
+      "verdict": "current",
+      "ours_before": "'XDC' logotype in light cyan #9ff3ff on navy #0d1630 disc",
+      "official": "xdc.org brand assets 'XDC Primary Color Logo.svg' (2025-05-14): same logotype in #ABDFEF, shown on dark",
+      "evidence": [
+        "https://xdc.org/resources/brand-assets",
+        "https://xdcf.cdn.prismic.io/xdcf/aCc8mSdWJ-7kSOOm_XDC_Primary_Logotype.zip"
+      ],
+      "notes": "Minor drift #9ff3ff vs #ABDFEF. The kit also has a compact 'XDC Icon' (X with notch, Foundation icon) that would read better at small sizes.",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "xrp",
+      "project": "XRP / XRP Ledger",
+      "verdict": "current",
+      "ours_before": "white XRP X symbol on #23292f disc",
+      "official": "xrpl.org XRPL_Brand_Kit.zip (XRP Brand Design System 2026) 'XRP Ledger - Symbol - Black.svg': same X symbol, #141414",
+      "evidence": [
+        "https://xrpl.org/",
+        "https://xrpl.org/XRPL_Brand_Kit.zip"
+      ],
+      "notes": "",
+      "outcome": "kept"
+    },
+    {
+      "artwork_name": "zcash",
+      "project": "Zcash (ZEC)",
+      "verdict": "outdated",
+      "ours_before": "black outer ring, gold #dea038 disc, black Z (pre-2023 mark)",
+      "official": "yellow #f3b724 disc with white Z; 2023 brand refresh (homepage logo uploaded 2023-03, press Brandmark-*.svg 2023-11)",
+      "evidence": [
+        "https://z.cash/press/",
+        "https://z.cash/wp-content/uploads/2023/03/zcash-logo.svg",
+        "https://z.cash/wp-content/uploads/2023/11/Brandmark-Yellow.svg"
+      ],
+      "notes": "zcash-logo.svg has an explicit white Z (#f3b724 disc). Alternative from the press kit: Brandmark-Yellow.svg (#f4b728 disc, Z knocked out/transparent, so it needs a white backing), (local copy) sha256 5adf0bc86b508b554ebf094a4aab0cc63594c9fb83d46faa087b2e5375c09758.",
+      "outcome": "replaced"
+    },
+    {
+      "artwork_name": "zksyncera",
+      "project": "ZKsync (ZK) / ZKsync Era",
+      "verdict": "current",
+      "ours_before": "white double-arrow ZKsync logomark on black disc",
+      "official": "zksync.io/brand logomark (zksync-logo-brand-assets.zip, 2026-01-30): same double-arrow mark, #11141A",
+      "evidence": [
+        "https://www.zksync.io/brand",
+        "https://www.zksync.io/brand/zksync-logo/zksync-logomark-dark-transparent.svg"
+      ],
+      "notes": "Binance shows the inverse (black mark on white disc).",
+      "outcome": "kept"
+    }
+  ]
+}

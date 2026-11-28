@@ -170,7 +170,7 @@ const BTC_PROFILES = (coin, chain) => [
 const EVM_CHAINS = [
   'ethereum', 'ethereum-sepolia', 'ethereum-hoodi', 'arbitrum', 'arbitrum-sepolia', 'optimism', 'optimism-sepolia',
   'avalanche', 'avalanche-fuji', 'base', 'base-sepolia', 'bnb', 'bnb-testnet', 'hyperliquid', 'hyperliquid-testnet',
-  'polygon', 'polygon-amoy', 'linea', 'linea-sepolia', 'scroll', 'blast', 'mantle', 'sei', 'celo', 'celo-sepolia',
+  'polygon', 'polygon-amoy', 'linea', 'linea-sepolia', 'scroll', 'mantle', 'sei', 'celo', 'celo-sepolia',
   'cronos', 'cronos-testnet', 'opbnb', 'zksync-era', 'zksync-era-sepolia', 'sonic', 'sonic-testnet', 'berachain',
   'unichain', 'ink', 'ink-sepolia', 'x-layer', 'x-layer-testnet', 'plasma', 'monad', 'world-chain',
   'kaia', 'xdc', 'robinhood-chain', 'kava-evm', 'chiliz', 'stable', 'arc', 'manta-pacific', 'metis', 'flare',

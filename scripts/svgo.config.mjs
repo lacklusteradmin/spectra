@@ -129,12 +129,16 @@ export default {
     // alone as soon as one of its classes styles more than one element — the
     // usual shape of an Illustrator export, and the one thing that kept an
     // icon's fills in CSS where nothing else in this config can read them.
+    // makeArcs rewrites curves that fit a circle as arc commands, and for a
+    // curve of about half a turn it can pick the wrong side of the chord: the
+    // ASI Alliance mark's lobes came out as slivers. Curves stay curves.
     {
       name: 'preset-default',
       params: {
         overrides: {
           removeUnknownsAndDefaults: { keepDataAttrs: false },
           inlineStyles: { onlyMatchedOnce: false },
+          convertPathData: { makeArcs: false },
         },
       },
     },

@@ -1,5 +1,77 @@
 # Changelog
 
+## Beta Commit 264
+
+- **47 icons show their projects' current marks** (`icons/crypto/`,
+  [audit](audits/icons-2026-11-27/README.md))
+  - Redrawn from the mark that replaced ours: 1inch, Akash, cbETH, Cronos,
+    FDUSD, Gnosis, Kaspa, Metis, Nexo, PAXG, Qtum, rETH, Synthetix, The Graph,
+    Trust Wallet, VTHO and Zcash.
+  - Redrawn from the project's own artwork where ours was not it: ApeCoin
+    (a decorated variant with nine blur filters), Astar (a flat recoloured
+    redraw), crvUSD (Curve's CRV mark) and Osmosis (a home-made line flask).
+    Astar's shadows are drawn without `mix-blend-mode`, which CoreSVG ignores,
+    and the official symbol's overlay highlights are left out.
+  - Safe and WBETH take the colours of their token logos, which exist only as
+    PNG (before: colours no official asset uses).
+  - Repaired: ASI's lobes (broken into slivers), Pendle's pendulum (cut off by
+    the disc), Sun's face (its yellow half covered) and CRV (a `transform` on
+    `<mask>` that CoreSVG ignores, so iOS drew another shape).
+  - Same mark in the official icon's current colours or treatment: Avalanche,
+    BAT, Celestia, Cetus, Chainlink, Cosmos Hub, Decentraland, DigiByte, dYdX,
+    eCash, GMX, Katana, KCS, Plasma, PYUSD, Sei, Solana, Sui, Tezos and
+    VeChain.
+- **Icon normalization keeps curves as curves** (`scripts/svgo.config.mjs`):
+  `convertPathData` no longer makes arcs (before: a curve of about half a turn
+  could become an arc on the wrong side of its chord, which broke ASI's
+  mark); no other icon's bytes change.
+- **AERO is the Aero token** (`core/data/tokens.toml`, `crypto-wiki.toml`,
+  `icons/crypto/`, [audit](audits/aero-2026-11-27/README.md))
+  - Token `aero` ("Aero", CoinGecko `aero`, no CoinPaprika id) on Base at
+    `0x3f5bf3edac59d650d8fdf9657a71f2f904a3a4ee` replaces `aerodrome-finance`,
+    the legacy Aerodrome AERO `0x940181a94a35a4569e4529a3cdfb74e38fd98631`
+    (Aerodrome and Velodrome merged into Aero on 2026-10-21, and the legacy
+    token upgrades to it one way, 1:1).
+  - The wiki row describes Aero's token (before: Aerodrome's).
+  - `aero.svg`, from aero.xyz's brand kit, replaces `aerodrome.svg`.
+- **Blast is no longer catalogued** (`core/data/chains.toml`, `tokens.toml`,
+  `explorers.toml`, `chain-wiki.toml`, `crypto-wiki.toml`, `registry::Chain`,
+  [evidence](audits/blast-shutdown-2026-11-27.md))
+  - The `blast` network and `Chain::Blast` are removed, with its EIP-155 id
+    81457 and Bedrock fee model, leaving 90 mainnets (Blast shut its L2 down
+    on 2026-11-04).
+  - The BLAST and USDB tokens are removed, as are the Blast deployments of
+    ETH, ENA, USDe and sUSDe.
+  - Mainnets ranked after Blast (36) move up one.
+  - BlastScan and the Blast, BLAST and USDB wiki entries are removed.
+  - `icons/crypto/blast.svg` and `usdb.svg` are removed.
+  - The derivation-profile vectors no longer list Blast
+    (`tests/vectors/generate-derivation-profile-vectors.cjs`; regenerated
+    `core/tests/fixtures/derivation-profiles.json`).
+- Measured: 2026-11-27, the 185 icons against each project's brand kit, site
+  or token list: 151 current, 47 changed, 4 left outdated (Polkadot, Bitcoin
+  SV, SNEK and SPX6900: no token mark or no vector); every changed icon drawn
+  the same by WebKit and CoreSVG
+  ([record](audits/icons-2026-11-27/README.md)).
+- Measured: 2026-11-27, Base block `0x3c3bb9c`: the new AERO is a live
+  contract with 18 decimals, name "Aero", symbol "AERO", and CoinGecko's
+  `aero` names it; `aero.svg` against the brand SVG in CoreSVG at 512 px: at
+  most 8/255 in any channel ([record](audits/aero-2026-11-27/README.md)).
+- Measured: 2026-11-27, read-only probes of Blast's own hosts, 12 public
+  Blast RPCs and Routescan: none returned a block; `rpc.blast.io` and
+  `docs.blast.io` no longer resolve.
+- Docs: `AGENTS.md` (Icons: what CoreSVG ignores), `CHAIN-SUPPORT.md`
+  (mainnet count; networks without a keyless provider), `OPEN-ITEMS.md`
+  (restoring default providers); new audit records
+  `docs/audits/icons-2026-11-27/`, `docs/audits/aero-2026-11-27/` and
+  `docs/audits/blast-shutdown-2026-11-27.md`.
+- Total: 3 .rs files changed (0 new), +5 −7 lines; data and config files:
+  `chains.toml`, `tokens.toml`, `explorers.toml`, `chain-wiki.toml`,
+  `crypto-wiki.toml`, `derivation-profiles.json`,
+  `generate-derivation-profile-vectors.cjs`, `scripts/svgo.config.mjs`,
+  `icons/crypto/` (47 changed, 1 new, 3 removed); dependencies unchanged;
+  `cargo test` 1690 → 1690 passing.
+
 ## Beta Commit 263
 
 - **The apps' string tables live here** (`strings/`)

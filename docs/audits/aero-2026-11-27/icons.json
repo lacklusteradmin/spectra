@@ -1,0 +1,17 @@
+{
+  "checked_at_utc": "2026-11-27",
+  "icons": [
+    {
+      "artwork_name": "aero",
+      "source": "https://aero.xyz/brand-kit/aero-token.svg",
+      "source_page": "https://aero.xyz/brand",
+      "license": "Offered for download on Aero's brand page, which states no terms",
+      "source_sha256": "afd0d884a17e79d36fc626e25b31bc1c2b8c23ba7b1bf913ab4b33f1466c9c02",
+      "reference_raster": "https://aero.xyz/brand-kit/aero-token.png",
+      "reference_raster_sha256": "cfd5a792268924f880d99adda1b456b4a9196ea44519ae82269c5f1b490831c6",
+      "layout": "The #F1F1F1 full-disc path becomes the disc in the same paint; the six pinwheel paths are scaled from 1080 to 64 units and otherwise unchanged. The source draws no filter, mask or blend mode; its one clip-path covers the whole canvas and is dropped.",
+      "coresvg_check": "NSImage (CoreSVG) renders of icons/crypto/aero.svg and the source SVG at 512 px differ by at most 8 of 255 in any channel (no pixel above 8); at 64 px, 2 of 4096 pixels exceed 8 (max 11). icons/crypto/aero.svg is unchanged by scripts/svgo.config.mjs with makeArcs on or off.",
+      "replaces": "aerodrome (the legacy Aerodrome AERO mark), removed with the legacy token"
+    }
+  ]
+}

@@ -1,0 +1,428 @@
+{
+  "checked_at_utc": "2026-11-27",
+  "icons": [
+    {
+      "artwork_name": "1inch",
+      "action": "replaced",
+      "source": "https://1inch.com/assets/images/landing/press-room/assets/1INCH_token.svg",
+      "found_on": "https://1inch.com/press-room",
+      "license": "not stated",
+      "source_sha256": "6f725318e953b9e1051a3d49eb0a6527b483edcc4d8417c993082638e83384ff",
+      "layout": "The token icon's white square becomes the disc in the same paint; its black square is drawn at 36 of 64."
+    },
+    {
+      "artwork_name": "akash",
+      "action": "replaced",
+      "source": "https://akash.network/brand-resources/akash-logos.zip (member 'akash/akash-logo.svg'; zip sha256 d5da9e15c18fb014472cea05e762d4abf93fbf62b829ce5aa13524610800fac3)",
+      "found_on": "https://akash.network/brand/resources/",
+      "license": "\"Akash Network's trademarks, logos, and brand elements should be used without any changes\"",
+      "source_sha256": "f9e10dfca676c1b153f6d2213454cbc022c58ffcfa2345df806a4033843ae8e0",
+      "layout": "The sign (the lockup's first three paths) in white on an Akash Red #FF4141 disc, as the brand book's app icon."
+    },
+    {
+      "artwork_name": "apecoin",
+      "action": "replaced",
+      "source": "https://apecoin.com/assets/apecoin-full-logo-Uq9aBGGF.svg",
+      "found_on": "https://apecoin.com/",
+      "license": "not stated",
+      "source_sha256": "faa3e32024ac43ffc1cc5827ab3210334e36392ee4985846f381f0bff822598c",
+      "layout": "The lockup's gorilla on its #0054FA disc, without the disc's inner-shadow filter and gradient outline: the flat mark apecoin.com serves as its favicon."
+    },
+    {
+      "artwork_name": "asi",
+      "action": "replaced",
+      "source": "https://superintelligence.io/wp-content/uploads/2025/01/mobile-logo.svg",
+      "found_on": "https://superintelligence.io/",
+      "license": "not stated",
+      "source_sha256": "1c29d6ce9873b34471e7d0245779b9ff2dca90dca675bf73056f623f9604d0c1",
+      "layout": "The project's own mark, unrecoloured, centred on a white disc (as before; the normalization no longer turns its curves into arcs)."
+    },
+    {
+      "artwork_name": "astar",
+      "action": "replaced",
+      "source": "https://astar.network/favicon.svg",
+      "found_on": "https://astar.network/brand-asset-kit/",
+      "license": "\"Do not edit, change, distort, recolour, or reconfigure the Astar logo.\"",
+      "source_sha256": "2d7522d2b19c6aab2044ce08398865599f2cba79bd727b1ececb3522f42887c5",
+      "layout": "The symbol's ring scaled to the disc, on white. Its multiply shadows are drawn as black at the equivalent opacity and its overlay highlights are left out, because CoreSVG ignores mix-blend-mode."
+    },
+    {
+      "artwork_name": "avalanche",
+      "action": "recoloured",
+      "source": "https://www.avalanche.com/favicon-light.svg",
+      "found_on": "https://www.avalanche.com/",
+      "license": "not stated",
+      "source_sha256": "8843998a7b91875f3dc6027bd1383ccf97c3d1534d2f3e56d363706039146882",
+      "layout": "Existing artwork; disc #ff394a -> #e6212f, the colour avalanche.com draws the mark in."
+    },
+    {
+      "artwork_name": "bat",
+      "action": "replaced",
+      "source": "https://basicattentiontoken.org/static-assets/images/bat-logo.svg",
+      "found_on": "https://basicattentiontoken.org/",
+      "license": "not stated",
+      "source_sha256": "d3a31bb51d17f30fe8681e8dc94a2eb5601f61d39300768e1c284c8baa2ac516",
+      "layout": "The tricolour triangle, without its drop-shadow filter, centred on a white disc."
+    },
+    {
+      "artwork_name": "cbeth",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/ethereum-optimism/ethereum-optimism.github.io/e23b0d8642a9d2abb3222d410302058705346b1c/data/cbETH/logo.svg",
+      "found_on": "https://github.com/ethereum-optimism/ethereum-optimism.github.io/pull/266 (Superchain token list, cbETH added 2023-01-27)",
+      "license": "not stated (third-party token list; mark belongs to Coinbase)",
+      "source_sha256": "207bcda985a7df133bd8422d2f3253ca23c4f30a473c3e289a9a3401c3549156",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc. Coinbase serves the same design only as PNG."
+    },
+    {
+      "artwork_name": "celestia",
+      "action": "replaced",
+      "source": "https://celestia.org/images/brand/celestia-symbol-white.svg",
+      "found_on": "https://celestia.org/brand/",
+      "license": "not stated",
+      "source_sha256": "42ed0449daff17db6af4976c3ba4464dd24126a157d8777c3798dc9df8c8b961",
+      "layout": "The white symbol on an Indigo #5640D1 disc (brand palette)."
+    },
+    {
+      "artwork_name": "cetus",
+      "action": "replaced",
+      "source": "https://drive.usercontent.google.com/download?id=10S5PylBo1382U8vNAR49yIZ2BInAKQEa&export=download",
+      "found_on": "https://drive.google.com/drive/folders/1O31leQ-YaPSwILQzF4ATTM7_Ypq8NcJb (CETUS_Symbol, uploaded 2025-11-24)",
+      "license": "not stated in the kit; guidelines restrict primary use to the two-tone colour themes, allowing pure black/white reversals only with sufficient contrast",
+      "source_sha256": "74f86fa94e30b49ec93fd6fe50a90ad7543b66e3dda1f78ac3496411f939cd0c",
+      "layout": "The two-tone symbol on a black disc, as the token's on-chain icon."
+    },
+    {
+      "artwork_name": "chainlink",
+      "action": "replaced",
+      "source": "https://cdn.prod.website-files.com/5f6b7190899f41fb70882d08/6aa7fef7a31aed5b1bf78dd7_Chainlink-Symbol-White.svg",
+      "found_on": "https://chain.link/brand-assets",
+      "license": "'Do not place the logo on top of other objects and leave a reasonable amount of margin'; use per Chainlink Trademark Guidelines",
+      "source_sha256": "1e3545577c2aee8f1fbde72181a47b71b9fb70a12b5254efd8bae60549948b2b",
+      "layout": "The white symbol on a Chainlink Blue #0847F7 disc."
+    },
+    {
+      "artwork_name": "cosmos",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/cosmos/chain-registry/a23d024879483ef9a57c200e0f8a4776835b5334/cosmoshub/images/atom.svg",
+      "found_on": "https://github.com/cosmos/chain-registry (cosmoshub/assetlist.json logo_URIs)",
+      "license": "repo licence CC-BY-4.0 per GitHub API; trademark terms not stated",
+      "source_sha256": "b860cca33f938aedd403cbc8dde489ceba9ed8759fdb851cbc1bbf0a2a7c9ca1",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "cronos",
+      "action": "replaced",
+      "source": "https://cronos.com/brand/cro-logo.svg",
+      "found_on": "https://cronos.com/brand",
+      "license": "not stated (page says Ult, Cronos Launch and Cronos Network assets are not interchangeable)",
+      "source_sha256": "ffd675ec4ffcdc1d4fd46d2f5eedfaa1b1b9fc02527a4bbec90a46b23e93e12d",
+      "layout": "The CRO mark on a #090909 disc, the ground of the kit's app icon."
+    },
+    {
+      "artwork_name": "crv",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/curvefi/curve-assets/4ef7cc6e7b8debd57d2def50069e70c9c544093d/branding/logo.svg",
+      "found_on": "https://github.com/curvefi/curve-assets",
+      "license": "not stated (repo has no licence)",
+      "source_sha256": "53aee78678be408515ec6d2bbc9512e115c5d88918f99b6f94ca9169b23c9ba1",
+      "layout": "The official logo with matplotlib's axes clip removed, centred on a white disc. The old file put a transform on <mask>, which CoreSVG ignores."
+    },
+    {
+      "artwork_name": "crvusd",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/curvefi/curve-assets/4ef7cc6e7b8debd57d2def50069e70c9c544093d/branding/crvusd.svg",
+      "found_on": "https://github.com/curvefi/curve-assets/tree/4ef7cc6e7b8debd57d2def50069e70c9c544093d/branding",
+      "license": "not stated (repo has no licence)",
+      "source_sha256": "5c82bf55b43e9f76bd0e7526e1f3167486ac7e53d9c46c6ade6dcbd7796d0913",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "decentraland",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/decentraland/ui/5399973b7fd7cfebdb0ca79486af3f5e2916a4e5/src/assets/logo.svg",
+      "found_on": "https://github.com/decentraland/ui (official UI library, logo.svg 'feat: new logo' 2019-02-11)",
+      "license": "not stated (repo licence NOASSERTION)",
+      "source_sha256": "240f056b2b29324e0612a1c6691bb9fdd8b762831a3c35de555b7a710508dec8",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "digibyte",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/DigiByte-Core/digibyte-logos/a04c1838dfd87fcf62d5bfe30fbda9cf2c0b590d/Logos%20Vector/DigiByte%20Symbol.svg",
+      "found_on": "https://github.com/DigiByte-Core/digibyte-logos (linked from digibyte.org)",
+      "license": "MIT (repo licence)",
+      "source_sha256": "a367781d51e646810c40f6fab6fd0676d07ad8e05438191cd623d1758d10e057",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "dydx",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/dydxprotocol/v4-web/6f74c55cbf9602664c04b9b00a675ab49c98249b/src/icons/dydx-protocol.svg",
+      "found_on": "https://github.com/dydxprotocol/v4-web (official dYdX frontend)",
+      "license": "not stated (repo licence NOASSERTION)",
+      "source_sha256": "3d5c85b5a9b74568a861b1c992bbd8b047ae4cff94400a0400f3ba62ba93c13e",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "ecash",
+      "action": "replaced",
+      "source": "https://e.cash/logos/ecash-circle-icon-blue.svg",
+      "found_on": "https://e.cash/brand",
+      "license": "not stated",
+      "source_sha256": "49e6db18a207ae29b60a1738bdbaff4f8b6420924ddefd73d0a7302d4620b929",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "fdusd",
+      "action": "replaced",
+      "source": "https://cdn.prod.website-files.com/67343e8ae0825a566f704bb0/6758189ee5e3d9e58710ba78_fdusd-currency.svg",
+      "found_on": "https://www.firstdigitallabs.com/ (homepage FDUSD symbol; same mark as 'FDUSD Logo Symbol' on /brand-assets)",
+      "license": "not stated",
+      "source_sha256": "96918d0d4c7619f988fef48f7262f8422dfaa015581f8dd551c5db94b653ab52",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "gmx",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/gmx-io/gmx-assets/6ca89def873126e2d46bab65651cf940b2597923/GMX-Assets/SVG/GMX_LOGO%20ONLY%20CIRCLE.svg",
+      "found_on": "https://github.com/gmx-io/gmx-assets",
+      "license": "repo has no licence file; terms not stated",
+      "source_sha256": "e202aaa6fb4268f4cc9c0de938653bac8bf8bf2ba5f6a22e1e820e832655b8d1",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "gnosis",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/gnosischain/documentation/7590b11d7f18406c0c6dc92efcd400ab521ba26b/static/img/brand/gnosis-owl-purple.svg",
+      "found_on": "https://github.com/gnosischain/documentation (docs.gnosischain.com brand asset)",
+      "license": "repo licence CC0-1.0; gnosis.io brand guide: the owl in the logo 'is never removed, substituted, or repositioned' (refers to the wordmark lockup)",
+      "source_sha256": "975b0ecd1f77b70b6770f931cb16c39cf70a4aa2fb0da966ee588cdbc2a639e7",
+      "layout": "The purple disc with the owl cut out, rescaled onto a white disc."
+    },
+    {
+      "artwork_name": "kaspa",
+      "action": "replaced",
+      "source": "https://kaspa.org/icon.svg?icon.2mq9y8vb0g1m8.svg",
+      "found_on": "https://kaspa.org/ (site icon)",
+      "license": "2023 media kit: \"Please do not edit, change, distort, recolor, or reconfigure the KASPA logo.\"",
+      "source_sha256": "661189d5b74289214107f246fbfdf893487149bd3acd1b80982d38751af51f32",
+      "layout": "The teal mark, unrecoloured, centred on a white disc, as the kit's dark-green-on-white icon."
+    },
+    {
+      "artwork_name": "katana",
+      "action": "replaced",
+      "source": "https://t90131276658.p.clickup-attachments.com/t90131276658/217f2f32-2627-4857-b06d-5dd04028ce8b/00%20LOGO.zip (entry '00 LOGO/Katana Token.svg'; zip sha256 8f11082fcba13c75481b486e10f544e6f1bf5823b1e9add8a796a65eff99236f)",
+      "found_on": "https://brand.katana.network/",
+      "license": "not stated",
+      "source_sha256": "1f5050eea72d7e00f910ebb119ce6b877d70ae991d48c4cb557f2d775b31b082",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "kcs",
+      "action": "recoloured",
+      "source": "https://assets-currency.kucoin.com/60c74375db892b0006d819a9_KCS.png",
+      "found_on": "https://www.kucoin.com/price/KCS (page JSON 'logo')",
+      "license": "not stated",
+      "source_sha256": "93d6cdc6c1a21b1126caa3930d4e3946352b8a57903e6a0b40f1396cc44cbd69",
+      "layout": "Existing artwork; disc #24ae8f -> #41e6af, the colour of KuCoin's own KCS icon (PNG only)."
+    },
+    {
+      "artwork_name": "metis",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/MetisProtocol/brand-assets/3b70004621ada3fa4f8b499d40b65a661162e083/SVG/Symbol.svg",
+      "found_on": "https://github.com/MetisProtocol/brand-assets",
+      "license": "not stated (repo has no LICENSE or README)",
+      "source_sha256": "d30d5f656276675c3f358d8ba14a1706ed238b06d3bb87ae93ad95b0ea2f47ae",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "nexo",
+      "action": "replaced",
+      "source": "https://static.nexo.com/_v2/common/currencies/NEXO.svg",
+      "found_on": "https://nexo.com/brand",
+      "license": "not stated",
+      "source_sha256": "62214374c4cc7b74c84aee0ceafb47bea6f9f5d62a76a41e7239de70a7e95028",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "osmosis",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/cosmos/chain-registry/a23d024879483ef9a57c200e0f8a4776835b5334/osmosis/images/osmo.svg",
+      "found_on": "https://github.com/cosmos/chain-registry (osmosis/assetlist.json logo_URIs); the same flask is osmosis.zone's header icon",
+      "license": "chain-registry repo licence CC-BY-4.0 per GitHub; trademark terms not stated",
+      "source_sha256": "372aae2eba9331cea0b6e01c2f746e8aed4c0f1180826085e969c2fce17345bd",
+      "layout": "The full-colour flask, unrecoloured, on a white disc: the circle enclosing flask and neck is centred and has radius 28."
+    },
+    {
+      "artwork_name": "paxg",
+      "action": "replaced",
+      "source": "https://framerusercontent.com/images/tDnEbOiSG9e3gOPyJTfNKARM7kg.svg",
+      "found_on": "https://www.paxg.com/brand",
+      "license": "'Please use the marks as provided.' and 'we request that partners only use the provided PAXG token logo in their application.'",
+      "source_sha256": "388a31c3ca66ec8434602a9e983b341f83465bb1a5ab82049c02ea7c0b56d495",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "pendle",
+      "action": "replaced",
+      "source": "https://www.pendle.finance/images/logos/blue-light.svg",
+      "found_on": "https://www.pendle.finance/brand-guide/",
+      "license": "'Please use these materials responsibly and in accordance with our brand standards.'",
+      "source_sha256": "0bc6514831140796c7de9dd5cd603cfd16704215c27a814653a523a64aba295d",
+      "layout": "The whole mark (circle and pendulum) centred on a white disc."
+    },
+    {
+      "artwork_name": "plasma",
+      "action": "recoloured",
+      "source": "https://www.plasma.org/brand/plasma-logomark-light.svg",
+      "found_on": "https://www.plasma.org/brand-kit",
+      "license": "not stated ('Download or copy the Plasma logo in SVG and PNG.')",
+      "source_sha256": "6db53d1421e3dc36a89460b979fba40bbf8af5cbbe7bcdc14972bebc0a276059",
+      "layout": "Existing artwork; disc #162f29 -> #251d1d and mark #fff -> #fefcf9, the colours of plasma.org's icon."
+    },
+    {
+      "artwork_name": "pyusd",
+      "action": "replaced",
+      "source": "https://framerusercontent.com/assets/vXDoVdrCxwitP7OwVU8Vr2hCd4.zip (file 'PYUSD/PYUSD Token Logo.svg'; zip sha256 60d268963c7bb531a4c4edc4238b98f682abe6e595dfefb35847229977cb75a3)",
+      "found_on": "https://www.paxos.com/brand-resources",
+      "license": "not stated",
+      "source_sha256": "a3be9aa906e68d5488a1af836fe0fbc0d8a4dda8ddf95aec95d6806f730270ef",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "qtum",
+      "action": "replaced",
+      "source": "https://qtum.org/img/qtum-logo-new.svg",
+      "found_on": "https://qtum.org/",
+      "license": "not stated",
+      "source_sha256": "f78d1db3bcfb66d2adb7313e44a3af0dcecb3718cb0a3fc4d829ce024cded348",
+      "layout": "The chip symbol (the lockup's subpaths left of the wordmark), unrecoloured, on a white disc."
+    },
+    {
+      "artwork_name": "rocketpooleth",
+      "action": "replaced",
+      "source": "https://cdn-rocketpool.s3.us-west-2.amazonaws.com/reth.zip (RETH/SVG/RETH-logo_primary.svg; zip sha256 2326535c7043a92f730754225a1059d6c4d9ca11c5c81bcb7b53b09c2af1630f)",
+      "found_on": "https://rocketpool.net/protocol/brand-kit",
+      "license": "not stated",
+      "source_sha256": "32cd34ca5820f027ca66ed3d5738a134c32d5d4c610d2beedf2697594556656b",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc. The primary variant, with its lighter ring."
+    },
+    {
+      "artwork_name": "safe",
+      "action": "recoloured",
+      "source": "https://safe-global.notion.site/image/https%3A%2F%2Fs3-us-west-2.amazonaws.com%2Fsecure.notion-static.com%2F640c7ac9-75c9-4d75-875d-56057030fb71%2FSAFE_token_logo.png?table=block&id=7d9ad728-dd7e-4623-9149-d2afc766b4f0&cache=v2",
+      "found_on": "https://safe-global.notion.site/Safe-Media-Kit-35ce7ffc829c4bedbbf828464a1b7c00",
+      "license": "Safe Trademark Policy (https://safe.global/trademark) governs use; kit text not quoted (not read in full)",
+      "source_sha256": "9b4b504a03d70d0f9106888abb421dbdcb3d91e649608f04b135fd97281eeeb1",
+      "layout": "Existing artwork; symbol #fff -> #121312 on a #16fd86 -> #4de5e1 gradient disc, as the SAFE token logo (PNG only)."
+    },
+    {
+      "artwork_name": "sei",
+      "action": "replaced",
+      "source": "https://brand.sei.io/brand/logo/sei-token-maroon.svg",
+      "found_on": "https://brand.sei.io/",
+      "license": "not stated; guidelines say 'Keep proportions locked'",
+      "source_sha256": "9cdd09b8c6a7146edfb77d9e1c1e08d683ffdc957b21cf0ee5e9dc0235b15479",
+      "layout": "The maroon token with its waves cut out, rescaled onto a white disc."
+    },
+    {
+      "artwork_name": "solana",
+      "action": "replaced",
+      "source": "https://raw.githubusercontent.com/solana-foundation/solana-com/1c33e55b0b08548b8d85d648aab4f8b76db06711/apps/web/public/src/img/branding/solanaLogoMark.svg",
+      "found_on": "https://github.com/solana-foundation/solana-com (source of solana.com/branding)",
+      "license": "not stated (solana.com/branding behind a Vercel security checkpoint, not read)",
+      "source_sha256": "3d3401109aa061dec40a8659f1847817a8e647f98de1e65e76e86a95bbe1f08a",
+      "layout": "The logomark, in its current gradient, on a black disc (as before)."
+    },
+    {
+      "artwork_name": "sui",
+      "action": "replaced",
+      "source": "https://firebasestorage.googleapis.com/v0/b/standards-site-beta.appspot.com/o/documents%2F39ccba157de%2Fc1fde51c170%2F01_Sui_Logo.zip?alt=media&token=963da9ba-a101-43fd-8288-57fee667243e (01_Sui_Logo/Sui_Droplet/SVG/Logo_Sui_Droplet_Sui Blue.svg; zip sha256 5a2ccde45751b652e423afb92b7b57037600232d644e985819a735185b291806)",
+      "found_on": "https://sui.io/media-kit",
+      "license": "'Do not alter the logo.'",
+      "source_sha256": "5ec5b3690a545e1fca8c6f397a5b882a1ee7b5fb4e6b4e74aabe06964a494eb3",
+      "layout": "The Sui Blue droplet on a white disc (as before, in the kit's colour)."
+    },
+    {
+      "artwork_name": "sun",
+      "action": "repaired",
+      "source": "https://static.tronscan.org/production/logo/TSSMHYeV2uE9qYH95DqyoCuNCzEL1NvU3S.png",
+      "found_on": "https://apilist.tronscanapi.com/api/token_trc20?contract=TSSMHYeV2uE9qYH95DqyoCuNCzEL1NvU3S&showAll=1 (home_page https://sun.io/)",
+      "license": "not stated",
+      "source_sha256": "c9c8f20eaf2c2380636a06c4cdbf3864f240d026b06bc24de5cf597fd774846a",
+      "layout": "Existing artwork; the face's right half is a half-disc again (it had become a full disc covering the yellow half) and the art is scaled to reach the disc's edge, as the official icon (PNG only)."
+    },
+    {
+      "artwork_name": "synthetix",
+      "action": "replaced",
+      "source": "https://synthetix.io/brand/brand-kit/token/snx-token.svg",
+      "found_on": "https://synthetix.io/brand",
+      "license": "'Official logos for press, partners, and community use.' No alteration rule stated",
+      "source_sha256": "1b52b1207fb06efe3aab1c286f6d7eb4a37cc5f2696796c4c432cbaeca802765",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "tezos",
+      "action": "replaced",
+      "source": "https://light-power-29443cc779.media.strapiapp.com/tezos_brand_kit_d4e51f83e7.zip (Tezos brand kit/Token (XTZ)/SVG/tezos-token-round.svg; zip sha256 e33b3ad848d0a2fd767f43ab8164a47f2a863c4d71a7bb8f875ac82727146be0)",
+      "found_on": "https://tezos.com/brand/",
+      "license": "not stated",
+      "source_sha256": "027bfc9e0e15ab780e3bad165c37b41ca2962a22f29aac164f63e0a7b0ab7d7b",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "thegraph",
+      "action": "replaced",
+      "source": "https://storage.thegraph.com/brand/The%20Graph%20-%20GRT%20Symbol.zip (The Graph - GRT Symbol - Color.svg; zip sha256 7266b243a72b6450321262c1ccc7dfbdb83a85253922fc3052678a068c034453)",
+      "found_on": "https://thegraph.com/brand/",
+      "license": "not stated",
+      "source_sha256": "c9685b5101f15b497a91202b818e02b19a2f309cd90bbdb73e22eec4fd40d097",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    },
+    {
+      "artwork_name": "trustwallet",
+      "action": "replaced",
+      "source": "https://trustwallet.com/icon.svg (shield geometry); colours from https://raw.githubusercontent.com/trustwallet/assets/4f6a9325e93d269538e085f75594280b7393d87e/blockchains/smartchain/assets/0x4B0F1812e5Df2A09796481Ff14017e6005508003/logo.png",
+      "found_on": "https://trustwallet.com/ ; https://github.com/trustwallet/assets (TWT logo updated 2023-10-16)",
+      "license": "press kit: 'we ask that you use them without colour or rotation alterations' (Trust logos)",
+      "source_sha256": "c3729a732e44aec8b096f4b888d211efe395566452e3eccc7c6743467158b148",
+      "layout": "Trust's shield geometry with the right half drawn as an outline in #0500FF, matching the TWT logo (PNG only), on a white disc."
+    },
+    {
+      "artwork_name": "vechain",
+      "action": "recoloured",
+      "source": "https://files.vechain.org/branding/Logos/VeChain.zip (member 'VeChain/VeChain_Dark.svg', the V's colour)",
+      "found_on": "https://vechain.org/brand-assets",
+      "license": "not stated (graphic pack: 'Keep these assets intact to protect brand consistency')",
+      "source_sha256": "49e7dd8c02d473ea97d1303664576d0a1b010f12e954409af62486ab582f0652",
+      "layout": "Existing artwork; disc #582974 -> #7266ff, VeChain Purple."
+    },
+    {
+      "artwork_name": "vtho",
+      "action": "replaced",
+      "source": "https://files.vechain.org/branding/Logos/VeChain%20Thor.zip (member 'VeChain Thor/VeChain_Thor_Dark.svg'); colours from https://raw.githubusercontent.com/vechain/token-registry/4b3a9fb635969b103a3294793d3cac46f88ea33b/tokens/main/0x0000000000000000000000000000456e65726779/token.png",
+      "found_on": "https://vechain.org/brand-assets ; https://github.com/vechain/token-registry",
+      "license": "not stated (graphic pack: 'Keep these assets intact to protect brand consistency')",
+      "source_sha256": "cd1b4f8a34210c7622e8c4e02de9d9d6b7a6f53053e11d5439e3884a6225c568",
+      "layout": "The VeChainThor bolt (#7266FF) from the brand lockup on an #EEF3F7 disc, as the token registry's VTHO logo (PNG only)."
+    },
+    {
+      "artwork_name": "wbeth",
+      "action": "recoloured",
+      "source": "https://bin.bnbstatic.com/image/admin_mgs_image_upload/20230427/59f88a2f-6656-4c37-836e-694e0c533c75.png",
+      "found_on": "https://www.binance.com/bapi/asset/v2/public/asset/asset/get-all-asset",
+      "license": "not stated",
+      "source_sha256": "5cbed5c86aa4c6f54fd76230c401c3a44d79f17f92d97ea9f05737eb012584d4",
+      "layout": "Existing artwork; grey disc -> #f7d24f-#f2be12 gradient and white diamond -> the dark facets of Binance's WBETH logo (PNG only)."
+    },
+    {
+      "artwork_name": "zcash",
+      "action": "replaced",
+      "source": "https://z.cash/wp-content/uploads/2023/03/zcash-logo.svg",
+      "found_on": "https://z.cash/press/",
+      "license": "Press page defers to the Zcash Foundation Trademark Policy (https://zfnd.org/zcash-trademark-policy/): referential use (e.g. supporting ZEC) allowed without permission if no endorsement is implied; no explicit no-alter/recolour rule",
+      "source_sha256": "6f6c9e5284da79f50bdb70c6c99071b2462e0dd8340315e79410641dffc339f8",
+      "layout": "The project's own icon on its disc, rescaled; its disc becomes the library's full disc."
+    }
+  ]
+}

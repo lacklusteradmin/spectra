@@ -70,11 +70,6 @@ decimals = 18
 
 [[deployments]]
 token_id = "ethereum"
-chain_id = "blast"
-decimals = 18
-
-[[deployments]]
-token_id = "ethereum"
 chain_id = "zksync-era"
 decimals = 18
 
@@ -798,20 +793,20 @@ contract = "0x02f5eb9a4f77b6c7c83488418e77329d31eb43219745959948a0fce9580905d9"
 decimals = 18
 
 [[tokens]]
-id = "aerodrome-finance"
+id = "aero"
 symbol = "AERO"
-name = "Aerodrome Finance"
-coingecko_id = "aerodrome-finance"
-coinpaprika_id = "aero-aerodrome-finance"
+name = "Aero"
+coingecko_id = "aero"
+coinpaprika_id = ""
 color = "blue"
-artwork_name = "aerodrome"
+artwork_name = "aero"
 tags = []
 
 [[deployments]]
-token_id = "aerodrome-finance"
+token_id = "aero"
 chain_id = "base"
 standard = "ERC-20"
-contract = "0x940181a94a35a4569e4529a3cdfb74e38fd98631"
+contract = "0x3f5bf3edac59d650d8fdf9657a71f2f904a3a4ee"
 decimals = 18
 
 [[tokens]]
@@ -998,23 +993,6 @@ token_id = "bitget-token"
 chain_id = "ethereum"
 standard = "ERC-20"
 contract = "0x54d2252757e1672eead234d27b1270728ff90581"
-decimals = 18
-
-[[tokens]]
-id = "blast"
-symbol = "BLAST"
-name = "Blast"
-coingecko_id = "blast"
-coinpaprika_id = "blast-blast-token"
-color = "yellow"
-artwork_name = "blast"
-tags = []
-
-[[deployments]]
-token_id = "blast"
-chain_id = "blast"
-standard = "ERC-20"
-contract = "0xb1a5700fa2358173fe465e6ea4ff52e36e88e2ad"
 decimals = 18
 
 [[tokens]]
@@ -1691,13 +1669,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena"
 chain_id = "mantle"
-standard = "ERC-20"
-contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
-decimals = 18
-
-[[deployments]]
-token_id = "ethena"
-chain_id = "blast"
 standard = "ERC-20"
 contract = "0x58538e6a46e07434d7e7375bc268d3cb839c0133"
 decimals = 18
@@ -3414,13 +3385,6 @@ decimals = 18
 
 [[deployments]]
 token_id = "ethena-staked-usde"
-chain_id = "blast"
-standard = "ERC-20"
-contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
-decimals = 18
-
-[[deployments]]
-token_id = "ethena-staked-usde"
 chain_id = "berachain"
 standard = "ERC-20"
 contract = "0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2"
@@ -3798,23 +3762,6 @@ contract = "0x111111d2bf19e43c34263401e0cad979ed1cdb61"
 decimals = 6
 
 [[tokens]]
-id = "usdb"
-symbol = "USDB"
-name = "USD Blast"
-coingecko_id = "usdb"
-coinpaprika_id = ""
-color = "yellow"
-artwork_name = "usdb"
-tags = ["stablecoin"]
-
-[[deployments]]
-token_id = "usdb"
-chain_id = "blast"
-standard = "ERC-20"
-contract = "0x4300000000000000000000000000000000000003"
-decimals = 18
-
-[[tokens]]
 id = "usd-coin"
 symbol = "USDC"
 name = "USD Coin"
@@ -4153,13 +4100,6 @@ decimals = 18
 [[deployments]]
 token_id = "ethena-usde"
 chain_id = "mantle"
-standard = "ERC-20"
-contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
-decimals = 18
-
-[[deployments]]
-token_id = "ethena-usde"
-chain_id = "blast"
 standard = "ERC-20"
 contract = "0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34"
 decimals = 18

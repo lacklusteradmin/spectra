@@ -170,12 +170,6 @@ tx_url = "https://scrollscan.com/tx/{hash}"
 address_url = "https://scrollscan.com/address/{address}"
 
 [[explorers]]
-chain_id = "blast"
-name = "BlastScan"
-tx_url = "https://blastscan.io/tx/{hash}"
-address_url = "https://blastscan.io/address/{address}"
-
-[[explorers]]
 chain_id = "mantle"
 name = "MantleScan"
 tx_url = "https://mantlescan.xyz/tx/{hash}"

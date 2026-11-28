@@ -191,7 +191,6 @@ fn evm_chains_carry_their_eip155_ids() {
     assert_eq!(Chain::Polygon.evm_chain_id().unwrap(), 137);
     assert_eq!(Chain::Linea.evm_chain_id().unwrap(), 59144);
     assert_eq!(Chain::Scroll.evm_chain_id().unwrap(), 534352);
-    assert_eq!(Chain::Blast.evm_chain_id().unwrap(), 81457);
     assert_eq!(Chain::Mantle.evm_chain_id().unwrap(), 5000);
     assert_eq!(Chain::Sei.evm_chain_id().unwrap(), 1329);
     assert_eq!(Chain::Celo.evm_chain_id().unwrap(), 42220);
@@ -598,9 +597,10 @@ fn rollup_fees_follow_deployed_oracle_methods() {
         Chain::OpBnb.evm_rollup_fee_model(),
         Some(OpStackFeeModel::Fjord)
     );
-    for chain in [Chain::Blast, Chain::Metis] {
-        assert_eq!(chain.evm_rollup_fee_model(), Some(OpStackFeeModel::Bedrock));
-    }
+    assert_eq!(
+        Chain::Metis.evm_rollup_fee_model(),
+        Some(OpStackFeeModel::Bedrock)
+    );
     // Arbitrum Orbit folds the L1 cost into gas, as Arbitrum does.
     assert_eq!(Chain::RobinhoodChain.evm_rollup_fee_model(), None);
     assert_eq!(Chain::Plasma.evm_rollup_fee_model(), None);

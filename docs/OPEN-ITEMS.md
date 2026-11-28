@@ -129,13 +129,11 @@ cosigners as data, as PSBTs do. What remains:
   and durable merge/continuation handling. Prove received and externally
   submitted transactions through CLI fixtures, not only local submissions.
 - [ ] **Restore verified default providers for BCH, DOGE, ZEC, DCR and DASH
-  testnets, and Blast.** These networks currently require custom endpoints
-  before reads or transfers. Blast's own RPC and PublicNode's stopped
-  answering, and Routescan stopped serving it, by 2026-11-26. Verify the
-  concrete network and every advertised capability, including balance, UTXOs,
-  history, fee/status reads and submission routing. CLI checks must
-  distinguish missing configuration from provider failure; retain no failed
-  endpoint as a fallback.
+  testnets.** These networks currently require custom endpoints before reads
+  or transfers. Verify the concrete network and every advertised capability,
+  including balance, UTXOs, history, fee/status reads and submission routing.
+  CLI checks must distinguish missing configuration from provider failure;
+  retain no failed endpoint as a fallback.
 
 ### Staking coverage
 

@@ -238,6 +238,12 @@ scripts/normalize-icons.sh
 - Formatting is owned by `scripts/svgo.config.mjs`; use
   `scripts/normalize-icons.sh --check` to detect drift. Non-square artwork needs
   manual layout; `userSpaceOnUse` gradients may retain transforms.
+- Draw nothing with `mix-blend-mode`, a filter or a `transform` on `<mask>`:
+  CoreSVG, which renders spectra-apple's asset catalog, ignores all three, so
+  the icon looks right in a browser and wrong in the app. Compare a new icon
+  in CoreSVG (`NSImage`) with the official artwork, not only in a browser.
+  (2026-11-27: Astar's official symbol and the old `crv.svg` both drew
+  differently on iOS.)
 
 ## Strings
 

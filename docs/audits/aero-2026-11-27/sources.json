@@ -1,0 +1,164 @@
+{
+  "checked_at_utc": "2026-11-27",
+  "decision_policy": "As token-catalog-2026-11-24: a deployment is listed when the issuer names the exact identifier on the exact network. A token replaced by a one-way upgrade is not kept beside its successor. Live pages were read with curl on the date above.",
+  "deployments": [
+    {
+      "token_id": "aero",
+      "chain_id": "base",
+      "standard": "ERC-20",
+      "identifier": "0x3f5bf3edac59d650d8fdf9657a71f2f904a3a4ee",
+      "role": "added",
+      "operator": "Aero (native)",
+      "issuer_native": true,
+      "sources": [
+        {
+          "url": "https://app.aero.xyz/docs/security/",
+          "pinned": false,
+          "read": "curl",
+          "excerpt": "Aero core Contract Chains Address AERO token ( Token ) Base 0x3f5bF3EdAc59d650D8fDf9657a71F2f904A3a4Ee VotingEscrow Base 0xBF7977E1521e9a3032bf7243Ee4712f311f13915"
+        },
+        {
+          "url": "https://app.aero.xyz/docs/about/aero-and-saero",
+          "pinned": false,
+          "read": "curl",
+          "excerpt": "Aero runs on several networks, but AERO itself only exists on Base. On every other network, AERO rewards are paid in xAERO, a standard ERC-20 receipt token that stands in for AERO on that network."
+        },
+        {
+          "url": "https://aero.xyz/aero-upgrade",
+          "pinned": false,
+          "read": "curl",
+          "excerpt": "All official contract addresses, including the AERO token, are listed on the Aero docs security page ."
+        },
+        {
+          "url": "https://api.coingecko.com/api/v3/coins/aero",
+          "pinned": false,
+          "read": "curl",
+          "excerpt": "platforms: {'base': '0x3f5bf3edac59d650d8fdf9657a71f2f904a3a4ee'}; links.homepage: ['https://app.aero.xyz/', 'https://aero.xyz/']"
+        }
+      ],
+      "note": "CoinPaprika lists no coin for this contract (search for aero; /v1/contracts/base-base/<address> answers \"contract not found\"), so the token carries no coinpaprika_id."
+    },
+    {
+      "token_id": "aerodrome-finance",
+      "chain_id": "base",
+      "standard": "ERC-20",
+      "identifier": "0x940181a94a35a4569e4529a3cdfb74e38fd98631",
+      "role": "removed",
+      "operator": "Aerodrome (legacy)",
+      "issuer_native": true,
+      "sources": [
+        {
+          "url": "https://aero.xyz/aero-upgrade",
+          "pinned": false,
+          "read": "curl",
+          "excerpt": "What is the conversion rate? 1 AERO becomes 1 AERO. 1 VELO becomes 0.044 AERO."
+        },
+        {
+          "url": "https://aero.xyz/aero-upgrade",
+          "pinned": false,
+          "read": "curl",
+          "excerpt": "AERO and VELO emissions on Aerodrome and Velodrome stopped at launch. To earn AERO Rewards as an LP or Exchange Revenue as a token operator, you need to upgrade. Is there a deadline to upgrade? There is no set deadline."
+        },
+        {
+          "url": "https://aero.xyz/aero-upgrade",
+          "pinned": false,
+          "read": "curl",
+          "excerpt": "All tokens need to be upgraded through the Upgrade portal. Nothing converts automatically."
+        },
+        {
+          "url": "https://api.coingecko.com/api/v3/coins/aerodrome-finance",
+          "pinned": false,
+          "read": "curl",
+          "excerpt": "Aerodrome Finance (AERO) has been rebranded to Aero (AERO). They migrated from their old contract to a new contract."
+        }
+      ],
+      "note": "The legacy token still trades (CoinGecko prices it with the new one) and upgrades one way, 1:1, through the portal on aerodrome.finance; CoinPaprika's aero-aerodrome-finance is this contract."
+    }
+  ],
+  "left_out": [
+    {
+      "token_id": "aero",
+      "chain_id": "optimism",
+      "identifier": "0xbdeaea5205d16f34cb40038052d91235d87b4c54",
+      "reason": "xAERO, the receipt token Aero pays rewards in off Base (symbol xAERO on chain). Aero states AERO itself exists only on Base; xAERO redeems 1:1 for AERO on Base and moves only back to Base, and CoinGecko lists only the Base contract.",
+      "source": {
+        "url": "https://app.aero.xyz/docs/security/",
+        "pinned": false,
+        "read": "curl",
+        "excerpt": "xAERO ( ReceiptToken ) 0xbdEaeA5205d16f34Cb40038052d91235D87B4C54"
+      }
+    },
+    {
+      "token_id": "aero",
+      "chain_id": "arbitrum",
+      "identifier": "0x436a085b2751cb87db270ffa66f8d698f87bec82",
+      "reason": "xAERO, the receipt token Aero pays rewards in off Base (symbol xAERO on chain). Aero states AERO itself exists only on Base; xAERO redeems 1:1 for AERO on Base and moves only back to Base, and CoinGecko lists only the Base contract.",
+      "source": {
+        "url": "https://app.aero.xyz/docs/security/",
+        "pinned": false,
+        "read": "curl",
+        "excerpt": "xAERO ( ReceiptToken ) 0x436a085B2751cB87db270FFa66f8d698F87bEC82"
+      }
+    },
+    {
+      "token_id": "aero",
+      "chain_id": "ethereum",
+      "identifier": "0x9e148c5716b5aadcfd3b71ceae9ee7a9e22c29e2",
+      "reason": "xAERO, the receipt token Aero pays rewards in off Base (symbol xAERO on chain). Aero states AERO itself exists only on Base; xAERO redeems 1:1 for AERO on Base and moves only back to Base, and CoinGecko lists only the Base contract.",
+      "source": {
+        "url": "https://app.aero.xyz/docs/security/",
+        "pinned": false,
+        "read": "curl",
+        "excerpt": "xAERO ( ReceiptToken ) 0x9e148C5716b5aAdCFD3B71cEAE9EE7a9e22C29E2 ( Ethereum , Ink , Robinhood , Elysium )"
+      }
+    },
+    {
+      "token_id": "aero",
+      "chain_id": "ink",
+      "identifier": "0x9e148c5716b5aadcfd3b71ceae9ee7a9e22c29e2",
+      "reason": "xAERO, the receipt token Aero pays rewards in off Base (symbol xAERO on chain). Aero states AERO itself exists only on Base; xAERO redeems 1:1 for AERO on Base and moves only back to Base, and CoinGecko lists only the Base contract.",
+      "source": {
+        "url": "https://app.aero.xyz/docs/security/",
+        "pinned": false,
+        "read": "curl",
+        "excerpt": "xAERO ( ReceiptToken ) 0x9e148C5716b5aAdCFD3B71cEAE9EE7a9e22C29E2 ( Ethereum , Ink , Robinhood , Elysium )"
+      }
+    },
+    {
+      "token_id": "aero",
+      "chain_id": "robinhood-chain",
+      "identifier": "0x9e148c5716b5aadcfd3b71ceae9ee7a9e22c29e2",
+      "reason": "xAERO, the receipt token Aero pays rewards in off Base (symbol xAERO on chain). Aero states AERO itself exists only on Base; xAERO redeems 1:1 for AERO on Base and moves only back to Base, and CoinGecko lists only the Base contract.",
+      "source": {
+        "url": "https://app.aero.xyz/docs/security/",
+        "pinned": false,
+        "read": "curl",
+        "excerpt": "xAERO ( ReceiptToken ) 0x9e148C5716b5aAdCFD3B71cEAE9EE7a9e22C29E2 ( Ethereum , Ink , Robinhood , Elysium )"
+      }
+    },
+    {
+      "token_id": "aero",
+      "chain_id": "arc",
+      "identifier": "0x20077cc0d5e385a0fe9c91bbc7dc744f51559307",
+      "reason": "xAERO, the receipt token Aero pays rewards in off Base (symbol xAERO on chain). Aero states AERO itself exists only on Base; xAERO redeems 1:1 for AERO on Base and moves only back to Base, and CoinGecko lists only the Base contract.",
+      "source": {
+        "url": "https://app.aero.xyz/docs/security/",
+        "pinned": false,
+        "read": "curl",
+        "excerpt": "xAERO ( ReceiptToken ) 0x20077cC0d5E385A0Fe9C91bbC7DC744f51559307"
+      }
+    },
+    {
+      "token_id": "aero",
+      "chain_id": "base",
+      "identifier": "0x6cdda0e730744dc6ff67654b35350adad05ecee7",
+      "reason": "The Base xAERO the security page lists; on Base the token is AERO itself, and this contract holds 1518182 base units (dust).",
+      "source": {
+        "url": "https://app.aero.xyz/docs/security/",
+        "pinned": false,
+        "read": "curl",
+        "excerpt": "xAERO ( ReceiptToken ) 0x6CdDa0E730744DC6fF67654B35350Adad05EceE7"
+      }
+    }
+  ]
+}

@@ -1459,20 +1459,6 @@
       "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
     },
     {
-      "chain": "blast",
-      "profile": "standard",
-      "account": 0,
-      "path": "m/44'/60'/0'/0/0",
-      "address": "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
-    },
-    {
-      "chain": "blast",
-      "profile": "standard",
-      "account": 1,
-      "path": "m/44'/60'/1'/0/0",
-      "address": "0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265"
-    },
-    {
       "chain": "mantle",
       "profile": "standard",
       "account": 0,

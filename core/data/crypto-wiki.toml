@@ -324,10 +324,6 @@ token_id = "bittorrent-old"
 comment = "The original TRC-10 BitTorrent token, retained as BTTOLD after its redenomination. One BTTOLD converts to 1,000 of the newer TRC-20 BTT; these are separate assets with different precision and pricing."
 
 [[assets]]
-token_id = "usdb"
-comment = "Blast native stablecoin, an automatically rebasing dollar asset used across the Blast ecosystem."
-
-[[assets]]
 token_id = "honey-3"
 comment = "Berachain's native stablecoin, minted against whitelisted collateral deposited on the chain. It launched as HONEY and was renamed Bera USD; it is unrelated to the discontinued Binance BUSD."
 
@@ -358,10 +354,6 @@ comment = "Linea's ecosystem token, distributed to fund builders and users on th
 [[assets]]
 token_id = "scroll"
 comment = "Governs Scroll through its DAO. The chain itself runs on ETH, so SCR is held for votes and ecosystem programs rather than to transact."
-
-[[assets]]
-token_id = "blast"
-comment = "Governs the Blast rollup and directs its incentive programs. Blast charges gas in ETH, and its native yield accrues to ETH and USDB rather than to this token."
 
 [[assets]]
 token_id = "zksync"
@@ -412,8 +404,8 @@ token_id = "morpho"
 comment = "Governs Morpho, a lending protocol whose markets are isolated — each pair sets its own collateral and rate curve instead of sharing one pool's risk."
 
 [[assets]]
-token_id = "aerodrome-finance"
-comment = "The emission and governance token of Aerodrome, Base's largest decentralized exchange. Locking it directs where trading incentives go."
+token_id = "aero"
+comment = "The token of Aero, the exchange Aerodrome and Velodrome merged into in October 2026, trading across several Ethereum networks. Staked as sAERO, it directs where rewards go and earns the trading fees of the pools it backs."
 
 [[assets]]
 token_id = "curve-dao-token"

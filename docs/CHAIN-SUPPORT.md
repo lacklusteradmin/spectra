@@ -1,6 +1,6 @@
 # Supported chain scope
 
-Spectra has 91 mainnets and 40 test networks. A chain entry identifies a network;
+Spectra has 90 mainnets and 40 test networks. A chain entry identifies a network;
 it does not promise every asset protocol or an address indexer. Chain facts live
 in `registry::Chain`, provider claims in `core/data/endpoints.toml`, and every
 operation refuses missing capabilities before signing or changing holdings.
@@ -731,7 +731,7 @@ each shown as what its messages moved in the network's coin, the fee aside.
 Nodes keep only recent blocks: days on Osmosis, BandChain and Injective,
 months to years elsewhere, and all of it at Kava Labs' and Numia's (Celestia).
 
-BCH, DOGE, ZEC (transparent), DCR and DASH test networks, and Blast, have no
+BCH, DOGE, ZEC (transparent), DCR and DASH test networks have no
 verified built-in keyless provider; Zcash testnet's shielded funds read a
 built-in lightwalletd. Their supported custom API must be configured before
 network reads or transfers. TON testnet has no built-in history: its TON Center
