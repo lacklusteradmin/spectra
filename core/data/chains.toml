@@ -5,7 +5,9 @@
 # Native token metadata belongs to tokens.toml (testnet-tokens.toml for testnets);
 # core derives the native deployment ID as "<chain_id>:native".
 #
-# Every network carries its search keywords, color, artwork and address hint.
+# Every network carries its search keywords, color and address hint.
+# A chain's icon in icons/chain/ is named by its id, and a testnet draws its
+# mainnet's; `artwork_name` names a testnet's own icon instead, testnets only.
 # `popular_rank` and authored `tags` belong on mainnets only; testnets inherit both.
 # Ranks order the picker, 1..=n without gaps.
 # `description`, `family`, `consensus` and `state_model` say what a chain is, for a
@@ -28,7 +30,6 @@ search_keywords = ["Bitcoin", "BTC"]
 popular_rank = 1
 tags = ["utxo", "pow"]
 color = "orange"
-artwork_name = "bitcoin"
 address_prefix_hint = "bc1q…"
 description = "Final settlement, long-horizon self-custody, and simple native BTC transfers."
 family = "UTXO / base-layer settlement network"
@@ -45,7 +46,6 @@ derivation_path = [
 search_keywords = ["Ethereum", "ETH"]
 popular_rank = 2
 color = "purple"
-artwork_name = "ethereum"
 address_prefix_hint = "0x…"
 description = "General-purpose smart contracts, DeFi, ERC-20 tokens, and on-chain execution."
 family = "Account-based smart contract network"
@@ -63,7 +63,6 @@ derivation_path = [
 search_keywords = ["Solana", "SOL"]
 popular_rank = 5
 color = "green"
-artwork_name = "solana"
 address_prefix_hint = "So111…"
 description = "High-throughput transfers, SPL tokens, and latency-sensitive on-chain applications."
 family = "Account-based high-throughput network"
@@ -81,7 +80,6 @@ search_keywords = ["Dogecoin", "DOGE"]
 popular_rank = 7
 tags = ["utxo", "pow"]
 color = "yellow"
-artwork_name = "dogecoin"
 address_prefix_hint = "D…"
 description = "Low-friction payments, transfers, and broad exchange support."
 family = "UTXO payments network"
@@ -99,7 +97,6 @@ search_keywords = ["XRP Ledger", "XRP"]
 popular_rank = 3
 tags = ["payments"]
 color = "cyan"
-artwork_name = "xrp"
 address_prefix_hint = "r…"
 description = "Fast payments, issued assets, and order-book based transfers."
 family = "Account-based payments ledger"
@@ -119,7 +116,6 @@ search_keywords = ["Litecoin", "LTC"]
 popular_rank = 12
 tags = ["utxo", "pow"]
 color = "blue"
-artwork_name = "litecoin"
 address_prefix_hint = "ltc1… / L… / M…"
 description = "Lower-fee payments and faster block cadence than Bitcoin."
 family = "UTXO payments network"
@@ -138,7 +134,6 @@ search_keywords = ["Bitcoin Cash", "BCH"]
 popular_rank = 10
 tags = ["utxo", "pow"]
 color = "orange"
-artwork_name = "bitcoincash"
 address_prefix_hint = "1… / bitcoincash:q…"
 description = "Peer-to-peer payments with a Bitcoin-derived UTXO model and distinct address/network rules."
 family = "UTXO payments network"
@@ -156,7 +151,6 @@ search_keywords = ["Tron", "TRX"]
 popular_rank = 6
 tags = ["payments"]
 color = "red"
-artwork_name = "tron"
 address_prefix_hint = "T…"
 description = "Transfers, TRC-20 token activity, and resource-metered smart contract execution."
 family = "Account-based smart contract network"
@@ -174,7 +168,6 @@ search_keywords = ["Stellar", "XLM"]
 popular_rank = 11
 tags = ["payments"]
 color = "teal"
-artwork_name = "stellar"
 address_prefix_hint = "G…"
 description = "Native XLM transfers, issued-asset settlement, and low-fee payment routing on Stellar."
 family = "Account-based payments network"
@@ -192,7 +185,6 @@ search_keywords = ["Cardano", "ADA"]
 popular_rank = 8
 tags = ["eutxo"]
 color = "indigo"
-artwork_name = "cardano"
 address_prefix_hint = "addr1…"
 description = "Native-asset transfers, staking, and eUTXO-based smart contract workflows."
 family = "Extended-UTXO smart contract network"
@@ -208,7 +200,6 @@ search_keywords = ["Polkadot", "DOT"]
 popular_rank = 18
 tags = ["substrate"]
 color = "pink"
-artwork_name = "polkadot"
 address_prefix_hint = "1…"
 description = "DOT balances and transfers use Polkadot Asset Hub, which the relay chain secures. A phrase's keys come from its sr25519 root and an optional Substrate path of `//hard` and `/soft` junctions, as polkadot.js reads them, not from a BIP-32 path."
 family = "Polkadot Asset Hub (system parachain)"
@@ -226,7 +217,6 @@ search_keywords = ["Arbitrum", "ARB"]
 popular_rank = 29
 tags = ["layer-2"]
 color = "cyan"
-artwork_name = "arbitrum"
 address_prefix_hint = "0x…"
 description = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Arbitrum One."
 family = "EVM-compatible layer-2 smart contract network"
@@ -244,7 +234,6 @@ search_keywords = ["Optimism", "OP"]
 popular_rank = 31
 tags = ["layer-2"]
 color = "red"
-artwork_name = "optimism"
 address_prefix_hint = "0x…"
 description = "Lower-cost EVM execution, ERC-20 tokens, and Ethereum-compatible activity on Optimism mainnet."
 family = "EVM-compatible layer-2 smart contract network"
@@ -261,7 +250,6 @@ derivation_path = [
 search_keywords = ["Avalanche", "AVAX"]
 popular_rank = 14
 color = "red"
-artwork_name = "avalanche"
 address_prefix_hint = "0x…"
 description = "Native AVAX transfers and C-Chain EVM activity on Avalanche mainnet."
 family = "EVM-compatible smart contract network"
@@ -279,7 +267,6 @@ search_keywords = ["Sui", "SUI"]
 popular_rank = 15
 tags = ["move"]
 color = "mint"
-artwork_name = "sui"
 address_prefix_hint = "0x…"
 description = "Move-based applications, object transfers, and asset-centric execution."
 family = "Object-centric smart contract network"
@@ -297,7 +284,6 @@ search_keywords = ["Aptos", "APT"]
 popular_rank = 24
 tags = ["move"]
 color = "cyan"
-artwork_name = "aptos"
 address_prefix_hint = "0x…"
 description = "Native APT transfers, Move-based applications, and account/resource-oriented on-chain execution."
 family = "Account-based Move smart contract network"
@@ -312,7 +298,6 @@ derivation_path = []
 search_keywords = ["TON", "Gram", "GRAM"]
 popular_rank = 17
 color = "blue"
-artwork_name = "ton"
 address_prefix_hint = "UQ… / EQ…"
 description = "Native Gram transfers, jettons, and asynchronous contract interactions on The Open Network."
 family = "Account-based message-driven smart contract network"
@@ -329,7 +314,6 @@ derivation_path = [
 search_keywords = ["NEAR"]
 popular_rank = 21
 color = "indigo"
-artwork_name = "near"
 address_prefix_hint = "alice.near / 64-char hex"
 description = "Named-account transfers, smart contracts, and user-friendly account-based activity."
 family = "Account-based smart contract network"
@@ -346,7 +330,6 @@ derivation_path = [
 search_keywords = ["Internet Computer", "ICP"]
 popular_rank = 22
 color = "indigo"
-artwork_name = "internetcomputer"
 address_prefix_hint = "64-char account identifier"
 description = "Native ICP transfers, governance participation, and canister-powered applications."
 family = "Account-based canister network"
@@ -362,7 +345,6 @@ search_keywords = ["Monero", "XMR"]
 popular_rank = 16
 tags = ["pow", "privacy"]
 color = "orange"
-artwork_name = "monero"
 address_prefix_hint = "4… / 8…"
 description = "Private value transfer with sender, receiver, and amount obfuscation."
 family = "Privacy-preserving account/one-time-output network"
@@ -380,7 +362,6 @@ search_keywords = ["Base", "ETH"]
 popular_rank = 28
 tags = ["layer-2"]
 color = "blue"
-artwork_name = "base"
 address_prefix_hint = "0x…"
 description = "Low-fee Ethereum-compatible transfers and ERC-20 settlement on Base."
 family = "Ethereum layer-2 (Optimism stack)"
@@ -398,7 +379,6 @@ search_keywords = ["Ethereum Classic", "ETC"]
 popular_rank = 23
 tags = ["pow"]
 color = "green"
-artwork_name = "ethereumclassic"
 address_prefix_hint = "0x…"
 description = "Native ETC transfers and conservative EVM-compatible contract execution on the original Ethereum chain lineage."
 family = "Account-based smart contract network"
@@ -416,7 +396,6 @@ search_keywords = ["Bitcoin SV", "BSV"]
 popular_rank = 38
 tags = ["utxo", "pow"]
 color = "orange"
-artwork_name = "bitcoinsv"
 address_prefix_hint = "1…"
 description = "Bitcoin-derived UTXO transfers on the BSV network with chain-specific address, policy, and provider behavior."
 family = "UTXO payments network"
@@ -433,7 +412,6 @@ derivation_path = [
 search_keywords = ["BNB Chain", "BNB"]
 popular_rank = 4
 color = "yellow"
-artwork_name = "bnb"
 address_prefix_hint = "0x…"
 description = "Lower-cost EVM execution, BEP-20 assets, and exchange-adjacent on-chain activity."
 family = "EVM-compatible smart contract network"
@@ -450,7 +428,6 @@ derivation_path = [
 search_keywords = ["Hyperliquid", "HYPE"]
 popular_rank = 9
 color = "mint"
-artwork_name = "hyperliquid"
 address_prefix_hint = "0x…"
 description = "Native HYPE transfers and HyperEVM activity on Hyperliquid mainnet."
 family = "EVM-compatible smart contract network"
@@ -467,7 +444,6 @@ derivation_path = [
 search_keywords = ["Polygon", "POL", "MATIC"]
 popular_rank = 27
 color = "purple"
-artwork_name = "polygon"
 address_prefix_hint = "0x…"
 description = "Low-fee EVM transfers, ERC-20 settlement, and DeFi on Polygon PoS."
 family = "EVM-compatible proof-of-stake network"
@@ -485,7 +461,6 @@ search_keywords = ["Linea"]
 popular_rank = 41
 tags = ["layer-2"]
 color = "blue"
-artwork_name = "linea"
 address_prefix_hint = "0x…"
 description = "ZK-secured EVM transfers and ERC-20 settlement on Linea."
 family = "Ethereum layer-2 (zkEVM)"
@@ -503,7 +478,6 @@ search_keywords = ["Scroll"]
 popular_rank = 35
 tags = ["layer-2"]
 color = "orange"
-artwork_name = "scroll"
 address_prefix_hint = "0x…"
 description = "ZK-secured EVM transfers and ERC-20 settlement on Scroll."
 family = "Ethereum layer-2 (zkEVM)"
@@ -521,7 +495,6 @@ search_keywords = ["Mantle", "MNT"]
 popular_rank = 26
 tags = ["layer-2"]
 color = "green"
-artwork_name = "mantle"
 address_prefix_hint = "0x…"
 description = "Low-fee EVM transfers and ERC-20 settlement on Mantle."
 family = "Ethereum layer-2 (modular rollup)"
@@ -539,7 +512,6 @@ search_keywords = ["Zcash", "ZEC"]
 popular_rank = 13
 tags = ["utxo", "pow", "privacy"]
 color = "yellow"
-artwork_name = "zcash"
 address_prefix_hint = "t1…"
 description = "Optionally-shielded payments. A phrase wallet holds transparent (t1) funds and shielded funds, can shield its transparent ZEC, and pays unified, Sapling, transparent and TEX addresses."
 family = "Zcash (Halo 2 + transparent UTXO)"
@@ -557,7 +529,6 @@ search_keywords = ["Bitcoin Gold", "BTG"]
 popular_rank = 45
 tags = ["utxo", "pow"]
 color = "yellow"
-artwork_name = "bitcoingold"
 address_prefix_hint = "G…"
 description = "Bitcoin-style payments with GPU-friendly Equihash mining."
 family = "Bitcoin fork (Equihash 144,5)"
@@ -575,7 +546,6 @@ search_keywords = ["Decred", "DCR"]
 popular_rank = 43
 tags = ["utxo", "pow"]
 color = "indigo"
-artwork_name = "decred"
 address_prefix_hint = "Ds…"
 description = "Self-funded protocol with stakeholder-governed on-chain decisions."
 family = "Decred (BLAKE-256, hybrid PoW + PoS)"
@@ -593,7 +563,6 @@ search_keywords = ["Kaspa", "KAS"]
 popular_rank = 30
 tags = ["utxo", "pow"]
 color = "teal"
-artwork_name = "kaspa"
 address_prefix_hint = "kaspa:q…"
 description = "Sub-second confirmation payments via parallel-block PoW."
 family = "Kaspa (GHOSTDAG protocol)"
@@ -610,7 +579,6 @@ derivation_path = [
 search_keywords = ["Sei", "SEI"]
 popular_rank = 37
 color = "red"
-artwork_name = "sei"
 address_prefix_hint = "0x…"
 description = "High-throughput EVM with parallel execution. SIP-3 retired its Cosmos accounts and CosmWasm, so funds live at EVM addresses."
 family = "Sei L1 (EVM-only after SIP-3)"
@@ -628,7 +596,6 @@ search_keywords = ["Celo", "CELO"]
 popular_rank = 44
 tags = ["layer-2"]
 color = "yellow"
-artwork_name = "celo"
 address_prefix_hint = "0x…"
 description = "Mobile-first stablecoin payments and DeFi on a low-fee EVM L2."
 family = "Ethereum L2 (Celo migrated to OP Stack 2025)"
@@ -645,7 +612,6 @@ derivation_path = [
 search_keywords = ["Cronos", "CRO"]
 popular_rank = 19
 color = "blue"
-artwork_name = "cronos"
 address_prefix_hint = "0x…"
 description = "Crypto.com's L1 EVM for stablecoin payments and DeFi."
 family = "Cronos EVM (Cosmos-SDK + Ethermint)"
@@ -663,7 +629,6 @@ search_keywords = ["opBNB", "BNB L2"]
 popular_rank = 33
 tags = ["layer-2"]
 color = "yellow"
-artwork_name = "bnb"
 address_prefix_hint = "0x…"
 description = "Cheap BNB-denominated rollup throughput for BSC users."
 family = "BNB Chain L2 (OP Stack)"
@@ -681,7 +646,6 @@ search_keywords = ["zkSync Era", "zkSync"]
 popular_rank = 40
 tags = ["layer-2"]
 color = "gray"
-artwork_name = "zksyncera"
 address_prefix_hint = "0x…"
 description = "Validity-proofed L2 with full EVM equivalence."
 family = "Ethereum L2 (zkSync Era validium/rollup)"
@@ -698,7 +662,6 @@ derivation_path = [
 search_keywords = ["Sonic", "S"]
 popular_rank = 39
 color = "gray"
-artwork_name = "sonic"
 address_prefix_hint = "0x…"
 description = "High-TPS EVM L1, the rebranded Fantom network."
 family = "Sonic Labs (Fantom successor)"
@@ -715,7 +678,6 @@ derivation_path = [
 search_keywords = ["Berachain", "BERA"]
 popular_rank = 42
 color = "orange"
-artwork_name = "bera"
 address_prefix_hint = "0x…"
 description = "DeFi-native EVM L1 where validators earn from on-chain liquidity provision."
 family = "Berachain (Cosmos-SDK + EVM)"
@@ -733,7 +695,6 @@ search_keywords = ["Unichain"]
 popular_rank = 32
 tags = ["layer-2"]
 color = "pink"
-artwork_name = "uniswap"
 address_prefix_hint = "0x…"
 description = "Uniswap's dedicated L2 for DEX-native fast settlement."
 family = "Ethereum L2 (OP Stack)"
@@ -751,7 +712,6 @@ search_keywords = ["Ink"]
 popular_rank = 34
 tags = ["layer-2"]
 color = "purple"
-artwork_name = "ink"
 address_prefix_hint = "0x…"
 description = "Kraken's L2 for low-fee DeFi and exchange flows."
 family = "Ethereum L2 (OP Stack)"
@@ -769,7 +729,6 @@ search_keywords = ["Dash", "DASH"]
 popular_rank = 36
 tags = ["utxo", "pow", "privacy"]
 color = "blue"
-artwork_name = "dash"
 address_prefix_hint = "X…"
 description = "Fast-finality payments via InstantSend; masternode-secured ChainLocks resist 51% reorgs."
 family = "Bitcoin fork (X11 + masternode tier)"
@@ -787,7 +746,6 @@ search_keywords = ["X Layer", "OKB", "OKX"]
 popular_rank = 25
 tags = ["layer-2"]
 color = "gray"
-artwork_name = "okb"
 address_prefix_hint = "0x…"
 description = "OKX's L2 for low-fee EVM transfers and DeFi, with OKB paying gas."
 family = "Ethereum L2 (OP Stack, Agglayer-connected; migrated from Polygon CDK in 2025)"
@@ -803,7 +761,6 @@ search_keywords = ["Bittensor", "TAO", "subtensor"]
 popular_rank = 20
 tags = ["substrate"]
 color = "gray"
-artwork_name = "bittensor"
 address_prefix_hint = "5…"
 description = "Decentralized machine-learning marketplace where subnets stake TAO and earn emissions for serving AI inferences."
 family = "Substrate (subtensor; Polkadot-style runtime)"
@@ -821,7 +778,6 @@ search_keywords = ["Plasma", "XPL", "stablecoin"]
 popular_rank = 46
 tags = ["payments"]
 color = "green"
-artwork_name = "plasma"
 address_prefix_hint = "0x…"
 description = "A stablecoin-focused EVM network for payments and settlement, with XPL paying ordinary transaction fees."
 family = "Plasma L1 (Reth-based EVM)"
@@ -838,7 +794,6 @@ derivation_path = [
 search_keywords = ["Monad", "MON"]
 popular_rank = 47
 color = "purple"
-artwork_name = "monad"
 address_prefix_hint = "0x…"
 description = "An EVM-compatible L1 with parallel execution. Its transaction fee charges the chosen gas limit rather than only the gas consumed."
 family = "Monad L1"
@@ -856,7 +811,6 @@ search_keywords = ["World Chain", "Worldcoin", "WLD", "ETH"]
 popular_rank = 48
 tags = ["layer-2"]
 color = "gray"
-artwork_name = "worldcoin"
 address_prefix_hint = "0x…"
 description = "An Ethereum rollup for World applications. ETH pays ordinary transaction fees; WLD is an ERC-20 token."
 family = "Ethereum L2 (OP Stack)"
@@ -877,7 +831,6 @@ search_keywords = ["Peercoin", "PPC", "PPcoin"]
 popular_rank = 49
 tags = ["utxo", "pow", "payments"]
 color = "green"
-artwork_name = "peercoin"
 address_prefix_hint = "P… / p… / pc1q… / pc1p…"
 description = "Launched in 2012, Peercoin pioneered proof-of-stake security alongside proof-of-work. Spectra supports ordinary transfers; minting requires a separate participating wallet."
 family = "UTXO payments network"
@@ -894,7 +847,6 @@ derivation_path = [
 search_keywords = ["Kaia", "KAIA", "Klaytn", "KLAY"]
 popular_rank = 50
 color = "green"
-artwork_name = "kaia"
 address_prefix_hint = "0x…"
 description = "An EVM layer 1 formed from the merger of the Klaytn and Finschia networks. KAIA pays transaction fees."
 family = "EVM layer 1"
@@ -911,7 +863,6 @@ derivation_path = [
 search_keywords = ["XDC Network", "XDC", "XinFin"]
 popular_rank = 51
 color = "blue"
-artwork_name = "xdc"
 address_prefix_hint = "0x… / xdc…"
 description = "An EVM layer 1 aimed at trade finance and tokenization. XDC pays transaction fees, and its addresses are also written with an `xdc` prefix in place of `0x`."
 family = "EVM layer 1"
@@ -929,7 +880,6 @@ search_keywords = ["Robinhood Chain", "Robinhood", "ETH"]
 popular_rank = 52
 tags = ["layer-2"]
 color = "green"
-artwork_name = "robinhood"
 address_prefix_hint = "0x…"
 description = "An Ethereum rollup built by Robinhood on Arbitrum Orbit for tokenized stocks and other real-world assets. ETH pays transaction fees."
 family = "Ethereum L2 (Arbitrum Orbit)"
@@ -946,7 +896,6 @@ derivation_path = [
 search_keywords = ["Kava EVM", "Kava", "KAVA"]
 popular_rank = 53
 color = "red"
-artwork_name = "kava"
 address_prefix_hint = "0x…"
 description = "The Ethereum-compatible co-chain of the Kava Cosmos SDK blockchain, sharing its validators. KAVA pays fees, and its nodes take only legacy transactions."
 family = "EVM co-chain of a Cosmos SDK layer 1"
@@ -963,7 +912,6 @@ derivation_path = [
 search_keywords = ["Chiliz Chain", "Chiliz", "CHZ", "Socios"]
 popular_rank = 54
 color = "red"
-artwork_name = "chiliz"
 address_prefix_hint = "0x…"
 description = "A BNB Smart Chain–derived EVM layer 1 for sports and entertainment fan tokens. CHZ pays fees, with a fixed base fee and a tip of at least 1 gwei."
 family = "EVM layer 1"
@@ -981,7 +929,6 @@ search_keywords = ["Stable", "STABLE", "USDT0", "USDT"]
 popular_rank = 55
 tags = ["payments"]
 color = "teal"
-artwork_name = "stable"
 address_prefix_hint = "0x…"
 description = "An EVM layer 1 for USDT payments. USDT0 is both its gas coin, at 18 places, and an ERC-20 at 6 places over the same balance; STABLE is its governance token."
 family = "EVM layer 1"
@@ -999,7 +946,6 @@ search_keywords = ["Arc", "Circle", "USDC"]
 popular_rank = 56
 tags = ["payments"]
 color = "indigo"
-artwork_name = "arc"
 address_prefix_hint = "0x…"
 description = "Circle's EVM layer 1 for stablecoin finance. USDC is both its gas coin, at 18 places, and an ERC-20 at 6 places over the same balance."
 family = "EVM layer 1"
@@ -1017,7 +963,6 @@ search_keywords = ["Manta Pacific", "Manta", "MANTA", "ETH"]
 popular_rank = 57
 tags = ["layer-2"]
 color = "cyan"
-artwork_name = "manta"
 address_prefix_hint = "0x…"
 description = "An OP Stack rollup on Ethereum that posts its data to Celestia. ETH pays fees; MANTA is an ERC-20 token."
 family = "Ethereum L2 (OP Stack)"
@@ -1035,7 +980,6 @@ search_keywords = ["Metis", "Metis Andromeda", "METIS"]
 popular_rank = 58
 tags = ["layer-2"]
 color = "teal"
-artwork_name = "metis"
 address_prefix_hint = "0x…"
 description = "An Ethereum rollup derived from Optimism's original OVM, ordered by a rotating pool of staked sequencers. METIS pays fees, and its nodes take only legacy transactions."
 family = "Ethereum L2 (Optimistic rollup)"
@@ -1052,7 +996,6 @@ derivation_path = [
 search_keywords = ["Flare", "FLR"]
 popular_rank = 59
 color = "pink"
-artwork_name = "flare"
 address_prefix_hint = "0x…"
 description = "An Avalanche-derived EVM layer 1 with built-in oracle and data protocols. FLR pays fees, all of which are burned."
 family = "EVM layer 1"
@@ -1070,7 +1013,6 @@ search_keywords = ["Katana", "KAT", "ETH"]
 popular_rank = 60
 tags = ["layer-2"]
 color = "yellow"
-artwork_name = "katana"
 address_prefix_hint = "0x…"
 description = "A DeFi-focused Ethereum layer 2 built on Agglayer's CDK OP Stack with ZK-proven settlement. ETH pays fees, an operator fee included; KAT is an ERC-20 token."
 family = "Ethereum L2 (OP Stack)"
@@ -1088,7 +1030,6 @@ search_keywords = ["MegaETH", "MEGA", "ETH"]
 popular_rank = 61
 tags = ["layer-2"]
 color = "gray"
-artwork_name = "megaeth"
 address_prefix_hint = "0x…"
 description = "A real-time Ethereum layer 2 based on the OP Stack, producing 10 ms mini-blocks and posting data to EigenDA. ETH pays fees under a compute-and-storage gas model; MEGA is an ERC-20 token."
 family = "Ethereum L2 (OP Stack)"
@@ -1106,7 +1047,6 @@ search_keywords = ["Merlin Chain", "Merlin", "MERL", "BTC"]
 popular_rank = 62
 tags = ["layer-2"]
 color = "purple"
-artwork_name = "merlin"
 address_prefix_hint = "0x…"
 description = "A Bitcoin layer 2 ZK rollup built on Polygon CDK. Bridged BTC pays gas at 18 places, and its nodes take only legacy transactions; MERL is an ERC-20 token."
 family = "Bitcoin L2 (Polygon CDK zkEVM)"
@@ -1123,7 +1063,6 @@ derivation_path = [
 search_keywords = ["peaq", "PEAQ"]
 popular_rank = 63
 color = "indigo"
-artwork_name = "peaq"
 address_prefix_hint = "0x…"
 description = "A Polkadot parachain for machine and DePIN applications with a built-in EVM, which is the side Spectra uses. PEAQ pays fees and is staked by collators."
 family = "Substrate parachain with an EVM"
@@ -1140,7 +1079,6 @@ derivation_path = [
 search_keywords = ["Somnia", "SOMI"]
 popular_rank = 64
 color = "gray"
-artwork_name = "somnia"
 address_prefix_hint = "0x…"
 description = "A high-throughput EVM layer 1 that compiles EVM bytecode to native code. SOMI pays gas, and a transfer that creates an account costs more gas than one to an existing account."
 family = "EVM layer 1"
@@ -1157,7 +1095,6 @@ derivation_path = [
 search_keywords = ["0G", "Zero Gravity"]
 popular_rank = 65
 color = "gray"
-artwork_name = "0g"
 address_prefix_hint = "0x…"
 description = "An EVM layer 1 built for AI workloads, with CometBFT consensus and a separate execution layer. 0G pays gas."
 family = "EVM layer 1"
@@ -1174,7 +1111,6 @@ derivation_path = [
 search_keywords = ["Cosmos Hub", "Cosmos", "ATOM"]
 popular_rank = 66
 color = "indigo"
-artwork_name = "cosmos"
 address_prefix_hint = "cosmos1…"
 description = "The first chain built with the Cosmos SDK. It routes IBC transfers between Cosmos networks and lends its validators to consumer chains through Interchain Security."
 family = "Cosmos SDK layer 1"
@@ -1191,7 +1127,6 @@ derivation_path = [
 search_keywords = ["Celestia", "TIA", "Cosmos"]
 popular_rank = 67
 color = "purple"
-artwork_name = "celestia"
 address_prefix_hint = "celestia1…"
 description = "A data-availability layer: rollups publish their transaction data to its blocks, and TIA pays for that space as well as for transfers."
 family = "Cosmos SDK layer 1"
@@ -1208,7 +1143,6 @@ derivation_path = [
 search_keywords = ["dYdX", "DYDX", "Cosmos"]
 popular_rank = 68
 color = "purple"
-artwork_name = "dydx"
 address_prefix_hint = "dydx1…"
 description = "The application chain of the dYdX perpetuals exchange. Its validators keep the order book in memory and settle matched trades on chain."
 family = "Cosmos SDK layer 1"
@@ -1225,7 +1159,6 @@ derivation_path = [
 search_keywords = ["Terra", "LUNA", "Cosmos"]
 popular_rank = 69
 color = "yellow"
-artwork_name = "terra"
 address_prefix_hint = "terra1…"
 description = "The Terra chain relaunched in May 2022 after the original chain, now Terra Classic, collapsed with its algorithmic stablecoin."
 family = "Cosmos SDK layer 1"
@@ -1242,7 +1175,6 @@ derivation_path = [
 search_keywords = ["Kava", "KAVA", "Cosmos"]
 popular_rank = 70
 color = "red"
-artwork_name = "kava"
 address_prefix_hint = "kava1…"
 description = "The Cosmos SDK side of Kava, whose Ethereum-compatible co-chain is Kava EVM; KAVA moves between the two. A transfer here signs a Cosmos transaction."
 family = "Cosmos SDK layer 1"
@@ -1259,7 +1191,6 @@ derivation_path = [
 search_keywords = ["Injective", "INJ", "Cosmos"]
 popular_rank = 71
 color = "cyan"
-artwork_name = "injective"
 address_prefix_hint = "inj1…"
 description = "A Cosmos SDK chain for on-chain finance with an order-book exchange module. Its accounts use Ethereum-style keys and addresses, written under the `inj` prefix."
 family = "Cosmos SDK layer 1"
@@ -1276,7 +1207,6 @@ derivation_path = [
 search_keywords = ["Akash", "AKT", "Cosmos"]
 popular_rank = 72
 color = "red"
-artwork_name = "akash"
 address_prefix_hint = "akash1…"
 description = "A marketplace for cloud compute, where tenants lease servers from independent providers and pay for them on chain."
 family = "Cosmos SDK layer 1"
@@ -1293,7 +1223,6 @@ derivation_path = [
 search_keywords = ["Babylon", "BABY", "Cosmos"]
 popular_rank = 73
 color = "orange"
-artwork_name = "babylon"
 address_prefix_hint = "bbn1…"
 description = "Babylon Genesis, the chain of the Babylon protocol, which lets bitcoin be staked from Bitcoin itself to secure proof-of-stake networks."
 family = "Cosmos SDK layer 1"
@@ -1310,7 +1239,6 @@ derivation_path = [
 search_keywords = ["Osmosis", "OSMO", "Cosmos"]
 popular_rank = 74
 color = "purple"
-artwork_name = "osmosis"
 address_prefix_hint = "osmo1…"
 description = "The main decentralized exchange of the Cosmos ecosystem, trading assets that arrive from other chains over IBC."
 family = "Cosmos SDK layer 1"
@@ -1327,7 +1255,6 @@ derivation_path = [
 search_keywords = ["Dymension", "DYM", "Cosmos"]
 popular_rank = 75
 color = "gray"
-artwork_name = "dymension"
 address_prefix_hint = "dym1…"
 description = "A settlement layer for RollApps, application rollups that post their state to it. Its accounts use Ethereum-style keys and addresses, written under the `dym` prefix."
 family = "Cosmos SDK layer 1"
@@ -1344,7 +1271,6 @@ derivation_path = [
 search_keywords = ["Saga", "SAGA", "Cosmos"]
 popular_rank = 76
 color = "gray"
-artwork_name = "saga"
 address_prefix_hint = "saga1…"
 description = "A chain that launches dedicated application chains, Chainlets, for games and apps, secured by Saga's own validators."
 family = "Cosmos SDK layer 1"
@@ -1361,7 +1287,6 @@ derivation_path = [
 search_keywords = ["Allora", "ALLO", "Cosmos"]
 popular_rank = 77
 color = "indigo"
-artwork_name = "allora"
 address_prefix_hint = "allo1…"
 description = "A network of machine-learning models whose predictions are combined and scored on chain, and paid for by the requests they answer."
 family = "Cosmos SDK layer 1"
@@ -1378,7 +1303,6 @@ derivation_path = [
 search_keywords = ["Band", "BandChain", "BAND", "Cosmos"]
 popular_rank = 78
 color = "blue"
-artwork_name = "band"
 address_prefix_hint = "band1…"
 description = "BandChain, the oracle network of Band Protocol, which gathers data off chain and delivers it to other chains."
 family = "Cosmos SDK layer 1"
@@ -1394,7 +1318,6 @@ search_keywords = ["Kusama", "KSM", "Kusama Asset Hub"]
 popular_rank = 79
 tags = ["substrate"]
 color = "gray"
-artwork_name = "kusama"
 address_prefix_hint = "C… / D… / E… / F… / G… / H… / J…"
 description = "Polkadot's canary network, which runs new runtime features before Polkadot does. KSM balances and transfers use Kusama Asset Hub, which the relay chain secures. Keys come from the phrase's sr25519 root and an optional Substrate path, as polkadot.js reads them."
 family = "Kusama Asset Hub (system parachain)"
@@ -1410,7 +1333,6 @@ search_keywords = ["Astar", "ASTR"]
 popular_rank = 80
 tags = ["substrate"]
 color = "blue"
-artwork_name = "astar"
 address_prefix_hint = "V… / W… / X… / Y… / Z… / a… / b…"
 description = "A Polkadot parachain with a Substrate side and an EVM side. Spectra holds its Substrate accounts, whose SS58 addresses keep ASTR apart from the EVM side's `0x` accounts. Keys come from the phrase's sr25519 root and an optional Substrate path, as polkadot.js reads them."
 family = "Polkadot parachain (Substrate)"
@@ -1427,7 +1349,6 @@ derivation_path = [
 search_keywords = ["Algorand", "ALGO"]
 popular_rank = 81
 color = "gray"
-artwork_name = "algorand"
 address_prefix_hint = "58-char base32"
 description = "A layer 1 whose block proposers and certifying committees are drawn by lot in proportion to online stake. Blocks do not fork, so a transaction is final once its block is, and an account must hold 0.1 ALGO to exist."
 family = "Account-based smart contract network"
@@ -1447,7 +1368,6 @@ search_keywords = ["Qtum", "QTUM"]
 popular_rank = 82
 tags = ["utxo"]
 color = "blue"
-artwork_name = "qtum"
 address_prefix_hint = "Q… / M… / qc1q…"
 description = "Launched in 2017, Qtum runs Ethereum-style contracts on a Bitcoin-derived UTXO ledger. Spectra supports ordinary QTUM transfers; staking and contract calls require a separate wallet."
 family = "UTXO smart-contract network"
@@ -1468,7 +1388,6 @@ search_keywords = ["Fractal Bitcoin", "FB", "Fractal"]
 popular_rank = 83
 tags = ["utxo", "pow"]
 color = "gray"
-artwork_name = "fractalbitcoin"
 address_prefix_hint = "bc1q… / bc1p…"
 description = "A separate chain launched in 2024 on Bitcoin Core's code, with 30-second blocks. It shares Bitcoin's genesis block and address formats, so the same address holds FB here and BTC on Bitcoin."
 family = "Bitcoin-protocol network"
@@ -1487,7 +1406,6 @@ search_keywords = ["eCash", "XEC", "Bitcoin ABC", "BCHA"]
 popular_rank = 84
 tags = ["utxo", "pow", "payments"]
 color = "blue"
-artwork_name = "ecash"
 address_prefix_hint = "ecash:q…"
 description = "The chain Bitcoin ABC kept at the November 2020 split from Bitcoin Cash, renamed eCash in 2021. Avalanche voting finalizes its blocks and transactions."
 family = "UTXO payments network"
@@ -1508,7 +1426,6 @@ search_keywords = ["DigiByte", "DGB"]
 popular_rank = 85
 tags = ["utxo", "pow", "payments"]
 color = "blue"
-artwork_name = "digibyte"
 address_prefix_hint = "dgb1q… / D… / S…"
 description = "Launched in 2014, DigiByte produces a block every 15 seconds, mined with five proof-of-work algorithms in turn."
 family = "UTXO payments network"
@@ -1525,7 +1442,6 @@ derivation_path = [
 search_keywords = ["VeChain", "VeChainThor", "VET", "VTHO", "VeThor"]
 popular_rank = 86
 color = "blue"
-artwork_name = "vechain"
 address_prefix_hint = "0x…"
 description = "VeChainThor, a layer 1 for supply-chain and sustainability applications that runs two tokens: VET, which is held and staked, and VTHO, which pays gas. A VET transfer therefore needs VTHO for its fee."
 family = "Layer 1 with an EVM"
@@ -1542,7 +1458,6 @@ derivation_path = [
 search_keywords = ["Filecoin", "FIL"]
 popular_rank = 87
 color = "blue"
-artwork_name = "filecoin"
 address_prefix_hint = "f1…"
 description = "A storage network: providers seal clients' data into sectors and keep proving on chain that they still hold it. Its FVM also runs EVM contracts, and an Ethereum-style account there is written `f410f…`."
 family = "Account-based storage network"
@@ -1559,7 +1474,6 @@ derivation_path = [
 search_keywords = ["Tezos", "XTZ", "tez"]
 popular_rank = 88
 color = "blue"
-artwork_name = "tezos"
 address_prefix_hint = "tz1…"
 description = "A proof-of-stake layer 1 that upgrades its own protocol by on-chain vote. A transfer's sender pays a fee to the baker and burns XTZ for the storage it adds, which includes creating an empty recipient's account."
 family = "Account-based layer 1"
@@ -1577,7 +1491,6 @@ search_keywords = ["Starknet", "STRK", "Ready", "Argent"]
 popular_rank = 89
 tags = ["layer-2"]
 color = "indigo"
-artwork_name = "starknet"
 address_prefix_hint = "0x…"
 description = "A validity rollup on Ethereum whose programs are written in Cairo. Every account is a contract, so an address exists before its account is deployed; Spectra's accounts are Ready's, and the first send from one deploys it. STRK pays fees."
 family = "Ethereum L2 (Cairo validity rollup)"
@@ -1596,7 +1509,6 @@ derivation_path = [
 search_keywords = ["Hedera", "HBAR", "Hashgraph"]
 popular_rank = 90
 color = "gray"
-artwork_name = "hedera"
 address_prefix_hint = "0.0.…"
 description = "A public ledger run by a council of organizations. An account is an entity numbered `0.0.N` that a transaction creates and that holds a key on chain, so a key alone names no account."
 family = "Hashgraph public ledger"
@@ -1617,7 +1529,7 @@ derivation_path = [
 ]
 search_keywords = ["Bitcoin Testnet", "tBTC", "testnet"]
 color = "orange"
-artwork_name = "bitcointestnet"
+artwork_name = "bitcoin-testnet"
 address_prefix_hint = "tb1q…"
 
 [[chains]]
@@ -1634,7 +1546,7 @@ derivation_path = [
 ]
 search_keywords = ["Bitcoin Testnet4", "testnet4", "tBTC"]
 color = "orange"
-artwork_name = "bitcointestnet"
+artwork_name = "bitcoin-testnet"
 address_prefix_hint = "tb1q…"
 
 [[chains]]
@@ -1651,7 +1563,7 @@ derivation_path = [
 ]
 search_keywords = ["Bitcoin Signet", "signet", "sBTC"]
 color = "orange"
-artwork_name = "bitcoinsignet"
+artwork_name = "bitcoin-signet"
 address_prefix_hint = "tb1q…"
 
 [[chains]]
@@ -1667,7 +1579,6 @@ derivation_path = [
 ]
 search_keywords = ["Litecoin Testnet", "tLTC"]
 color = "blue"
-artwork_name = "litecoin"
 address_prefix_hint = "tltc1… / m… / n…"
 
 [[chains]]
@@ -1681,7 +1592,6 @@ derivation_path = [
 ]
 search_keywords = ["Bitcoin Cash Testnet", "tBCH"]
 color = "orange"
-artwork_name = "bitcoincash"
 address_prefix_hint = "m… / n…"
 
 [[chains]]
@@ -1695,7 +1605,6 @@ derivation_path = [
 ]
 search_keywords = ["Bitcoin SV Testnet", "tBSV"]
 color = "orange"
-artwork_name = "bitcoinsv"
 address_prefix_hint = "m… / n…"
 
 [[chains]]
@@ -1708,7 +1617,6 @@ derivation_path = [
 ]
 search_keywords = ["Dogecoin Testnet", "tDOGE"]
 color = "yellow"
-artwork_name = "dogecoin"
 address_prefix_hint = "n…"
 
 [[chains]]
@@ -1722,7 +1630,6 @@ derivation_path = [
 ]
 search_keywords = ["Zcash Testnet", "tZEC"]
 color = "yellow"
-artwork_name = "zcash"
 address_prefix_hint = "tm…"
 
 [[chains]]
@@ -1735,7 +1642,6 @@ derivation_path = [
 ]
 search_keywords = ["Decred Testnet", "tDCR"]
 color = "indigo"
-artwork_name = "decred"
 address_prefix_hint = "Ts…"
 
 [[chains]]
@@ -1748,7 +1654,6 @@ derivation_path = [
 ]
 search_keywords = ["Kaspa Testnet", "tKAS"]
 color = "teal"
-artwork_name = "kaspa"
 address_prefix_hint = "kaspatest:q…"
 
 [[chains]]
@@ -1762,7 +1667,6 @@ derivation_path = [
 ]
 search_keywords = ["Dash Testnet", "tDASH"]
 color = "blue"
-artwork_name = "dash"
 address_prefix_hint = "y…"
 
 [[chains]]
@@ -1779,7 +1683,6 @@ derivation_path = [
 ]
 search_keywords = ["Peercoin Testnet", "tPPC"]
 color = "green"
-artwork_name = "peercoin"
 address_prefix_hint = "m… / n… / 2… / tpc1q… / tpc1p…"
 
 [[chains]]
@@ -1793,7 +1696,6 @@ derivation_path = [
 ]
 search_keywords = ["Ethereum Sepolia", "Sepolia", "ETH", "tETH"]
 color = "purple"
-artwork_name = "ethereum"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1807,7 +1709,6 @@ derivation_path = [
 ]
 search_keywords = ["Ethereum Hoodi", "Hoodi", "tETH"]
 color = "purple"
-artwork_name = "ethereum"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1821,7 +1722,6 @@ derivation_path = [
 ]
 search_keywords = ["Arbitrum Sepolia", "Sepolia", "tETH"]
 color = "cyan"
-artwork_name = "arbitrum"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1835,7 +1735,6 @@ derivation_path = [
 ]
 search_keywords = ["Optimism Sepolia", "Sepolia", "tETH"]
 color = "red"
-artwork_name = "optimism"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1849,7 +1748,6 @@ derivation_path = [
 ]
 search_keywords = ["Base Sepolia", "Sepolia", "tETH"]
 color = "blue"
-artwork_name = "base"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1863,7 +1761,6 @@ derivation_path = [
 ]
 search_keywords = ["BNB Chain Testnet", "Chapel", "tBNB"]
 color = "yellow"
-artwork_name = "bnb"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1877,7 +1774,6 @@ derivation_path = [
 ]
 search_keywords = ["Avalanche Fuji", "Fuji", "tAVAX"]
 color = "red"
-artwork_name = "avalanche"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1891,7 +1787,6 @@ derivation_path = [
 ]
 search_keywords = ["Polygon Amoy", "Amoy", "tPOL"]
 color = "purple"
-artwork_name = "polygon"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1905,7 +1800,6 @@ derivation_path = [
 ]
 search_keywords = ["Hyperliquid Testnet", "tHYPE"]
 color = "mint"
-artwork_name = "hyperliquid"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1919,7 +1813,6 @@ derivation_path = [
 ]
 search_keywords = ["Linea Sepolia", "tETH"]
 color = "blue"
-artwork_name = "linea"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1933,7 +1826,6 @@ derivation_path = [
 ]
 search_keywords = ["Celo Sepolia", "tCELO"]
 color = "yellow"
-artwork_name = "celo"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1947,7 +1839,6 @@ derivation_path = [
 ]
 search_keywords = ["Cronos Testnet", "tCRO"]
 color = "blue"
-artwork_name = "cronos"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1961,7 +1852,6 @@ derivation_path = [
 ]
 search_keywords = ["zkSync Era Sepolia", "zkSync Sepolia", "tETH"]
 color = "gray"
-artwork_name = "zksyncera"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1975,7 +1865,6 @@ derivation_path = [
 ]
 search_keywords = ["Sonic Testnet", "tS"]
 color = "gray"
-artwork_name = "sonic"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -1989,7 +1878,6 @@ derivation_path = [
 ]
 search_keywords = ["Ink Sepolia", "tETH"]
 color = "purple"
-artwork_name = "ink"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -2003,7 +1891,6 @@ derivation_path = [
 ]
 search_keywords = ["X Layer Testnet", "tOKB"]
 color = "gray"
-artwork_name = "okb"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -2017,7 +1904,6 @@ derivation_path = [
 ]
 search_keywords = ["Ethereum Classic Mordor", "Mordor", "tETC"]
 color = "green"
-artwork_name = "ethereumclassic"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -2031,7 +1917,6 @@ derivation_path = [
 ]
 search_keywords = ["Tron Nile", "Nile", "tTRX"]
 color = "red"
-artwork_name = "tron"
 address_prefix_hint = "T…"
 
 [[chains]]
@@ -2046,7 +1931,6 @@ derivation_path = [
 ]
 search_keywords = ["Solana Devnet", "Devnet", "tSOL"]
 color = "green"
-artwork_name = "solana"
 address_prefix_hint = "So111…"
 
 [[chains]]
@@ -2060,7 +1944,6 @@ derivation_path = [
 ]
 search_keywords = ["XRP Ledger Testnet", "tXRP"]
 color = "cyan"
-artwork_name = "xrp"
 address_prefix_hint = "r…"
 
 [[chains]]
@@ -2074,7 +1957,6 @@ derivation_path = [
 ]
 search_keywords = ["Stellar Testnet", "tXLM"]
 color = "teal"
-artwork_name = "stellar"
 address_prefix_hint = "G…"
 
 [[chains]]
@@ -2088,7 +1970,6 @@ derivation_path = [
 ]
 search_keywords = ["Cardano Preprod", "Preprod", "tADA"]
 color = "indigo"
-artwork_name = "cardano"
 address_prefix_hint = "addr_test1…"
 
 [[chains]]
@@ -2102,7 +1983,6 @@ derivation_path = [
 ]
 search_keywords = ["Sui Testnet", "tSUI"]
 color = "mint"
-artwork_name = "sui"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -2116,7 +1996,6 @@ derivation_path = [
 ]
 search_keywords = ["Aptos Testnet", "tAPT"]
 color = "cyan"
-artwork_name = "aptos"
 address_prefix_hint = "0x…"
 
 [[chains]]
@@ -2128,7 +2007,6 @@ token_standards = ["TEP-74"]
 derivation_path = []
 search_keywords = ["TON Testnet", "Test Gram", "tGRAM"]
 color = "blue"
-artwork_name = "ton"
 address_prefix_hint = "0Q… / kQ…"
 
 [[chains]]
@@ -2142,7 +2020,6 @@ derivation_path = [
 ]
 search_keywords = ["NEAR Testnet", "tNEAR"]
 color = "indigo"
-artwork_name = "near"
 address_prefix_hint = "alice.testnet / 64-char hex"
 
 [[chains]]
@@ -2154,7 +2031,6 @@ token_standards = ["Asset Hub Asset"]
 derivation_path = []
 search_keywords = ["Polkadot Westend", "Westend", "tDOT"]
 color = "pink"
-artwork_name = "polkadot"
 address_prefix_hint = "5…"
 
 [[chains]]
@@ -2166,5 +2042,4 @@ token_standards = []
 derivation_path = []
 search_keywords = ["Monero Stagenet", "Stagenet", "tXMR"]
 color = "orange"
-artwork_name = "monero"
 address_prefix_hint = "5… / 7…"

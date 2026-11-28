@@ -33,15 +33,25 @@ mod tests {
     }
     #[test]
     fn every_named_mark_ships_a_file() {
-        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../icons/crypto");
+        let icons = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../icons");
+        let ships =
+            |library: &str, name: &str| icons.join(library).join(format!("{name}.svg")).is_file();
         for token in crate::catalog::tokens::catalog() {
             if !token.artwork_name.is_empty() {
-                assert!(icons.join(format!("{}.svg", token.artwork_name)).is_file());
+                assert!(
+                    ships("crypto", &token.artwork_name),
+                    "{}",
+                    token.artwork_name
+                );
             }
         }
         for chain in crate::catalog::chains::catalog() {
             assert!(!chain.artwork_name.is_empty());
-            assert!(icons.join(format!("{}.svg", chain.artwork_name)).is_file());
+            assert!(
+                ships("chain", &chain.artwork_name),
+                "{}",
+                chain.artwork_name
+            );
         }
     }
 }

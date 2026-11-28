@@ -126,7 +126,10 @@ pub(crate) struct TomlChain {
     #[serde(default)]
     tags: Vec<ChainTag>,
     color: CatalogColor,
-    artwork_name: String,
+    /// A testnet's own icon in `icons/chain/`, when it does not draw its
+    /// mainnet's. Testnets only: a mainnet's icon is named by its id.
+    #[serde(default)]
+    artwork_name: Option<String>,
     address_prefix_hint: String,
     /// A test network's faucet page, where its coins are free. Testnets only.
     #[serde(default)]
@@ -275,6 +278,8 @@ pub struct ChainEntry {
     /// A testnet carries its mainnet's tags and `Testnet`.
     pub tags: Vec<ChainTag>,
     pub color: CatalogColor,
+    /// The chain's icon in spectra's `icons/chain/`: a mainnet's is named by
+    /// its id, and a testnet draws its mainnet's unless it has its own.
     pub artwork_name: String,
     /// Every protocol the network supports, in the catalog's order; each
     /// deployment owns its actual standard.
@@ -469,6 +474,11 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 "testnet {} restates its mainnet's description",
                 c.id
             );
+            assert!(
+                is_testnet || c.artwork_name.is_none(),
+                "mainnet {} names its artwork, which is its id",
+                c.id
+            );
             let Inherited {
                 popular_rank,
                 mut tags,
@@ -522,7 +532,10 @@ fn load_catalog(parsed: &TomlFile) -> Vec<ChainEntry> {
                 popular_rank,
                 tags,
                 color: c.color,
-                artwork_name: c.artwork_name.clone(),
+                artwork_name: c
+                    .artwork_name
+                    .clone()
+                    .unwrap_or_else(|| c.mainnet.as_deref().unwrap_or(&c.id).to_string()),
                 token_standards: c
                     .token_standards
                     .iter()
@@ -753,11 +766,29 @@ mod explicit_network_catalog {
         for field in [
             "search_keywords = [\"Bitcoin\", \"BTC\"]\n",
             "color = \"orange\"\n",
-            "artwork_name = \"bitcoin\"\n",
         ] {
             let missing = CHAINS_TOML.replacen(field, "", 1);
             assert!(toml::from_str::<TomlFile>(&missing).is_err(), "{field}");
         }
+    }
+
+    /// A chain's icon is named by the chain, never by its coin: X Layer's
+    /// was `okb`, its coin's name, while the chain icons shared the coins'.
+    #[test]
+    fn a_chain_draws_its_own_icon_and_a_testnet_its_mainnets() {
+        assert_eq!(entry("x-layer").artwork_name, "x-layer");
+        assert_eq!(entry("x-layer-testnet").artwork_name, "x-layer");
+        assert_eq!(entry("bitcoin-testnet-4").artwork_name, "bitcoin-testnet");
+    }
+
+    #[test]
+    #[should_panic(expected = "mainnet bitcoin names its artwork, which is its id")]
+    fn a_mainnet_does_not_name_its_artwork() {
+        load_catalog_text(&CHAINS_TOML.replacen(
+            "color = \"orange\"\n",
+            "color = \"orange\"\nartwork_name = \"bitcoin\"\n",
+            1,
+        ));
     }
 
     #[test]

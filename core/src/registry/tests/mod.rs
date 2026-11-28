@@ -237,54 +237,32 @@ fn non_evm_chains_have_no_eip155_identity() {
 
 #[test]
 fn new_evm_mainnets_have_native_assets_and_shared_wallet_rules() {
-    for (chain, id, chain_id, symbol, token_id, artwork) in [
-        (Chain::Plasma, "plasma", 9745, "XPL", "plasma", "plasma"),
-        (Chain::Monad, "monad", 143, "MON", "monad", "monad"),
-        (
-            Chain::WorldChain,
-            "world-chain",
-            480,
-            "ETH",
-            "ethereum",
-            "worldcoin",
-        ),
-        (Chain::Kaia, "kaia", 8217, "KAIA", "kaia", "kaia"),
-        (Chain::Xdc, "xdc", 50, "XDC", "xdce-crowd-sale", "xdc"),
+    for (chain, id, chain_id, symbol, token_id) in [
+        (Chain::Plasma, "plasma", 9745, "XPL", "plasma"),
+        (Chain::Monad, "monad", 143, "MON", "monad"),
+        (Chain::WorldChain, "world-chain", 480, "ETH", "ethereum"),
+        (Chain::Kaia, "kaia", 8217, "KAIA", "kaia"),
+        (Chain::Xdc, "xdc", 50, "XDC", "xdce-crowd-sale"),
         (
             Chain::RobinhoodChain,
             "robinhood-chain",
             4663,
             "ETH",
             "ethereum",
-            "robinhood",
         ),
-        (Chain::KavaEvm, "kava-evm", 2222, "KAVA", "kava", "kava"),
-        (Chain::Chiliz, "chiliz", 88888, "CHZ", "chiliz", "chiliz"),
-        (Chain::Stable, "stable", 988, "USDT0", "usdt0", "stable"),
-        (Chain::Arc, "arc", 5042, "USDC", "usd-coin", "arc"),
-        (
-            Chain::MantaPacific,
-            "manta-pacific",
-            169,
-            "ETH",
-            "ethereum",
-            "manta",
-        ),
-        (Chain::Metis, "metis", 1088, "METIS", "metis-token", "metis"),
-        (Chain::Flare, "flare", 14, "FLR", "flare-networks", "flare"),
-        (Chain::Katana, "katana", 747474, "ETH", "ethereum", "katana"),
-        (
-            Chain::MegaEth,
-            "megaeth",
-            4326,
-            "ETH",
-            "ethereum",
-            "megaeth",
-        ),
-        (Chain::Merlin, "merlin", 4200, "BTC", "bitcoin", "merlin"),
-        (Chain::Peaq, "peaq", 3338, "PEAQ", "peaq-2", "peaq"),
-        (Chain::Somnia, "somnia", 5031, "SOMI", "somnia", "somnia"),
-        (Chain::ZeroG, "0g", 16661, "0G", "zero-gravity", "0g"),
+        (Chain::KavaEvm, "kava-evm", 2222, "KAVA", "kava"),
+        (Chain::Chiliz, "chiliz", 88888, "CHZ", "chiliz"),
+        (Chain::Stable, "stable", 988, "USDT0", "usdt0"),
+        (Chain::Arc, "arc", 5042, "USDC", "usd-coin"),
+        (Chain::MantaPacific, "manta-pacific", 169, "ETH", "ethereum"),
+        (Chain::Metis, "metis", 1088, "METIS", "metis-token"),
+        (Chain::Flare, "flare", 14, "FLR", "flare-networks"),
+        (Chain::Katana, "katana", 747474, "ETH", "ethereum"),
+        (Chain::MegaEth, "megaeth", 4326, "ETH", "ethereum"),
+        (Chain::Merlin, "merlin", 4200, "BTC", "bitcoin"),
+        (Chain::Peaq, "peaq", 3338, "PEAQ", "peaq-2"),
+        (Chain::Somnia, "somnia", 5031, "SOMI", "somnia"),
+        (Chain::ZeroG, "0g", 16661, "0G", "zero-gravity"),
     ] {
         assert_eq!(Chain::parse(id).unwrap(), chain);
         assert!(!chain.is_testnet());
@@ -297,7 +275,6 @@ fn new_evm_mainnets_have_native_assets_and_shared_wallet_rules() {
         assert!(chain.allows_token_standard(crate::registry::TokenStandard::Erc20));
         assert_eq!(chain.coin_symbol(), symbol);
         assert_eq!(chain.native_decimals(), 18);
-        assert_eq!(chain.entry().artwork_name, artwork);
         assert_eq!(
             chain.entry().derivation_path[0].path,
             "m/44'/60'/{account}'/0/0"

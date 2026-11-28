@@ -220,11 +220,17 @@ and send or staking flows against loopback nodes.
 
 ## Icons
 
-`icons/crypto/` is the 64×64 SVG library the apps draw tokens and chains with.
-Every artwork name core's catalog gives a token or chain has a file here, which
-`cargo test every_named_mark_ships_a_file` checks. Each app exports the library
-into its own assets: spectra-apple to the `crypto` asset group, without a
-namespace, so keep file names and artwork names aligned.
+The apps draw from two 64×64 SVG libraries. `icons/crypto/` holds each coin's
+and token's mark on a disc, named by the artwork name `tokens.toml` gives the
+token. `icons/chain/` holds each chain's mark on a rounded square, named by the
+chain's id, never its coin's name: the apps draw it for a chain and for a
+wallet, so a chain is not drawn like its native coin. A testnet draws its
+mainnet's unless its `chains.toml` row names its own (`artwork_name`, testnets
+only). `cargo test every_named_mark_ships_a_file` checks that every artwork
+name core gives a token or a chain has its file. Each app exports both
+libraries into its own assets by file name: spectra-apple to the `crypto`
+asset group without a namespace and the `chain` group with one
+(`chain/<name>`).
 
 After adding or editing an icon, normalize it. This needs `svgo`
 (`brew install svgo`):
@@ -233,8 +239,14 @@ After adding or editing an icon, normalize it. This needs `svgo`
 scripts/normalize-icons.sh
 ```
 
-- Use a full-disc `<circle cx="32" cy="32" r="32" fill="…"/>` as the first
-  drawable (after any `<defs>`). `usd1` is the exception: its rings form the disc.
+- In `icons/crypto/`, use a full-disc `<circle cx="32" cy="32" r="32" fill="…"/>`
+  as the first drawable (after any `<defs>`). `usd1` is the exception: its
+  rings form the disc.
+- In `icons/chain/`, the first drawable is the tile: copy the first path of
+  any file there. It is SwiftUI's continuous rounded square with a corner of
+  0.225 of the side, the app icon's corner. A mark that filled the disc runs
+  on to the tile's edge rather than sitting on the tile as a disc: Monero's
+  separator, Sei's waves and Sonic's rays do.
 - Formatting is owned by `scripts/svgo.config.mjs`; use
   `scripts/normalize-icons.sh --check` to detect drift. Non-square artwork needs
   manual layout; `userSpaceOnUse` gradients may retain transforms.

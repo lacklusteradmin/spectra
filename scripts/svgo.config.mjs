@@ -1,7 +1,7 @@
-// House style for icons/crypto (see scripts/normalize-icons.sh).
+// House style for icons/crypto and icons/chain (see scripts/normalize-icons.sh).
 //
-// Every icon is one 64x64 viewBox with a full-bleed background disc and artwork
-// on top. The two custom plugins below strip attributes that vector editors
+// Every icon is one 64x64 viewBox with a full-bleed background (a disc in
+// icons/crypto, a rounded square in icons/chain) and artwork on top. The two custom plugins below strip attributes that vector editors
 // export but that draw nothing, and that svgo's own presets leave in place.
 
 const DRAWS = new Set([
@@ -51,8 +51,8 @@ const removeDeadClipRule = {
   },
 };
 
-// svgo drops `fill="#000"` because black is the SVG default. The disc under
-// every icon should still say what colour it is, so put it back.
+// svgo drops `fill="#000"` because black is the SVG default. The background
+// under every icon should still say what colour it is, so put it back.
 const explicitBackgroundFill = {
   name: 'explicitBackgroundFill',
   fn: () => ({

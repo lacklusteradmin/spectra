@@ -1,5 +1,39 @@
 # Changelog
 
+## Beta Commit 267
+
+- **Chains and wallets have an icon library of their own, each mark on a
+  rounded square** (`icons/chain/`, 92 icons; coins and tokens keep the
+  `icons/crypto/` disc)
+  - The tile is SwiftUI's continuous rounded square with a corner of 0.225
+    of the side, the app icon's corner.
+  - Nine marks that filled the disc are redrawn for the tile; Dogecoin's is
+    the coin's D alone, without the rim or the picture.
+  - opBNB and Kava EVM have icons of their own, copies of BNB Smart Chain's
+    and Kava's (before: they named those chains' artwork).
+  - `scripts/normalize-icons.sh` normalizes and checks `icons/chain/` too.
+- **A chain's artwork is named by its id** (`chains.toml`,
+  `ChainEntry.artwork_name`)
+  - A mainnet row writes no `artwork_name`, and loading refuses one that
+    does (before: every row wrote one, and some named the coin's or another
+    chain's mark, such as X Layer's `okb` and Unichain's `uniswap`).
+  - A testnet draws its mainnet's icon unless its row names its own, as the
+    three Bitcoin test networks do (before: every testnet row restated it).
+- **`icons/crypto/` holds the marks tokens name** (`arc.svg`,
+  `robinhood.svg` and `ton.svg` removed: only a chain named them)
+- Tests: 2 new
+  - chain catalog 2: a chain's icon named other than by the chain or its
+    mainnet, a mainnet row that names its artwork.
+  - `every_named_mark_ships_a_file` guards against a chain without a file in
+    `icons/chain/` (before: in `icons/crypto/`).
+- Docs: `AGENTS.md` (Icons), `ARCHITECTURE.md` (Workspace),
+  `scripts/README.md` (Icons).
+- Total: 3 .rs files changed, +66 −48 lines; data files: `chains.toml`;
+  92 SVGs added in `icons/chain/` and 3 removed from `icons/crypto/`,
+  `normalize-icons.sh` and `svgo.config.mjs`; dependencies unchanged;
+  `cargo test` 1691 → 1693 passing; `make test-cli` 62 → 62 passing;
+  `make lint` and `make check-icons` passing.
+
 ## Beta Commit 266
 
 - **A chain's description is on its `chains.toml` row and on `ChainEntry`**

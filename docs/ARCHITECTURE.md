@@ -15,7 +15,8 @@ authoritative copy, and the CLI can drive every domain operation.
 |---|---|
 | `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the apps' native library |
 | `cli/` | Argument parsing, password prompting and each command's report, as text or `--json` |
-| `icons/crypto/` | The SVG library the apps draw tokens and chains with, one file per artwork name in the catalog |
+| `icons/crypto/` | The SVG library the apps draw coins and tokens with, each mark on a disc, one file per token artwork name in the catalog |
+| `icons/chain/` | The SVG library the apps draw chains and wallets with, each mark on a rounded square, one file per mainnet named by its id and one per testnet that does not draw its mainnet's |
 | `icons/appicon/` | The app icon's sources, which each app exports into its own app icon assets |
 | `strings/` | The string tables both apps read, one per locale, with the manifest naming the locales |
 | `scripts/` | Source-check, icon and runtime-data tools |

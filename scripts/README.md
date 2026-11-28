@@ -51,7 +51,7 @@ and another svgo version can format the same icon differently.
 
 | File | Purpose |
 |---|---|
-| `normalize-icons.sh` | Normalizes the SVGs in `icons/crypto/` to the project's format. `--check` reports drift without modifying files. |
+| `normalize-icons.sh` | Normalizes the SVGs in `icons/crypto/` and `icons/chain/` to the project's format. `--check` reports drift without modifying files. |
 | `svgo.config.mjs` | SVG normalization rules used by the script above; this is a configuration file. |
 
 ## Runtime reference data generation
