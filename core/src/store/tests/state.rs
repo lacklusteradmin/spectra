@@ -433,10 +433,14 @@ fn a_built_in_token_is_not_editable() {
 
     let rescaled = reduce_state(
         state,
-        StateCommand::SetCustomTokenDecimals {
+        StateCommand::UpdateCustomToken {
             chain_id: built_in.token.chain_id,
             contract: built_in.token.contract.clone(),
-            decimals: 2,
+            symbol: built_in.token.symbol.clone(),
+            name: built_in.token.name.clone(),
+            coingecko_id: String::new(),
+            coinpaprika_id: String::new(),
+            decimals: Some(2),
         },
     );
     assert_eq!(
@@ -547,13 +551,13 @@ fn stored_settings_require_every_current_field() {
 }
 
 #[test]
-fn upsert_wallet_selects_first_wallet() {
+fn upsert_wallet_adds_a_new_wallet() {
     let mut state = no_tokens();
     let events = upsert_wallet_in_place(
         &mut state,
         test_wallet("wallet-1", crate::registry::Chain::Bitcoin),
     );
 
-    assert_eq!(state.selected_wallet_id.as_deref(), Some("wallet-1"));
+    assert_eq!(state.wallets.len(), 1);
     assert!(matches!(events[0], StateEvent::WalletAdded { .. }));
 }

@@ -263,12 +263,7 @@ async fn a_pinned_asset_held_nowhere_has_no_row() {
         ),
     ])
     .await;
-    service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec!["solana".into(), "ethereum".into(), "bitcoin".into()],
-        })
-        .await
-        .expect("pin");
+    pin_exactly(&service, &["solana", "ethereum", "bitcoin"]).await;
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     let ids: Vec<_> = groups.iter().map(|g| g.id.as_str()).collect();
     assert_eq!(ids, ["ethereum"], "only the pinned asset that is held");
@@ -311,12 +306,7 @@ async fn pinned_rows_lead_in_pin_order() {
         state.quotes.prices.insert("bitcoin:native".into(), 60000.0);
         state.quotes.prices.insert("dogecoin:native".into(), 0.1);
     }
-    service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec!["dogecoin".into(), "ethereum".into()],
-        })
-        .await
-        .expect("pin");
+    pin_exactly(&service, &["dogecoin", "ethereum"]).await;
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     let symbols: Vec<_> = groups.iter().map(row_symbol).collect();
     assert_eq!(symbols, ["DOGE", "ETH", "BTC"]);
@@ -375,12 +365,7 @@ async fn rows_under_a_dollar_are_small_unless_pinned_or_unpriced() {
         state.quotes.prices.insert("ethereum:native".into(), 3000.0);
         state.quotes.prices.insert("bitcoin:native".into(), 60000.0);
     }
-    service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: Vec::new(),
-        })
-        .await
-        .expect("pin");
+    pin_exactly(&service, &[]).await;
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     let small = |symbol: &str| {
         groups
@@ -393,12 +378,7 @@ async fn rows_under_a_dollar_are_small_unless_pinned_or_unpriced() {
     assert!(!small("BTC"));
     assert!(!small("DOGE"), "unpriced, so its worth is unknown");
 
-    service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec!["ethereum".into()],
-        })
-        .await
-        .expect("pin");
+    pin_exactly(&service, &["ethereum"]).await;
     let groups = service.portfolio_snapshot().await.expect("snapshot").groups;
     assert!(
         !groups
@@ -408,4 +388,32 @@ async fn rows_under_a_dollar_are_small_unless_pinned_or_unpriced() {
             .is_small,
         "pinned"
     );
+}
+
+/// Leave exactly these assets pinned, in this order, the way a front end gets
+/// there: one asset at a time.
+async fn pin_exactly(service: &WalletService, token_ids: &[&str]) {
+    let pinned = service
+        .app_state()
+        .await
+        .settings
+        .pinned_dashboard_token_ids;
+    for token_id in pinned {
+        service
+            .apply_state_command(StateCommand::SetDashboardAssetPinned {
+                token_id,
+                is_pinned: false,
+            })
+            .await
+            .expect("unpin");
+    }
+    for token_id in token_ids {
+        service
+            .apply_state_command(StateCommand::SetDashboardAssetPinned {
+                token_id: (*token_id).into(),
+                is_pinned: true,
+            })
+            .await
+            .expect("pin");
+    }
 }

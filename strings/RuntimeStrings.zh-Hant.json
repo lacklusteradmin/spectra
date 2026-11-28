@@ -250,7 +250,6 @@
   "Addresses and Coins": "地址與幣",
   "Addresses, one per line": "地址，每行一個",
   "Advanced": "高級",
-  "Aggressive": "激進",
   "Alert Controls": "提醒控制",
   "Alert added. Spectra will notify you when this target is hit.": "提醒已新增。達到此目標時，Spectra 會通知你。",
   "Alerts & Contacts": "提醒與聯繫人",
@@ -351,7 +350,6 @@
   "Back": "返回",
   "Balance": "餘額",
   "Balance and history come from scanning blocks on this device, from the restore height on.": "餘額和歷史來自在本裝置上從恢復高度開始掃描區塊。",
-  "Balanced": "平衡",
   "Bandwidth": "頻寬",
   "Base Reserve": "基礎儲備",
   "Base58 or JSON keypair": "Base58 或 JSON 金鑰對",
@@ -458,7 +456,6 @@
   "Confirmed on-chain": "鏈上已確認",
   "Connection Mode": "連線模式",
   "Consensus": "共識",
-  "Conservative": "保守",
   "Contact": "聯絡人",
   "Contacts": "聯絡人",
   "Continue": "繼續",
@@ -2220,5 +2217,13 @@
   "Approve": "核准",
   "Rebroadcast outcome unknown; check network status before retrying.": "重新廣播結果未知；重試前請檢查網絡狀態。",
   "Submission outcome unknown; check network status before sending again.": "提交結果未知；再次發送前請檢查網絡狀態。",
-  "This wallet has no password.": "此錢包沒有密碼。"
+  "This wallet has no password.": "此錢包沒有密碼。",
+  "Tokens Held": "持有的代幣",
+  "Unknown Token": "未知代幣",
+  "Add to Known Tokens": "加入已知代幣",
+  "This address holds no tokens.": "此地址未持有任何代幣。",
+  "A token not in Known Tokens is shown by its contract: anyone can send a token that calls itself anything. Add one you recognize to see its balance in the wallet.": "不在已知代幣中的代幣只顯示其合約：任何人都能發送一個自稱任何名稱的代幣。加入你認得的代幣，即可在錢包中看到其餘額。",
+  "Every token this wallet's address holds, and adding to Known Tokens the ones it lacks.": "此錢包地址持有的所有代幣，以及把已知代幣中缺少的代幣加入。",
+  "No service lists the tokens an address holds on this network.": "此網路上沒有服務能列出地址持有的代幣。",
+  "%@ needs an address indexer to list the tokens an address holds. Add an endpoint that lists them.": "%@ 需要地址索引器才能列出地址持有的代幣。請新增能列出代幣的端點。"
 }

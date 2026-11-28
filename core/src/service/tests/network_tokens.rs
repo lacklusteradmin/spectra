@@ -115,7 +115,8 @@ mod a_listing_answers_for_every_known_token {
                 .await
                 .expect_err("no service is configured, so nothing can list");
             assert!(
-                err.to_string().contains("cannot enumerate"),
+                err.to_string()
+                    .contains("needs an address indexer to list the tokens"),
                 "{}: {err}",
                 chain.str_id()
             );

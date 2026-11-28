@@ -212,7 +212,6 @@ pub(crate) fn subscribe_status() -> tokio::sync::watch::Receiver<TorStatus> {
 }
 
 /// Read the current Tor state. Cheap — just reads an atomic.
-#[uniffi::export]
 pub fn tor_status() -> TorStatus {
     match &*TOR_STATE.lock() {
         TorInternalState::Stopped => TorStatus::Stopped,

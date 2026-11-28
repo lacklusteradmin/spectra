@@ -285,10 +285,14 @@ mod tests {
 
         reduce_state_in_place(
             &mut state,
-            StateCommand::SetCustomTokenDecimals {
+            StateCommand::UpdateCustomToken {
                 chain_id: Chain::Ethereum,
                 contract: contract.into(),
-                decimals: 4,
+                symbol: "SAME".into(),
+                name: "Same Symbol".into(),
+                coingecko_id: String::new(),
+                coinpaprika_id: String::new(),
+                decimals: Some(4),
             },
         );
         let catalog = asset_precision_catalog(&state);

@@ -1,5 +1,66 @@
 # Changelog
 
+## Beta Commit 268
+
+- **A wallet lists every token its address holds** (`WalletService::wallet_held_tokens`,
+  `WalletHeldToken`, `WalletAction::HeldTokens`, `Chain::lists_held_tokens`;
+  the CLI's `token discover` is `wallet held-tokens`)
+  - Offered on every EVM network, Solana, Sui, Aptos, NEAR, Tron, TON, the
+    XRP Ledger, Stellar and Cardano, testnets included.
+  - Each token says whether Known Tokens tracks it, with the tracked one's
+    symbol and name; tracked tokens come first.
+  - A network with no endpoint that lists holdings fails with a translatable
+    sentence naming it (before: English naming its id).
+  - `discover_token_balances` is crate-only: the export takes a wallet id.
+  - `wallet held-tokens --json` reports `tokens`, each with `isTracked`
+    (before: `token discover` reported `holdings` with `isKnown`, the
+    catalog's alone, so a custom token read as unknown).
+- **The Bitcoin stop gap setting is removed** (`AppSettings.bitcoin_stop_gap`,
+  `AppSettingUpdate::BitcoinStopGap`, `BITCOIN_STOP_GAP_RANGE`, the CLI's
+  `bitcoin-stop-gap`; nothing read it, and UTXO discovery's gap is a fixed 20)
+- **The background sync profile is removed** (`BackgroundSyncProfile`,
+  `AppSettings.background_sync_profile`, `AppSettingUpdate::BackgroundSyncProfile`,
+  the CLI's `background-sync-profile`; only the CLI could set it, and
+  conservative re-polled a pending send more often than balanced)
+  - `refresh_policy::maintenance_plan` no longer takes settings and holds
+    the balanced profile's policy, which the apps always ran: a pending send
+    re-polled every 60 seconds in front, and a background tick that sweeps
+    balances only on an unconstrained network, outside low power mode, at 20%
+    battery or more.
+- **`StateCommand::SelectWallet` and the selected wallet are removed**
+  (`ResidentState.selected_wallet_id`, `StateEvent::WalletSelected`, the
+  `selected_wallet_id` metadata row; no front end selected a wallet, and
+  nothing read it)
+- **`StateCommand::SetCustomTokenDecimals` is removed** (`UpdateCustomToken`
+  sets a custom token's places; the CLI's `token decimals` removed, `token
+  edit --decimals` instead)
+  - It could change the places of a token whose protocol fixes them.
+- **`StateCommand::SetPinnedDashboardAssets` is removed** (pins change one
+  asset at a time through `SetDashboardAssetPinned`, as the apps change them)
+  - The CLI's `portfolio set-pins` is `portfolio pin`, which pins after the
+    pinned ones, and `portfolio reset-pins` is new.
+- **The CLI's `token reset` is removed** (`settings reset --scope
+  settingsAndEndpoints` resets token preferences, as the apps' reset does)
+- **The CLI has `address book rename`** (`cli/src/cmd/address.rs`; the apps
+  rename contacts)
+- **`tor_status` is no longer an FFI export** (neither app called it)
+- **A store written before this does not load** (its settings carry
+  `bitcoinStopGap` and `backgroundSyncProfile`, and its metadata
+  `selected_wallet_id`)
+- **String tables** (`strings/`: the held-token page's five sentences, the
+  action's note and two refusals new; the sync profiles' `Aggressive`,
+  `Balanced` and `Conservative` removed)
+- Tests: 2 new
+  - held tokens 1: a token Known Tokens lacks shown under a symbol, or one it
+    tracks not marked as tracked.
+  - dashboard pins 1: unpinning an unpinned asset counted as a change
+    (replaces two tests of `SetPinnedDashboardAssets`).
+- Docs: `CHAIN-SUPPORT.md` (Fungible assets).
+- Total: 30 .rs files changed (1 new), +461 −540 lines; data files:
+  `strings/RuntimeStrings.{en,zh-Hans,zh-Hant}.json`; dependencies unchanged;
+  `cargo test` 1693 → 1693 passing; `make test-cli` 62 → 62 passing;
+  `make lint` and `make check-icons` passing.
+
 ## Beta Commit 267
 
 - **Chains and wallets have an icon library of their own, each mark on a

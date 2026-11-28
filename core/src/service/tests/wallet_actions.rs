@@ -90,6 +90,12 @@ async fn performs(service: &WalletService, wallet: &WalletState, action: WalletA
                     error.contains("holds only its balance") || error.contains("names no stake key")
                 })
         }
+        // The list is an indexer's; a test asks only for the refusal of a
+        // network no service lists.
+        WalletAction::HeldTokens => !service
+            .wallet_held_tokens(id)
+            .await
+            .is_err_and(|error| error.to_string().contains("No service lists")),
         WalletAction::TokenAccounts => !service
             .wallet_empty_token_accounts(id)
             .await
@@ -179,24 +185,25 @@ fn position(action: WalletAction) -> usize {
         WalletAction::Stake => 6,
         WalletAction::ScanBlocks => 7,
         WalletAction::Coins => 8,
-        WalletAction::TokenApprovals => 9,
-        WalletAction::Nfts => 10,
-        WalletAction::ShieldedFunds => 11,
-        WalletAction::MwebFunds => 12,
-        WalletAction::NetworkAccount => 13,
-        WalletAction::AccessKeys => 14,
-        WalletAction::TokenStorage => 15,
-        WalletAction::CoinObjects => 16,
-        WalletAction::TokenAccounts => 17,
-        WalletAction::TrustLines => 18,
-        WalletAction::GetTestCoins => 19,
-        WalletAction::SignMessage => 20,
-        WalletAction::VerifyMessage => 21,
-        WalletAction::AddToNetwork => 22,
-        WalletAction::Rename => 23,
-        WalletAction::RevealPhrase => 24,
-        WalletAction::ExportKeys => 25,
-        WalletAction::Delete => 26,
+        WalletAction::HeldTokens => 9,
+        WalletAction::TokenApprovals => 10,
+        WalletAction::Nfts => 11,
+        WalletAction::ShieldedFunds => 12,
+        WalletAction::MwebFunds => 13,
+        WalletAction::NetworkAccount => 14,
+        WalletAction::AccessKeys => 15,
+        WalletAction::TokenStorage => 16,
+        WalletAction::CoinObjects => 17,
+        WalletAction::TokenAccounts => 18,
+        WalletAction::TrustLines => 19,
+        WalletAction::GetTestCoins => 20,
+        WalletAction::SignMessage => 21,
+        WalletAction::VerifyMessage => 22,
+        WalletAction::AddToNetwork => 23,
+        WalletAction::Rename => 24,
+        WalletAction::RevealPhrase => 25,
+        WalletAction::ExportKeys => 26,
+        WalletAction::Delete => 27,
     }
 }
 
@@ -272,6 +279,7 @@ async fn a_watched_wallet_lists_only_what_needs_no_key() {
             WalletAction::OpenInExplorer,
             WalletAction::AddKeys,
             WalletAction::Stake,
+            WalletAction::HeldTokens,
             WalletAction::TokenAccounts,
             WalletAction::VerifyMessage,
             WalletAction::AddToNetwork,

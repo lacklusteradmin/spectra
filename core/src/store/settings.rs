@@ -26,13 +26,6 @@ pub struct AppSettings {
     /// Defaults are applied only when settings or this field are initialized.
     pub pinned_dashboard_token_ids: Vec<String>,
 
-    // ── Providers ─────────────────────────────────────────────────────────
-    /// How far past the last used address HD discovery keeps looking.
-    pub bitcoin_stop_gap: u32,
-
-    // ── Network and refresh policy ────────────────────────────────────────
-    pub background_sync_profile: BackgroundSyncProfile,
-
     // Tor routing preference. The platform manages the client lifecycle
     // and provides its writable directory.
     pub tor_enabled: bool,
@@ -51,10 +44,8 @@ pub struct AppSettings {
 }
 
 // Bounds live here rather than in a front end's `didSet`, which is where they
-// were: the reducer bounds values so no caller can store a stop gap of zero
-// or an out-of-range movement threshold.
-pub const BITCOIN_STOP_GAP_RANGE: std::ops::RangeInclusive<u32> = 1..=200;
-
+// were: the reducer bounds values so no caller can store an out-of-range
+// movement threshold.
 pub const LARGE_MOVEMENT_PERCENT_RANGE: std::ops::RangeInclusive<f64> = 1.0..=90.0;
 
 pub const LARGE_MOVEMENT_USD_RANGE: std::ops::RangeInclusive<f64> = 1.0..=100_000.0;
@@ -120,45 +111,8 @@ impl ResetScope {
     }
 }
 
-/// How hard background refresh may work, traded against battery and data.
-///
-/// A closed set, so a typo from the command line is refused rather than read
-/// as `aggressive`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
-#[serde(rename_all = "lowercase")]
-pub enum BackgroundSyncProfile {
-    Conservative,
-    #[default]
-    Balanced,
-    Aggressive,
-}
-
-impl BackgroundSyncProfile {
-    pub const ALL: [BackgroundSyncProfile; 3] =
-        [Self::Conservative, Self::Balanced, Self::Aggressive];
-
-    pub fn as_raw(self) -> &'static str {
-        match self {
-            Self::Conservative => "conservative",
-            Self::Balanced => "balanced",
-            Self::Aggressive => "aggressive",
-        }
-    }
-
-    pub fn from_raw(raw: &str) -> Option<Self> {
-        let raw = raw.trim().to_lowercase();
-        Self::ALL
-            .into_iter()
-            .find(|profile| profile.as_raw() == raw)
-    }
-}
-
 fn default_true() -> bool {
     true
-}
-
-fn default_bitcoin_stop_gap() -> u32 {
-    10
 }
 
 /// Orbot's SOCKS5 port, which is what a user running their own proxy on a
@@ -306,8 +260,6 @@ impl Default for AppSettings {
             pinned_dashboard_token_ids: default_pinned_dashboard_assets(),
             custom_endpoints: Vec::new(),
             custom_endpoints_only: Vec::new(),
-            bitcoin_stop_gap: default_bitcoin_stop_gap(),
-            background_sync_profile: BackgroundSyncProfile::Balanced,
             use_price_alerts: default_true(),
             use_transaction_status_notifications: default_true(),
             use_large_movement_notifications: default_true(),
@@ -359,12 +311,6 @@ pub enum AppSettingUpdate {
     CustomEndpointsOnly {
         chain_id: crate::registry::Chain,
         value: bool,
-    },
-    BitcoinStopGap {
-        value: u32,
-    },
-    BackgroundSyncProfile {
-        value: BackgroundSyncProfile,
     },
     UsePriceAlerts {
         value: bool,
@@ -510,12 +456,6 @@ fn apply_app_setting(settings: &mut AppSettings, update: AppSettingUpdate) -> bo
                 settings.custom_endpoints_only.push(chain_id);
             }
         }
-        AppSettingUpdate::BitcoinStopGap { value } => {
-            settings.bitcoin_stop_gap = clamp(value, BITCOIN_STOP_GAP_RANGE)
-        }
-        AppSettingUpdate::BackgroundSyncProfile { value } => {
-            settings.background_sync_profile = value
-        }
         AppSettingUpdate::UsePriceAlerts { value } => settings.use_price_alerts = value,
         AppSettingUpdate::UseTransactionStatusNotifications { value } => {
             settings.use_transaction_status_notifications = value
@@ -591,9 +531,6 @@ pub(super) fn reduce(
         }
         StateCommand::ResetPinnedDashboardAssets => {
             set_pinned_dashboard_assets(state, default_pinned_dashboard_assets(), events)
-        }
-        StateCommand::SetPinnedDashboardAssets { token_ids } => {
-            set_pinned_dashboard_assets(state, token_ids, events)
         }
         StateCommand::SetDashboardAssetPinned {
             token_id,

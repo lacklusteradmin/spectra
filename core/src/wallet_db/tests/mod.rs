@@ -138,7 +138,6 @@ fn unreadable_metadata_refuses_loading() {
         let db = tmp_db();
         let saved = ResidentState {
             wallets: vec![wallet("w1", crate::registry::Chain::Bitcoin)],
-            selected_wallet_id: Some("w1".to_string()),
             ..ResidentState::default()
         };
         app_state_save(&db, &saved).unwrap();
@@ -403,7 +402,6 @@ fn app_state_round_trips() {
             wallet("w1", crate::registry::Chain::Bitcoin),
             wallet("w2", crate::registry::Chain::Ethereum),
         ],
-        selected_wallet_id: Some("w2".to_string()),
         settings: AppSettings {
             fiat_currency: crate::store::state::FiatCurrency::Cny,
             pinned_dashboard_token_ids: vec!["bitcoin".to_string()],
@@ -464,7 +462,6 @@ fn app_state_save_prunes_removed_wallets() {
                 wallet("w1", crate::registry::Chain::Bitcoin),
                 wallet("w2", crate::registry::Chain::Ethereum),
             ],
-            selected_wallet_id: Some("w1".to_string()),
             ..ResidentState::default()
         },
     )
@@ -482,9 +479,6 @@ fn app_state_save_prunes_removed_wallets() {
     assert_eq!(loaded.wallets.len(), 1);
     assert_eq!(loaded.wallets[0].id, "w2");
     assert!(!wallet_load_all(&db).unwrap().iter().any(|w| w.id == "w1"));
-    // Clearing the selection must clear the stored row, not leave the stale
-    // id behind.
-    assert_eq!(loaded.selected_wallet_id, None);
 }
 
 #[test]
@@ -496,7 +490,6 @@ fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
             wallet("b", crate::registry::Chain::Solana),
             wallet("c", crate::registry::Chain::Sui),
         ],
-        selected_wallet_id: Some("a".into()),
         address_book: vec![AddressBookEntry {
             id: "a".into(),
             name: "Alice".into(),
@@ -511,7 +504,6 @@ fn incremental_state_reorders_deletes_and_rolls_back_as_one_transaction() {
     after.wallets.remove(0);
     after.wallets.reverse();
     after.wallets[0].name = "Renamed".into();
-    after.selected_wallet_id = None;
     after.address_book.clear();
     after.settings.fiat_currency = crate::store::state::FiatCurrency::Eur;
     with_conn(&db, |conn| conn.execute_batch("CREATE TRIGGER reject_meta BEFORE INSERT ON app_state_meta BEGIN SELECT RAISE(FAIL, 'injected'); END;").map_err(DbError::from)).unwrap();

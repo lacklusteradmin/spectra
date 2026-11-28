@@ -149,6 +149,8 @@ mod wallet_nfts;
 pub use wallet_nfts::WalletNfts;
 mod wallet_sui_coins;
 pub use wallet_sui_coins::SuiCoinType;
+mod wallet_held_tokens;
+pub use wallet_held_tokens::WalletHeldToken;
 mod wallet_token_accounts;
 pub use wallet_token_accounts::EmptyTokenAccounts;
 mod wallet_trust_lines;

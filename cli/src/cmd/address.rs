@@ -7,7 +7,9 @@ use colored::Colorize as _;
 use serde::Serialize;
 use spectra_core::registry::Chain;
 use spectra_core::service::EndpointHolder;
-use spectra_core::store::state::{AddressBookRejection, StateCommand, StateEvent, StateTransition};
+use spectra_core::store::state::{
+    AddressBookEntry, AddressBookRejection, StateCommand, StateEvent, StateTransition,
+};
 use spectra_core::validation::address::validate_address;
 
 use super::resolve_chain;
@@ -69,6 +71,8 @@ pub enum BookCommand {
     List,
     /// Save a recipient.
     Add(BookAddArgs),
+    /// Rename a recipient, found by id or name.
+    Rename(BookRenameArgs),
     /// Remove a recipient by id or name.
     Remove(BookRemoveArgs),
 }
@@ -87,6 +91,14 @@ pub struct BookAddArgs {
     /// Optional note.
     #[arg(long, default_value = "")]
     note: String,
+}
+
+#[derive(Args)]
+pub struct BookRenameArgs {
+    /// Contact id or name.
+    contact: String,
+    /// The new name.
+    name: String,
 }
 
 #[derive(Args)]
@@ -115,6 +127,7 @@ pub fn run(ctx: &Ctx, out: Out, command: AddressCommand) -> CliResult<()> {
         }
         AddressCommand::Book(BookCommand::List) => book_list(ctx, out),
         AddressCommand::Book(BookCommand::Add(args)) => book_add(ctx, out, args),
+        AddressCommand::Book(BookCommand::Rename(args)) => book_rename(ctx, out, args),
         AddressCommand::Book(BookCommand::Remove(args)) => book_remove(ctx, out, args),
         AddressCommand::Holder(args) => holder(ctx, out, args),
     }
@@ -300,16 +313,52 @@ impl Report for RemovedReport {
     }
 }
 
-fn book_remove(ctx: &Ctx, out: Out, args: BookRemoveArgs) -> CliResult<()> {
-    let entry = ctx
-        .state()?
+/// The saved recipient an id or a name names.
+fn find_contact(ctx: &Ctx, contact: &str) -> CliResult<AddressBookEntry> {
+    ctx.state()?
         .address_book
         .into_iter()
         .find(|entry| {
-            entry.id.eq_ignore_ascii_case(&args.contact)
-                || entry.name.eq_ignore_ascii_case(&args.contact)
+            entry.id.eq_ignore_ascii_case(contact) || entry.name.eq_ignore_ascii_case(contact)
         })
-        .ok_or_else(|| CliError::rejected(format!("no contact matching {:?}", args.contact)))?;
+        .ok_or_else(|| CliError::rejected(format!("no contact matching {contact:?}")))
+}
+
+#[derive(Serialize)]
+struct RenamedReport {
+    id: String,
+    name: String,
+}
+
+impl Report for RenamedReport {
+    fn render(&self) {
+        println!("  {} renamed to {}", out::ok_mark(), self.name.bold());
+    }
+}
+
+fn book_rename(ctx: &Ctx, out: Out, args: BookRenameArgs) -> CliResult<()> {
+    let entry = find_contact(ctx, &args.contact)?;
+    let transition = ctx.apply(StateCommand::RenameAddressBookEntry {
+        id: entry.id.clone(),
+        name: args.name,
+    })?;
+    if let Some(reason) = rejection(&transition) {
+        return Err(CliError::rejected(rejection_text(reason)));
+    }
+    let renamed = transition
+        .state
+        .address_book
+        .into_iter()
+        .find(|saved| saved.id == entry.id)
+        .map_or(entry.name, |saved| saved.name);
+    out.report(&RenamedReport {
+        id: entry.id,
+        name: renamed,
+    })
+}
+
+fn book_remove(ctx: &Ctx, out: Out, args: BookRemoveArgs) -> CliResult<()> {
+    let entry = find_contact(ctx, &args.contact)?;
     ctx.apply(StateCommand::RemoveAddressBookEntry {
         id: entry.id.clone(),
     })?;

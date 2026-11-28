@@ -1,10 +1,8 @@
 //! Pure refresh scheduling arithmetic. `WalletService` owns the
-//! `RefreshClock`, settings, and policy inputs.
+//! `RefreshClock` and policy inputs.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-use crate::store::state::AppSettings;
 
 /// Identity of one independently refreshable wallet history.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -61,7 +59,7 @@ impl RefreshClock {
 
 /// What only the device can tell core.
 ///
-/// Core owns the sync profile, automatic cadence and refresh clock.
+/// Core owns the automatic cadence and refresh clock.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceConditions {
@@ -95,18 +93,9 @@ pub struct MaintenancePlan {
 pub(crate) const AUTOMATIC_REFRESH_SECONDS: u64 = 5 * 60;
 const ACTIVE_POLL_SECONDS: u64 = 30;
 const INACTIVE_POLL_SECONDS: u64 = 60;
-const BALANCED_PENDING_REFRESH_SECONDS: f64 = 60.0;
-const BASE_BACKGROUND_INTERVAL_SECONDS: f64 = 15.0 * 60.0;
-
 /// How often to re-poll a pending send while the app is in front.
-fn pending_refresh_interval(settings: &AppSettings) -> f64 {
-    use crate::store::state::BackgroundSyncProfile as Profile;
-    match settings.background_sync_profile {
-        Profile::Conservative => 30.0,
-        Profile::Aggressive => 10.0,
-        Profile::Balanced => BALANCED_PENDING_REFRESH_SECONDS,
-    }
-}
+const PENDING_REFRESH_SECONDS: f64 = 60.0;
+const BASE_BACKGROUND_INTERVAL_SECONDS: f64 = 15.0 * 60.0;
 
 /// How long between background ticks, stretched by anything that costs the
 /// user power or data.
@@ -125,36 +114,16 @@ fn background_interval(conditions: &DeviceConditions) -> f64 {
 }
 
 /// Whether a background tick may sweep balances and history, or only watch
-/// pending sends. The thresholds are the sync profile's.
-fn allows_heavy_work(settings: &AppSettings, conditions: &DeviceConditions) -> bool {
-    if !conditions.is_network_reachable {
-        return false;
-    }
-    use crate::store::state::BackgroundSyncProfile as Profile;
-    match settings.background_sync_profile {
-        Profile::Conservative => {
-            !conditions.is_constrained_network
-                && !conditions.is_expensive_network
-                && !conditions.is_low_power_mode
-                && conditions.battery_level >= 0.30
-        }
-        Profile::Balanced => {
-            !conditions.is_constrained_network
-                && !conditions.is_low_power_mode
-                && conditions.battery_level >= 0.20
-        }
-        Profile::Aggressive => {
-            if conditions.is_low_power_mode && conditions.battery_level < 0.15 {
-                return false;
-            }
-            conditions.battery_level >= 0.15
-        }
-    }
+/// pending sends.
+fn allows_heavy_work(conditions: &DeviceConditions) -> bool {
+    conditions.is_network_reachable
+        && !conditions.is_constrained_network
+        && !conditions.is_low_power_mode
+        && conditions.battery_level >= 0.20
 }
 
 pub fn maintenance_plan(
     clock: &RefreshClock,
-    settings: &AppSettings,
     conditions: &DeviceConditions,
     has_pending_transaction_work: bool,
     now_unix: f64,
@@ -164,7 +133,7 @@ pub fn maintenance_plan(
             && RefreshClock::elapsed(
                 clock.pending_transactions_at,
                 now_unix,
-                pending_refresh_interval(settings),
+                PENDING_REFRESH_SECONDS,
             );
         let refresh_live_prices = conditions.wants_price_refresh
             && RefreshClock::elapsed(
@@ -199,7 +168,7 @@ pub fn maintenance_plan(
         refresh_pending_transactions: false,
         refresh_live_prices: false,
         run_background_tick,
-        allow_heavy_background_work: run_background_tick && allows_heavy_work(settings, conditions),
+        allow_heavy_background_work: run_background_tick && allows_heavy_work(conditions),
         poll_seconds: INACTIVE_POLL_SECONDS,
     }
 }
@@ -240,26 +209,14 @@ mod tests {
 
     #[test]
     fn a_fresh_clock_plans_everything_it_has_work_for() {
-        let plan = maintenance_plan(
-            &RefreshClock::default(),
-            &AppSettings::default(),
-            &conditions(true),
-            true,
-            1_000.0,
-        );
+        let plan = maintenance_plan(&RefreshClock::default(), &conditions(true), true, 1_000.0);
         assert!(plan.refresh_pending_transactions);
         assert!(plan.refresh_live_prices);
         assert_eq!(plan.poll_seconds, 30, "pending work is watched every 30s");
 
         // And with nothing pending the loop sleeps a whole price interval
         // rather than waking twice a minute to ask if there is anything to do.
-        let idle = maintenance_plan(
-            &RefreshClock::default(),
-            &AppSettings::default(),
-            &conditions(true),
-            false,
-            1_000.0,
-        );
+        let idle = maintenance_plan(&RefreshClock::default(), &conditions(true), false, 1_000.0);
         assert!(!idle.refresh_pending_transactions);
         assert_eq!(idle.poll_seconds, 300);
     }
@@ -269,14 +226,13 @@ mod tests {
         let mut clock = RefreshClock::default();
         clock.record(RefreshKind::PendingTransactions, 1_000.0);
         clock.record(RefreshKind::LivePrices, 1_000.0);
-        let settings = AppSettings::default();
-        let soon = maintenance_plan(&clock, &settings, &conditions(true), true, 1_030.0);
+        let soon = maintenance_plan(&clock, &conditions(true), true, 1_030.0);
         assert!(
             !soon.refresh_pending_transactions,
             "60s interval, 30s elapsed"
         );
         assert!(!soon.refresh_live_prices);
-        let later = maintenance_plan(&clock, &settings, &conditions(true), true, 1_400.0);
+        let later = maintenance_plan(&clock, &conditions(true), true, 1_400.0);
         assert!(later.refresh_pending_transactions);
         assert!(later.refresh_live_prices);
     }
@@ -284,10 +240,9 @@ mod tests {
     /// The gate the background tick passes through, and the reason it exists.
     #[test]
     fn a_flat_battery_stops_heavy_background_work() {
-        let settings = AppSettings::default();
         let mut low = conditions(false);
         low.battery_level = 0.05;
-        let plan = maintenance_plan(&RefreshClock::default(), &settings, &low, false, 1_000.0);
+        let plan = maintenance_plan(&RefreshClock::default(), &low, false, 1_000.0);
         assert!(
             plan.run_background_tick,
             "watching pending sends is still fine"
@@ -299,13 +254,7 @@ mod tests {
 
         let mut offline = conditions(false);
         offline.is_network_reachable = false;
-        let plan = maintenance_plan(
-            &RefreshClock::default(),
-            &settings,
-            &offline,
-            false,
-            1_000.0,
-        );
+        let plan = maintenance_plan(&RefreshClock::default(), &offline, false, 1_000.0);
         assert!(!plan.run_background_tick, "no network, nothing to do");
     }
 

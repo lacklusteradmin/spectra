@@ -66,11 +66,6 @@ fn applying_a_setting_is_the_reducers_rule() {
         trimmed.custom_endpoints[0].endpoint,
         "https://wallet.example"
     );
-    let bounded = app_settings_applying(
-        defaults.clone(),
-        AppSettingUpdate::BitcoinStopGap { value: 0 },
-    );
-    assert!(bounded.bitcoin_stop_gap >= 1);
     let refused = app_settings_applying(
         defaults.clone(),
         AppSettingUpdate::TorCustomProxyAddress {

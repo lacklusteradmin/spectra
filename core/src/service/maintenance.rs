@@ -1,4 +1,4 @@
-//! Refresh scheduling from core-owned clocks, settings and pending transactions.
+//! Refresh scheduling from core-owned clocks and pending transactions.
 use crate::service::WalletService;
 use crate::service::refresh_policy::{DeviceConditions, MaintenancePlan, RefreshKind};
 
@@ -8,12 +8,10 @@ impl WalletService {
         let this = self.clone();
         crate::service::worker::run(async move {
             let this = &this;
-            let settings = this.wallet_state.read().await.settings.clone();
             let has_pending_work = this.has_pending_transaction_work().await;
             let clock = this.refresh_clock.read().await.clone();
             crate::service::refresh_policy::maintenance_plan(
                 &clock,
-                &settings,
                 &conditions,
                 has_pending_work,
                 crate::wallet_db::now_secs() as f64,

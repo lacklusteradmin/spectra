@@ -117,6 +117,9 @@ impl WalletService {
         chain: Chain,
         address: &str,
     ) -> Result<Option<Vec<crate::api::HeldToken>>, SpectraBridgeError> {
+        if !chain.lists_held_tokens() {
+            return Ok(None);
+        }
         let discovery = [crate::api::endpoint::EndpointCapability::TokenDiscovery];
         // Choose the service by family; every read keeps the concrete
         // network's endpoints and identity.
@@ -524,7 +527,7 @@ impl WalletService {
     /// here — `symbol` is the catalog's or empty, and `is_known` says which.
     /// A front end renders the contract address for the rest, which is the one
     /// string an attacker cannot choose.
-    pub async fn discover_token_balances(
+    pub(crate) async fn discover_token_balances(
         &self,
         chain: crate::registry::Chain,
         address: String,
@@ -534,14 +537,13 @@ impl WalletService {
             let this = &this;
             // Not an empty list: a chain nothing can list is not an address
             // that holds nothing, and the difference is what a user reads as
-            // "my tokens are gone".
+            // "my tokens are gone". A token contract answers only about a
+            // holder named to it, so listing them needs an indexer.
             let held = this.held_tokens(chain, &address).await?.ok_or_else(|| {
-                SpectraBridgeError::failure(format!(
-                    "discover_token_balances: {} cannot enumerate holdings with the \
-                     configured services; a token contract only answers about a \
-                     holder you name, so listing them needs an indexer",
-                    chain.str_id()
-                ))
+                SpectraBridgeError::failed(
+                    "%@ needs an address indexer to list the tokens an address holds. Add an endpoint that lists them.",
+                    [chain.chain_display_name()],
+                )
             })?;
             let known: HashMap<String, crate::catalog::tokens::TokenDeploymentEntry> =
                 crate::catalog::tokens::list_token_deployments(Some(chain))

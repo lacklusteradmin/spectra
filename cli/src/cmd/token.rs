@@ -10,7 +10,7 @@ use spectra_core::store::state::{
 };
 
 use super::resolve_chain;
-use crate::ctx::{Ctx, WalletArg, wallet_address};
+use crate::ctx::Ctx;
 use crate::error::{CliError, CliResult};
 use crate::out::{self, Done, Out, Report};
 
@@ -26,12 +26,6 @@ pub enum TokenCommand {
     Edit(AddArgs),
     /// Forget a custom token.
     Remove(RemoveArgs),
-    /// Change a custom token's display precision.
-    Decimals(DecimalsArgs),
-    /// Back to the catalog's own list, dropping every custom token.
-    Reset(ResetArgs),
-    /// Ask the chain what a wallet actually holds.
-    Discover(WalletArg),
 }
 
 #[derive(Args)]
@@ -82,26 +76,6 @@ pub struct RemoveArgs {
     contract: String,
 }
 
-#[derive(Args)]
-pub struct DecimalsArgs {
-    /// Chain the token is on.
-    #[arg(long)]
-    chain: String,
-    /// Contract address, mint, jetton master or coin type.
-    #[arg(long)]
-    contract: String,
-    /// How many decimal places the token has.
-    #[arg(long)]
-    decimals: u32,
-}
-
-#[derive(Args)]
-pub struct ResetArgs {
-    /// Required: this drops every custom token.
-    #[arg(long)]
-    yes: bool,
-}
-
 pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
     match command {
         TokenCommand::Catalog(args) => catalog(out, args),
@@ -109,9 +83,6 @@ pub fn run(ctx: &Ctx, out: Out, command: TokenCommand) -> CliResult<()> {
         TokenCommand::Add(args) => add(ctx, out, args),
         TokenCommand::Edit(args) => edit(ctx, out, args),
         TokenCommand::Remove(args) => remove(ctx, out, args),
-        TokenCommand::Decimals(args) => decimals(ctx, out, args),
-        TokenCommand::Reset(args) => reset(ctx, out, args),
-        TokenCommand::Discover(args) => discover(ctx, out, args),
     }
 }
 
@@ -365,47 +336,6 @@ impl Report for TokenChangeReport {
     }
 }
 
-fn decimals(ctx: &Ctx, out: Out, args: DecimalsArgs) -> CliResult<()> {
-    let chain_id = resolve_chain(&args.chain)?;
-    let transition = ctx.apply(StateCommand::SetCustomTokenDecimals {
-        chain_id,
-        contract: args.contract.clone(),
-        decimals: args.decimals,
-    })?;
-    reject_on_event(&transition)?;
-    out.report(&TokenChangeReport {
-        chain: chain_id,
-        contract: args.contract.clone(),
-        decimals: Some(args.decimals),
-        what: format!("{} now shows {} places", args.contract, args.decimals),
-    })
-}
-
-fn reset(ctx: &Ctx, out: Out, args: ResetArgs) -> CliResult<()> {
-    if !args.yes {
-        return Err(CliError::unconfirmed("drops every custom token"));
-    }
-    let transition = ctx.apply(StateCommand::ResetTokenPreferences)?;
-    out.report(&ResetReport {
-        tokens: transition.state.known_tokens.len(),
-    })
-}
-
-#[derive(Serialize)]
-struct ResetReport {
-    tokens: usize,
-}
-
-impl Report for ResetReport {
-    fn render(&self) {
-        println!(
-            "  {} back to the catalog's {} tokens",
-            out::ok_mark(),
-            self.tokens
-        );
-    }
-}
-
 /// A refusal core reported, as a command failure the shell can see.
 ///
 /// The reducer answers with an event rather than an error because a front end
@@ -440,69 +370,6 @@ fn reject_on_event(transition: &StateTransition) -> CliResult<()> {
             }
         })),
     }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct HeldRow {
-    contract: String,
-    symbol: String,
-    is_known: bool,
-    decimals: u8,
-    balance: String,
-}
-
-/// The tokens an address holds, as its network reports them.
-#[derive(Serialize)]
-struct DiscoveredReport {
-    holdings: Vec<HeldRow>,
-}
-
-impl Report for DiscoveredReport {
-    fn render(&self) {
-        println!();
-        if self.holdings.is_empty() {
-            println!("  {}", out::hint("this address holds no tokens"));
-            return;
-        }
-        for token in &self.holdings {
-            let name = if token.is_known {
-                token.symbol.bold().to_string()
-            } else {
-                out::hint("unrecognised").to_string()
-            };
-            println!("  {:<24} {name}", token.balance.bold());
-            println!("     {}", out::hint(&token.contract));
-        }
-    }
-}
-
-fn discover(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
-    let wallet = args.find(ctx)?;
-    let chain = wallet.chain_id;
-    let address = wallet_address(&wallet).to_string();
-    if address.is_empty() {
-        return Err(CliError::rejected(format!(
-            "{} has no address on {}",
-            wallet.name,
-            chain.chain_display_name()
-        )));
-    }
-    let held = ctx
-        .rt
-        .block_on(ctx.service()?.discover_token_balances(chain, address))?;
-    out.report(&DiscoveredReport {
-        holdings: held
-            .into_iter()
-            .map(|token| HeldRow {
-                contract: token.contract_address,
-                symbol: token.symbol,
-                is_known: token.is_known,
-                decimals: token.decimals,
-                balance: token.balance_display,
-            })
-            .collect(),
-    })
 }
 
 /// A token protocol named as `chains` spells it.

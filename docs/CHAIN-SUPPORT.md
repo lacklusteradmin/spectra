@@ -445,6 +445,15 @@ ERC-20 at 6 places over the same balance, as Celo's CELO, Metis's METIS
 the network's coin row and never a token: discovery leaves it out of an
 indexer's listing, and adding it as a custom token is refused as a duplicate.
 
+A wallet on an EVM network, Solana, Sui, Aptos, NEAR, Tron, TON, the XRP
+Ledger, Stellar or Cardano lists every token its address holds, read from the
+network's endpoints that list holdings (on an EVM network, a
+Blockscout-compatible indexer), each marked as Known Tokens tracking it or
+not. An untracked token carries no name: its on-chain symbol is whoever
+deployed it's to write. Adding one adds a custom token under the protocol and
+places the network reports. With no such endpoint configured the list is
+refused, never answered empty.
+
 A network lists all supported standards in `token_standards`; each deployment
 owns its actual protocol. Tron accepts TRC-10 and TRC-20, and Aptos accepts both
 legacy Move coins and AIP-21 fungible assets. No caller chooses a protocol from

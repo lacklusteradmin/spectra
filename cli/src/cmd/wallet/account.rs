@@ -7,7 +7,7 @@ use colored::Colorize as _;
 use serde::Serialize;
 use spectra_core::service::{
     EmptyTokenAccounts, MoneroPaymentProof, NearAccessKeys, NearStorageDeposits, SuiCoinType,
-    TokenApprovals, WalletNetworkAccount, WalletNfts, WalletTrustLines,
+    TokenApprovals, WalletHeldToken, WalletNetworkAccount, WalletNfts, WalletTrustLines,
 };
 
 use crate::cmd::send::{ArtifactReport, MemoArgs};
@@ -411,6 +411,39 @@ impl Report for TokenAccountsReport {
             &format!("{} {symbol}", self.empty.reclaimable),
         );
     }
+}
+
+/// The tokens an address holds, as its network reports them.
+#[derive(Serialize)]
+struct HeldTokensReport {
+    tokens: Vec<WalletHeldToken>,
+}
+
+impl Report for HeldTokensReport {
+    fn render(&self) {
+        println!();
+        if self.tokens.is_empty() {
+            println!("  {}", out::hint("this address holds no tokens"));
+            return;
+        }
+        for token in &self.tokens {
+            let name = if token.is_tracked {
+                token.symbol.bold().to_string()
+            } else {
+                out::hint("not in the token list").to_string()
+            };
+            println!("  {:<24} {name}", token.balance.bold());
+            println!("     {}", out::hint(&token.contract));
+        }
+    }
+}
+
+pub fn held_tokens(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {
+    let wallet = args.find(ctx)?;
+    let tokens = ctx
+        .rt
+        .block_on(ctx.service()?.wallet_held_tokens(wallet.id))?;
+    out.report(&HeldTokensReport { tokens })
 }
 
 pub fn token_accounts(ctx: &Ctx, out: Out, args: WalletArg) -> CliResult<()> {

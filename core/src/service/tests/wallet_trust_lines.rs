@@ -283,6 +283,74 @@ async fn one_code_from_two_issuers_is_two_balances_found_and_refreshed() {
     }
 }
 
+/// A wallet's held tokens say which its token list tracks: one the user added
+/// carries their symbol and comes first, and the same code from another
+/// issuer is named by its identifier alone.
+#[tokio::test]
+async fn held_tokens_mark_the_tracked_one_and_name_no_other() {
+    let issuer = vectors()["xrpl"]["issuer"].as_str().unwrap().to_string();
+    let holder = vectors()["xrpl"]["account"].as_str().unwrap().to_string();
+    let ledger = Arc::new(Mutex::new(Ledger::default()));
+    {
+        let mut ledger = ledger.lock().unwrap();
+        ledger.roots.insert(holder.clone(), root(9));
+        ledger.lines.insert(
+            holder,
+            vec![
+                line(OTHER_ISSUER, "USD", "7.5", "1000", "0"),
+                line(&issuer, "USD", "150", "1000", "0"),
+            ],
+        );
+    }
+    let (xrp, _server) = xrp_wallet(ledger).await;
+    let ours = format!("USD.{issuer}");
+    let added = xrp
+        .service
+        .apply_state_command(StateCommand::AddCustomToken {
+            standard: None,
+            chain_id: xrp.chain,
+            symbol: "usd".into(),
+            name: "Our Dollar".into(),
+            contract: ours.clone(),
+            coingecko_id: String::new(),
+            coinpaprika_id: String::new(),
+            decimals: None,
+        })
+        .await
+        .unwrap();
+    assert!(
+        !added.events.iter().any(|event| matches!(
+            event,
+            crate::store::state::StateEvent::TokenPreferenceRejected { .. }
+        )),
+        "{:?}",
+        added.events
+    );
+    let held = xrp
+        .service
+        .wallet_held_tokens(xrp.id.clone())
+        .await
+        .unwrap();
+    let rows: Vec<_> = held
+        .iter()
+        .map(|token| {
+            (
+                token.contract.as_str(),
+                token.symbol.as_str(),
+                token.balance.as_str(),
+                token.is_tracked,
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            (ours.as_str(), "USD", "150", true),
+            (format!("USD.{OTHER_ISSUER}").as_str(), "", "7.5", false),
+        ]
+    );
+}
+
 /// The issuer's transfer fee is part of the reviewed payment: raised before
 /// signing, the payment costs more than was reviewed, and is refused.
 #[tokio::test]

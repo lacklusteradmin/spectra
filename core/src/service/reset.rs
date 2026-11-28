@@ -22,7 +22,6 @@ impl WalletService {
             this.mutate_persisted_state(move |state| {
                 if mutation.reset_wallets_and_secrets {
                     state.wallets.clear();
-                    state.selected_wallet_id = None;
                 }
                 if mutation.reset_alerts_and_contacts {
                     state.price_alerts.clear();

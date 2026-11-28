@@ -12,7 +12,6 @@ use crate::wallet_db::error::DbError;
 // and its order is user-visible.
 
 pub(super) const META_SCHEMA_VERSION: &str = "schema_version";
-pub(super) const META_SELECTED_WALLET_ID: &str = "selected_wallet_id";
 pub(super) const META_SETTINGS: &str = "settings";
 /// Known tokens. A separate meta row rather than a field inside `settings`,
 /// because `AppSettings` is the "every front end must agree" bag and this is a
@@ -118,11 +117,6 @@ impl AppStateChanges {
         json_field!(price_alerts, META_PRICE_ALERTS);
         json_field!(fiat_rates_from_usd, META_FIAT_RATES);
         json_field!(quotes, "quotes");
-        if before.map(|state| &state.selected_wallet_id) != Some(&after.selected_wallet_id) {
-            changes
-                .meta
-                .push((META_SELECTED_WALLET_ID, after.selected_wallet_id.clone()));
-        }
         Ok(changes)
     }
 
@@ -336,7 +330,6 @@ pub fn app_state_load(database: &WalletDatabase) -> Result<ResidentState, DbErro
                         )));
                     }
                 }
-                META_SELECTED_WALLET_ID => state.selected_wallet_id = Some(value),
                 META_SETTINGS => {
                     state.settings = serde_json::from_str(&value)
                         .map_err(|e| DbError::Corrupt(format!("app_state_load settings: {e}")))?;

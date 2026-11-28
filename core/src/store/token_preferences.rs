@@ -52,6 +52,15 @@ pub(crate) const MAX_TOKEN_SYMBOL_CHARS: usize = 12;
 ///
 /// Matched on the *normalized* contract, which is the chain's own rule — a TON
 /// jetton address is case-significant and an EVM one is not.
+/// The tracked token, the catalog's or the user's, at `contract` on `chain`.
+pub(crate) fn tracked_token<'a>(
+    state: &'a ResidentState,
+    chain: crate::registry::Chain,
+    contract: &str,
+) -> Option<&'a crate::store::wallet_domain::TokenPreferenceEntry> {
+    token_preference_index(state, chain, contract).map(|index| &state.token_preferences[index])
+}
+
 fn token_preference_index(
     state: &ResidentState,
     chain: crate::registry::Chain,
@@ -371,29 +380,6 @@ pub(super) fn reduce(
                 }
             }
         }
-        StateCommand::SetCustomTokenDecimals {
-            chain_id,
-            contract,
-            decimals,
-        } => match token_preference_index(state, chain_id, &contract) {
-            None => events.push(token_preference_rejected(
-                TokenPreferenceRejection::UnknownToken,
-            )),
-            Some(index) if state.token_preferences[index].is_built_in => events.push(
-                token_preference_rejected(TokenPreferenceRejection::BuiltInToken),
-            ),
-            Some(_) if decimals > MAX_TOKEN_DECIMALS => events.push(token_preference_rejected(
-                TokenPreferenceRejection::TooManyDecimals,
-            )),
-            Some(index) => {
-                if state.token_preferences[index].token.decimals != decimals {
-                    state.token_preferences[index].token.decimals = decimals;
-                    events.push(StateEvent::TokenPreferencesChanged {
-                        symbol: Some(state.token_preferences[index].token.symbol.clone()),
-                    });
-                }
-            }
-        },
         StateCommand::ResetTokenPreferences => {
             let defaults = built_in_token_preferences();
             if defaults != state.token_preferences {

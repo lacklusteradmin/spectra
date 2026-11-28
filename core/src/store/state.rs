@@ -2,10 +2,9 @@ use serde::{Deserialize, Serialize};
 
 pub use super::address_book::{AddressBookEntry, AddressBookRejection};
 pub use super::settings::{
-    AppSettingUpdate, AppSettings, BITCOIN_STOP_GAP_RANGE, BackgroundSyncProfile,
-    DEFAULT_PINNED_DASHBOARD_ASSETS, FiatCurrency, InputBounds, LARGE_MOVEMENT_PERCENT_RANGE,
-    LARGE_MOVEMENT_USD_RANGE, ResetScope, app_settings_applying, app_settings_defaults,
-    fiat_currency_codes, input_bounds,
+    AppSettingUpdate, AppSettings, DEFAULT_PINNED_DASHBOARD_ASSETS, FiatCurrency, InputBounds,
+    LARGE_MOVEMENT_PERCENT_RANGE, LARGE_MOVEMENT_USD_RANGE, ResetScope, app_settings_applying,
+    app_settings_defaults, fiat_currency_codes, input_bounds,
 };
 pub use super::token_preferences::{
     MAX_TOKEN_DECIMALS, TokenPreferenceRejection, built_in_token_preferences, with_custom_tokens,
@@ -22,7 +21,6 @@ pub struct ResidentState {
     pub quotes: crate::service::QuoteRefreshState,
     pub diagnostics: crate::service::DiagnosticState,
     pub wallets: Vec<WalletState>,
-    pub selected_wallet_id: Option<String>,
     pub settings: AppSettings,
     /// Saved recipients, most recently added first.
     pub address_book: Vec<AddressBookEntry>,
@@ -55,7 +53,6 @@ impl Default for ResidentState {
             quotes: Default::default(),
             diagnostics: Default::default(),
             wallets: Vec::new(),
-            selected_wallet_id: None,
             settings: AppSettings::default(),
             address_book: Vec::new(),
             token_preferences: built_in_token_preferences(),
@@ -89,25 +86,17 @@ pub enum StateCommand {
         deployment_id: String,
         hidden: bool,
     },
-    SelectWallet {
-        wallet_id: String,
-    },
     RemoveWallet {
         wallet_id: String,
     },
     /// Change one settings field. Values are trimmed and bounded here, so a
-    /// front end cannot store a stop gap of zero by writing to its own copy.
+    /// front end cannot store an out-of-range threshold by writing to its own
+    /// copy.
     SetAppSetting {
         update: AppSettingUpdate,
     },
     /// Reset core-owned settings to `AppSettings::default()`.
     ResetAppSettings,
-    /// Replace the pinned dashboard set. Token IDs are trimmed
-    /// and de-duplicated, first occurrence winning, so display order is the
-    /// order the user pinned them in.
-    SetPinnedDashboardAssets {
-        token_ids: Vec<String>,
-    },
     /// Restore the default dashboard pins explicitly.
     ResetPinnedDashboardAssets,
     /// Pin or unpin one asset against the saved selection.
@@ -144,13 +133,6 @@ pub enum StateCommand {
     RemoveCustomToken {
         chain_id: crate::registry::Chain,
         contract: String,
-    },
-    /// Change a custom token's precision. Out of range is refused, not
-    /// clamped: a clamp reads every later balance at the wrong scale.
-    SetCustomTokenDecimals {
-        chain_id: crate::registry::Chain,
-        contract: String,
-        decimals: u32,
     },
     /// Back to the catalog's own list, with every custom token dropped.
     ResetTokenPreferences,
@@ -202,9 +184,6 @@ pub enum StateEvent {
         wallet_id: String,
     },
     WalletUpdated {
-        wallet_id: String,
-    },
-    WalletSelected {
         wallet_id: String,
     },
     WalletRemoved {
@@ -288,8 +267,8 @@ pub struct StateTransition {
     pub events: Vec<StateEvent>,
 }
 
-/// Store `wallet` whole: replace the stored wallet with its id, or add it
-/// and select it when nothing is selected. Core's own writes only; see
+/// Store `wallet` whole: replace the stored wallet with its id, or add it.
+/// Core's own writes only; see
 /// `WalletService::upsert_wallet`.
 pub(crate) fn upsert_wallet_in_place(
     state: &mut ResidentState,
@@ -311,9 +290,6 @@ pub(crate) fn upsert_wallet_in_place(
             wallet_id: wallet_id.clone(),
         }
     };
-    if state.selected_wallet_id.is_none() {
-        state.selected_wallet_id = Some(wallet_id);
-    }
     vec![event]
 }
 
@@ -363,20 +339,10 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
                 }
             }
         }
-        StateCommand::SelectWallet { wallet_id } => {
-            if state.wallets.iter().any(|wallet| wallet.id == wallet_id) {
-                state.selected_wallet_id = Some(wallet_id.clone());
-                events.push(StateEvent::WalletSelected { wallet_id });
-            }
-        }
         StateCommand::RemoveWallet { wallet_id } => {
             let before = state.wallets.len();
             state.wallets.retain(|wallet| wallet.id != wallet_id);
             if state.wallets.len() != before {
-                if state.selected_wallet_id.as_deref() == Some(wallet_id.as_str()) {
-                    state.selected_wallet_id =
-                        state.wallets.first().map(|wallet| wallet.id.clone());
-                }
                 events.push(StateEvent::WalletRemoved { wallet_id });
             }
         }
@@ -406,14 +372,12 @@ pub fn reduce_state_in_place(state: &mut ResidentState, command: StateCommand) -
         command @ (StateCommand::SetAppSetting { .. }
         | StateCommand::ResetAppSettings
         | StateCommand::ResetPinnedDashboardAssets
-        | StateCommand::SetPinnedDashboardAssets { .. }
         | StateCommand::SetDashboardAssetPinned { .. }) => {
             super::settings::reduce(state, command, &mut events)
         }
         command @ (StateCommand::AddCustomToken { .. }
         | StateCommand::UpdateCustomToken { .. }
         | StateCommand::RemoveCustomToken { .. }
-        | StateCommand::SetCustomTokenDecimals { .. }
         | StateCommand::ResetTokenPreferences) => {
             super::token_preferences::reduce(state, command, &mut events)
         }

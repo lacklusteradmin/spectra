@@ -203,39 +203,23 @@ impl WalletService {
     /// already is — `events` is empty and nothing is written.
     pub async fn apply_state_command(
         &self,
-        mut command: StateCommand,
+        command: StateCommand,
     ) -> Result<StateTransition, SpectraBridgeError> {
         let this = self.clone();
         crate::service::worker::run(async move {
             let this = &this;
-            match &mut command {
-                StateCommand::SetPinnedDashboardAssets { token_ids } => {
-                    let options = this.dashboard_pin_options().await?;
-                    for id in token_ids
-                        .iter()
-                        .map(|id| id.trim())
-                        .filter(|id| !id.is_empty())
-                    {
-                        if !options.iter().any(|option| option.token_id == id) {
-                            return Err(SpectraBridgeError::InvalidInput {
-                                reason: format!("unknown or unpinnable token ID: {id}").into(),
-                            });
-                        }
-                    }
+            if let StateCommand::SetDashboardAssetPinned {
+                token_id,
+                is_pinned: true,
+            } = &command
+            {
+                let options = this.dashboard_pin_options().await?;
+                let id = token_id.trim();
+                if !options.iter().any(|option| option.token_id == id) {
+                    return Err(SpectraBridgeError::InvalidInput {
+                        reason: format!("unknown or unpinnable token ID: {id}").into(),
+                    });
                 }
-                StateCommand::SetDashboardAssetPinned {
-                    token_id,
-                    is_pinned: true,
-                } => {
-                    let options = this.dashboard_pin_options().await?;
-                    let id = token_id.trim();
-                    if !options.iter().any(|option| option.token_id == id) {
-                        return Err(SpectraBridgeError::InvalidInput {
-                            reason: format!("unknown or unpinnable token ID: {id}").into(),
-                        });
-                    }
-                }
-                _ => {}
             }
             this.mutate_persisted_state(move |state| reduce_state_in_place(state, command))
                 .await

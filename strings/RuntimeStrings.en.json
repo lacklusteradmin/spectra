@@ -250,7 +250,6 @@
   "Addresses and Coins": "Addresses and Coins",
   "Addresses, one per line": "Addresses, one per line",
   "Advanced": "Advanced",
-  "Aggressive": "Aggressive",
   "Alert Controls": "Alert Controls",
   "Alert added. Spectra will notify you when this target is hit.": "Alert added. Spectra will notify you when this target is hit.",
   "Alerts & Contacts": "Alerts & Contacts",
@@ -351,7 +350,6 @@
   "Back": "Back",
   "Balance": "Balance",
   "Balance and history come from scanning blocks on this device, from the restore height on.": "Balance and history come from scanning blocks on this device, from the restore height on.",
-  "Balanced": "Balanced",
   "Bandwidth": "Bandwidth",
   "Base Reserve": "Base Reserve",
   "Base58 or JSON keypair": "Base58 or JSON keypair",
@@ -458,7 +456,6 @@
   "Confirmed on-chain": "Confirmed on-chain",
   "Connection Mode": "Connection Mode",
   "Consensus": "Consensus",
-  "Conservative": "Conservative",
   "Contact": "Contact",
   "Contacts": "Contacts",
   "Continue": "Continue",
@@ -2220,5 +2217,13 @@
   "Approve": "Approve",
   "Rebroadcast outcome unknown; check network status before retrying.": "Rebroadcast outcome unknown; check network status before retrying.",
   "Submission outcome unknown; check network status before sending again.": "Submission outcome unknown; check network status before sending again.",
-  "This wallet has no password.": "This wallet has no password."
+  "This wallet has no password.": "This wallet has no password.",
+  "Tokens Held": "Tokens Held",
+  "Unknown Token": "Unknown Token",
+  "Add to Known Tokens": "Add to Known Tokens",
+  "This address holds no tokens.": "This address holds no tokens.",
+  "A token not in Known Tokens is shown by its contract: anyone can send a token that calls itself anything. Add one you recognize to see its balance in the wallet.": "A token not in Known Tokens is shown by its contract: anyone can send a token that calls itself anything. Add one you recognize to see its balance in the wallet.",
+  "Every token this wallet's address holds, and adding to Known Tokens the ones it lacks.": "Every token this wallet's address holds, and adding to Known Tokens the ones it lacks.",
+  "No service lists the tokens an address holds on this network.": "No service lists the tokens an address holds on this network.",
+  "%@ needs an address indexer to list the tokens an address holds. Add an endpoint that lists them.": "%@ needs an address indexer to list the tokens an address holds. Add an endpoint that lists them."
 }

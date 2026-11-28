@@ -92,6 +92,10 @@ pub enum WalletCommand {
     Account(WalletArg),
     /// An Ethereum wallet's ENS primary name, where it resolves back.
     Ens(WalletArg),
+    /// Every token the wallet's address holds, read from its network's
+    /// indexer, each saying whether the token list tracks it; add an
+    /// untracked one with `token add`.
+    HeldTokens(WalletArg),
     /// The ERC-20 allowances an EVM wallet has granted that still stand,
     /// from its indexer's approval logs and a live read of each.
     Approvals(WalletArg),
@@ -208,6 +212,7 @@ pub fn run(ctx: &Ctx, out: Out, command: WalletCommand) -> CliResult<()> {
         W::SignMessage(args) => secrets::sign_message(ctx, out, args),
         W::Account(args) => account::account(ctx, out, args),
         W::Ens(args) => account::ens(ctx, out, args),
+        W::HeldTokens(args) => account::held_tokens(ctx, out, args),
         W::Approvals(args) => account::approvals(ctx, out, args),
         W::Revoke(args) => account::revoke(ctx, out, args),
         W::Nfts(args) => account::nfts(ctx, out, args),

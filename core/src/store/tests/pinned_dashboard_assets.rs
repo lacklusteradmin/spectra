@@ -2,42 +2,18 @@ use crate::service::WalletService;
 use crate::store::state::StateCommand;
 
 #[tokio::test]
-async fn token_ids_are_trimmed_and_deduplicated_in_pin_order() {
+async fn unpinning_an_unpinned_asset_emits_nothing() {
     let service = WalletService::new(Vec::new()).expect("service");
-    let transition = service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec![
-                " ethereum ".into(),
-                "bitcoin".into(),
-                "ethereum".into(),
-                "".into(),
-                "solana".into(),
-            ],
-        })
-        .await
-        .expect("apply");
-    assert_eq!(
-        transition.state.settings.pinned_dashboard_token_ids,
-        vec![
-            "ethereum".to_string(),
-            "bitcoin".to_string(),
-            "solana".to_string()
-        ]
-    );
-}
-
-#[tokio::test]
-async fn setting_the_same_pins_emits_nothing() {
-    let service = WalletService::new(Vec::new()).expect("service");
-    let command = || StateCommand::SetPinnedDashboardAssets {
-        token_ids: vec!["bitcoin".into()],
+    let command = || StateCommand::SetDashboardAssetPinned {
+        token_id: "bitcoin".into(),
+        is_pinned: false,
     };
     let first = service.apply_state_command(command()).await.expect("apply");
     assert_eq!(first.events.len(), 1);
     let second = service.apply_state_command(command()).await.expect("apply");
     assert!(
         second.events.is_empty(),
-        "re-pinning the same set is a no-op"
+        "unpinning what is not pinned is a no-op"
     );
 }
 
@@ -87,17 +63,17 @@ async fn unpinning_every_asset_stays_empty_after_reopening_and_reset_restores_de
         .expect("reset");
     assert_eq!(reset.state.settings.pinned_dashboard_assets(), defaults);
     assert_eq!(reset.events.len(), 1);
-    let cleared = reopened
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets { token_ids: vec![] })
+    let unpinned = reopened
+        .apply_state_command(StateCommand::SetDashboardAssetPinned {
+            token_id: "bitcoin".into(),
+            is_pinned: false,
+        })
         .await
-        .expect("clear");
-    assert!(cleared.state.settings.pinned_dashboard_assets().is_empty());
-    assert_eq!(cleared.events.len(), 1);
-    let unchanged = reopened
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets { token_ids: vec![] })
-        .await
-        .expect("clear again");
-    assert!(unchanged.events.is_empty());
+        .expect("unpin");
+    assert_eq!(
+        unpinned.state.settings.pinned_dashboard_assets(),
+        ["ethereum", "tether", "usd-coin"]
+    );
     let reset = reopened
         .reset_data(vec![
             crate::store::state::ResetScope::DashboardCustomization,
@@ -187,12 +163,15 @@ async fn pin_options_list_the_pinned_first_then_by_symbol_and_token_id() {
             .await
             .expect("token");
     }
-    service
-        .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-            token_ids: vec!["tether".into(), "ethereum".into()],
-        })
-        .await
-        .expect("pin");
+    for token_id in ["bitcoin", "usd-coin"] {
+        service
+            .apply_state_command(StateCommand::SetDashboardAssetPinned {
+                token_id: token_id.into(),
+                is_pinned: false,
+            })
+            .await
+            .expect("unpin");
+    }
     let options = service.dashboard_pin_options().await.expect("options");
     let order: Vec<_> = options
         .iter()
@@ -244,8 +223,9 @@ async fn a_ticker_or_a_testnet_coin_is_not_pinned_and_the_saved_pins_stay() {
         .token_id;
     for refused in ["ETH".to_string(), testnet] {
         let error = service
-            .apply_state_command(StateCommand::SetPinnedDashboardAssets {
-                token_ids: vec!["tether".into(), refused.clone()],
+            .apply_state_command(StateCommand::SetDashboardAssetPinned {
+                token_id: refused.clone(),
+                is_pinned: true,
             })
             .await
             .expect_err("not a pinnable token id");

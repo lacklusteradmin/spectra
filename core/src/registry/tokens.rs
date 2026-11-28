@@ -102,6 +102,25 @@ impl Chain {
         !self.token_standards().is_empty()
     }
 
+    /// Whether a service can list every token an address on this network
+    /// holds, rather than answer only about a token named to it. Whether one
+    /// is configured is the endpoints' question.
+    pub fn lists_held_tokens(self) -> bool {
+        self.is_evm()
+            || matches!(
+                self.mainnet_counterpart(),
+                Self::Solana
+                    | Self::Sui
+                    | Self::Aptos
+                    | Self::Near
+                    | Self::Tron
+                    | Self::Ton
+                    | Self::Xrp
+                    | Self::Cardano
+                    | Self::Stellar
+            )
+    }
+
     /// Protocols supported by this concrete network. A deployment carries its
     /// own standard, and no member of this list is a network-wide default.
     pub fn token_standards(self) -> &'static [TokenStandard] {

@@ -117,10 +117,6 @@ fn resetting_settings_restores_every_default() {
             api: crate::api::endpoint::EndpointApi::Esplora,
             endpoint: "https://a.example".into(),
         },
-        U::BitcoinStopGap { value: 42 },
-        U::BackgroundSyncProfile {
-            value: crate::store::state::BackgroundSyncProfile::Aggressive,
-        },
         U::UsePriceAlerts { value: false },
         U::UseTransactionStatusNotifications { value: false },
         U::UseLargeMovementNotifications { value: false },
@@ -197,10 +193,6 @@ fn every_settings_field_round_trips() {
             api: crate::api::endpoint::EndpointApi::Esplora,
             endpoint: "https://a.example".into(),
         },
-        U::BitcoinStopGap { value: 42 },
-        U::BackgroundSyncProfile {
-            value: crate::store::state::BackgroundSyncProfile::Aggressive,
-        },
         U::UsePriceAlerts { value: false },
         U::UseTransactionStatusNotifications { value: false },
         U::UseLargeMovementNotifications { value: false },
@@ -225,9 +217,7 @@ fn every_settings_field_round_trips() {
     );
 }
 
-/// A value outside its range is bounded rather than stored. A zero stop gap
-/// finds no addresses; a one-minute refresh interval hammers whatever
-/// endpoint is configured.
+/// A value outside its range is bounded rather than stored.
 #[test]
 fn a_setting_outside_its_range_is_bounded() {
     use crate::store::state::AppSettingUpdate as U;
@@ -236,7 +226,6 @@ fn a_setting_outside_its_range_is_bounded() {
         reduce_state_in_place(state, StateCommand::SetAppSetting { update });
     }
 
-    set(&mut state, U::BitcoinStopGap { value: 0 });
     set(
         &mut state,
         U::LargeMovementAlertPercentThreshold { value: 0.0 },
@@ -245,16 +234,13 @@ fn a_setting_outside_its_range_is_bounded() {
         &mut state,
         U::LargeMovementAlertUsdThreshold { value: 1_000_000.0 },
     );
-    assert_eq!(state.settings.bitcoin_stop_gap, 1);
     assert_eq!(state.settings.large_movement_alert_percent_threshold, 1.0);
     assert_eq!(state.settings.large_movement_alert_usd_threshold, 100_000.0);
 
-    set(&mut state, U::BitcoinStopGap { value: 9_999 });
     set(
         &mut state,
         U::LargeMovementAlertPercentThreshold { value: 500.0 },
     );
-    assert_eq!(state.settings.bitcoin_stop_gap, 200);
     assert_eq!(state.settings.large_movement_alert_percent_threshold, 90.0);
 
     // Trimmed, so a pasted URL with a stray newline is the same URL.

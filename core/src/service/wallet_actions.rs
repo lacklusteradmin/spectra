@@ -36,6 +36,9 @@ pub enum WalletAction {
     /// The addresses and coins behind the balance of an account-discovery
     /// UTXO wallet.
     Coins,
+    /// Every token the wallet's address holds, and adding to the token list
+    /// the ones it lacks.
+    HeldTokens,
     /// The ERC-20 allowances an EVM wallet has granted, and revoking them.
     TokenApprovals,
     /// The ERC-721 and ERC-1155 tokens an EVM wallet holds, and sending one.
@@ -96,7 +99,7 @@ pub enum WalletActionSection {
 
 impl WalletAction {
     /// Every action, in the order a wallet's page offers them.
-    pub(crate) const ALL: [Self; 27] = [
+    pub(crate) const ALL: [Self; 28] = [
         Self::Send,
         Self::Multisig,
         Self::Receive,
@@ -106,6 +109,7 @@ impl WalletAction {
         Self::Stake,
         Self::ScanBlocks,
         Self::Coins,
+        Self::HeldTokens,
         Self::TokenApprovals,
         Self::Nfts,
         Self::ShieldedFunds,
@@ -135,6 +139,7 @@ impl WalletAction {
             | Self::Stake
             | Self::ScanBlocks
             | Self::Coins
+            | Self::HeldTokens
             | Self::TokenApprovals
             | Self::Nfts
             | Self::ShieldedFunds
@@ -204,6 +209,9 @@ impl WalletAction {
                 "Scan for MWEB LTC, receive it privately, move transparent LTC into MWEB, and send from it."
             }
             Self::Coins => "The addresses this wallet has handed out and the coins they hold.",
+            Self::HeldTokens => {
+                "Every token this wallet's address holds, and adding to Known Tokens the ones it lacks."
+            }
             Self::SignMessage => {
                 "Sign a message with this wallet's key to prove it holds this address, or check a signature."
             }
@@ -283,6 +291,7 @@ pub(crate) fn offers(wallet: &WalletState, action: WalletAction) -> bool {
         // wallet's view key.
         WalletAction::ScanBlocks => chain.scans_for_balance(),
         WalletAction::Coins => chain.lists_account_coins(),
+        WalletAction::HeldTokens => chain.lists_held_tokens(),
         WalletAction::TokenApprovals | WalletAction::Nfts => chain.is_evm(),
         WalletAction::ShieldedFunds => super::zcash_shielded::shielded_account(wallet).is_ok(),
         WalletAction::MwebFunds => super::litecoin_mweb::holds_mweb_keys(wallet).is_ok(),

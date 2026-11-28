@@ -45,10 +45,12 @@ pub enum PortfolioCommand {
     /// The assets the dashboard can pin, and which it does, without the
     /// network.
     Pins,
-    /// Pin exactly these token ids on the dashboard, in this order.
-    SetPins(TokenIdsArgs),
+    /// Pin these token ids on the dashboard, after the ones already pinned.
+    Pin(TokenIdsArgs),
     /// Unpin these token ids from the dashboard.
     Unpin(TokenIdsArgs),
+    /// Back to the default pins.
+    ResetPins,
 }
 
 #[derive(Args)]
@@ -337,10 +339,13 @@ pub fn portfolio(ctx: &Ctx, out: Out, command: PortfolioCommand) -> CliResult<()
             });
         }
         PortfolioCommand::Pins => {}
-        PortfolioCommand::SetPins(args) => {
-            ctx.apply(StateCommand::SetPinnedDashboardAssets {
-                token_ids: args.token_ids,
-            })?;
+        PortfolioCommand::Pin(args) => {
+            for token_id in args.token_ids {
+                ctx.apply(StateCommand::SetDashboardAssetPinned {
+                    token_id,
+                    is_pinned: true,
+                })?;
+            }
         }
         PortfolioCommand::Unpin(args) => {
             for token_id in args.token_ids {
@@ -349,6 +354,9 @@ pub fn portfolio(ctx: &Ctx, out: Out, command: PortfolioCommand) -> CliResult<()
                     is_pinned: false,
                 })?;
             }
+        }
+        PortfolioCommand::ResetPins => {
+            ctx.apply(StateCommand::ResetPinnedDashboardAssets)?;
         }
     }
     let options = ctx.rt.block_on(ctx.service()?.dashboard_pin_options())?;

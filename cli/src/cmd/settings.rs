@@ -10,7 +10,7 @@ use serde::Serialize;
 use spectra_core::api::tor::TorStatus;
 use spectra_core::service::ResetPlan;
 use spectra_core::store::state::{
-    AppSettingUpdate, AppSettings, BackgroundSyncProfile, ResetScope, StateCommand, StateEvent,
+    AppSettingUpdate, AppSettings, ResetScope, StateCommand, StateEvent,
 };
 
 use crate::ctx::Ctx;
@@ -91,29 +91,11 @@ fn parse_bool(raw: &str) -> Result<bool, &'static str> {
     }
 }
 
-fn parse_u32(raw: &str) -> Result<u32, &'static str> {
-    raw.trim().parse().map_err(|_| "expected a whole number")
-}
-
 fn parse_f64(raw: &str) -> Result<f64, &'static str> {
     raw.trim().parse().map_err(|_| "expected a number")
 }
 
 const FIELDS: &[Field] = &[
-    Field {
-        key: "bitcoin-stop-gap",
-        read: |s| s.bitcoin_stop_gap.to_string(),
-        update: |v| parse_u32(v).map(|value| AppSettingUpdate::BitcoinStopGap { value }),
-    },
-    Field {
-        key: "background-sync-profile",
-        read: |s| s.background_sync_profile.as_raw().to_string(),
-        update: |v| {
-            BackgroundSyncProfile::from_raw(v)
-                .map(|value| AppSettingUpdate::BackgroundSyncProfile { value })
-                .ok_or("expected conservative, balanced or aggressive")
-        },
-    },
     Field {
         key: "price-alerts",
         read: |s| s.use_price_alerts.to_string(),
