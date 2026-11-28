@@ -69,30 +69,31 @@ class Koios(Handler):
         self.reply([dict(tx_hash='aa' * 32, tx_index=0, value='10000000', is_spent=False, asset_list=[])])
 
 
-with serve(Koios, submitted=[]) as node, scratch('cardano-multisig') as directory:
-    spectra = Spectra(directory)
+if __name__ == '__main__':
+    with serve(Koios, submitted=[]) as node, scratch('cardano-multisig') as directory:
+        spectra = Spectra(directory)
 
-    a, b = spectra / 'a', spectra / 'b'
-    for signer, name, cosigner in [(a, 'Cosigner0', COSIGNERS[0]), (b, 'Cosigner2', COSIGNERS[2])]:
-        signer.run('endpoints', 'add', '--chain', 'cardano', '--api', 'koios', '--capabilities',
-                   'balance,utxo,fee,verification,broadcast', node.url)
-        signer.run('endpoints', 'custom-only', '--chain', 'cardano', 'true')
-        signer.run('wallet', 'watch', '--chain', 'cardano', '--name', 'Vault', '--multisig',
-                   json.dumps(SCRIPT['json']))
-        signer.run('wallet', 'import', '--chain', 'cardano', '--name', name, '--no-password',
-                   env={'SPECTRA_SEED': cosigner['phrase']})
+        a, b = spectra / 'a', spectra / 'b'
+        for signer, name, cosigner in [(a, 'Cosigner0', COSIGNERS[0]), (b, 'Cosigner2', COSIGNERS[2])]:
+            signer.run('endpoints', 'add', '--chain', 'cardano', '--api', 'koios', '--capabilities',
+                       'balance,utxo,fee,verification,broadcast', node.url)
+            signer.run('endpoints', 'custom-only', '--chain', 'cardano', 'true')
+            signer.run('wallet', 'watch', '--chain', 'cardano', '--name', 'Vault', '--multisig',
+                       json.dumps(SCRIPT['json']))
+            signer.run('wallet', 'import', '--chain', 'cardano', '--name', name, '--no-password',
+                       env={'SPECTRA_SEED': cosigner['phrase']})
 
-    created = a.run('multisig', 'create', 'Vault', '--to', RECIPIENT, '--amount', '2')['session']
-    by_c0 = a.sign(created, 'Cosigner0')
-    at_b = b.run('multisig', 'import', 'Vault', '--data', by_c0['data'])['session']
-    assert at_b['reviewDigest'] == created['reviewDigest'], at_b
-    by_c2 = b.sign(at_b, 'Cosigner2')
-    assert by_c2['complete'], by_c2
+        created = a.run('multisig', 'create', 'Vault', '--to', RECIPIENT, '--amount', '2')['session']
+        by_c0 = a.sign(created, 'Cosigner0')
+        at_b = b.run('multisig', 'import', 'Vault', '--data', by_c0['data'])['session']
+        assert at_b['reviewDigest'] == created['reviewDigest'], at_b
+        by_c2 = b.sign(at_b, 'Cosigner2')
+        assert by_c2['complete'], by_c2
 
-    joined = a.run('multisig', 'import', 'Vault', '--data', by_c2['data'])['session']
-    assert joined['id'] == created['id'] and joined['complete'], joined
-    sent = a.run('multisig', 'submit', created['id'], '--yes')['session']
-    [transaction] = node.state['submitted']
-    assert sent['submittedTxid'] == transaction_id(transaction) == created['transactionId'], sent
-print('PASS cardano multisig: a native-script spend witnessed by two CIP-1854 keys in two data directories, '
-      'joined and submitted once under its session\'s transaction id')
+        joined = a.run('multisig', 'import', 'Vault', '--data', by_c2['data'])['session']
+        assert joined['id'] == created['id'] and joined['complete'], joined
+        sent = a.run('multisig', 'submit', created['id'], '--yes')['session']
+        [transaction] = node.state['submitted']
+        assert sent['submittedTxid'] == transaction_id(transaction) == created['transactionId'], sent
+    print('PASS cardano multisig: a native-script spend witnessed by two CIP-1854 keys in two data directories, '
+          'joined and submitted once under its session\'s transaction id')

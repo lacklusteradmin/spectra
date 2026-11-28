@@ -82,49 +82,50 @@ def trace_for(external_hash):
     return vectors
 
 
-with serve(Node, external_hash=None, trace_response=None, submitted=[], traces=0) as node, \
-        scratch('jetton-send') as directory:
-    live, endpoint = node.state, node.url
-    spectra = Spectra(directory, SPECTRA_PRIVATE_KEY='01' * 32, SPECTRA_PASSWORD='token-vector-password')
-    run = spectra.run
+if __name__ == '__main__':
+    with serve(Node, external_hash=None, trace_response=None, submitted=[], traces=0) as node, \
+            scratch('jetton-send') as directory:
+        live, endpoint = node.state, node.url
+        spectra = Spectra(directory, SPECTRA_PRIVATE_KEY='01' * 32, SPECTRA_PASSWORD='token-vector-password')
+        run = spectra.run
 
-    def poll():
-        return run('txs', 'poll', 'ton')['changes']
+        def poll():
+            return run('txs', 'poll', 'ton')['changes']
 
-    run('wallet', 'import', '--chain', 'ton', '--name', 'Token', '--private-key-env', 'SPECTRA_PRIVATE_KEY')
-    run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v2',
-        '--capabilities', 'balance,verification,broadcast', endpoint)
-    run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v3',
-        '--capabilities', 'verification,token-balance,token-discovery', endpoint + '/v3')
-    prepared = run('send', 'build', 'Token', '--to', DESTINATION, '--endpoint', endpoint,
-                   '--contract', CONTRACT, '--decimals', '6', '--amount', '123.456789',
-                   '--comment', 'deposit 104729')['artifact']
-    assert prepared['memo'] == {'kind': 'comment', 'value': 'deposit 104729'}, prepared['memo']
-    signed = run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
-                 '--endpoint', endpoint)['artifact']
-    assert run('send', 'inspect', signed['id'])['artifact'] == signed
-    # The exchange's comment is in the signed message, in its own cell after op 0.
-    assert b'\0\0\0\0deposit 104729' in base64.b64decode(signed['signed_payload']), signed
-    # The durable hash is the locally derived external-message hash; the
-    # trace names its transactions by other hashes.
-    live['external_hash'] = signed['transaction_hash']
-    assert live['external_hash'] and not live['submitted'], signed
-    live['trace_response'] = trace_for(live['external_hash'])
-    trace = live['trace_response']['traces'][0]
-    trace['is_incomplete'] = True
-    run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
-    assert live['submitted'] == [signed['signed_payload']], live['submitted']
-    assert poll() == [], 'an incomplete trace is not final'
-    trace['is_incomplete'] = False
-    root = trace['transactions'][trace['trace']['tx_hash']]
-    root['description']['aborted'] = True
-    changes = poll()
-    assert len(changes) == 1 and changes[0]['newStatus'] == 'failed', changes
-    # Lose the final status write: a fresh process resolves the same
-    # external message from its trace again.
-    spectra.lose_status(signed['id'])
-    root['description']['aborted'] = False
-    changes = poll()
-    assert len(changes) == 1 and changes[0]['newStatus'] == 'confirmed', changes
-    assert live['traces'] == 3 and len(live['submitted']) == 1, live
-    print('TON jetton staged send: built with its comment, broadcast once, resolved from its trace across processes')
+        run('wallet', 'import', '--chain', 'ton', '--name', 'Token', '--private-key-env', 'SPECTRA_PRIVATE_KEY')
+        run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v2',
+            '--capabilities', 'balance,verification,broadcast', endpoint)
+        run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v3',
+            '--capabilities', 'verification,token-balance,token-discovery', endpoint + '/v3')
+        prepared = run('send', 'build', 'Token', '--to', DESTINATION, '--endpoint', endpoint,
+                       '--contract', CONTRACT, '--decimals', '6', '--amount', '123.456789',
+                       '--comment', 'deposit 104729')['artifact']
+        assert prepared['memo'] == {'kind': 'comment', 'value': 'deposit 104729'}, prepared['memo']
+        signed = run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
+                     '--endpoint', endpoint)['artifact']
+        assert run('send', 'inspect', signed['id'])['artifact'] == signed
+        # The exchange's comment is in the signed message, in its own cell after op 0.
+        assert b'\0\0\0\0deposit 104729' in base64.b64decode(signed['signed_payload']), signed
+        # The durable hash is the locally derived external-message hash; the
+        # trace names its transactions by other hashes.
+        live['external_hash'] = signed['transaction_hash']
+        assert live['external_hash'] and not live['submitted'], signed
+        live['trace_response'] = trace_for(live['external_hash'])
+        trace = live['trace_response']['traces'][0]
+        trace['is_incomplete'] = True
+        run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
+        assert live['submitted'] == [signed['signed_payload']], live['submitted']
+        assert poll() == [], 'an incomplete trace is not final'
+        trace['is_incomplete'] = False
+        root = trace['transactions'][trace['trace']['tx_hash']]
+        root['description']['aborted'] = True
+        changes = poll()
+        assert len(changes) == 1 and changes[0]['newStatus'] == 'failed', changes
+        # Lose the final status write: a fresh process resolves the same
+        # external message from its trace again.
+        spectra.lose_status(signed['id'])
+        root['description']['aborted'] = False
+        changes = poll()
+        assert len(changes) == 1 and changes[0]['newStatus'] == 'confirmed', changes
+        assert live['traces'] == 3 and len(live['submitted']) == 1, live
+        print('TON jetton staged send: built with its comment, broadcast once, resolved from its trace across processes')

@@ -353,7 +353,7 @@ fn fingerprint(record: &crate::store::persistence_models::TransactionRecord) -> 
 }
 
 #[cfg(test)]
-mod audit_fix5_tests {
+mod history_merge_tests {
     use super::*;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

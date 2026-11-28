@@ -199,6 +199,30 @@ pub fn endpoint_capability_id(capability: EndpointCapability) -> String {
 mod tests {
     use super::*;
 
+    /// Both apps label a capability from the shared string tables:
+    /// `endpointCapability.<id>` and `endpointCapabilityDescription.<id>`, in
+    /// every locale the manifest declares.
+    #[test]
+    fn every_capability_is_labelled_in_every_locale() {
+        let strings = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../strings");
+        let read = |name: &str| -> serde_json::Value {
+            serde_json::from_str(&std::fs::read_to_string(strings.join(name)).unwrap()).unwrap()
+        };
+        let manifest = read("RuntimeStrings.manifest.json");
+        let locales = manifest["availableLocales"].as_array().unwrap();
+        assert!(!locales.is_empty());
+        for locale in locales {
+            let table = read(&format!("RuntimeStrings.{}.json", locale.as_str().unwrap()));
+            for capability in EndpointCapability::ALL {
+                for prefix in ["endpointCapability", "endpointCapabilityDescription"] {
+                    let key = format!("{prefix}.{}", capability.as_str());
+                    let text = table[&key].as_str().unwrap_or_default();
+                    assert!(!text.is_empty(), "{locale} {key}");
+                }
+            }
+        }
+    }
+
     #[test]
     fn capability_names_round_trip() {
         for capability in EndpointCapability::ALL {

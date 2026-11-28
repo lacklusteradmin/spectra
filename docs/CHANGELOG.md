@@ -1,5 +1,72 @@
 # Changelog
 
+## Beta Commit 265
+
+- **The app icon's sources are here, and both apps export them**
+  (`icons/appicon/`: `SpectraLogo-Dark.svg`, `SpectraLogo-Light.svg`,
+  `SpectraLogo-Tinted.svg`; before: in spectra-apple, with spectra-android's
+  launcher icon drawn by hand after them)
+- **`make apple` and `make android` write `target/core-apple/` and
+  `target/core-android/`** (`Makefile`; before: `target/SpectraCore/` and
+  `target/SpectraCoreAndroid/`; the Swift package and module stay
+  `SpectraCore`)
+- **Every acceptance suite runs its scenarios under
+  `if __name__ == '__main__':`** (`tests/acceptance/`; `harness.unittest_main`
+  removed)
+  - `send`, `nfts`, `issued_assets`, `litecoin_mweb`, `zcash_shielded` and
+    `wallet_operations` run their scenarios in order, and a failed assertion
+    ends the suite (before: `unittest` test cases, each reported on its own).
+  - Eighteen suites no longer run when imported, so `harness.suite` can load
+    any suite (before: their run sat at module level).
+- **Every reference-data generator writes its own fixture** (`tests/vectors/`;
+  run from the repository root with no redirection or argument; before:
+  eighteen `.cjs` generators and `generate-monero-phrase-vectors.py` printed
+  it, and `generate-account-utxo-vectors.cjs` wrote to the path given)
+- **Reference data is grouped by network and kind** (`tests/vectors/`,
+  `core/tests/fixtures/`)
+  - `generate-near-vectors.cjs` writes `near-transactions.json`: the transfer,
+    `ft_transfer` call, `DeleteKey`, `storage_unregister` and token
+    registration vectors under one shared signer (before: three
+    `generate-near-*-vector.cjs` generators and half of
+    `generate-protocol-vectors.cjs`, in four fixtures).
+  - `generate-ton-v4r2-vectors.cjs` writes `ton-v4r2.json`, the other half of
+    `protocol-transactions.json`; the BoCs `ton_messages_match_official_sdk_vectors`
+    exports go to `SPECTRA_TON_V4R2_OUTPUT` (before: `SPECTRA_PROTOCOL_OUTPUT`).
+  - `generate-message-signature-vectors.cjs` also signs Cardano, Kaspa and
+    Monero messages, over its own three messages, into
+    `message-signatures.json` (before: `generate-more-message-signature-vectors.cjs`
+    wrote `message-signatures-more.json` over three others).
+  - `generate-send-audit-vectors.cjs` and `send-audit-vectors.json` are
+    `generate-transfer-vectors.cjs` and `transfer-vectors.json`.
+- **`tests/vectors/package.json` no longer names `@polkadot/wasm-crypto` or
+  `@safe-global/types-kit`**, which no generator loads (the lock keeps them,
+  at 7.5.4 and 3.1.0, under `@polkadot/util-crypto` and
+  `@safe-global/protocol-kit`)
+- Measured: 2026-11-28, the changed generators run again: every
+  deterministic fixture unchanged byte for byte; `near-transactions.json`
+  and `ton-v4r2.json` equal, field for field, to the vectors they
+  replace; in `message-signatures.json` only the randomized Taproot BIP-322
+  and sr25519 signatures differ.
+- Tests: 2 new
+  - wallet setup 1: a method other than a restored phrase on a scanning
+    network, or a view key, asking for a restore height.
+  - string tables 1: an endpoint capability without a label or a
+    description in a locale the manifest declares.
+- Docs: `AGENTS.md` (Repositories, Icons), `ARCHITECTURE.md` (Workspace),
+  `scripts/README.md` (the Makefile list, Apple package, Android package),
+  `tests/README.md` (CLI acceptance; Test reference data generation: running
+  a generator, the generator table).
+- Total: 9 .rs files changed, +96 −47 lines; data and config files:
+  `icons/appicon/` (3 new), `Makefile`, `scripts/build-apple-package.sh`,
+  `scripts/build-android-package.sh`, `core/tests/fixtures/` (2 new, 1
+  changed, 1 renamed, 5 removed), `tests/vectors/package.json` and
+  `package-lock.json`; test scripts: `tests/acceptance/` (26 suites and
+  `harness.py` changed), `tests/vectors/` (20 generators changed, 2 new,
+  1 renamed, 5 removed); Rust dependencies unchanged, and
+  `tests/vectors/package.json` lists two fewer (still installed
+  transitively); `make lint` passing;
+  `cargo test` 1690 → 1692 passing; `make test-cli` 62 → 62 passing.
+
 ## Beta Commit 264
 
 - **47 icons show their projects' current marks** (`icons/crypto/`,

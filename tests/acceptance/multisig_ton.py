@@ -262,34 +262,35 @@ class Toncenter(Handler):
 
 
 wallets = {raw: dict(seqno=4, balance=2 * TON) for raw in SIGNERS}
-with serve(Toncenter, next=5, balance=3 * TON, orders={}, wallets=wallets, executed=[], messages=[],
-           errors=[]) as node, scratch('ton-multisig') as directory:
-    live = node.state
-    spectra = Spectra(directory)
-    a, b = spectra / 'a', spectra / 'b'
+if __name__ == '__main__':
+    with serve(Toncenter, next=5, balance=3 * TON, orders={}, wallets=wallets, executed=[], messages=[],
+               errors=[]) as node, scratch('ton-multisig') as directory:
+        live = node.state
+        spectra = Spectra(directory)
+        a, b = spectra / 'a', spectra / 'b'
 
-    for signer, name, index in [(a, 'T0', 0), (b, 'T1', 1)]:
-        signer.run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v2', '--capabilities',
-                   'balance,verification,broadcast', node.url)
-        signer.run('endpoints', 'custom-only', '--chain', 'ton', 'true')
-        signer.run('wallet', 'watch', '--chain', 'ton', '--name', 'Vault', '--address', FIXTURE['multisig']['address'])
-        signer.run('wallet', 'import', '--chain', 'ton', '--name', name, '--no-password',
-                   env={'SPECTRA_SEED': MNEMONICS[index]['mnemonic']})
-    addresses = [friendly(raw) for raw in SIGNERS]
+        for signer, name, index in [(a, 'T0', 0), (b, 'T1', 1)]:
+            signer.run('endpoints', 'add', '--chain', 'ton', '--api', 'toncenter-v2', '--capabilities',
+                       'balance,verification,broadcast', node.url)
+            signer.run('endpoints', 'custom-only', '--chain', 'ton', 'true')
+            signer.run('wallet', 'watch', '--chain', 'ton', '--name', 'Vault', '--address', FIXTURE['multisig']['address'])
+            signer.run('wallet', 'import', '--chain', 'ton', '--name', name, '--no-password',
+                       env={'SPECTRA_SEED': MNEMONICS[index]['mnemonic']})
+        addresses = [friendly(raw) for raw in SIGNERS]
 
-    created = a.run('multisig', 'create', 'Vault', '--to', friendly(DESTINATION, False),
-                    '--amount', '1')['session']
-    proposed = a.sign(created, 'T0')
-    assert proposed['sequence'] == '5' and signed_by(proposed) == [addresses[0]], proposed
-    assert proposed['transactionId'] == friendly(order_address(MULTISIG, 5)) and not proposed['complete'], proposed
+        created = a.run('multisig', 'create', 'Vault', '--to', friendly(DESTINATION, False),
+                        '--amount', '1')['session']
+        proposed = a.sign(created, 'T0')
+        assert proposed['sequence'] == '5' and signed_by(proposed) == [addresses[0]], proposed
+        assert proposed['transactionId'] == friendly(order_address(MULTISIG, 5)) and not proposed['complete'], proposed
 
-    at_b = b.run('multisig', 'import', 'Vault', '--data', proposed['data'])['session']
-    assert at_b['sequence'] == '5' and signed_by(at_b) == [addresses[0]], at_b
-    assert at_b['reviewDigest'] == created['reviewDigest'], at_b
-    executed = b.sign(at_b, 'T1')
-    assert executed['complete'] and executed['submittedTxid'], executed
-    assert signed_by(executed) == sorted([addresses[0], addresses[1]]), executed
-    assert live['executed'] == [(DESTINATION, TON, 0)] and live['balance'] == 2 * TON, live['executed']
-    assert live['messages'] == [SIGNERS[0], SIGNERS[1]] and not live['errors'], live
-print('PASS ton multisig: an order proposed by one signer\'s W5 wallet and approved by another\'s in a second '
-      'data directory executes once')
+        at_b = b.run('multisig', 'import', 'Vault', '--data', proposed['data'])['session']
+        assert at_b['sequence'] == '5' and signed_by(at_b) == [addresses[0]], at_b
+        assert at_b['reviewDigest'] == created['reviewDigest'], at_b
+        executed = b.sign(at_b, 'T1')
+        assert executed['complete'] and executed['submittedTxid'], executed
+        assert signed_by(executed) == sorted([addresses[0], addresses[1]]), executed
+        assert live['executed'] == [(DESTINATION, TON, 0)] and live['balance'] == 2 * TON, live['executed']
+        assert live['messages'] == [SIGNERS[0], SIGNERS[1]] and not live['errors'], live
+    print('PASS ton multisig: an order proposed by one signer\'s W5 wallet and approved by another\'s in a second '
+          'data directory executes once')

@@ -81,7 +81,7 @@ class Proxy(Handler):
         self.reply_bytes(raw, content_type='application/json')
 
 
-def main():
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(usage='%(prog)s [path/to/spectra] --monerod PATH', description=__doc__)
     parser.add_argument('--monerod', required=True, help='the official daemon, verified')
     monerod = str(pathlib.Path(parser.parse_args(ARGS).monerod).resolve())
@@ -186,7 +186,3 @@ def main():
             (synced, again)
         print('PASS: subaddresses recovered past wallet2 lookahead edges across accounts, receive rotation, '
               'restart, and a view-only wallet that cannot sign and upgrades in place')
-
-
-if __name__ == '__main__':
-    main()

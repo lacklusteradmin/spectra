@@ -487,13 +487,19 @@ fn borsh_encode_delete_key(
 #[cfg(test)]
 mod protocol_tests {
     use super::*;
+
+    /// A case's text in near-transactions.json, or the text every case shares.
+    fn case_text(near: &serde_json::Value, case: &str, key: &str) -> String {
+        let value = near[case].get(key).unwrap_or(&near[key]);
+        value.as_str().unwrap().to_string()
+    }
+
     #[test]
     fn near_transactions_match_official_sdk_vectors() {
-        let fixtures: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/protocol-transactions.json"
-        ))
-        .unwrap();
-        let public: [u8; 32] = hex::decode(fixtures["public_key"].as_str().unwrap())
+        let near: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/near-transactions.json"))
+                .unwrap();
+        let public: [u8; 32] = hex::decode(near["public_key"].as_str().unwrap())
             .unwrap()
             .try_into()
             .unwrap();
@@ -519,7 +525,7 @@ mod protocol_tests {
         .unwrap();
         for (bytes, vector) in [transfer, call]
             .iter()
-            .zip(fixtures["near"].as_array().unwrap())
+            .zip([&near["transfer"], &near["function_call"]])
         {
             assert_eq!(hex::encode(bytes), vector["signed_hex"].as_str().unwrap());
             assert_eq!(
@@ -528,10 +534,7 @@ mod protocol_tests {
             );
         }
         // DeleteKey as @near-js/transactions builds and signs it.
-        let deletion: serde_json::Value =
-            serde_json::from_str(include_str!("../../tests/fixtures/near-delete-key.json"))
-                .unwrap();
-        let text = |key: &str| deletion[key].as_str().unwrap().to_string();
+        let text = |key: &str| case_text(&near, "delete_key", key);
         let bytes32 =
             |key: &str| -> [u8; 32] { hex::decode(text(key)).unwrap().try_into().unwrap() };
         let deleted: [u8; 32] = bs58::decode(text("deleted_key").strip_prefix("ed25519:").unwrap())
@@ -542,7 +545,7 @@ mod protocol_tests {
         let prepared = PreparedNearDeleteKey::prepare(
             &text("signer"),
             bytes32("public_key"),
-            deletion["nonce"].as_u64().unwrap(),
+            near["nonce"].as_u64().unwrap(),
             deleted,
             bytes32("block_hash"),
             0,
@@ -567,18 +570,15 @@ mod protocol_tests {
         );
         // A transfer to an account the token has not registered, and to
         // one it has, as @near-js/transactions builds and signs them.
-        let registration: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/near-token-registration.json"
-        ))
-        .unwrap();
-        let text = |key: &str| registration[key].as_str().unwrap().to_string();
+        let registration = &near["token_registration"];
+        let text = |key: &str| case_text(&near, "token_registration", key);
         let deposit: u128 = text("registration_deposit").parse().unwrap();
         for (case, registration_deposit) in [("registered", None), ("unregistered", Some(deposit))]
         {
             let raw = build_near_function_call_tx(
                 &text("signer"),
                 &hex::decode(text("public_key")).unwrap().try_into().unwrap(),
-                registration["nonce"].as_u64().unwrap(),
+                near["nonce"].as_u64().unwrap(),
                 &text("token"),
                 &nep141_transfer_calls(
                     &text("recipient"),
@@ -603,15 +603,11 @@ mod protocol_tests {
         }
         // storage_unregister as @near-js/transactions builds and signs it:
         // empty arguments, one yoctoNEAR.
-        let unregister: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/near-storage-unregister.json"
-        ))
-        .unwrap();
-        let text = |key: &str| unregister[key].as_str().unwrap().to_string();
+        let text = |key: &str| case_text(&near, "storage_unregister", key);
         let prepared = PreparedNearFunctionCall::storage_unregister(
             &text("signer"),
             hex::decode(text("public_key")).unwrap().try_into().unwrap(),
-            unregister["nonce"].as_u64().unwrap(),
+            near["nonce"].as_u64().unwrap(),
             &text("token"),
             text("gas").parse().unwrap(),
             hex::decode(text("block_hash")).unwrap().try_into().unwrap(),

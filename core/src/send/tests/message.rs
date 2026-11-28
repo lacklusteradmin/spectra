@@ -270,10 +270,7 @@ fn stellar_signs_as_sep_53() {
 /// randomized signatures each verify under the other side.
 #[test]
 fn cardano_kaspa_and_monero_sign_as_their_sdks() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../tests/fixtures/message-signatures-more.json"
-    ))
-    .unwrap();
+    let fixture = fixtures();
     for (group, chain, scheme, deterministic) in [
         (
             "cardano",

@@ -114,35 +114,36 @@ class Node(JsonRpc):
         return '0x' + hashlib.blake2b(raw, digest_size=32).hexdigest()
 
 
-with serve(Node, pending={}, height=200, submitted=[], executed=[]) as node, \
-        scratch('substrate-multisig') as directory:
-    live = node.state
-    spectra = Spectra(directory)
-    a, b = spectra / 'a', spectra / 'b'
+if __name__ == '__main__':
+    with serve(Node, pending={}, height=200, submitted=[], executed=[]) as node, \
+            scratch('substrate-multisig') as directory:
+        live = node.state
+        spectra = Spectra(directory)
+        a, b = spectra / 'a', spectra / 'b'
 
-    addresses = {}
-    for signer, name, phrase in [(a, 'S0', PHRASES[0]), (a, 'S2', PHRASES[2]), (b, 'S1', PHRASES[1])]:
-        addresses[name] = signer.run('wallet', 'import', '--chain', 'polkadot', '--name', name, '--no-password',
-                                     env={'SPECTRA_SEED': phrase})['wallet']['address']
-    policy = json.dumps(dict(threshold=2, signatories=[addresses['S2'], addresses['S0'], addresses['S1']]))
-    for signer in [a, b]:
-        signer.run('endpoints', 'add', '--chain', 'polkadot', '--api', 'substrate-json-rpc', '--capabilities',
-                   'balance,fee,verification,broadcast', node.url)
-        signer.run('endpoints', 'custom-only', '--chain', 'polkadot', 'true')
-        signer.run('wallet', 'watch', '--chain', 'polkadot', '--name', 'Vault', '--multisig', policy)
+        addresses = {}
+        for signer, name, phrase in [(a, 'S0', PHRASES[0]), (a, 'S2', PHRASES[2]), (b, 'S1', PHRASES[1])]:
+            addresses[name] = signer.run('wallet', 'import', '--chain', 'polkadot', '--name', name, '--no-password',
+                                         env={'SPECTRA_SEED': phrase})['wallet']['address']
+        policy = json.dumps(dict(threshold=2, signatories=[addresses['S2'], addresses['S0'], addresses['S1']]))
+        for signer in [a, b]:
+            signer.run('endpoints', 'add', '--chain', 'polkadot', '--api', 'substrate-json-rpc', '--capabilities',
+                       'balance,fee,verification,broadcast', node.url)
+            signer.run('endpoints', 'custom-only', '--chain', 'polkadot', 'true')
+            signer.run('wallet', 'watch', '--chain', 'polkadot', '--name', 'Vault', '--multisig', policy)
 
-    created = a.run('multisig', 'create', 'Vault', '--to', ss58(RECIPIENT), '--amount', '1')['session']
-    by_s0 = a.sign(created, 'S0')
-    assert signed_by(by_s0) == [addresses['S0']] and not by_s0['submittedTxid'], by_s0
+        created = a.run('multisig', 'create', 'Vault', '--to', ss58(RECIPIENT), '--amount', '1')['session']
+        by_s0 = a.sign(created, 'S0')
+        assert signed_by(by_s0) == [addresses['S0']] and not by_s0['submittedTxid'], by_s0
 
-    at_b = b.run('multisig', 'import', 'Vault', '--data', by_s0['data'])['session']
-    assert signed_by(at_b) == [addresses['S0']] and at_b['sequence'] == '200-1', at_b
-    assert at_b['reviewDigest'] == created['reviewDigest'], at_b
-    executed = b.sign(at_b, 'S1')
-    assert executed['complete'] and executed['submittedTxid'], executed
-    assert live['executed'] == [(RECIPIENT, SCALE)] and not live['pending'], live
-    refusal = b.fail('multisig', 'sign', at_b['id'], '--review-digest', at_b['reviewDigest'], '--signer', 'S1')
-    assert 'already submitted' in refusal['error'], refusal
-    assert live['submitted'] == [account_of(addresses['S0']), account_of(addresses['S1'])], live['submitted']
-print('PASS asset hub multisig: a transfer approved by hash in one data directory and with its call in '
-      'another, executed once, its session there submitted')
+        at_b = b.run('multisig', 'import', 'Vault', '--data', by_s0['data'])['session']
+        assert signed_by(at_b) == [addresses['S0']] and at_b['sequence'] == '200-1', at_b
+        assert at_b['reviewDigest'] == created['reviewDigest'], at_b
+        executed = b.sign(at_b, 'S1')
+        assert executed['complete'] and executed['submittedTxid'], executed
+        assert live['executed'] == [(RECIPIENT, SCALE)] and not live['pending'], live
+        refusal = b.fail('multisig', 'sign', at_b['id'], '--review-digest', at_b['reviewDigest'], '--signer', 'S1')
+        assert 'already submitted' in refusal['error'], refusal
+        assert live['submitted'] == [account_of(addresses['S0']), account_of(addresses['S1'])], live['submitted']
+    print('PASS asset hub multisig: a transfer approved by hash in one data directory and with its call in '
+          'another, executed once, its session there submitted')

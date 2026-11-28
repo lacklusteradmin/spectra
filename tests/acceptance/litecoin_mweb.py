@@ -22,9 +22,8 @@ second data directory restored from the same phrase, at another path, finds
 what is left. A testnet wallet refuses a mainnet node. What a payment or a
 scan refuses before any node is read is tested in core."""
 import json
-import unittest
 
-from harness import ABANDON, ChainFixture, Spectra, scratch, unittest_main
+from harness import ABANDON, ChainFixture, Spectra, scratch
 
 INDEXER_CAPABILITIES = 'balance,history,utxo,fee,broadcast,verification'
 
@@ -38,15 +37,12 @@ class Fixture(ChainFixture):
         self.node = f"tcp://127.0.0.1:{self.info['p2p']}"
 
 
-class MwebTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.chain = Fixture(cls.enterClassContext(scratch('mweb')))
-        cls.addClassCleanup(cls.chain.stop)
+class Mweb:
+    """One scenario's data directory, against the fixture chain."""
 
-    def setUp(self):
-        self.spectra = Spectra(self.enterContext(scratch('mweb-data')),
-                               SPECTRA_PASSWORD='fixture-password', SPECTRA_SEED=ABANDON)
+    def __init__(self, chain, directory):
+        self.chain = chain
+        self.spectra = Spectra(directory, SPECTRA_PASSWORD='fixture-password', SPECTRA_SEED=ABANDON)
 
     def endpoints(self, device, chain='litecoin'):
         """The fixture's indexer and node as the network's only endpoints."""
@@ -84,7 +80,7 @@ class MwebTests(unittest.TestCase):
         assert mined[-1]['txid'] == signed['transaction_hash'], (mined[-1], signed)
         return mined[-1]
 
-    def test_mweb_funds_move_and_are_recovered(self):
+    def mweb_funds_move_and_are_recovered(self):
         data = self.spectra / 'wallet'
         info = self.chain.info
         wallet, outsider = info['wallet'], info['outsider']
@@ -168,7 +164,7 @@ class MwebTests(unittest.TestCase):
                                                        ('receive', '0.25', 'confirmed', '')], \
             self.history(recovered, 'Restored')
 
-    def test_a_node_on_another_network_is_refused(self):
+    def a_node_on_another_network_is_refused(self):
         # A testnet wallet's handshake with the mainnet node does not finish.
         self.spectra.run('wallet', 'import', '--chain', 'litecoin-testnet', '--name', 'Testnet')
         self.endpoints(self.spectra, chain='litecoin-testnet')
@@ -179,4 +175,9 @@ class MwebTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest_main()
+    with scratch('mweb') as directory, Fixture(directory) as chain:
+        for scenario in (Mweb.mweb_funds_move_and_are_recovered,
+                         Mweb.a_node_on_another_network_is_refused):
+            with scratch('mweb-data') as data:
+                scenario(Mweb(chain, data))
+            print(scenario.__name__.replace('_', ' '), 'passed', flush=True)

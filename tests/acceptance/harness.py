@@ -29,8 +29,7 @@ if not __debug__:
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / 'core/tests/fixtures'
-# A suite's first argument, when it is not an option, is the binary; a
-# unittest suite passes the rest to unittest (`unittest_main`).
+# A suite's first argument, when it is not an option, is the binary.
 GIVEN = sys.argv[1:2] if sys.argv[1:2] and not sys.argv[1].startswith('-') else []
 BINARY = pathlib.Path(GIVEN[0] if GIVEN else ROOT / 'target/debug/spectra').resolve()
 # The suite's own arguments: what follows the binary.
@@ -288,7 +287,10 @@ class ChainFixture:
             return []
         return [json.loads(line) for line in self.journal.read_text().splitlines()]
 
-    def stop(self):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
         self.process.kill()
         self.process.wait()
         self.process.stdout.close()
@@ -387,9 +389,3 @@ def serve(handler, **state):
         server.shutdown()
         server.server_close()
         worker.join()
-
-
-def unittest_main():
-    """Run a unittest suite's tests, with any arguments after the binary."""
-    import unittest
-    unittest.main(argv=[sys.argv[0], *ARGS], verbosity=2)

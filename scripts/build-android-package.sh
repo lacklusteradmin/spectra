@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the Rust core as the package an Android app links.
 #
-#   make android    # into target/SpectraCoreAndroid/, for spectra-android's minimum
+#   make android    # into target/core-android/, for spectra-android's minimum
 #
 #   ANDROID_MIN_SDK=33 scripts/build-android-package.sh <package-dir>
 #
@@ -149,7 +149,7 @@ for abi in ${ABIS}; do
   if [[ ! -e "${PACKAGE}/jniLibs/${abi}/libspectra_core.so" ]]; then fresh=0; fi
 done
 if [[ ${fresh} -eq 1 ]]; then
-  echo "SpectraCoreAndroid is up to date: ${PACKAGE}"
+  echo "The Android package is up to date: ${PACKAGE}"
   exit 0
 fi
 
@@ -185,4 +185,4 @@ done
 
 # Last, so a run that failed part way is not taken for a finished one.
 printf '%s\n' "${INPUTS}" >"${PACKAGE}/build-inputs"
-echo "SpectraCoreAndroid built (${PROFILE}: ${ABIS}): ${PACKAGE}"
+echo "The Android package built (${PROFILE}: ${ABIS}): ${PACKAGE}"

@@ -17,7 +17,7 @@ fn spl_token_program_id() -> [u8; 32] {
 }
 fn vectors() -> Value {
     serde_json::from_str(include_str!(
-        "../../../tests/fixtures/send-audit-vectors.json"
+        "../../../tests/fixtures/transfer-vectors.json"
     ))
     .unwrap()
 }
@@ -41,7 +41,7 @@ fn key(result: &crate::derivation::types::DerivationResult) -> Ed25519Seed {
 }
 
 #[test]
-fn audit_aptos_mnemonic_address_and_signed_message_match_official_sdk() {
+fn aptos_mnemonic_address_and_signed_message_match_official_sdk() {
     let v = vectors();
     let expected = &v["aptos"];
     let d = derived(crate::registry::Chain::Aptos, "m/44'/637'/0'/0'/0'");
@@ -87,7 +87,7 @@ fn audit_aptos_mnemonic_address_and_signed_message_match_official_sdk() {
     assert!(wrong.sign(&key(&d)).is_err());
 }
 #[test]
-fn audit_sui_local_ptb_and_intent_signature_match_official_sdk() {
+fn sui_local_ptb_and_intent_signature_match_official_sdk() {
     let v = vectors();
     let expected = &v["sui"];
     let d = derived(crate::registry::Chain::Sui, "m/44'/784'/0'/0'/0'");
@@ -130,7 +130,7 @@ fn audit_sui_local_ptb_and_intent_signature_match_official_sdk() {
     assert!(prepare(d.address.as_deref().unwrap(), u64::MAX, 1).is_err());
 }
 #[test]
-fn audit_tron_local_native_and_token_bytes_match_tronweb() {
+fn tron_local_native_and_token_bytes_match_tronweb() {
     let v = vectors();
     let t = &v["tron"];
     let d = derived(crate::registry::Chain::Tron, "m/44'/195'/0'/0/0");
@@ -187,7 +187,7 @@ fn audit_tron_local_native_and_token_bytes_match_tronweb() {
     }
 }
 #[test]
-fn audit_solana_mnemonic_native_and_spl_instructions_match_official_sdk() {
+fn solana_mnemonic_native_and_spl_instructions_match_official_sdk() {
     let v = vectors();
     let expected = &v["solana"];
     let d = derived(
@@ -280,7 +280,7 @@ fn solana_semantics(tx: &[u8]) -> Value {
 }
 
 #[test]
-fn audit_local_builders_refuse_unfunded_or_mismatched_inputs() {
+fn local_builders_refuse_unfunded_or_mismatched_inputs() {
     let fixture = vectors();
     let t = &fixture["tron"];
     let mut id = [0x33; 32];
@@ -331,7 +331,7 @@ fn audit_local_builders_refuse_unfunded_or_mismatched_inputs() {
 }
 
 #[tokio::test]
-async fn audit_failed_sui_execution_is_not_a_successful_send() {
+async fn failed_sui_execution_is_not_a_successful_send() {
     use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};
     let server = MockServer::start().await;
     Mock::given(any())
@@ -353,7 +353,7 @@ async fn audit_failed_sui_execution_is_not_a_successful_send() {
 }
 
 #[test]
-fn audit_solana_self_transfers_merge_account_privileges() {
+fn solana_self_transfers_merge_account_privileges() {
     let v = vectors();
     let d = derived(
         crate::registry::Chain::Solana,

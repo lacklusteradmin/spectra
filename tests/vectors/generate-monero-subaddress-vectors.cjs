@@ -1,7 +1,8 @@
 // Independent Monero subaddresses, for core/tests/fixtures/monero-subaddresses.json:
 // wallet2's own derivation, compiled to WebAssembly by monero-ts, for the
 // test phrase on mainnet and stagenet.
-// node tests/vectors/generate-monero-subaddress-vectors.cjs > core/tests/fixtures/monero-subaddresses.json
+// node tests/vectors/generate-monero-subaddress-vectors.cjs
+const fs = require('node:fs');
 const moneroTs = require('monero-ts');
 
 const PHRASE = 'syndrome portents apex vivid flippant dizzy bumper duplex enjoy deodorant bunch pigment wolf muppet tuition wept ailments kiwi roles against today morsel eternal excess wolf';
@@ -27,10 +28,10 @@ const INDICES = [[0, 0], [0, 1], [0, 2], [0, 199], [0, 200], [1, 0], [1, 1], [2,
       subaddresses,
     });
   }
-  console.log(JSON.stringify({
+  fs.writeFileSync('core/tests/fixtures/monero-subaddresses.json', JSON.stringify({
     provenance: 'monero-ts 0.11.20, wallet2 compiled to WebAssembly (tests/vectors/generate-monero-subaddress-vectors.cjs)',
     phrase: PHRASE,
     networks,
-  }, null, 2));
+  }, null, 2) + '\n');
   process.exit(0);
 })().catch((error) => { console.error(error); process.exit(1); });

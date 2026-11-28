@@ -15,11 +15,13 @@ Two implementations Spectra shares no code with:
     clang -DPOLYSEED_STATIC -Iinclude -Isrc .../tests/vectors/polyseed-vectors.c src/*.c \\
         -framework CoreFoundation -o polyseed-vectors
 
-Usage: generate-monero-phrase-vectors.py path/to/polyseed-vectors > fixture.json
+Usage: generate-monero-phrase-vectors.py path/to/polyseed-vectors
 """
-import hashlib, json, subprocess, sys
+import hashlib, json, pathlib, subprocess, sys
 
 from monero.seed import Seed
+
+FIXTURE = pathlib.Path(__file__).resolve().parents[2] / 'core/tests/fixtures/monero-phrases.json'
 
 ELECTRUM_LANGUAGES = {
     'English': 'en', 'Chinese (simplified)': 'zh-hans', 'Dutch': 'nl', 'Esperanto': 'eo',
@@ -69,12 +71,12 @@ def main():
         polyseed.append({'language': code, 'phrase': made['phrase'], 'key': made['key'],
                          'birthday': int(made['birthday']), 'created': created, **keys(seed)})
     encrypted = harness(binary, 'create', 'English', '11' * 19, '1700000000', 'password')
-    print(json.dumps({
+    FIXTURE.write_text(json.dumps({
         'provenance': 'monero-python 1.1.1; tevador/polyseed dd998e2 via tests/vectors/polyseed-vectors.c',
         'electrum': electrum,
         'polyseed': polyseed,
         'encrypted_polyseed': encrypted['phrase'],
-    }, ensure_ascii=False, indent=2))
+    }, ensure_ascii=False, indent=2) + '\n')
 
 
 main()

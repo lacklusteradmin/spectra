@@ -1,6 +1,6 @@
 // Independent 2-of-3 P2WSH multisig accounts and PSBTs, for
 // core/tests/fixtures/multisig-psbt.json.
-// node tests/vectors/generate-multisig-psbt-vectors.cjs > core/tests/fixtures/multisig-psbt.json
+// node tests/vectors/generate-multisig-psbt-vectors.cjs
 //
 // Three BIP-39 test phrases are the cosigners, each at BIP-48's
 // m/48'/coin'/0'/2' (native SegWit multisig). bitcoinjs-lib derives each
@@ -14,6 +14,7 @@
 // so the final transaction is compared byte for byte. The descriptor's
 // checksum is not computed here: core's checksum is tested against BIP-380's
 // own vector.
+const fs = require('node:fs');
 const bip39 = require('bip39');
 const ecc = require('tiny-secp256k1');
 const { BIP32Factory } = require('bip32');
@@ -135,8 +136,8 @@ for (const [chain, network, coin] of NETWORKS) {
   }
   networks.push(entry);
 }
-console.log(JSON.stringify({
+fs.writeFileSync('core/tests/fixtures/multisig-psbt.json', JSON.stringify({
   provenance: 'bitcoinjs-lib 7.0.2, bip32 5.0.1, bip39 3.1.0, tiny-secp256k1 2.2.4 (tests/vectors/generate-multisig-psbt-vectors.cjs)',
   phrases: PHRASES,
   networks,
-}, null, 2));
+}, null, 2) + '\n');

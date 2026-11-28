@@ -1,5 +1,6 @@
 // Independent private-key encodings for core/tests/fixtures/private-key-formats.json.
-// node tests/vectors/generate-private-key-vectors.cjs > core/tests/fixtures/private-key-formats.json
+// node tests/vectors/generate-private-key-vectors.cjs
+const fs = require('node:fs');
 const crypto = require('node:crypto');
 const wif = require('wif');
 const { Keypair: SolanaKeypair } = require('@solana/web3.js');
@@ -77,4 +78,4 @@ fixtures.near = {
 const other = ed25519Public(key('near-other'));
 fixtures.near_mismatched = 'ed25519:' + baseEncode(Buffer.concat([nearSeed, other]));
 
-console.log(JSON.stringify(fixtures, null, 2));
+fs.writeFileSync('core/tests/fixtures/private-key-formats.json', JSON.stringify(fixtures, null, 2) + '\n');

@@ -1,5 +1,5 @@
 // Independent TON multisig v2 fixtures for core/tests/fixtures/ton-multisig.json.
-// node tests/vectors/generate-ton-multisig-vectors.cjs > core/tests/fixtures/ton-multisig.json
+// node tests/vectors/generate-ton-multisig-vectors.cjs
 //
 // The contract is ton-blockchain/multisig-contract-v2 at commit
 // 9a4b13df6345c9c4068ca725e434b40f9ea5ca28: build/Multisig.compiled.json and
@@ -202,6 +202,6 @@ async function main() {
       }),
     },
   };
-  console.log(JSON.stringify(fixtures, null, 2));
+  fs.writeFileSync('core/tests/fixtures/ton-multisig.json', JSON.stringify(fixtures, null, 2) + '\n');
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

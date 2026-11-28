@@ -69,13 +69,13 @@ to load under `python -O` or `PYTHONOPTIMIZE`.
 | `monero_regtest.py` | Optional: a real `monerod` behind a loopback proxy, run by hand with `--monerod /path/to/monerod`. Not part of `make test-cli`. |
 
 Each suite exercises only what the binary alone shows; the rules behind it are
-cargo tests in core. Some suites use the standard-library `unittest` runner, so
-each scenario reports its own result and a failure does not stop the others. No
-third-party Python packages are required. Run a whole suite or one scenario:
+cargo tests in core. A suite is a script: it defines its nodes and helpers, and
+runs its scenarios in order under `if __name__ == '__main__':`, so another suite
+can load it for a node (`harness.suite`). A failed assertion ends the suite. No
+third-party Python packages are required. Run a whole suite:
 
 ```sh
 python3 -B tests/acceptance/send_stages.py target/debug/spectra
-python3 -B tests/acceptance/send.py target/debug/spectra SendTests.test_password_protected_broadcast
 ```
 
 A suite run on its own is confined to loopback as the driver's are: the
@@ -101,12 +101,11 @@ The generators live in [`vectors/`](vectors/) and share one install:
 `package.json` pins one version of every SDK they load, and `package-lock.json`
 the rest of the tree. Install it once (into the ignored
 `tests/vectors/node_modules/`), then run a generator from the repository root
-with the line in its header, which names its fixture as an output redirection
-or an argument when it does not write the file itself:
+with the line in its header; each writes its own fixture:
 
 ```sh
 npm ci --ignore-scripts --prefix tests/vectors
-node tests/vectors/generate-account-key-vectors.cjs > core/tests/fixtures/account-keys.json
+node tests/vectors/generate-account-key-vectors.cjs
 ```
 
 Two pins are held back on purpose: `@noble/hashes` stays on 1.x because the
@@ -126,8 +125,8 @@ source.
 | `generate-polkadot-staking-vectors.cjs` | Independent @polkadot/types 17.0.2 metadata, storage values and nomination-pool call references. |
 | `generate-asset-hub-asset-vectors.cjs` | `Assets.transfer` calls on Polkadot and Westend Asset Hub, and the `Asset`, `Account` and `Metadata` storage keys and values a transfer reads, from @polkadot/types 17.0.2 and each runtime's metadata. |
 | `generate-icp-staking-vectors.cjs` | DFINITY 3.4.3 Candid, ingress IDs and secp256k1 update/read-state signatures; owned and queued-maturity responses. |
-| `generate-protocol-vectors.cjs` | Generates protocol reference data using the TON and NEAR SDKs. |
-| `generate-send-audit-vectors.cjs` | Generates address, transaction and signature reference data using Sui, Aptos, Solana, Tron and related SDKs. |
+| `generate-ton-v4r2-vectors.cjs` | @ton/ton v4R2 wallet transfers: active, deploying, with a comment and with one past a cell; optionally decodes BoCs core exported. |
+| `generate-transfer-vectors.cjs` | Sui and Aptos native transfers, Solana SOL and SPL transfers and Tron TRX and TRC-20 transfers, signed by each network's SDK from the abandon phrase. |
 | `generate-token-send-vectors.cjs` | Sui, Aptos and TON (v4R2 jetton, with and without a comment) token-transfer references from the official SDKs. |
 | `generate-xrp-payment-vector.cjs` | XRPL payment signing reference from the official XRPL packages. |
 | `generate-payment-memo-vectors.cjs` | XRP destination tags and Stellar text/ID memos on payments and account closing, from each network's SDK. |
@@ -139,12 +138,9 @@ source.
 | `generate-tezos-vectors.cjs` | Tezos `tz1` accounts and `edsk` keys, and reveal and transaction operations forged, signed and hashed by Taquito 25.1.1; three mainnet operations hashed again. |
 | `generate-starknet-vectors.cjs` | Ready (Argent X) Stark keys and class 0.4.0 addresses, and STRK and ETH v3 invokes with the deploy an undeployed account sends first, from starknet.js 11.6.1. |
 | `generate-hedera-vectors.cjs` | Hedera keys on each derivation profile, both readings of a bare key, HIP-15 checksums and HBAR transfers signed for one to three nodes, from @hashgraph/sdk 2.81.0. |
-| `generate-message-signature-vectors.cjs` | Legacy Bitcoin-family, BIP-322, EVM, Tron, Solana, Sui and Substrate message signatures from independent libraries. |
-| `generate-more-message-signature-vectors.cjs` | Cardano CIP-8 data signatures, Kaspa personal messages and Monero `SigV2`, from each network's SDK. |
+| `generate-message-signature-vectors.cjs` | Legacy Bitcoin-family, BIP-322, EVM, Tron, Solana, Sui and Substrate message signatures from independent libraries; Cardano CIP-8 data signatures, Kaspa personal messages and Monero `SigV2` from each network's SDK. |
 | `generate-stellar-message-vectors.py` | Stellar SEP-53 message signatures from the Stellar SDK for Python. |
-| `generate-near-key-deletion-vector.cjs` | A NEAR `DeleteKey` transaction from @near-js/transactions. |
-| `generate-near-storage-unregister-vector.cjs` | A NEP-145 `storage_unregister` call, empty arguments and one yoctoNEAR, from @near-js/transactions. |
-| `generate-near-token-registration-vector.cjs` | A NEAR token recipient's storage registration and transfer in one signed transaction, from @near-js/transactions. |
+| `generate-near-vectors.cjs` | NEAR transactions from @near-js/transactions, one signer for all: a transfer, an `ft_transfer` call, a `DeleteKey`, a NEP-145 `storage_unregister` (empty arguments, one yoctoNEAR) and a token transfer with and without the recipient's storage registration. |
 | `generate-cardano-stake-address-vectors.cjs` | The CIP-19 stake address behind a phrase's base address and behind every base-address credential mix, and none behind enterprise and pointer addresses, from the Cardano Serialization Library. |
 | `generate-sui-merge-vectors.cjs` | Sui coin merges, a token type's and SUI's own, from @mysten/sui. |
 | `generate-solana-close-accounts-vector.cjs` | Closing SPL and Token-2022 accounts, compiled and signed by @solana/web3.js. |

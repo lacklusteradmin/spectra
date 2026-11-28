@@ -17,9 +17,8 @@ download.z.cash serves: that is the one request beyond loopback, and it is
 refused. A restore height past the server's tip scans nothing. What a
 payment or a sync refuses before any network is read is tested in core."""
 import json
-import unittest
 
-from harness import ABANDON, ChainFixture, Spectra, scratch, unittest_main
+from harness import ABANDON, ChainFixture, Spectra, scratch
 
 START = 3_430_000
 # The guard journals the origin it refused.
@@ -34,21 +33,18 @@ class Fixture(ChainFixture):
         self.url = f"http://127.0.0.1:{self.info['port']}"
 
 
-class ShieldedTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.chain = Fixture(cls.enterClassContext(scratch('zcash')))
-        cls.addClassCleanup(cls.chain.stop)
+class Shielded:
+    """One scenario's data directory, against the fixture chain."""
 
-    def setUp(self):
-        directory = self.enterContext(scratch('zcash-data'))
-        # The test's own guard journal: the refused parameters download is
+    def __init__(self, chain, directory):
+        self.chain = chain
+        # The scenario's own guard journal: the refused parameters download is
         # expected in it, and it is otherwise empty.
         self.journal = directory / 'network.jsonl'
         self.spectra = Spectra(directory, SPECTRA_LOOPBACK_ONLY=str(self.journal),
                                SPECTRA_PASSWORD='fixture-password', SPECTRA_SEED=ABANDON)
 
-    def tearDown(self):
+    def check_journal(self):
         assert not self.journal.exists() or not self.journal.read_text().strip(), self.journal.read_text()
 
     def refuses(self, device, words, *args, code=3):
@@ -86,7 +82,7 @@ class ShieldedTests(unittest.TestCase):
         assert mined[-1]['txid'] == signed['transaction_hash'], (mined[-1], signed)
         return mined[-1]
 
-    def test_shielded_funds_move_and_are_recovered(self):
+    def shielded_funds_move_and_are_recovered(self):
         data = self.spectra / 'wallet'
         info = self.chain.info
         assert info['pool'] == 'ironwood', info
@@ -188,10 +184,17 @@ class ShieldedTests(unittest.TestCase):
                           for kind, amount, state, to in self.history(data))
         assert self.history(recovered) == expected, (self.history(recovered), expected)
 
-    def test_a_restore_height_past_the_servers_tip_scans_nothing(self):
+    def a_restore_height_past_the_servers_tip_scans_nothing(self):
         self.wallet(self.spectra, restore_height=START + 10_000)
         self.refuses(self.spectra, 'past the chain', 'wallet', 'zcash-sync', 'Shielded')
 
 
 if __name__ == '__main__':
-    unittest_main()
+    with scratch('zcash') as directory, Fixture(directory) as chain:
+        for scenario in (Shielded.shielded_funds_move_and_are_recovered,
+                         Shielded.a_restore_height_past_the_servers_tip_scans_nothing):
+            with scratch('zcash-data') as data:
+                case = Shielded(chain, data)
+                scenario(case)
+                case.check_journal()
+            print(scenario.__name__.replace('_', ' '), 'passed', flush=True)

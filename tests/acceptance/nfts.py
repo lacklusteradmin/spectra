@@ -4,9 +4,7 @@ node, across processes: each is built, signed and broadcast, and the node
 receives exactly the transaction ethers.js signs for the same fields
 (core/tests/fixtures/nft-transfer-vectors.json). Standards, holdings,
 refusals, reviews and history are tested in core."""
-import unittest
-
-from harness import JsonRpc, RpcError, Spectra, fixture, scratch, serve, unittest_main
+from harness import JsonRpc, RpcError, Spectra, fixture, scratch, serve
 
 VECTORS = fixture('nft-transfer-vectors.json')['signed']
 OWNER, RECIPIENT = VECTORS['signer'], VECTORS['recipient']
@@ -48,36 +46,29 @@ class Node(JsonRpc):
         return values[method]
 
 
-class NftTests(unittest.TestCase):
-    def setUp(self):
-        node = self.enterContext(serve(Node, submitted=[]))
-        self.submitted = node.state['submitted']
-        self.rpc = node.url + '/rpc'
-        self.spectra = Spectra(self.enterContext(scratch('nfts')))
-
-    def send(self, contract, token_id, quantity, vector):
-        """Builds, signs and broadcasts the transfer: the node receives the
-        signed bytes, which are ethers' for the same fields."""
-        before = len(self.submitted)
-        built = self.spectra.run('wallet', 'send-nft', 'Collector', '--contract', contract, '--token-id', token_id,
-                                 '--quantity', quantity, '--to', RECIPIENT)['artifact']
-        signed = self.spectra.run('send', 'sign', built['id'], '--review-digest', built['review_digest'],
-                                  '--endpoint', self.rpc)['artifact']
-        assert signed['signed_payload'] == vector['raw'], signed['signed_payload']
-        assert len(self.submitted) == before, 'signing broadcasts nothing'
-        self.spectra.run('send', 'broadcast-signed', signed['id'], '--endpoint', self.rpc, '--yes')
-
-    def test_erc721_and_erc1155_transfers_are_broadcast_as_signed(self):
-        imported = self.spectra.run('wallet', 'import', '--chain', 'ethereum', '--name', 'Collector', '--no-password',
-                                    '--private-key-env', 'KEY', env={'KEY': '01' * 32})
-        assert imported['wallet']['address'].lower() == OWNER, imported
-        self.spectra.run('endpoints', 'add', '--chain', 'ethereum', '--api', 'evm-json-rpc', '--capabilities',
-                         'balance,fee,broadcast,verification,token-balance', self.rpc)
-        self.spectra.run('endpoints', 'custom-only', '--chain', 'ethereum', 'true')
-        self.send(APES, '1234', '1', VECTORS['erc721'])
-        self.send(ITEMS, '7', '3', VECTORS['erc1155'])
-        assert self.submitted == [VECTORS['erc721']['raw'], VECTORS['erc1155']['raw']], self.submitted
+def send(spectra, rpc, submitted, contract, token_id, quantity, vector):
+    """Builds, signs and broadcasts the transfer: the node receives the
+    signed bytes, which are ethers' for the same fields."""
+    before = len(submitted)
+    built = spectra.run('wallet', 'send-nft', 'Collector', '--contract', contract, '--token-id', token_id,
+                        '--quantity', quantity, '--to', RECIPIENT)['artifact']
+    signed = spectra.run('send', 'sign', built['id'], '--review-digest', built['review_digest'],
+                         '--endpoint', rpc)['artifact']
+    assert signed['signed_payload'] == vector['raw'], signed['signed_payload']
+    assert len(submitted) == before, 'signing broadcasts nothing'
+    spectra.run('send', 'broadcast-signed', signed['id'], '--endpoint', rpc, '--yes')
 
 
 if __name__ == '__main__':
-    unittest_main()
+    with serve(Node, submitted=[]) as node, scratch('nfts') as directory:
+        submitted, rpc, spectra = node.state['submitted'], node.url + '/rpc', Spectra(directory)
+        imported = spectra.run('wallet', 'import', '--chain', 'ethereum', '--name', 'Collector', '--no-password',
+                               '--private-key-env', 'KEY', env={'KEY': '01' * 32})
+        assert imported['wallet']['address'].lower() == OWNER, imported
+        spectra.run('endpoints', 'add', '--chain', 'ethereum', '--api', 'evm-json-rpc', '--capabilities',
+                    'balance,fee,broadcast,verification,token-balance', rpc)
+        spectra.run('endpoints', 'custom-only', '--chain', 'ethereum', 'true')
+        send(spectra, rpc, submitted, APES, '1234', '1', VECTORS['erc721'])
+        send(spectra, rpc, submitted, ITEMS, '7', '3', VECTORS['erc1155'])
+        assert submitted == [VECTORS['erc721']['raw'], VECTORS['erc1155']['raw']], submitted
+    print('ERC-721 and ERC-1155 transfers broadcast as signed passed')

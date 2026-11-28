@@ -1,5 +1,5 @@
 // Independent TRON account-permission multisig vectors, for core/tests/fixtures/tron-multisig.json.
-// node tests/vectors/generate-tron-multisig-vectors.cjs > core/tests/fixtures/tron-multisig.json
+// node tests/vectors/generate-tron-multisig-vectors.cjs
 //
 // Three BIP-39 test phrases, each at m/44'/195'/0'/0/0 (TronWeb.fromMnemonic),
 // share the first phrase's account: its owner permission is 2-of-3 over all
@@ -18,6 +18,7 @@
 // visible:true POST /wallet/getaccount (Util.printAccount): fields in field
 // number order, proto3 defaults omitted (so the owner permission has no type
 // or id), addresses in base58, operations in hex, int64 as JSON numbers.
+const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { TronWeb, utils } = require('tronweb');
 
@@ -174,7 +175,7 @@ const account = {
   }],
 };
 
-console.log(JSON.stringify({
+fs.writeFileSync('core/tests/fixtures/tron-multisig.json', JSON.stringify({
   provenance: 'tronweb 6.0.4 official protobuf and crypto, generated offline (tests/vectors/generate-tron-multisig-vectors.cjs)',
   sources: [
     'https://github.com/tronprotocol/java-tron/blob/develop/protocol/src/main/protos/core/Tron.proto',
@@ -200,4 +201,4 @@ console.log(JSON.stringify({
   getaccount_note: 'Only the fields these vectors need; balance and create_time are illustrative. A live response carries more (account_resource, frozenV2, ...), also in field-number order.',
   getaccount: account,
   transactions,
-}, null, 2));
+}, null, 2) + '\n');

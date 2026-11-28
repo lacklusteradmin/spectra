@@ -123,7 +123,7 @@ class Node(Handler):
 
 
 
-def main():
+if __name__ == '__main__':
     with serve(Node, submissions=[], errors=[]) as node, scratch('icp-staking') as directory:
         state, endpoint = node.state, node.url
         run = checked(Spectra(directory, SPECTRA_PRIVATE_KEY='01' * 32), state['errors'])
@@ -143,7 +143,3 @@ def main():
         assert run('send', 'inspect', signed['id'])['artifact']['signed_payload'] == signed['signed_payload']
         assert not state['submissions']
         print('ICP staking: SDK Candid replies, prepare/sign/reopen and forged-certificate refusal passed')
-
-
-if __name__ == '__main__':
-    main()

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the Rust core as a local Swift package for an Apple app.
 #
-#   make apple    # into target/SpectraCore/, for spectra-apple's minimums
+#   make apple    # into target/core-apple/, for spectra-apple's minimums
 #
 #   IPHONEOS_DEPLOYMENT_TARGET=26.0 MACOSX_DEPLOYMENT_TARGET=26.0 \
 #     scripts/build-apple-package.sh <package-dir>

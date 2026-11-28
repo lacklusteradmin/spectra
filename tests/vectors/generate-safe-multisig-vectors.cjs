@@ -1,5 +1,5 @@
 // Independent Safe{Wallet} multisig vectors, for core/tests/fixtures/safe-multisig.json.
-// node tests/vectors/generate-safe-multisig-vectors.cjs > core/tests/fixtures/safe-multisig.json
+// node tests/vectors/generate-safe-multisig-vectors.cjs
 //
 // Three BIP-39 test phrases own a Safe at a fixed address, each through its
 // EVM account at m/44'/60'/0'/0/0 (viem's mnemonicToAccount). For a native
@@ -16,6 +16,7 @@
 // signature is RFC 6979 and is recovered the way checkNSignatures recovers it.
 // The singleton addresses are safe-deployments' Safe and SafeL2 for 1.3.0 and
 // 1.4.1, every deployment type, per chain id.
+const fs = require('node:fs');
 const protocolKit = require('@safe-global/protocol-kit');
 const deployments = require('@safe-global/safe-deployments');
 const viem = require('viem');
@@ -201,7 +202,7 @@ async function main() {
     transactions.push(entry);
   }
   const { byChain, kinds } = singletons();
-  console.log(JSON.stringify({
+  fs.writeFileSync('core/tests/fixtures/safe-multisig.json', JSON.stringify({
     provenance: '@safe-global/protocol-kit 6.1.2, @safe-global/safe-deployments 1.37.63, @safe-global/types-kit 3.1.0, viem 2.56.9 (tests/vectors/generate-safe-multisig-vectors.cjs)',
     phrases: PHRASES,
     path: PATH,
@@ -215,7 +216,7 @@ async function main() {
     transactions,
     singletons: byChain,
     singleton_kinds: kinds,
-  }, null, 2));
+  }, null, 2) + '\n');
 }
 
 main().catch((error) => {

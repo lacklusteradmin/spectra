@@ -6,14 +6,13 @@ password from the environment, the node receives the signed transaction
 exactly once. Review, fees and the history it records are core's rules,
 tested with `cargo test`.
 
-Run: python3 -B tests/acceptance/send.py [path/to/spectra] [TestClass.test_name]
+Run: python3 -B tests/acceptance/send.py [path/to/spectra]
 Uses a temporary store and a loopback node; no public network is required.
 """
 import json
 import sqlite3
-import unittest
 
-from harness import ABANDON, JsonRpc, Spectra, scratch, serve, unittest_main
+from harness import ABANDON, JsonRpc, Spectra, scratch, serve
 
 
 class Node(JsonRpc):
@@ -31,32 +30,28 @@ class Node(JsonRpc):
         return values[method]
 
 
-class SendTests(unittest.TestCase):
-    def test_password_protected_broadcast(self):
-        """Refused without --yes; with it and the password, sent exactly once."""
-        with scratch('send-password') as directory, \
-                serve(Node, store=directory / 'spectra.sqlite', submitted=[]) as node:
-            submitted = node.state['submitted']
-            spectra = Spectra(directory, SPECTRA_PASSWORD='fixture-wallet-password')
-            spectra.run('endpoints', 'add', '--chain', 'ethereum', '--api', 'evm-json-rpc',
-                        '--capabilities', 'balance,fee,broadcast,verification,token-balance', node.url)
-            spectra.run('wallet', 'import', '--chain', 'ethereum', '--name', 'Sealed', env={'SPECTRA_SEED': ABANDON})
-            # The holding a balance refresh would have stored.
-            with sqlite3.connect(directory / 'spectra.sqlite') as db:
-                wid, payload = db.execute('SELECT id,payload FROM wallets').fetchone()
-                wallet = json.loads(payload)
-                wallet['holdings'] = [dict(name='Ethereum', symbol='ETH', coingeckoId='ethereum', chainId='ethereum',
-                                           tokenStandard=None, contractAddress=None, amount='10')]
-                db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
-            args = ('send', 'owned-broadcast', 'Sealed', '--holding', 'ethereum:native', '--amount', '1',
-                    '--to', '0x' + '22' * 20)
-            refused = spectra.fail(*args, code=2)
-            assert '--yes' in refused['error'], refused
-            assert not submitted, submitted
-            sent = spectra.run(*args, '--yes')
-            assert sent['transactionHash'].startswith('0x') and len(sent['transactionHash']) == 66, sent
-            assert len(submitted) == 1, submitted
-
-
 if __name__ == '__main__':
-    unittest_main()
+    # Refused without --yes; with it and the password, sent exactly once.
+    with scratch('send-password') as directory, \
+            serve(Node, store=directory / 'spectra.sqlite', submitted=[]) as node:
+        submitted = node.state['submitted']
+        spectra = Spectra(directory, SPECTRA_PASSWORD='fixture-wallet-password')
+        spectra.run('endpoints', 'add', '--chain', 'ethereum', '--api', 'evm-json-rpc',
+                    '--capabilities', 'balance,fee,broadcast,verification,token-balance', node.url)
+        spectra.run('wallet', 'import', '--chain', 'ethereum', '--name', 'Sealed', env={'SPECTRA_SEED': ABANDON})
+        # The holding a balance refresh would have stored.
+        with sqlite3.connect(directory / 'spectra.sqlite') as db:
+            wid, payload = db.execute('SELECT id,payload FROM wallets').fetchone()
+            wallet = json.loads(payload)
+            wallet['holdings'] = [dict(name='Ethereum', symbol='ETH', coingeckoId='ethereum', chainId='ethereum',
+                                       tokenStandard=None, contractAddress=None, amount='10')]
+            db.execute('UPDATE wallets SET payload=? WHERE id=?', (json.dumps(wallet), wid))
+        args = ('send', 'owned-broadcast', 'Sealed', '--holding', 'ethereum:native', '--amount', '1',
+                '--to', '0x' + '22' * 20)
+        refused = spectra.fail(*args, code=2)
+        assert '--yes' in refused['error'], refused
+        assert not submitted, submitted
+        sent = spectra.run(*args, '--yes')
+        assert sent['transactionHash'].startswith('0x') and len(sent['transactionHash']) == 66, sent
+        assert len(submitted) == 1, submitted
+    print('a password-protected owned send passed')

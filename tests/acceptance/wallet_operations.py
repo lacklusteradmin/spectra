@@ -10,10 +10,9 @@ refuses is tested in core."""
 import base64
 import json
 import sqlite3
-import unittest
 
 from harness import (ABANDON, SUI_GENESIS, Handler, Spectra, b58encode, fixture, scratch, serve, sui_object, sui_objects,
-                     sui_simulated, unittest_main)
+                     sui_simulated)
 
 xrp = fixture('xrp-mnemonic-payment.json')
 merge = fixture('account-closing.json')['stellar_account_merge']
@@ -175,12 +174,13 @@ class Node(Handler):
         self.reply({'result': result})
 
 
-class WalletOperationsTests(unittest.TestCase):
-    def setUp(self):
-        node = self.enterContext(serve(Node, submitted=[]))
+class WalletOperations:
+    """One scenario's loopback node and data directory."""
+
+    def __init__(self, node, directory):
         self.state, self.submitted, self.base = node.state, node.state['submitted'], node.url
-        self.directory = self.enterContext(scratch('closing'))
-        self.spectra = Spectra(self.directory)
+        self.directory = directory
+        self.spectra = Spectra(directory)
 
     def endpoint(self, chain, api, path):
         self.spectra.run('endpoints', 'add', '--chain', chain, '--api', api, '--capabilities',
@@ -195,7 +195,7 @@ class WalletOperationsTests(unittest.TestCase):
         with sqlite3.connect(self.directory / 'spectra.sqlite') as db:
             return [json.loads(row[0]) for row in db.execute('SELECT payload FROM history_records')]
 
-    def test_xrp_deletes_the_account_once_nothing_blocks_it(self):
+    def xrp_deletes_the_account_once_nothing_blocks_it(self):
         sender = xrp['transaction']['Account']
         self.state.update(ledger=2_000, xrp_accounts={
             sender: {'Balance': '25000000', 'Sequence': 1_000, 'OwnerCount': 2, 'Flags': 0},
@@ -214,7 +214,7 @@ class WalletOperationsTests(unittest.TestCase):
         assert self.submitted == [blob], self.submitted
         assert [(row['kind'], row['amount']) for row in self.history()] == [('send', '24.8')], self.history()
 
-    def test_stellar_merges_the_account_as_the_sdk_signs_it(self):
+    def stellar_merges_the_account_as_the_sdk_signs_it(self):
         sender, destination = merge['source'], merge['destination']
         def account(sequence):
             return {'balances': [{'balance': '5.0000000', 'asset_type': 'native'}], 'sequence': sequence,
@@ -231,7 +231,7 @@ class WalletOperationsTests(unittest.TestCase):
         assert self.submitted == [signed], self.submitted
         assert [row['kind'] for row in self.history()] == ['send'], self.history()
 
-    def test_near_deletes_a_function_call_key(self):
+    def near_deletes_a_function_call_key(self):
         signer, dapp = ed25519(NEAR_IMPLICIT), ed25519('33' * 32)
         self.state.update(account=NEAR_IMPLICIT, keys=[
             {'public_key': dapp, 'access_key': {'nonce': 7, 'permission': {'FunctionCall': {
@@ -246,7 +246,7 @@ class WalletOperationsTests(unittest.TestCase):
         assert self.submitted == [signed], self.submitted
         assert [row['kind'] for row in self.history()] == ['deleteAccessKey'], self.history()
 
-    def test_near_refunds_a_token_storage_deposit(self):
+    def near_refunds_a_token_storage_deposit(self):
         signer = ed25519(NEAR_IMPLICIT)
         self.state.update(account=NEAR_IMPLICIT,
                           keys=[{'public_key': signer, 'access_key': {'nonce': 7, 'permission': 'FullAccess'}}],
@@ -261,7 +261,7 @@ class WalletOperationsTests(unittest.TestCase):
         assert [(row['kind'], row['amount']) for row in self.history()] == [('refundTokenStorage', '0.00125')], \
             self.history()
 
-    def test_sui_merges_a_tokens_objects_with_gas_apart(self):
+    def sui_merges_a_tokens_objects_with_gas_apart(self):
         self.spectra.run('wallet', 'import', '--chain', 'sui', '--name', 'SUI', '--no-password',
                          env={'SPECTRA_SEED': ABANDON})
         self.endpoint('sui', 'sui-graphql', '/sui')
@@ -270,7 +270,7 @@ class WalletOperationsTests(unittest.TestCase):
         assert self.submitted == [signed], self.submitted
         assert [row['kind'] for row in self.history()] == ['mergeCoins'], self.history()
 
-    def test_solana_closes_its_empty_token_accounts(self):
+    def solana_closes_its_empty_token_accounts(self):
         spl, t22 = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
         owner = self.spectra.run('wallet', 'import', '--chain', 'solana', '--name', 'SOL', '--no-password',
                                  env={'SPECTRA_SEED': ABANDON})['wallet']['address']
@@ -290,4 +290,12 @@ class WalletOperationsTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest_main()
+    for scenario in (WalletOperations.xrp_deletes_the_account_once_nothing_blocks_it,
+                     WalletOperations.stellar_merges_the_account_as_the_sdk_signs_it,
+                     WalletOperations.near_deletes_a_function_call_key,
+                     WalletOperations.near_refunds_a_token_storage_deposit,
+                     WalletOperations.sui_merges_a_tokens_objects_with_gas_apart,
+                     WalletOperations.solana_closes_its_empty_token_accounts):
+        with serve(Node, submitted=[]) as node, scratch('closing') as directory:
+            scenario(WalletOperations(node, directory))
+        print(scenario.__name__.replace('_', ' '), 'passed', flush=True)

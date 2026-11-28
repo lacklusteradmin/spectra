@@ -1,6 +1,6 @@
 // Independent 2-of-3 P2SH multisig accounts and spends for Bitcoin Cash and
 // Dogecoin, for core/tests/fixtures/p2sh-multisig.json.
-// node tests/vectors/generate-p2sh-multisig-vectors.cjs > core/tests/fixtures/p2sh-multisig.json
+// node tests/vectors/generate-p2sh-multisig-vectors.cjs
 //
 // Three BIP-39 test phrases are the cosigners, each at m/44'/coin'/0' (what
 // Paytaca's BSMS export uses for Bitcoin Cash), coin 145 for Bitcoin Cash, 3
@@ -40,6 +40,7 @@
 // signed_by_p1_padded is the second form with one signature: what a node that
 // knows the redeem script but holds none of its keys makes of P1's
 // transaction when it signs it.
+const fs = require('node:fs');
 const crypto = require('node:crypto');
 const bip39 = require('bip39');
 const ecc = require('tiny-secp256k1');
@@ -477,7 +478,7 @@ for (const net of NETWORKS) {
   networks.push(entry);
 }
 
-console.log(JSON.stringify({
+fs.writeFileSync('core/tests/fixtures/p2sh-multisig.json', JSON.stringify({
   provenance: 'bitcoinjs-lib 7.0.2, bip32 5.0.1, bip39 3.1.0, tiny-secp256k1 2.2.4: keys, scripts, base58 addresses, both '
     + 'sighashes, RFC 6979 signatures and Dogecoin scriptSigs; bitcore-lib-cash 10.10.5: CashAddr, every sighash, signature '
     + 'and finished transaction recomputed and its interpreter run on every finished input; ecashaddrjs 2.0.1: CashAddr '
@@ -487,4 +488,4 @@ console.log(JSON.stringify({
     + 'Dogecoin Core 1.14 signrawtransaction (SignN, CombineMultisig) by construction, not by running it.',
   phrases: PHRASES,
   networks,
-}, null, 2));
+}, null, 2) + '\n');

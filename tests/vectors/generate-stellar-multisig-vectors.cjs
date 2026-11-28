@@ -1,5 +1,5 @@
 // Independent Stellar multisig vectors, for core/tests/fixtures/stellar-multisig.json.
-// node tests/vectors/generate-stellar-multisig-vectors.cjs > core/tests/fixtures/stellar-multisig.json
+// node tests/vectors/generate-stellar-multisig-vectors.cjs
 //
 // Three BIP-39 test phrases (empty passphrase) are the parties, each an
 // ed25519 key at SEP-0005's m/44'/148'/0' by SLIP-10, as
@@ -12,6 +12,7 @@
 // every signature and envelope is reproducible. The Horizon response is a
 // sample shaped as Horizon writes it; its ledger numbers and times are
 // placeholders.
+const fs = require('node:fs');
 const bip39 = require('bip39');
 const { derivePath } = require('ed25519-hd-key');
 const stellar = require('@stellar/stellar-base');
@@ -168,4 +169,4 @@ const fixture = {
     account_response: horizonAccount,
   },
 };
-process.stdout.write(JSON.stringify(fixture, null, 2) + '\n');
+fs.writeFileSync('core/tests/fixtures/stellar-multisig.json', JSON.stringify(fixture, null, 2) + '\n');

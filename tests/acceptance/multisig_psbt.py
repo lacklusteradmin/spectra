@@ -91,62 +91,63 @@ funds = {
     address[(0, 2)]: [('bb' * 32, 1, 300_000)],
     address[(1, 0)]: [('cc' * 32, 2, 50_000)],
 }
-with serve(Esplora, funds=funds, broadcasts=[]) as node, scratch('multisig') as directory:
-    spectra = Spectra(directory, SPECTRA_PASSWORD='multisig-password')
-    coordinator = spectra / 'coordinator'
-    broadcasts = node.state['broadcasts']
+if __name__ == '__main__':
+    with serve(Esplora, funds=funds, broadcasts=[]) as node, scratch('multisig') as directory:
+        spectra = Spectra(directory, SPECTRA_PASSWORD='multisig-password')
+        coordinator = spectra / 'coordinator'
+        broadcasts = node.state['broadcasts']
 
-    vault = descriptor(NETWORK['cosigners'])
-    for signer in [coordinator, spectra / 'a', spectra / 'b']:
-        signer.run('endpoints', 'add', '--chain', 'bitcoin', '--api', 'esplora',
-                   '--capabilities', 'balance,history,utxo,fee,broadcast,verification', node.url)
-        signer.run('wallet', 'watch', '--chain', 'bitcoin', '--name', 'Vault', '--multisig', vault)
+        vault = descriptor(NETWORK['cosigners'])
+        for signer in [coordinator, spectra / 'a', spectra / 'b']:
+            signer.run('endpoints', 'add', '--chain', 'bitcoin', '--api', 'esplora',
+                       '--capabilities', 'balance,history,utxo,fee,broadcast,verification', node.url)
+            signer.run('wallet', 'watch', '--chain', 'bitcoin', '--name', 'Vault', '--multisig', vault)
 
-    # The keypool is kept between processes: 0/0 is the account's own
-    # address, so a payer gets 0/1; discovery records the used 0/2 and
-    # 1/0, the balance sums them, and change goes to 1/1.
-    assert coordinator.run('wallet', 'receive', 'Vault')['address'] == address[(0, 1)]
-    found = coordinator.run('pool', 'discover', 'Vault')['addresses']
-    assert {address[(0, 2)], address[(1, 0)]} <= set(found), found
-    assert coordinator.run('balance', 'Vault')['smallestUnit'] == '450000'
-    created = coordinator.run('multisig', 'create', 'Vault', '--to', recipient,
-                              '--amount', '0.0032', '--fee-rate', '2')['session']
-    assert [i['address'] for i in created['inputs']] == [address[(0, 2)], address[(0, 0)]], created
-    change = created['outputs'][1]
-    assert change['isChange'] and change['address'] == address[(1, 1)], created
+        # The keypool is kept between processes: 0/0 is the account's own
+        # address, so a payer gets 0/1; discovery records the used 0/2 and
+        # 1/0, the balance sums them, and change goes to 1/1.
+        assert coordinator.run('wallet', 'receive', 'Vault')['address'] == address[(0, 1)]
+        found = coordinator.run('pool', 'discover', 'Vault')['addresses']
+        assert {address[(0, 2)], address[(1, 0)]} <= set(found), found
+        assert coordinator.run('balance', 'Vault')['smallestUnit'] == '450000'
+        created = coordinator.run('multisig', 'create', 'Vault', '--to', recipient,
+                                  '--amount', '0.0032', '--fee-rate', '2')['session']
+        assert [i['address'] for i in created['inputs']] == [address[(0, 2)], address[(0, 0)]], created
+        change = created['outputs'][1]
+        assert change['isChange'] and change['address'] == address[(1, 1)], created
 
-    # Submitting and discarding ask for --yes, and without it change
-    # nothing.
-    for verb in ['submit', 'discard']:
-        refusal = coordinator.fail('multisig', verb, created['id'], code=USAGE)
-        assert refusal['error'].endswith('re-run with --yes'), refusal
-    assert [s['id'] for s in coordinator.run('multisig', 'list', 'Vault')['sessions']] == [created['id']]
+        # Submitting and discarding ask for --yes, and without it change
+        # nothing.
+        for verb in ['submit', 'discard']:
+            refusal = coordinator.fail('multisig', verb, created['id'], code=USAGE)
+            assert refusal['error'].endswith('re-run with --yes'), refusal
+        assert [s['id'] for s in coordinator.run('multisig', 'list', 'Vault')['sessions']] == [created['id']]
 
-    # Each cosigner's phrase upgrades its watched copy; A signs the
-    # coordinator's PSBT, B signs A's copy.
-    copy = created['data']
-    for data, cosigner in [('a', 0), ('b', 1)]:
-        signer = spectra / data
-        upgraded = signer.run('wallet', 'import', '--chain', 'bitcoin', '--name', 'Other', '--upgrade', 'Vault',
-                              env={'SPECTRA_SEED': PHRASES[cosigner]})
-        assert upgraded['upgraded'] and upgraded['wallet']['name'] == 'Vault', upgraded
-        imported = signer.run('multisig', 'import', 'Vault', '--data', copy)['session']
-        assert imported['reviewDigest'] == created['reviewDigest'], imported
-        signed = signer.run('multisig', 'sign', imported['id'], '--review-digest', imported['reviewDigest'])['session']
-        assert signed['complete'] == (cosigner == 1), signed
-        coordinator.run('multisig', 'import', 'Vault', '--data', signed['data'])
-        copy = signed['data']
+        # Each cosigner's phrase upgrades its watched copy; A signs the
+        # coordinator's PSBT, B signs A's copy.
+        copy = created['data']
+        for data, cosigner in [('a', 0), ('b', 1)]:
+            signer = spectra / data
+            upgraded = signer.run('wallet', 'import', '--chain', 'bitcoin', '--name', 'Other', '--upgrade', 'Vault',
+                                  env={'SPECTRA_SEED': PHRASES[cosigner]})
+            assert upgraded['upgraded'] and upgraded['wallet']['name'] == 'Vault', upgraded
+            imported = signer.run('multisig', 'import', 'Vault', '--data', copy)['session']
+            assert imported['reviewDigest'] == created['reviewDigest'], imported
+            signed = signer.run('multisig', 'sign', imported['id'], '--review-digest', imported['reviewDigest'])['session']
+            assert signed['complete'] == (cosigner == 1), signed
+            coordinator.run('multisig', 'import', 'Vault', '--data', signed['data'])
+            copy = signed['data']
 
-    # The coordinator's session joined both copies; it broadcasts once
-    # and keeps the transaction id.
-    joined = coordinator.run('multisig', 'show', created['id'])['session']
-    assert joined['complete'], joined
-    assert signed_by(joined) == sorted(c['fingerprint'] for c in NETWORK['cosigners'][:2]), joined
-    raw = coordinator.run('multisig', 'finalize', created['id'])['raw']
-    assert not broadcasts
-    sent = coordinator.run('multisig', 'submit', created['id'], '--yes')['session']
-    assert broadcasts == [raw] and sent['submittedTxid'] == created['transactionId'], sent
-    listed = coordinator.run('multisig', 'list', 'Vault')['sessions']
-    assert [s['submittedTxid'] for s in listed] == [created['transactionId']], listed
-print('PASS multisig: descriptor watch, discovery kept across processes, a PSBT signed by two cosigners in '
-      'their own data directories, joined and broadcast once; submit and discard ask for --yes')
+        # The coordinator's session joined both copies; it broadcasts once
+        # and keeps the transaction id.
+        joined = coordinator.run('multisig', 'show', created['id'])['session']
+        assert joined['complete'], joined
+        assert signed_by(joined) == sorted(c['fingerprint'] for c in NETWORK['cosigners'][:2]), joined
+        raw = coordinator.run('multisig', 'finalize', created['id'])['raw']
+        assert not broadcasts
+        sent = coordinator.run('multisig', 'submit', created['id'], '--yes')['session']
+        assert broadcasts == [raw] and sent['submittedTxid'] == created['transactionId'], sent
+        listed = coordinator.run('multisig', 'list', 'Vault')['sessions']
+        assert [s['submittedTxid'] for s in listed] == [created['transactionId']], listed
+    print('PASS multisig: descriptor watch, discovery kept across processes, a PSBT signed by two cosigners in '
+          'their own data directories, joined and broadcast once; submit and discard ask for --yes')

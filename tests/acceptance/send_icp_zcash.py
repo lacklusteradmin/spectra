@@ -47,32 +47,33 @@ class Node(Handler):
         raise AssertionError(self.path)
 
 
-# NU6.3 (Ironwood) is the network's upgrade since block 3,428,143.
-with serve(Node, submitted=[], expected='', branch='37a5165b', height=3500000,
-           genesis='00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08') as node, \
-        scratch('icp-zec') as directory:
-    state, url = node.state, node.url
-    spectra = Spectra(directory, SPECTRA_PASSWORD='fixture-password', SPECTRA_SEED=ABANDON)
-    for chain, name in [('internet-computer', 'IcpStages'), ('zcash', 'ZecStages')]:
-        spectra.run('wallet', 'import', '--chain', chain, '--name', name)
-        icp = chain == 'internet-computer'
-        spectra.run('endpoints', 'add', '--chain', chain, '--api', 'icp-rosetta' if icp else 'blockbook',
-                    '--capabilities', ('balance,history,fee,broadcast,verification' if icp else 'balance,history,broadcast,verification,utxo'),
-                    url)
-        # Sending back to the derived account is a protocol fixture, no real network.
-        destination = spectra.run('send', 'identity', name)['address']
-        before = len(state['submitted'])
-        prepared = spectra.run('send', 'build', name, '--to', destination, '--amount', '0.001',
-                               '--endpoint', url)['artifact']
-        assert prepared['stage'] == 'Prepared' and len(state['submitted']) == before
-        signed = spectra.run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
-                             '--endpoint', url)['artifact']
-        assert signed['stage'] == 'Signed' and len(state['submitted']) == before
-        assert spectra.run('send', 'inspect', prepared['id'])['artifact'] == signed
-        state['expected'] = signed['transaction_hash']
-        assert len(state['expected']) == 64
-        sent = spectra.run('send', 'broadcast-signed', prepared['id'], '--endpoint', url, '--yes')['artifact']
-        assert sent['attempts'][-1]['outcome'] == 'Accepted', sent
-        spectra.run('send', 'broadcast-signed', prepared['id'], '--endpoint', url, '--yes')
-        assert len(state['submitted']) == before + 2 and state['submitted'][-1] == state['submitted'][-2]
-        print(f'PASS {chain}: build, sign and broadcast in separate processes, and an identical retry')
+if __name__ == '__main__':
+    # NU6.3 (Ironwood) is the network's upgrade since block 3,428,143.
+    with serve(Node, submitted=[], expected='', branch='37a5165b', height=3500000,
+               genesis='00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08') as node, \
+            scratch('icp-zec') as directory:
+        state, url = node.state, node.url
+        spectra = Spectra(directory, SPECTRA_PASSWORD='fixture-password', SPECTRA_SEED=ABANDON)
+        for chain, name in [('internet-computer', 'IcpStages'), ('zcash', 'ZecStages')]:
+            spectra.run('wallet', 'import', '--chain', chain, '--name', name)
+            icp = chain == 'internet-computer'
+            spectra.run('endpoints', 'add', '--chain', chain, '--api', 'icp-rosetta' if icp else 'blockbook',
+                        '--capabilities', ('balance,history,fee,broadcast,verification' if icp else 'balance,history,broadcast,verification,utxo'),
+                        url)
+            # Sending back to the derived account is a protocol fixture, no real network.
+            destination = spectra.run('send', 'identity', name)['address']
+            before = len(state['submitted'])
+            prepared = spectra.run('send', 'build', name, '--to', destination, '--amount', '0.001',
+                                   '--endpoint', url)['artifact']
+            assert prepared['stage'] == 'Prepared' and len(state['submitted']) == before
+            signed = spectra.run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
+                                 '--endpoint', url)['artifact']
+            assert signed['stage'] == 'Signed' and len(state['submitted']) == before
+            assert spectra.run('send', 'inspect', prepared['id'])['artifact'] == signed
+            state['expected'] = signed['transaction_hash']
+            assert len(state['expected']) == 64
+            sent = spectra.run('send', 'broadcast-signed', prepared['id'], '--endpoint', url, '--yes')['artifact']
+            assert sent['attempts'][-1]['outcome'] == 'Accepted', sent
+            spectra.run('send', 'broadcast-signed', prepared['id'], '--endpoint', url, '--yes')
+            assert len(state['submitted']) == before + 2 and state['submitted'][-1] == state['submitted'][-2]
+            print(f'PASS {chain}: build, sign and broadcast in separate processes, and an identical retry')

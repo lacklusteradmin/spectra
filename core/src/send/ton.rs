@@ -333,16 +333,14 @@ mod protocol_tests {
 
     #[test]
     fn ton_messages_match_official_sdk_vectors() {
-        let v4r2: Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/protocol-transactions.json"
-        ))
-        .unwrap();
+        let v4r2: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/ton-v4r2.json")).unwrap();
         let public: [u8; 32] = hex::decode(v4r2["public_key"].as_str().unwrap())
             .unwrap()
             .try_into()
             .unwrap();
         assert_eq!(public, self::public());
-        for vector in v4r2["ton"].as_array().unwrap() {
+        for vector in v4r2["transfers"].as_array().unwrap() {
             let boc = transfer(
                 &signer(TonWalletVersion::V4R2, Chain::Ton, &public),
                 vector["address"].as_str().unwrap(),
@@ -358,7 +356,7 @@ mod protocol_tests {
                 vector["name"]
             );
             // Optional export allows the independent SDK to decode actual Rust output.
-            if let Ok(dir) = std::env::var("SPECTRA_PROTOCOL_OUTPUT") {
+            if let Ok(dir) = std::env::var("SPECTRA_TON_V4R2_OUTPUT") {
                 std::fs::write(
                     std::path::Path::new(&dir)
                         .join(format!("ton-{}.boc", vector["name"].as_str().unwrap())),

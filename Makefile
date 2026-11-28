@@ -31,7 +31,7 @@ test-cli:
 
 # ── Apple package ───────────────────────────────────────────────────
 # The SpectraCore Swift package spectra-apple links, written to
-# target/SpectraCore/; copy that directory to the app repository's root. The
+# target/core-apple/; copy that directory to the app repository's root. The
 # minimums are spectra-apple's deployment targets. PROFILE (dev or release)
 # and PLATFORMS (a subset of `ios ios-sim macos`) pass through to the script.
 IPHONEOS_DEPLOYMENT_TARGET ?= 26.0
@@ -40,10 +40,10 @@ MACOSX_DEPLOYMENT_TARGET ?= 26.0
 apple:
 	IPHONEOS_DEPLOYMENT_TARGET="$(IPHONEOS_DEPLOYMENT_TARGET)" \
 	MACOSX_DEPLOYMENT_TARGET="$(MACOSX_DEPLOYMENT_TARGET)" \
-		scripts/build-apple-package.sh target/SpectraCore
+		scripts/build-apple-package.sh target/core-apple
 
 # ── Android package ─────────────────────────────────────────────────
-# The package spectra-android links, written to target/SpectraCoreAndroid/;
+# The package spectra-android links, written to target/core-android/;
 # copy that directory to the app repository's root. The minimum is
 # spectra-android's minSdk. PROFILE (dev or release) and ABIS (a subset of
 # `arm64-v8a x86_64`) pass through to the script, which finds the NDK through
@@ -51,7 +51,7 @@ apple:
 ANDROID_MIN_SDK ?= 33
 
 android:
-	ANDROID_MIN_SDK="$(ANDROID_MIN_SDK)" scripts/build-android-package.sh target/SpectraCoreAndroid
+	ANDROID_MIN_SDK="$(ANDROID_MIN_SDK)" scripts/build-android-package.sh target/core-android
 
 clean:
 	cargo clean

@@ -1,6 +1,6 @@
 // Sui native MultiSig accounts and a 2-of-3 SUI transfer from the Sui SDK,
 // for core/tests/fixtures/sui-multisig.json.
-// node tests/vectors/generate-sui-multisig-vectors.cjs > core/tests/fixtures/sui-multisig.json
+// node tests/vectors/generate-sui-multisig-vectors.cjs
 //
 // Three BIP-39 test phrases (empty passphrase) are the members, one per
 // signature scheme at the SDK's default path: Ed25519 m/44'/784'/0'/0'/0',
@@ -15,6 +15,7 @@
 // combines partial signatures in the order given, which must be ascending
 // member index. A second policy (threshold 3, weights [1, 1, 1]) is recorded
 // by address only, for refusal tests.
+const fs = require('node:fs');
 const { Transaction } = require('@mysten/sui/transactions');
 const { Ed25519Keypair } = require('@mysten/sui/keypairs/ed25519');
 const { Secp256k1Keypair } = require('@mysten/sui/keypairs/secp256k1');
@@ -92,7 +93,7 @@ async function main() {
     });
   }
 
-  process.stdout.write(JSON.stringify({
+  fs.writeFileSync('core/tests/fixtures/sui-multisig.json', JSON.stringify({
     provenance: '@mysten/sui 1.45.2',
     keys: keys.map(({ record }) => record),
     multisig: {

@@ -1,6 +1,6 @@
 // Aptos MultiKey (AIP-55) account and a 2-of-3 APT transfer from the Aptos
 // TypeScript SDK, for core/tests/fixtures/aptos-multikey.json.
-// node tests/vectors/generate-aptos-multikey-vectors.cjs > core/tests/fixtures/aptos-multikey.json
+// node tests/vectors/generate-aptos-multikey-vectors.cjs
 //
 // Three BIP-39 test phrases (empty passphrase) are the members: Ed25519 at
 // m/44'/637'/0'/0'/0' for the first two, Secp256k1 at m/44'/637'/0'/0/0 for
@@ -16,6 +16,7 @@
 // || 0x00 || SignedTransaction). The REST sample is the GET /accounts/{address}
 // body of an account created implicitly by a transfer, whose authentication
 // key is still its address.
+const fs = require('node:fs');
 const apt = require('@aptos-labs/ts-sdk');
 const { sha3_256 } = require('@noble/hashes/sha3');
 
@@ -111,7 +112,7 @@ function main() {
     });
   }
 
-  process.stdout.write(JSON.stringify({
+  fs.writeFileSync('core/tests/fixtures/aptos-multikey.json', JSON.stringify({
     provenance: '@aptos-labs/ts-sdk 5.1.1',
     keys: keys.map(({ record }) => record),
     multi_key: {

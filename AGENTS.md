@@ -43,13 +43,13 @@ a package built here:
 
 | Repository | Holds |
 |---|---|
-| `spectra` (this one) | `core/`, `cli/`, `tools/`, `tests/`, `icons/crypto/`, `strings/` |
+| `spectra` (this one) | `core/`, `cli/`, `tools/`, `tests/`, `icons/`, `strings/` |
 | `spectra-apple` | The iOS and macOS app |
 | `spectra-android` | The Android app |
 
-`make apple` writes the package spectra-apple links to `target/SpectraCore/`,
+`make apple` writes the package spectra-apple links to `target/core-apple/`,
 and `make android` the one spectra-android links to
-`target/SpectraCoreAndroid/`; a developer copies each into its repository, and
+`target/core-android/`; a developer copies each into its repository, and
 a change here reaches an app only through a rebuilt, copied package. Check an
 FFI change against both apps before it lands: copy each package into its app
 and run that app's checks, with this checkout as spectra-apple's `SPECTRA`.
@@ -244,6 +244,15 @@ scripts/normalize-icons.sh
   in CoreSVG (`NSImage`) with the official artwork, not only in a browser.
   (2026-11-27: Astar's official symbol and the old `crv.svg` both drew
   differently on iOS.)
+
+`icons/appicon/` holds the app icon's 1024-point sources, which the
+normalizer leaves alone. Both apps export them: spectra-apple renders each as
+a PNG in `AppIcon.appiconset`, and spectra-android writes its launcher icon's
+layers from `SpectraLogo-Light.svg` and `SpectraLogo-Tinted.svg`. Keep each a
+1024-unit square whose first path is the full tile, followed by filled paths
+only: spectra-android's export refuses any other shape. After editing one,
+run both apps' icon exports with this checkout as `SPECTRA`, and change each
+app's `SpectraMark`, which draws the same bars in code, with it.
 
 ## Strings
 

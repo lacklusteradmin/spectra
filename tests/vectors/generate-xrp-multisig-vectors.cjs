@@ -1,6 +1,6 @@
 // Independent XRP Ledger multi-signing vectors, for
 // core/tests/fixtures/xrp-multisig.json.
-// node tests/vectors/generate-xrp-multisig-vectors.cjs > core/tests/fixtures/xrp-multisig.json
+// node tests/vectors/generate-xrp-multisig-vectors.cjs
 //
 // Three BIP-39 test phrases (empty passphrase) are the parties, each a
 // secp256k1 key at BIP-44's m/44'/144'/0'/0/0 from the "Bitcoin seed" master,
@@ -15,6 +15,7 @@
 // Wallet.sign(tx, true), and the combination against the reversed order.
 // The JSON-RPC responses are samples shaped as xrpld documents them; their
 // ledger hashes and PreviousTxnIDs are placeholders.
+const fs = require('node:fs');
 const crypto = require('node:crypto');
 const codec = require('ripple-binary-codec');
 const keypairs = require('ripple-keypairs');
@@ -228,4 +229,4 @@ const fixture = {
     },
   },
 };
-process.stdout.write(JSON.stringify(fixture, null, 2) + '\n');
+fs.writeFileSync('core/tests/fixtures/xrp-multisig.json', JSON.stringify(fixture, null, 2) + '\n');

@@ -290,9 +290,9 @@ async fn saved_signature_expiry_is_checked_again_before_submission() {
 }
 
 #[tokio::test]
-async fn audit_stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
+async fn stored_wallets_reach_solana_sui_aptos_and_tron_submission() {
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../tests/fixtures/send-audit-vectors.json"
+        "../../../tests/fixtures/transfer-vectors.json"
     ))
     .unwrap();
     for (chain, token, token2022) in [
@@ -585,7 +585,7 @@ async fn aptos_build_and_sign_bind_the_reviewed_total_gas_budget() {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     let fixture: Value = serde_json::from_str(include_str!(
-        "../../../tests/fixtures/send-audit-vectors.json"
+        "../../../tests/fixtures/transfer-vectors.json"
     ))
     .unwrap();
     let address = fixture["aptos"]["address"].as_str().unwrap();
@@ -709,7 +709,7 @@ async fn nonce_journal_survives_response_loss_restart_and_concurrent_sends() {
     use std::sync::atomic::{AtomicBool, Ordering};
     let server = MockServer::start().await;
     let db = std::env::temp_dir()
-        .join(format!("audit-fix5-{}.sqlite", crate::store::new_id()))
+        .join(format!("nonce-journal-{}.sqlite", crate::store::new_id()))
         .to_string_lossy()
         .into_owned();
     let service = WalletService::serving(vec![ChainEndpoints {

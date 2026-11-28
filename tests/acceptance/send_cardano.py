@@ -28,19 +28,20 @@ class Node(Handler):
         self.reply([dict(tx_hash='00'*32, tx_index=0, value='1170000', is_spent=False, asset_list=[])])
 
 
-with serve(Node, submitted=[]) as node, scratch('cardano') as directory:
-    submitted, endpoint = node.state['submitted'], node.url
-    spectra = Spectra(directory, SPECTRA_SEED=vector['mnemonic'], SPECTRA_PASSWORD='cardano-test-password')
-    spectra.run('wallet', 'import', '--chain', 'cardano', '--name', 'Cardano', '--no-password')
-    spectra.run('endpoints', 'add', '--chain', 'cardano', '--api', 'koios',
-                '--capabilities', 'balance,utxo,fee,verification,broadcast', endpoint)
-    spectra.run('endpoints', 'custom-only', '--chain', 'cardano', 'true')
-    prepared = spectra.run('send', 'build', 'Cardano', '--to', vector['address'], '--amount', '1',
-                           '--endpoint', endpoint)['artifact']
-    signed = spectra.run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
-                         '--endpoint', endpoint)['artifact']
-    assert signed['transaction_hash'] and not submitted, signed
-    assert spectra.run('send', 'inspect', signed['id'])['artifact'] == signed
-    spectra.run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
-    assert submitted == [signed['signed_payload']], submitted
-    print('Cardano staged send: built, signed without submitting, broadcast once as signed')
+if __name__ == '__main__':
+    with serve(Node, submitted=[]) as node, scratch('cardano') as directory:
+        submitted, endpoint = node.state['submitted'], node.url
+        spectra = Spectra(directory, SPECTRA_SEED=vector['mnemonic'], SPECTRA_PASSWORD='cardano-test-password')
+        spectra.run('wallet', 'import', '--chain', 'cardano', '--name', 'Cardano', '--no-password')
+        spectra.run('endpoints', 'add', '--chain', 'cardano', '--api', 'koios',
+                    '--capabilities', 'balance,utxo,fee,verification,broadcast', endpoint)
+        spectra.run('endpoints', 'custom-only', '--chain', 'cardano', 'true')
+        prepared = spectra.run('send', 'build', 'Cardano', '--to', vector['address'], '--amount', '1',
+                               '--endpoint', endpoint)['artifact']
+        signed = spectra.run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
+                             '--endpoint', endpoint)['artifact']
+        assert signed['transaction_hash'] and not submitted, signed
+        assert spectra.run('send', 'inspect', signed['id'])['artifact'] == signed
+        spectra.run('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
+        assert submitted == [signed['signed_payload']], submitted
+        print('Cardano staged send: built, signed without submitting, broadcast once as signed')

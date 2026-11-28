@@ -1,7 +1,7 @@
 // Independent account public keys, for core/tests/fixtures/account-keys.json:
 // the abandon phrase's account 0 on each account UTXO network, written in
 // each encoding its wallets read.
-// node tests/vectors/generate-account-key-vectors.cjs > core/tests/fixtures/account-keys.json
+// node tests/vectors/generate-account-key-vectors.cjs
 //
 // The versions are transcribed from their sources, not from chains.toml or
 // the registry: SLIP-132 (Bitcoin, Litecoin's Ltub, Mtub and ttub), Trezor's
@@ -16,6 +16,7 @@
 // Fractal Bitcoin. Each key's first receive address
 // is core/tests/fixtures/derivation-profiles.json's address for the same
 // network, profile and account 0.
+const fs = require('node:fs');
 const bip39 = require('bip39');
 const ecc = require('tiny-secp256k1');
 const { BIP32Factory } = require('bip32');
@@ -67,8 +68,8 @@ for (const [chain, [coin, encodings]] of Object.entries(NETWORKS)) {
     vectors.push({ chain, profile, prefix, xpub });
   }
 }
-console.log(JSON.stringify({
+fs.writeFileSync('core/tests/fixtures/account-keys.json', JSON.stringify({
   provenance: 'bip39 3.1.0, bip32 5.0.1, tiny-secp256k1 2.2.4 (tests/vectors/generate-account-key-vectors.cjs)',
   phrase: PHRASE,
   vectors,
-}, null, 2));
+}, null, 2) + '\n');

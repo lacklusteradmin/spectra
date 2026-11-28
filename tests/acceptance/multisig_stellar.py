@@ -70,30 +70,31 @@ class Horizon(Handler):
         self.reply({'hash': transaction_hash(envelope), 'successful': True})
 
 
-with serve(Horizon, submitted=[]) as node, scratch('stellar-multisig') as directory:
-    spectra = Spectra(directory)
+if __name__ == '__main__':
+    with serve(Horizon, submitted=[]) as node, scratch('stellar-multisig') as directory:
+        spectra = Spectra(directory)
 
-    a, b = spectra / 'a', spectra / 'b'
-    for signer, name, key in [(a, 'Signer1', 'p1'), (b, 'Signer2', 'p2')]:
-        signer.run('endpoints', 'add', '--chain', 'stellar-testnet', '--api', 'horizon', '--capabilities',
-                   'balance,fee,verification,broadcast', node.url)
-        signer.run('endpoints', 'custom-only', '--chain', 'stellar-testnet', 'true')
-        signer.run('wallet', 'watch', '--chain', 'stellar-testnet', '--name', 'Account', '--address', ACCOUNT)
-        signer.run('wallet', 'import', '--chain', 'stellar-testnet', '--name', name, '--no-password',
-                   env={'SPECTRA_SEED': KEYS[key]['phrase']})
+        a, b = spectra / 'a', spectra / 'b'
+        for signer, name, key in [(a, 'Signer1', 'p1'), (b, 'Signer2', 'p2')]:
+            signer.run('endpoints', 'add', '--chain', 'stellar-testnet', '--api', 'horizon', '--capabilities',
+                       'balance,fee,verification,broadcast', node.url)
+            signer.run('endpoints', 'custom-only', '--chain', 'stellar-testnet', 'true')
+            signer.run('wallet', 'watch', '--chain', 'stellar-testnet', '--name', 'Account', '--address', ACCOUNT)
+            signer.run('wallet', 'import', '--chain', 'stellar-testnet', '--name', name, '--no-password',
+                       env={'SPECTRA_SEED': KEYS[key]['phrase']})
 
-    created = a.run('multisig', 'create', 'Account', '--to', RECIPIENT, '--amount', '10',
-                    '--memo-text', 'rent')['session']
-    by_p1 = a.sign(created, 'Signer1')
-    at_b = b.run('multisig', 'import', 'Account', '--data', by_p1['data'])['session']
-    assert at_b['reviewDigest'] == created['reviewDigest'], at_b
-    by_p2 = b.sign(at_b, 'Signer2')
-    assert by_p2['complete'], by_p2
+        created = a.run('multisig', 'create', 'Account', '--to', RECIPIENT, '--amount', '10',
+                        '--memo-text', 'rent')['session']
+        by_p1 = a.sign(created, 'Signer1')
+        at_b = b.run('multisig', 'import', 'Account', '--data', by_p1['data'])['session']
+        assert at_b['reviewDigest'] == created['reviewDigest'], at_b
+        by_p2 = b.sign(at_b, 'Signer2')
+        assert by_p2['complete'], by_p2
 
-    joined = a.run('multisig', 'import', 'Account', '--data', by_p2['data'])['session']
-    assert joined['id'] == created['id'] and joined['complete'], joined
-    sent = a.run('multisig', 'submit', created['id'], '--yes')['session']
-    [envelope] = node.state['submitted']
-    assert sent['submittedTxid'] == transaction_hash(envelope) == created['transactionId'], sent
-print('PASS stellar multisig: a payment with a memo signed in two data directories, joined and submitted '
-      'once under its session\'s transaction hash')
+        joined = a.run('multisig', 'import', 'Account', '--data', by_p2['data'])['session']
+        assert joined['id'] == created['id'] and joined['complete'], joined
+        sent = a.run('multisig', 'submit', created['id'], '--yes')['session']
+        [envelope] = node.state['submitted']
+        assert sent['submittedTxid'] == transaction_hash(envelope) == created['transactionId'], sent
+    print('PASS stellar multisig: a payment with a memo signed in two data directories, joined and submitted '
+          'once under its session\'s transaction hash')

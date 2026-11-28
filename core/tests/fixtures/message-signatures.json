@@ -1,5 +1,5 @@
 {
-  "provenance": "bitcoinjs-message 2.2.0, bip322-js 2.0.0, ethers 6.17.0, tronweb 6.0.4, @mysten/sui 1.45.2, @polkadot/keyring 14.0.3, node:crypto ed25519",
+  "provenance": "bitcoinjs-message 2.2.0, bip322-js 2.0.0, ethers 6.17.0, tronweb 6.0.4, @mysten/sui 1.45.2, @polkadot/keyring 14.0.3, node:crypto ed25519, @emurgo/cardano-message-signing-nodejs 1.1.0, @emurgo/cardano-serialization-lib-nodejs 17.0.0, kaspa-wasm 0.13.0, monero-ts 0.11.20",
   "messages": [
     "",
     "Hello World",
@@ -223,21 +223,21 @@
       "key": "3978d4d4c2c378ab6d377b2e9b7b72dff329b02d4160867cf5411ea1e6e9674f",
       "address": "bc1plz3v2ye44acpfxy5vnwgt09y8xjjr2mw3d8tqc8uhke5dll723vqvvlc95",
       "message": "",
-      "signature": "AUGdoYG48GfIMYir+LBsS6zZe9h/okYsf+A20MMAjZpbL0mhG1/aX3QYrLhgZY1ayBbBTrjghPH3zR05Wb3rD4JtAQ=="
+      "signature": "AUFh0oaiv4j5FP4mup9j6MjyZ2Dc+PsG7KsXpgVvyjdNTDYZ31yMaqICr3gL9DUAzD+zAZTWSe+OEivHn0Ymf74bAQ=="
     },
     {
       "script": "taproot",
       "key": "3978d4d4c2c378ab6d377b2e9b7b72dff329b02d4160867cf5411ea1e6e9674f",
       "address": "bc1plz3v2ye44acpfxy5vnwgt09y8xjjr2mw3d8tqc8uhke5dll723vqvvlc95",
       "message": "Hello World",
-      "signature": "AUFDsKpesIh9O8B+TI7qj8b/a+nlibl4x7VhUpPDKiNBqfyLHLL+fouyoE5VpKX+8d9qe/KZwez8woiyl/nZgliJAQ=="
+      "signature": "AUE7CmL/VPq/1dhk1MXL6kiTvH5aLAt/pf1f9GZBGtHjnEvP7huotAVtipsCdNgcxuA8Ll1lEgHaHsEkuxHC+BhVAQ=="
     },
     {
       "script": "taproot",
       "key": "3978d4d4c2c378ab6d377b2e9b7b72dff329b02d4160867cf5411ea1e6e9674f",
       "address": "bc1plz3v2ye44acpfxy5vnwgt09y8xjjr2mw3d8tqc8uhke5dll723vqvvlc95",
       "message": "Spectra 署名 ✓\nline two",
-      "signature": "AUGxDryHv79tJMpBtUC210LbVsvvRz6kKg3h8gj3HQ/LgSjlMKYRlUIL8fReQtBwFgGmoyvucRhuRbFm/pnKym75AQ=="
+      "signature": "AUGoEEGm2Kipp2igD26VfNqFvGkcodTgSZRroq85FUjd/4O0vDXxFrk+LOsyF2ddAhh9KaPv3ETkSx4Kc4wEgyrVAQ=="
     }
   ],
   "evm": [
@@ -326,42 +326,102 @@
       "key": "73de5952eae2fb1e7ed4cfeb9fc582751287cdebe0825fcb71d5a5521f4f9962",
       "address": "1LMyJXoHWWN5BgnEUUT7TDGtAB9sSiGDervJwHhBKuVZB6N",
       "message": "",
-      "signature": "0x02cae77fc27f928db6611170d2b42a67818caa9122df3ba19fdde3ce42d20c4afa2815af2a5527ffea3fbc65b529927328c0d235722aec0e29f135e9e10cff84"
+      "signature": "0xe464a417ae4e61c29b5de0cd4797b3a90eb7a22edb9d98062174ec8d1fa17c085a2adb9482cb5628fc06011caa844070589aec5b32c8fe2f8a2d2ff0232d3783"
     },
     {
       "chain": "polkadot",
       "key": "73de5952eae2fb1e7ed4cfeb9fc582751287cdebe0825fcb71d5a5521f4f9962",
       "address": "1LMyJXoHWWN5BgnEUUT7TDGtAB9sSiGDervJwHhBKuVZB6N",
       "message": "Hello World",
-      "signature": "0xb277366fa363a059033f9dee9de31d82630e988c6dbf6af20a7cbc8c62ea9e34874f1bb979a758d1e681ee57e6b496a36843745917ba1f12701403ca37000886"
+      "signature": "0x12d9aa3188d8703fbba2a9b3910cbb1f052633cd1c48737368462e0db4f4c842ba374a7dd58ab564117e43866a93fe7391a1d54a4d289b79b2be1a39697eb28f"
     },
     {
       "chain": "polkadot",
       "key": "73de5952eae2fb1e7ed4cfeb9fc582751287cdebe0825fcb71d5a5521f4f9962",
       "address": "1LMyJXoHWWN5BgnEUUT7TDGtAB9sSiGDervJwHhBKuVZB6N",
       "message": "Spectra 署名 ✓\nline two",
-      "signature": "0xd6b6321709d38e32d15d3b82837bde010bc1ad011444ca6e6d11368932ddc84fc1d87ac19fc0d96c21e40d6a2bc10d023b1ab2e26132f7096941048eb3508f81"
+      "signature": "0xfc82d7418b4f56710ccf0a3b531880b7fb416e45939f79b1d3aa4c404d586213ff3ff8cbe120978dbd1a84596703ba3adc2b7aeb4b0c080904c0232b379d1982"
     },
     {
       "chain": "bittensor",
       "key": "7f65b25104629f5ef31f57620c5185fe501ca603838a558a9161fd804cdaf765",
       "address": "5Gq8kaa3FU82RUXKi7ovm6NENZXxJtUnRCdCxWRP6naJ8VCS",
       "message": "",
-      "signature": "0x922dea3615c5c35448e0cc8913ef9ccdaa8c7210f7355fd10d035d4b1867ef1d86b4265d5042c6192b379ad29a9c9b6dc71c16c84b7f2211665184a7dac7888a"
+      "signature": "0xee24ea02df05fa8e65f808aed1cb47ab847d6d026ab75495c7a1ed55c0741d00d0739185e5fb8e580c8cb89f8eea8ac488de40e2851a0d6ca9776bfd6eeae38f"
     },
     {
       "chain": "bittensor",
       "key": "7f65b25104629f5ef31f57620c5185fe501ca603838a558a9161fd804cdaf765",
       "address": "5Gq8kaa3FU82RUXKi7ovm6NENZXxJtUnRCdCxWRP6naJ8VCS",
       "message": "Hello World",
-      "signature": "0x0219a174bdf5ee4a13f25a89610c04f88414a8b2e44bd24cefea660e568a545d7013070cc78f5f396707297c116106e7aacbdf6ab509b9103eaf842839996c85"
+      "signature": "0xda0935a84622feae3bcd4bf8dc1b073b131ee4649d97dbfa1874a441ee28f662dad9ec08cf982729ec3f71cba62afab2b94ad23508953cb7be1b8c1209844988"
     },
     {
       "chain": "bittensor",
       "key": "7f65b25104629f5ef31f57620c5185fe501ca603838a558a9161fd804cdaf765",
       "address": "5Gq8kaa3FU82RUXKi7ovm6NENZXxJtUnRCdCxWRP6naJ8VCS",
       "message": "Spectra 署名 ✓\nline two",
-      "signature": "0x3650171b4ab9a3daf7cbf8d7b7e961fc7dfa635e89639c33cddec22c620a957f60530cdb18f1fe8d303892c0b66a98f1991c446581a1e48b256435354f6a688d"
+      "signature": "0x52193593ba3580ab55c07b6fe63881748358164dc391aeae8a6fcf7d1874ef1bb907e3347cea29ebb4ded60e81a55da1c47a2d8a76dac89013080598342a7084"
+    }
+  ],
+  "cardano": [
+    {
+      "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp",
+      "key": "105d2ef2192150655a926bca9cccf5e2f6e496efa9580508192e1f4a790e6f53de06529129511d1cacb0664bcf04853fdc0055a47cc6d2c6d205127020760652",
+      "message": "",
+      "signature": "{\"signature\":\"84582aa201276761646472657373581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42a166686173686564f440584052bb3ebcd9ebdacc212983977be8a565fdd1e05037091088535fef84151d9252c2558a406c165ec4cc258e7d4e1a5dd66ce7cb6f93467841999d8ffb53020d00\",\"key\":\"a40101032720062158207ea09a34aebb13c9841c71397b1cabfec5ddf950405293dee496cac2f437480a\"}"
+    },
+    {
+      "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp",
+      "key": "105d2ef2192150655a926bca9cccf5e2f6e496efa9580508192e1f4a790e6f53de06529129511d1cacb0664bcf04853fdc0055a47cc6d2c6d205127020760652",
+      "message": "Hello World",
+      "signature": "{\"signature\":\"84582aa201276761646472657373581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42a166686173686564f44b48656c6c6f20576f726c6458400351be05b24b02694f731483f78b7ae735e4122239b6347223b5b5f754f0fc5370d7d673279e61396dc6eb37a37660adb63a6f17c329c7e76c638cbfc0d9cd03\",\"key\":\"a40101032720062158207ea09a34aebb13c9841c71397b1cabfec5ddf950405293dee496cac2f437480a\"}"
+    },
+    {
+      "address": "addr1vy8ac7qqy0vtulyl7wntmsxc6wex80gvcyjy33qffrhm7ss7lxrqp",
+      "key": "105d2ef2192150655a926bca9cccf5e2f6e496efa9580508192e1f4a790e6f53de06529129511d1cacb0664bcf04853fdc0055a47cc6d2c6d205127020760652",
+      "message": "Spectra 署名 ✓\nline two",
+      "signature": "{\"signature\":\"84582aa201276761646472657373581d610fdc780023d8be7c9ff3a6bdc0d8d3b263bd0cc12448c40948efbf42a166686173686564f4581b5370656374726120e7bdb2e5908d20e29c930a6c696e652074776f584069700f6c4fb2b3b57de074436d4c8d40637784109af71fb83d7696288dbf0c7c6996ff7f7ac92f9d73e40a30e6cdd690f5f3ad8b4953c3d958465d558ef52a01\",\"key\":\"a40101032720062158207ea09a34aebb13c9841c71397b1cabfec5ddf950405293dee496cac2f437480a\"}"
+    }
+  ],
+  "kaspa": [
+    {
+      "address": "kaspa:qqdcf32k0vfxgsyet5ldt246q4jaw8scx3sysx0lnstlt6w4m5rc72kqpk9q3",
+      "key": "0101010101010101010101010101010101010101010101010101010101010101",
+      "message": "",
+      "signature": "7e68371fd49cb9d39f43ec4ace6bf1f061e8596cd3a7d2ac351a0b02565e816b1b0eb0caef3961a9e4ab7ce7ddb9929786c01ac9d1edff238a4ef9dc9d70a2be"
+    },
+    {
+      "address": "kaspa:qqdcf32k0vfxgsyet5ldt246q4jaw8scx3sysx0lnstlt6w4m5rc72kqpk9q3",
+      "key": "0101010101010101010101010101010101010101010101010101010101010101",
+      "message": "Hello World",
+      "signature": "52051ef23ab4e4dfc170bfacb692ede52c592bf8148815bc48a18a66450e4f3789daa674cba545aa887822d37ea0b991a307a5a40bab7bfea7b9015ab812b07d"
+    },
+    {
+      "address": "kaspa:qqdcf32k0vfxgsyet5ldt246q4jaw8scx3sysx0lnstlt6w4m5rc72kqpk9q3",
+      "key": "0101010101010101010101010101010101010101010101010101010101010101",
+      "message": "Spectra 署名 ✓\nline two",
+      "signature": "1baf38c66a14d650c9b8e5d1f125e385717348430b4c10b97bd7ff23230d12d9f2faddf213b7f97eee6ea3bfdb303fb40f43987a83252a8c25ccf56557df9965"
+    }
+  ],
+  "monero": [
+    {
+      "address": "48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi",
+      "key": "42c18561a04b8de73b2f0d08229fe28664f5c453ccb85e70811aaed6f6da5f01ab5efec4b0cebb807f97b1001b96bf5f8948837335d5137e3fbe7238457ce60f",
+      "message": "",
+      "signature": "SigV2Msr234AJon31JmELu9gdGbQExqxBgNAXBF3JKQXumgNjAx1MjXrWRLwZLsEqSotq6pB6K4FgGCgdd8izf1UKYPK3"
+    },
+    {
+      "address": "48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi",
+      "key": "42c18561a04b8de73b2f0d08229fe28664f5c453ccb85e70811aaed6f6da5f01ab5efec4b0cebb807f97b1001b96bf5f8948837335d5137e3fbe7238457ce60f",
+      "message": "Hello World",
+      "signature": "SigV24ErD6g6jJfh3aq8kzQpSTU4DyQFwJKoP8Qai62KruTPzUPn8TGrtC7bFQFHWiWgkVwPQt2mYigg9Bb9eayjpwoVS"
+    },
+    {
+      "address": "48ZFsbBKZAnN9Tyw7XsCakJ4dBxBpaD3wa9Az6V5ZwAK99kYQzcgckSNVv5iZhMp8o37fhNzY7eM2ERGoTWr4B282s4mcDi",
+      "key": "42c18561a04b8de73b2f0d08229fe28664f5c453ccb85e70811aaed6f6da5f01ab5efec4b0cebb807f97b1001b96bf5f8948837335d5137e3fbe7238457ce60f",
+      "message": "Spectra 署名 ✓\nline two",
+      "signature": "SigV2RY6vEUarsTRen5eNCCnK3SYTKNQSLVNmvHQMfsixkL1TUy83HnvKYFZcCemKys22PqjVjabs8ES5CcJ83RjSD3mR"
     }
   ]
 }

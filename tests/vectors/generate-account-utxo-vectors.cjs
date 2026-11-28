@@ -1,7 +1,6 @@
 // Independent signed transactions spending a wallet account's addresses, each
 // input with its own key, for core/tests/fixtures/account-utxo-transactions.json.
-// node tests/vectors/generate-account-utxo-vectors.cjs core/tests/fixtures/account-utxo-transactions.json
-// (kaspa-wasm writes its own lines to stdout, so the fixture is written to the path given.)
+// node tests/vectors/generate-account-utxo-vectors.cjs
 //
 // bitcoinjs-lib computes every Bitcoin-format sighash: legacy (Dogecoin,
 // Dash), BIP143 (SegWit v0 and, with SIGHASH_FORKID in the hash type, Bitcoin
@@ -193,7 +192,7 @@ const entries = new kaspa.UtxoEntries(kaspaInputs.map((input) => ({
 const signable = new kaspa.SignableTransaction(kaspaTx, entries);
 const kaspaSighashes = signable.getScriptHashes().map((hash) => String(hash));
 
-fs.writeFileSync(process.argv[2], JSON.stringify({
+fs.writeFileSync('core/tests/fixtures/account-utxo-transactions.json', JSON.stringify({
   provenance: 'bitcoinjs-lib 7.0.2, ecpair 3.0.1, tiny-secp256k1 2.2.4, kaspa-wasm 0.13.0, ecash-lib 4.12.0 (tests/vectors/generate-account-utxo-vectors.cjs)',
   bitcoin: bitcoinVectors,
   legacy: legacyVectors,

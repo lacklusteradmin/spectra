@@ -48,37 +48,38 @@ class Node(Handler):
         self.send_error(404, path)
 
 
-with serve(Node, broadcasts=[]) as node, scratch('tron-multisig') as directory:
-    spectra = Spectra(directory)
-    a, b = spectra / 'a', spectra / 'b'
-    broadcasts = node.state['broadcasts']
+if __name__ == '__main__':
+    with serve(Node, broadcasts=[]) as node, scratch('tron-multisig') as directory:
+        spectra = Spectra(directory)
+        a, b = spectra / 'a', spectra / 'b'
+        broadcasts = node.state['broadcasts']
 
-    for signer, key in [(a, 1), (b, 2)]:
-        signer.run('endpoints', 'add', '--chain', 'tron', '--api', 'tron-http', '--capabilities',
-                   'balance,fee,verification,broadcast', node.url)
-        signer.run('endpoints', 'custom-only', '--chain', 'tron', 'true')
-        signer.run('wallet', 'watch', '--chain', 'tron', '--name', 'Account', '--address', ACCOUNT)
-        signer.run('wallet', 'import', '--chain', 'tron', '--name', 'Signer', '--no-password',
-                   '--private-key-env', 'KEY', env={'KEY': KEYS[key]['private_key']})
+        for signer, key in [(a, 1), (b, 2)]:
+            signer.run('endpoints', 'add', '--chain', 'tron', '--api', 'tron-http', '--capabilities',
+                       'balance,fee,verification,broadcast', node.url)
+            signer.run('endpoints', 'custom-only', '--chain', 'tron', 'true')
+            signer.run('wallet', 'watch', '--chain', 'tron', '--name', 'Account', '--address', ACCOUNT)
+            signer.run('wallet', 'import', '--chain', 'tron', '--name', 'Signer', '--no-password',
+                       '--private-key-env', 'KEY', env={'KEY': KEYS[key]['private_key']})
 
-    # P1 builds the session and signs; P2 signs P1's copy.
-    created = a.run('multisig', 'create', 'Account', '--to', FIXTURE['recipient'], '--amount', '1')['session']
-    by_p1 = a.sign(created, 'Signer')
-    assert signed_by(by_p1) == [KEYS[1]['address']] and not by_p1['complete'], by_p1
-    at_b = b.run('multisig', 'import', 'Account', '--data', by_p1['data'])['session']
-    assert at_b['reviewDigest'] == created['reviewDigest'], at_b
-    by_p2 = b.sign(at_b, 'Signer')
-    assert by_p2['complete'], by_p2
+        # P1 builds the session and signs; P2 signs P1's copy.
+        created = a.run('multisig', 'create', 'Account', '--to', FIXTURE['recipient'], '--amount', '1')['session']
+        by_p1 = a.sign(created, 'Signer')
+        assert signed_by(by_p1) == [KEYS[1]['address']] and not by_p1['complete'], by_p1
+        at_b = b.run('multisig', 'import', 'Account', '--data', by_p1['data'])['session']
+        assert at_b['reviewDigest'] == created['reviewDigest'], at_b
+        by_p2 = b.sign(at_b, 'Signer')
+        assert by_p2['complete'], by_p2
 
-    # P1 joins P2's copy and broadcasts it once.
-    joined = a.run('multisig', 'import', 'Account', '--data', by_p2['data'])['session']
-    assert joined['id'] == created['id'] and joined['complete'], joined
-    assert signed_by(joined) == sorted([KEYS[1]['address'], KEYS[2]['address']]), joined
-    assert not broadcasts
-    sent = a.run('multisig', 'submit', created['id'], '--yes')['session']
-    assert sent['submittedTxid'] == created['transactionId'], sent
-    [(txid, signatures)] = broadcasts
-    assert txid == created['transactionId'] and len(signatures) == 2, broadcasts
-    assert a.run('multisig', 'show', created['id'])['session']['submittedTxid'] == created['transactionId']
-print('PASS tron multisig: an active-permission session signed in two data directories, '
-      'joined and broadcast once')
+        # P1 joins P2's copy and broadcasts it once.
+        joined = a.run('multisig', 'import', 'Account', '--data', by_p2['data'])['session']
+        assert joined['id'] == created['id'] and joined['complete'], joined
+        assert signed_by(joined) == sorted([KEYS[1]['address'], KEYS[2]['address']]), joined
+        assert not broadcasts
+        sent = a.run('multisig', 'submit', created['id'], '--yes')['session']
+        assert sent['submittedTxid'] == created['transactionId'], sent
+        [(txid, signatures)] = broadcasts
+        assert txid == created['transactionId'] and len(signatures) == 2, broadcasts
+        assert a.run('multisig', 'show', created['id'])['session']['submittedTxid'] == created['transactionId']
+    print('PASS tron multisig: an active-permission session signed in two data directories, '
+          'joined and broadcast once')

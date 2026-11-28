@@ -59,79 +59,80 @@ class Node(JsonRpc):
         raise RpcError(-32601, 'unexpected fixture method: ' + name)
 
 
-with serve(Node, nonce=7, fee=SCALE // 1000, free=10*SCALE, finalized=100, blocks={}, succeeded={},
-           submitted=[]) as node, scratch('asset-hub') as directory:
-    live, endpoint = node.state, node.url
-    db_path = directory / 'spectra.sqlite'
-    spectra = Spectra(directory, SPECTRA_SEED=ABANDON)
-    run = spectra.run
+if __name__ == '__main__':
+    with serve(Node, nonce=7, fee=SCALE // 1000, free=10*SCALE, finalized=100, blocks={}, succeeded={},
+               submitted=[]) as node, scratch('asset-hub') as directory:
+        live, endpoint = node.state, node.url
+        db_path = directory / 'spectra.sqlite'
+        spectra = Spectra(directory, SPECTRA_SEED=ABANDON)
+        run = spectra.run
 
-    def verified_through(id):
-        with sqlite3.connect(db_path) as db:
-            payload = db.execute('SELECT payload FROM send_artifacts WHERE id=?', (id,)).fetchone()[0]
-            return json.loads(payload)['substrate_verified_through']
+        def verified_through(id):
+            with sqlite3.connect(db_path) as db:
+                payload = db.execute('SELECT payload FROM send_artifacts WHERE id=?', (id,)).fetchone()[0]
+                return json.loads(payload)['substrate_verified_through']
 
-    def signed_send():
-        prepared = run('send', 'build', 'DOT', '--to', RECIPIENT, '--amount', '1',
+        def signed_send():
+            prepared = run('send', 'build', 'DOT', '--to', RECIPIENT, '--amount', '1',
+                           '--endpoint', endpoint)['artifact']
+            return run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
                        '--endpoint', endpoint)['artifact']
-        return run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
+
+        def broadcast(id, success=True):
+            arguments = ('send', 'broadcast-signed', id, '--endpoint', endpoint, '--yes')
+            return spectra.run(*arguments) if success else spectra.fail(*arguments)
+
+        def poll():
+            return run('txs', 'poll', 'polkadot')['changes']
+
+        run('wallet', 'import', '--chain', 'polkadot', '--name', 'DOT', '--no-password')
+        run('endpoints', 'add', '--chain', 'polkadot', '--api', 'substrate-json-rpc',
+            '--capabilities', 'balance,fee,verification,broadcast,token-balance', endpoint)
+
+        signed = signed_send()
+        raw = signed['signed_payload']
+        assert not live['submitted'], 'signing submits nothing'
+        # The signature caps no fee: a higher one at broadcast submits nothing.
+        live['fee'] += 1; broadcast(signed['id'], success=False); live['fee'] -= 1
+        assert not live['submitted']
+        broadcast(signed['id'])
+        live['nonce'] += 1
+        broadcast(signed['id'])  # A saved rebroadcast does not demand the old nonce.
+        assert live['submitted'] == [raw, raw], live['submitted']
+
+        live['finalized'] = 102; live['blocks'][102] = [raw]; live['succeeded'][102] = True
+        changes = poll()
+        assert len(changes) == 1 and changes[0]['newStatus'] == 'confirmed', changes
+        assert verified_through(signed['id']) is None, 'found block must remain retriable until status commits'
+        # Lose the history-status write after the block was found: a fresh
+        # process finds the same outcome again from its old cursor.
+        spectra.lose_status(signed['id'])
+        recovered = poll()
+        assert len(recovered) == 1 and recovered[0]['newStatus'] == 'confirmed', recovered
+
+        failed = signed_send(); broadcast(failed['id'])
+        failed_raw = failed['signed_payload']
+        live['finalized'] = 170; live['blocks'][169] = [failed_raw]; live['succeeded'][169] = False
+        assert poll() == []
+        assert verified_through(failed['id']) == 166
+        failed_changes = poll()
+        assert len(failed_changes) == 1 and failed_changes[0]['newStatus'] == 'failed', failed_changes
+        record = run('txs', 'show', failed['id'])['record']
+        assert record['failureReason']['kind'] == 'executionFailed', record
+        assert verified_through(failed['id']) == 166
+        assert run('txs', 'maintenance')['chains'] == []
+
+        # USDT: `Assets.transfer` (pallet 50, call 8) of asset 1984 to the
+        # recipient, its fee in DOT. The failed send above used its nonce.
+        live['nonce'] += 1
+        usdt = run('send', 'build', 'DOT', '--to', RECIPIENT, '--contract', '1984', '--decimals', '6',
+                   '--amount', '1.234567', '--endpoint', endpoint)['artifact']
+        usdt = run('send', 'sign', usdt['id'], '--review-digest', usdt['review_digest'],
                    '--endpoint', endpoint)['artifact']
-
-    def broadcast(id, success=True):
-        arguments = ('send', 'broadcast-signed', id, '--endpoint', endpoint, '--yes')
-        return spectra.run(*arguments) if success else spectra.fail(*arguments)
-
-    def poll():
-        return run('txs', 'poll', 'polkadot')['changes']
-
-    run('wallet', 'import', '--chain', 'polkadot', '--name', 'DOT', '--no-password')
-    run('endpoints', 'add', '--chain', 'polkadot', '--api', 'substrate-json-rpc',
-        '--capabilities', 'balance,fee,verification,broadcast,token-balance', endpoint)
-
-    signed = signed_send()
-    raw = signed['signed_payload']
-    assert not live['submitted'], 'signing submits nothing'
-    # The signature caps no fee: a higher one at broadcast submits nothing.
-    live['fee'] += 1; broadcast(signed['id'], success=False); live['fee'] -= 1
-    assert not live['submitted']
-    broadcast(signed['id'])
-    live['nonce'] += 1
-    broadcast(signed['id'])  # A saved rebroadcast does not demand the old nonce.
-    assert live['submitted'] == [raw, raw], live['submitted']
-
-    live['finalized'] = 102; live['blocks'][102] = [raw]; live['succeeded'][102] = True
-    changes = poll()
-    assert len(changes) == 1 and changes[0]['newStatus'] == 'confirmed', changes
-    assert verified_through(signed['id']) is None, 'found block must remain retriable until status commits'
-    # Lose the history-status write after the block was found: a fresh
-    # process finds the same outcome again from its old cursor.
-    spectra.lose_status(signed['id'])
-    recovered = poll()
-    assert len(recovered) == 1 and recovered[0]['newStatus'] == 'confirmed', recovered
-
-    failed = signed_send(); broadcast(failed['id'])
-    failed_raw = failed['signed_payload']
-    live['finalized'] = 170; live['blocks'][169] = [failed_raw]; live['succeeded'][169] = False
-    assert poll() == []
-    assert verified_through(failed['id']) == 166
-    failed_changes = poll()
-    assert len(failed_changes) == 1 and failed_changes[0]['newStatus'] == 'failed', failed_changes
-    record = run('txs', 'show', failed['id'])['record']
-    assert record['failureReason']['kind'] == 'executionFailed', record
-    assert verified_through(failed['id']) == 166
-    assert run('txs', 'maintenance')['chains'] == []
-
-    # USDT: `Assets.transfer` (pallet 50, call 8) of asset 1984 to the
-    # recipient, its fee in DOT. The failed send above used its nonce.
-    live['nonce'] += 1
-    usdt = run('send', 'build', 'DOT', '--to', RECIPIENT, '--contract', '1984', '--decimals', '6',
-               '--amount', '1.234567', '--endpoint', endpoint)['artifact']
-    usdt = run('send', 'sign', usdt['id'], '--review-digest', usdt['review_digest'],
-               '--endpoint', endpoint)['artifact']
-    call = (bytes([50, 8]) + scale_compact(1984) + b'\x00' + b58decode(RECIPIENT)[1:33]
-            + scale_compact(1_234_567)).hex()
-    assert call in usdt['signed_payload'], usdt['signed_payload']
-    broadcast(usdt['id'])
-    assert live['submitted'][-1] == usdt['signed_payload'], live['submitted']
-    print('polkadot staged sends: fee recheck at broadcast, one submission, unchanged rebroadcast, '
-          'finalized success and failure recovered across processes, a USDT asset transfer')
+        call = (bytes([50, 8]) + scale_compact(1984) + b'\x00' + b58decode(RECIPIENT)[1:33]
+                + scale_compact(1_234_567)).hex()
+        assert call in usdt['signed_payload'], usdt['signed_payload']
+        broadcast(usdt['id'])
+        assert live['submitted'][-1] == usdt['signed_payload'], live['submitted']
+        print('polkadot staged sends: fee recheck at broadcast, one submission, unchanged rebroadcast, '
+              'finalized success and failure recovered across processes, a USDT asset transfer')

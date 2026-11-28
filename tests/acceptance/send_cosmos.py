@@ -59,36 +59,37 @@ def transfer(raw):
     return memo[0].decode(), timeout[0], signatures
 
 
-with serve(Node, owner='', sequence=7, height=1000, balance=5_000_000, refuse=True, included=False,
-           submitted=[], errors=[], hash=None) as node, scratch('cosmos-send') as directory:
-    s, endpoint = node.state, node.url
-    run = checked(Spectra(directory, SPECTRA_SEED=ABANDON), s['errors'])
-    s['owner'] = run('wallet', 'import', '--chain', 'cosmos-hub', '--name', 'Hub', '--no-password')['wallet']['address']
-    run('endpoints', 'add', '--chain', 'cosmos-hub', '--api', 'cosmos-rest',
-        '--capabilities', 'balance,fee,verification,broadcast', endpoint)
-    prepared = run('send', 'build', 'Hub', '--to', RECIPIENT, '--amount', '1.5', '--memo-text', MEMO,
-                   '--endpoint', endpoint)['artifact']
-    assert prepared['memo'] == {'kind': 'memoText', 'value': MEMO}, prepared['memo']
-    signed = run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
-                 '--endpoint', endpoint)['artifact']
-    s['hash'] = signed['transaction_hash']
-    assert not s['submitted'], 'signing submits nothing'
-    broadcast = ('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
-    # A refusal leaves the submission uncertain, with the node's reason.
-    refused = run(*broadcast)['artifact']['attempts'][-1]
-    assert refused['outcome'] == 'Uncertain' and 'insufficient fee' in refused['detail'], refused
-    s['refuse'] = False
-    accepted = run(*broadcast)['artifact']
-    assert accepted['attempts'][-1]['outcome'] == 'Accepted', accepted
-    assert accepted['transaction_hash'] == s['hash']
-    # The retry submitted the bytes signed in another process, unchanged.
-    first, second = s['submitted']
-    assert first == second and hashlib.sha256(second).hexdigest().upper() == s['hash']
-    memo, timeout, signatures = transfer(second)
-    assert memo == MEMO and timeout == 1000 + 107 and [len(sig) for sig in signatures] == [64]
-    # The node includes it, and the status poll records the outcome.
-    s['included'] = True
-    run('txs', 'poll', 'cosmos-hub')
-    record = run('txs', 'show', signed['id'])['record']
-    assert record['status'] == 'confirmed' and record['transactionHash'] == s['hash'], record
-    print('cosmos hub: memo send left uncertain, retried as signed and confirmed', flush=True)
+if __name__ == '__main__':
+    with serve(Node, owner='', sequence=7, height=1000, balance=5_000_000, refuse=True, included=False,
+               submitted=[], errors=[], hash=None) as node, scratch('cosmos-send') as directory:
+        s, endpoint = node.state, node.url
+        run = checked(Spectra(directory, SPECTRA_SEED=ABANDON), s['errors'])
+        s['owner'] = run('wallet', 'import', '--chain', 'cosmos-hub', '--name', 'Hub', '--no-password')['wallet']['address']
+        run('endpoints', 'add', '--chain', 'cosmos-hub', '--api', 'cosmos-rest',
+            '--capabilities', 'balance,fee,verification,broadcast', endpoint)
+        prepared = run('send', 'build', 'Hub', '--to', RECIPIENT, '--amount', '1.5', '--memo-text', MEMO,
+                       '--endpoint', endpoint)['artifact']
+        assert prepared['memo'] == {'kind': 'memoText', 'value': MEMO}, prepared['memo']
+        signed = run('send', 'sign', prepared['id'], '--review-digest', prepared['review_digest'],
+                     '--endpoint', endpoint)['artifact']
+        s['hash'] = signed['transaction_hash']
+        assert not s['submitted'], 'signing submits nothing'
+        broadcast = ('send', 'broadcast-signed', signed['id'], '--endpoint', endpoint, '--yes')
+        # A refusal leaves the submission uncertain, with the node's reason.
+        refused = run(*broadcast)['artifact']['attempts'][-1]
+        assert refused['outcome'] == 'Uncertain' and 'insufficient fee' in refused['detail'], refused
+        s['refuse'] = False
+        accepted = run(*broadcast)['artifact']
+        assert accepted['attempts'][-1]['outcome'] == 'Accepted', accepted
+        assert accepted['transaction_hash'] == s['hash']
+        # The retry submitted the bytes signed in another process, unchanged.
+        first, second = s['submitted']
+        assert first == second and hashlib.sha256(second).hexdigest().upper() == s['hash']
+        memo, timeout, signatures = transfer(second)
+        assert memo == MEMO and timeout == 1000 + 107 and [len(sig) for sig in signatures] == [64]
+        # The node includes it, and the status poll records the outcome.
+        s['included'] = True
+        run('txs', 'poll', 'cosmos-hub')
+        record = run('txs', 'show', signed['id'])['record']
+        assert record['status'] == 'confirmed' and record['transactionHash'] == s['hash'], record
+        print('cosmos hub: memo send left uncertain, retried as signed and confirmed', flush=True)

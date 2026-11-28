@@ -1,10 +1,11 @@
 // Independent addresses for every derivation profile the registry lists, at
 // accounts 0 and 1, for core/tests/fixtures/derivation-profiles.json.
-// node tests/vectors/generate-derivation-profile-vectors.cjs > core/tests/fixtures/derivation-profiles.json
+// node tests/vectors/generate-derivation-profile-vectors.cjs
 //
 // The paths here are written from each chain's wallet convention, not read
 // from chains.toml: the core test holds that the catalog's profiles and these
 // agree, path and address, in both directions.
+const fs = require('node:fs');
 const crypto = require('node:crypto');
 const bip39 = require('bip39');
 const ecc = require('tiny-secp256k1');
@@ -322,7 +323,7 @@ PROFILES.vechain = [['standard', "m/44'/818'/0'/0/{account}", vechain]];
       }
     }
   }
-  console.log(JSON.stringify({
+  fs.writeFileSync('core/tests/fixtures/derivation-profiles.json', JSON.stringify({
     provenance: 'bip39 3.1.0, bip32 5.0.1, bitcoinjs-lib 7.0.2, bchaddrjs 0.5.2, ethers 6.17.0, ed25519-hd-key 2.0.0, '
       + '@solana/web3.js 1.98.4, @stellar/stellar-base 14.1.0, ripple-keypairs 3.1.0, @mysten/sui 1.45.2, '
       + '@aptos-labs/ts-sdk 5.1.1, near-seed-phrase 0.2.1, @dfinity/identity-secp256k1 3.4.3, '
@@ -332,5 +333,5 @@ PROFILES.vechain = [['standard', "m/44'/818'/0'/0/{account}", vechain]];
       + '@glif/filecoin-address 4.0.0, @taquito/utils 25.1.1, @scure/bip32 1.7.0, starknet 11.6.1',
     phrase: PHRASE,
     vectors,
-  }, null, 2));
+  }, null, 2) + '\n');
 })();

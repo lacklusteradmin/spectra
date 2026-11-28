@@ -93,38 +93,39 @@ class Node(JsonRpc):
                 'eth_feeHistory': {'baseFeePerGas': ['0x3b9aca00'], 'reward': [['0x77359400']]}}[method]
 
 
-with serve(Node, submitted=[]) as node, scratch('safe') as directory:
-    spectra = Spectra(directory)
-    p0, p1 = spectra / 'p0', spectra / 'p1'
-    submitted = node.state['submitted']
+if __name__ == '__main__':
+    with serve(Node, submitted=[]) as node, scratch('safe') as directory:
+        spectra = Spectra(directory)
+        p0, p1 = spectra / 'p0', spectra / 'p1'
+        submitted = node.state['submitted']
 
-    for owner, signer in enumerate([p0, p1]):
-        signer.run('endpoints', 'add', '--chain', 'ethereum-sepolia', '--api', 'evm-json-rpc', '--capabilities',
-                   'balance,fee,broadcast,verification', node.url)
-        signer.run('endpoints', 'custom-only', '--chain', 'ethereum-sepolia', 'true')
-        signer.run('wallet', 'watch', '--chain', 'ethereum-sepolia', '--name', 'Safe', '--address', SAFE)
-        signer.run('wallet', 'import', '--chain', 'ethereum-sepolia', '--name', 'Owner', '--no-password',
-                   '--private-key-env', 'KEY', env={'KEY': FIXTURE['owners'][owner]['private_key'][2:]})
+        for owner, signer in enumerate([p0, p1]):
+            signer.run('endpoints', 'add', '--chain', 'ethereum-sepolia', '--api', 'evm-json-rpc', '--capabilities',
+                       'balance,fee,broadcast,verification', node.url)
+            signer.run('endpoints', 'custom-only', '--chain', 'ethereum-sepolia', 'true')
+            signer.run('wallet', 'watch', '--chain', 'ethereum-sepolia', '--name', 'Safe', '--address', SAFE)
+            signer.run('wallet', 'import', '--chain', 'ethereum-sepolia', '--name', 'Owner', '--no-password',
+                       '--private-key-env', 'KEY', env={'KEY': FIXTURE['owners'][owner]['private_key'][2:]})
 
-    # P0 builds and signs; P1 reads P0's copy and signs.
-    created = p0.run('multisig', 'create', 'Safe', '--to', NATIVE['to'], '--amount', '0.01')['session']
-    signed = p0.sign(created, 'Owner')
-    assert signed_by(signed) == [OWNERS[0]] and not signed['complete'], signed
-    at_p1 = p1.run('multisig', 'import', 'Safe', '--data', signed['data'])['session']
-    assert at_p1['reviewDigest'] == created['reviewDigest'] and signed_by(at_p1) == [OWNERS[0]], at_p1
-    by_p1 = p1.sign(at_p1, 'Owner')
-    assert by_p1['complete'], by_p1
+        # P0 builds and signs; P1 reads P0's copy and signs.
+        created = p0.run('multisig', 'create', 'Safe', '--to', NATIVE['to'], '--amount', '0.01')['session']
+        signed = p0.sign(created, 'Owner')
+        assert signed_by(signed) == [OWNERS[0]] and not signed['complete'], signed
+        at_p1 = p1.run('multisig', 'import', 'Safe', '--data', signed['data'])['session']
+        assert at_p1['reviewDigest'] == created['reviewDigest'] and signed_by(at_p1) == [OWNERS[0]], at_p1
+        by_p1 = p1.sign(at_p1, 'Owner')
+        assert by_p1['complete'], by_p1
 
-    # P0 joins P1's copy and executes once, paying the gas; the session
-    # keeps the executing transaction's hash and is not submitted again.
-    joined = p0.run('multisig', 'import', 'Safe', '--data', by_p1['data'])['session']
-    assert joined['id'] == created['id'] and signed_by(joined) == sorted(OWNERS[:2]), joined
-    executed = p0.run('multisig', 'submit', created['id'], '--executor', 'Owner', '--yes')['session']
-    assert len(submitted) == 1, submitted
-    assert executed['submittedTxid'] == transaction_hash(submitted[0]), executed
-    refusal = p0.fail('multisig', 'submit', created['id'], '--executor', 'Owner', '--yes', code=REJECTED)
-    assert refusal['error'] == 'This session was already submitted.', refusal
-    assert p0.run('multisig', 'show', created['id'])['session']['submittedTxid'] == executed['submittedTxid']
-    assert len(submitted) == 1, submitted
-print('PASS safe: policy read from the node; two owners sign in their own data directories, the copies join '
-      'and an owner executes once; a second submission refused')
+        # P0 joins P1's copy and executes once, paying the gas; the session
+        # keeps the executing transaction's hash and is not submitted again.
+        joined = p0.run('multisig', 'import', 'Safe', '--data', by_p1['data'])['session']
+        assert joined['id'] == created['id'] and signed_by(joined) == sorted(OWNERS[:2]), joined
+        executed = p0.run('multisig', 'submit', created['id'], '--executor', 'Owner', '--yes')['session']
+        assert len(submitted) == 1, submitted
+        assert executed['submittedTxid'] == transaction_hash(submitted[0]), executed
+        refusal = p0.fail('multisig', 'submit', created['id'], '--executor', 'Owner', '--yes', code=REJECTED)
+        assert refusal['error'] == 'This session was already submitted.', refusal
+        assert p0.run('multisig', 'show', created['id'])['session']['submittedTxid'] == executed['submittedTxid']
+        assert len(submitted) == 1, submitted
+    print('PASS safe: policy read from the node; two owners sign in their own data directories, the copies join '
+          'and an owner executes once; a second submission refused')

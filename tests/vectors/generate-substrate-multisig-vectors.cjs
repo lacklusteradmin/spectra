@@ -1,6 +1,6 @@
 // Independent pallet-multisig accounts, calls and storage on Polkadot Asset
 // Hub and Bittensor, for core/tests/fixtures/substrate-multisig.json.
-// node tests/vectors/generate-substrate-multisig-vectors.cjs > core/tests/fixtures/substrate-multisig.json
+// node tests/vectors/generate-substrate-multisig-vectors.cjs
 //
 // Three BIP-39 test phrases are the signatories, each the sr25519 root key of
 // its phrase (no derivation path), as @polkadot/keyring reads it. The
@@ -168,7 +168,7 @@ function runtime({ name, metadata: file, value }, signatories) {
   const sortedOrder = u8aSorted(signatories.map((s) => s.pair.publicKey.slice()))
     .map((key) => signatories.findIndex((s) => u8aEq(s.pair.publicKey, key)));
   const runtimes = Object.fromEntries(RUNTIMES.map((r) => runtime(r, signatories)));
-  console.log(JSON.stringify({
+  fs.writeFileSync('core/tests/fixtures/substrate-multisig.json', JSON.stringify({
     provenance: '@polkadot/types 17.0.2, @polkadot/keyring 14.0.3, @polkadot/util-crypto 14.0.3, @polkadot/util 14.0.3, @polkadot/wasm-crypto 7.5.4 (tests/vectors/generate-substrate-multisig-vectors.cjs)',
     signatories: signatories.map(({ phrase, pair }) => ({
       phrase,
@@ -186,5 +186,5 @@ function runtime({ name, metadata: file, value }, signatories) {
     timepoint: TIMEPOINT,
     max_weight: { ref_time: MAX_WEIGHT.refTime, proof_size: MAX_WEIGHT.proofSize },
     runtimes,
-  }, null, 2));
+  }, null, 2) + '\n');
 })();

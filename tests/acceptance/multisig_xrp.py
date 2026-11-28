@@ -54,31 +54,32 @@ class Node(Handler):
         self.reply({'result': result})
 
 
-with serve(Node, submitted=[]) as node, scratch('xrp-multisig') as directory:
-    spectra = Spectra(directory)
-    a, b = spectra / 'a', spectra / 'b'
+if __name__ == '__main__':
+    with serve(Node, submitted=[]) as node, scratch('xrp-multisig') as directory:
+        spectra = Spectra(directory)
+        a, b = spectra / 'a', spectra / 'b'
 
-    for signer, name, key in [(a, 'Signer1', 'p1'), (b, 'Signer2', 'p2')]:
-        signer.run('endpoints', 'add', '--chain', 'xrp', '--api', 'xrpl-json-rpc', '--capabilities',
-                   'balance,fee,verification,broadcast', node.url)
-        signer.run('endpoints', 'custom-only', '--chain', 'xrp', 'true')
-        signer.run('wallet', 'watch', '--chain', 'xrp', '--name', 'Account', '--address', ACCOUNT)
-        signer.run('wallet', 'import', '--chain', 'xrp', '--name', name, '--no-password',
-                   env={'SPECTRA_SEED': KEYS[key]['phrase']})
+        for signer, name, key in [(a, 'Signer1', 'p1'), (b, 'Signer2', 'p2')]:
+            signer.run('endpoints', 'add', '--chain', 'xrp', '--api', 'xrpl-json-rpc', '--capabilities',
+                       'balance,fee,verification,broadcast', node.url)
+            signer.run('endpoints', 'custom-only', '--chain', 'xrp', 'true')
+            signer.run('wallet', 'watch', '--chain', 'xrp', '--name', 'Account', '--address', ACCOUNT)
+            signer.run('wallet', 'import', '--chain', 'xrp', '--name', name, '--no-password',
+                       env={'SPECTRA_SEED': KEYS[key]['phrase']})
 
-    created = a.run('multisig', 'create', 'Account', '--to', RECIPIENT, '--amount', '1',
-                    '--destination-tag', '7')['session']
-    by_p1 = a.sign(created, 'Signer1')
-    at_b = b.run('multisig', 'import', 'Account', '--data', by_p1['data'])['session']
-    assert at_b['reviewDigest'] == created['reviewDigest'], at_b
-    by_p2 = b.sign(at_b, 'Signer2')
-    assert by_p2['complete'], by_p2
+        created = a.run('multisig', 'create', 'Account', '--to', RECIPIENT, '--amount', '1',
+                        '--destination-tag', '7')['session']
+        by_p1 = a.sign(created, 'Signer1')
+        at_b = b.run('multisig', 'import', 'Account', '--data', by_p1['data'])['session']
+        assert at_b['reviewDigest'] == created['reviewDigest'], at_b
+        by_p2 = b.sign(at_b, 'Signer2')
+        assert by_p2['complete'], by_p2
 
-    joined = a.run('multisig', 'import', 'Account', '--data', by_p2['data'])['session']
-    assert joined['id'] == created['id'] and joined['complete'], joined
-    assert a.run('multisig', 'finalize', created['id'])['raw'] == joined['data']
-    sent = a.run('multisig', 'submit', created['id'], '--yes')['session']
-    [blob] = node.state['submitted']
-    assert sent['submittedTxid'] == txid(blob) == joined['transactionId'], sent
-print('PASS xrp multisig: a tagged payment signed in two data directories, joined, finalized and submitted '
-      'once under its session\'s transaction id')
+        joined = a.run('multisig', 'import', 'Account', '--data', by_p2['data'])['session']
+        assert joined['id'] == created['id'] and joined['complete'], joined
+        assert a.run('multisig', 'finalize', created['id'])['raw'] == joined['data']
+        sent = a.run('multisig', 'submit', created['id'], '--yes')['session']
+        [blob] = node.state['submitted']
+        assert sent['submittedTxid'] == txid(blob) == joined['transactionId'], sent
+    print('PASS xrp multisig: a tagged payment signed in two data directories, joined, finalized and submitted '
+          'once under its session\'s transaction id')

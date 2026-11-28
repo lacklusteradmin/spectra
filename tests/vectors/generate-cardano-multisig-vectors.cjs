@@ -1,6 +1,6 @@
 // Independent Cardano native-script multisig accounts and transactions, for
 // core/tests/fixtures/cardano-multisig.json.
-// node tests/vectors/generate-cardano-multisig-vectors.cjs > core/tests/fixtures/cardano-multisig.json
+// node tests/vectors/generate-cardano-multisig-vectors.cjs
 //
 // Three BIP-39 test phrases are the cosigners, each with its CIP-1854 shared
 // payment key at m/1854'/1815'/0'/0/0 (Icarus root from the phrase's entropy,
@@ -15,6 +15,7 @@
 // signed transactions compare byte for byte. @noble/hashes recomputes every
 // key hash, script hash (blake2b-224 over 0x00 || script CBOR) and body hash
 // as a check on CSL's.
+const fs = require('node:fs');
 const bip39 = require('bip39');
 const { blake2b } = require('@noble/hashes/blake2b');
 const C = require('@emurgo/cardano-serialization-lib-nodejs');
@@ -186,11 +187,11 @@ const encoding = {
   native_scripts_tag_258: tagged(onlyScripts.to_bytes(), 2),
 };
 
-console.log(JSON.stringify({
+fs.writeFileSync('core/tests/fixtures/cardano-multisig.json', JSON.stringify({
   provenance: '@emurgo/cardano-serialization-lib-nodejs 17.0.0, bip39 3.1.0, @noble/hashes 1.8.0 (tests/vectors/generate-cardano-multisig-vectors.cjs)',
   encoding,
   cosigners: cosigners.map(({ signer, ...rest }) => rest),
   scripts: Object.fromEntries(Object.entries(scripts).map(([name, { native, ...rest }]) => [name, rest])),
   recipient: { address: RECIPIENT, bytes: hex(C.Address.from_bech32(RECIPIENT).to_bytes()) },
   transactions,
-}, null, 2));
+}, null, 2) + '\n');

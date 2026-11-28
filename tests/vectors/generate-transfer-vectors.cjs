@@ -1,5 +1,8 @@
-// Independent, offline SDK fixtures.
-// node tests/vectors/generate-send-audit-vectors.cjs
+// Transfers each network's SDK builds and signs from the abandon phrase, for
+// core/tests/fixtures/transfer-vectors.json: Sui and Aptos native transfers,
+// Solana's SOL and SPL token transfers (the recipient's associated token
+// account created first), and Tron's TRX and TRC-20 transfers.
+// node tests/vectors/generate-transfer-vectors.cjs
 const fs = require('node:fs');
 const {derivePath} = require('ed25519-hd-key');
 const {mnemonicToSeedSync} = require('bip39');
@@ -46,6 +49,6 @@ async function main() {
    tronUtils.crypto.signTransaction(Buffer.from(key,'hex'),transaction);
    fixtures.tron.transactions.push(transaction);
  }
- fs.writeFileSync('core/tests/fixtures/send-audit-vectors.json', JSON.stringify(fixtures,null,2)+'\n');
+ fs.writeFileSync('core/tests/fixtures/transfer-vectors.json', JSON.stringify(fixtures,null,2)+'\n');
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

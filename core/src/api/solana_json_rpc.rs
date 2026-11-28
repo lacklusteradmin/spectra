@@ -1233,7 +1233,7 @@ fn validate_transfer_mint(account: &serde_json::Value) -> Result<TransferMint, A
 }
 
 #[cfg(test)]
-mod audit_fix5_mint_tests {
+mod mint_tests {
     use super::*;
     #[test]
     fn mint_program_precision_and_extensions_are_validated() {

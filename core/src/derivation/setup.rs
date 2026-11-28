@@ -668,4 +668,38 @@ pub(crate) mod tests {
             );
         }
     }
+
+    /// A restored phrase on a network that scans (Monero, Zcash) asks where
+    /// its scan starts, and so does a view key; a created phrase starts near
+    /// now, and a private key, an address or a policy has no scan to place.
+    #[test]
+    fn only_a_restored_scanning_wallet_asks_for_a_restore_height() {
+        let asks = |chain, method| {
+            wallet_setup_descriptor(chain)
+                .option(method)
+                .is_some_and(|option| option.fields.contains(&WalletSetupField::RestoreHeight))
+        };
+        for chain in [Chain::Monero, Chain::Zcash, Chain::ZcashTestnet] {
+            assert!(asks(chain, WalletSetupMethod::ImportPhrase), "{chain}");
+        }
+        assert!(asks(Chain::Monero, WalletSetupMethod::WatchViewKey));
+        assert!(!asks(Chain::Bitcoin, WalletSetupMethod::ImportPhrase));
+        for chain in Chain::all() {
+            for option in wallet_setup_descriptor(chain).options {
+                let restored_scan = match option.method {
+                    WalletSetupMethod::ImportPhrase => {
+                        crate::catalog::restore_heights::takes_restore_height(chain)
+                    }
+                    WalletSetupMethod::WatchViewKey => true,
+                    _ => false,
+                };
+                assert_eq!(
+                    option.fields.contains(&WalletSetupField::RestoreHeight),
+                    restored_scan,
+                    "{chain} {:?}",
+                    option.method
+                );
+            }
+        }
+    }
 }

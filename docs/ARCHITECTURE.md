@@ -16,6 +16,7 @@ authoritative copy, and the CLI can drive every domain operation.
 | `core/` | Domain logic, persistence, network, crypto and UniFFI exports; built as the apps' native library |
 | `cli/` | Argument parsing, password prompting and each command's report, as text or `--json` |
 | `icons/crypto/` | The SVG library the apps draw tokens and chains with, one file per artwork name in the catalog |
+| `icons/appicon/` | The app icon's sources, which each app exports into its own app icon assets |
 | `strings/` | The string tables both apps read, one per locale, with the manifest naming the locales |
 | `scripts/` | Source-check, icon and runtime-data tools |
 | `tests/` | CLI acceptance suites on one harness (`tests/acceptance/`) and independent SDK test-data generators (`tests/vectors/`) |
@@ -30,7 +31,7 @@ or semver commitments between these crates. Core builds and tests without Xcode.
 An Apple app links core as the SpectraCore Swift package that
 `scripts/build-apple-package.sh` builds: a static library per platform, bundled
 as an XCFramework, and the Swift bindings generated from it. `make apple` runs
-it into `target/SpectraCore/`, a developer copies that directory into
+it into `target/core-apple/`, a developer copies that directory into
 spectra-apple, and Xcode compiles no Rust. It builds in `target/apple/`,
 not the workspace's own `target/`: its builds set the app's minimum OS
 versions, which would otherwise rebuild what terminal cargo builds without
@@ -40,7 +41,7 @@ lock.
 An Android app links core as the package `scripts/build-android-package.sh`
 builds: a shared library per Android ABI, linked by the NDK's compiler for the
 app's minimum API level, and the Kotlin bindings generated from it. `make
-android` runs it into `target/SpectraCoreAndroid/`, a developer copies that
+android` runs it into `target/core-android/`, a developer copies that
 directory into spectra-android, and Gradle compiles no Rust. It builds in
 `target/android/` for the same reasons.
 

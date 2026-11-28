@@ -1,6 +1,6 @@
 // Independent sr25519 keys along Substrate derivation paths (`//hard`,
 // `/soft`), for core/tests/fixtures/substrate-paths.json.
-// node tests/vectors/generate-substrate-path-vectors.cjs > core/tests/fixtures/substrate-paths.json
+// node tests/vectors/generate-substrate-path-vectors.cjs
 //
 // Each key is polkadot.js's reading of the secret URI `phrase + path`, with
 // `///passphrase` when one is set: the key derived along the path, its public
@@ -8,6 +8,7 @@
 // and on Westend and Bittensor (42). A hard junction derives a deterministic secret key;
 // a soft one a key whose nonce half is random, so only its scalar half is
 // recorded.
+const fs = require('node:fs');
 const { cryptoWaitReady, keyExtractSuri, keyFromPath, mnemonicToMiniSecret, sr25519PairFromSeed, encodeAddress } = require('@polkadot/util-crypto');
 const { u8aToHex } = require('@polkadot/util');
 
@@ -52,9 +53,9 @@ const CASES = [
       astar: encodeAddress(pair.publicKey, 5),
     };
   });
-  console.log(JSON.stringify({
+  fs.writeFileSync('core/tests/fixtures/substrate-paths.json', JSON.stringify({
     provenance: '@polkadot/util-crypto 14.0.3, @polkadot/keyring 14.0.3, @polkadot/wasm-crypto 7.5.4 (tests/vectors/generate-substrate-path-vectors.cjs)',
     phrase: PHRASE,
     vectors,
-  }, null, 2));
+  }, null, 2) + '\n');
 })();

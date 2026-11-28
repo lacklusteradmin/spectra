@@ -6,9 +6,8 @@ what it did. The rules themselves — trust lines, issuer fees, balances by
 issuer, the signed bytes — are tested in core."""
 import json
 import sqlite3
-import unittest
 
-from harness import Handler, Spectra, fixture, scratch, serve, unittest_main
+from harness import Handler, Spectra, fixture, scratch, serve
 
 ASSETS = fixture('issued-assets.json')
 XRPL, STELLAR = ASSETS['xrpl'], ASSETS['stellar']
@@ -70,12 +69,13 @@ class Node(Handler):
         self.reply({'result': result})
 
 
-class IssuedAssetTests(unittest.TestCase):
-    def setUp(self):
-        node = self.enterContext(serve(Node, submitted=[]))
+class IssuedAssets:
+    """One scenario's loopback node and data directory."""
+
+    def __init__(self, node, directory):
         self.state, self.base = node.state, node.url
         self.submitted = node.state['submitted']
-        self.spectra = Spectra(self.enterContext(scratch('issued')))
+        self.spectra = Spectra(directory)
 
     def endpoint(self, chain, api, path):
         self.spectra.run('endpoints', 'add', '--chain', chain, '--api', api, '--capabilities',
@@ -93,7 +93,7 @@ class IssuedAssetTests(unittest.TestCase):
         signed = self.spectra.sign_and_broadcast(artifact, self.base + path)
         assert self.submitted[before:] == [signed['signed_payload']], self.submitted
 
-    def test_xrpl_trust_pay_and_remove(self):
+    def xrpl_trust_pay_and_remove(self):
         holder = XRPL['account']
         self.state.update({
             'roots': {
@@ -120,7 +120,7 @@ class IssuedAssetTests(unittest.TestCase):
         self.sign_and_broadcast(removal, '/xrpl')
         assert self.history_kinds() == ['removeTrustLine', 'send', 'trustAsset'], self.history_kinds()
 
-    def test_stellar_trust_pay_and_remove(self):
+    def stellar_trust_pay_and_remove(self):
         source, issuer = STELLAR['source'], STELLAR['issuer']
         usdc = f'USDC:{issuer}'
 
@@ -158,4 +158,8 @@ class IssuedAssetTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest_main()
+    for scenario in (IssuedAssets.xrpl_trust_pay_and_remove,
+                     IssuedAssets.stellar_trust_pay_and_remove):
+        with serve(Node, submitted=[]) as node, scratch('issued') as directory:
+            scenario(IssuedAssets(node, directory))
+        print(scenario.__name__.replace('_', ' '), 'passed', flush=True)

@@ -1,5 +1,6 @@
 // Independent TON mnemonic fixtures for core/tests/fixtures/ton-mnemonics.json.
-// node tests/vectors/generate-ton-mnemonic-vectors.cjs > core/tests/fixtures/ton-mnemonics.json
+// node tests/vectors/generate-ton-mnemonic-vectors.cjs
+const fs = require('node:fs');
 const { mnemonicNew, mnemonicValidate, mnemonicToPrivateKey } = require('@ton/crypto');
 const { WalletContractV4 } = require('@ton/ton');
 
@@ -28,5 +29,5 @@ async function vector(words, password) {
     bip39_phrase: bip39,
     bip39_phrase_is_ton_mnemonic: await mnemonicValidate(bip39.split(' ')),
   };
-  console.log(JSON.stringify(fixtures, null, 2));
+  fs.writeFileSync('core/tests/fixtures/ton-mnemonics.json', JSON.stringify(fixtures, null, 2) + '\n');
 })();

@@ -1,6 +1,11 @@
-// Independent message signatures for core/tests/fixtures/message-signatures.json.
-// node tests/vectors/generate-message-signature-vectors.cjs > core/tests/fixtures/message-signatures.json
+// Independent message signatures for core/tests/fixtures/message-signatures.json,
+// from each network's own SDK. Among them, Cardano's CIP-8/CIP-30 `signData`
+// (COSE_Sign1 with the address in the protected header), Kaspa's
+// `signMessage` (Schnorr over the personal-message hash) and Monero's `SigV2`
+// (wallet2's spend-key signature).
+// node tests/vectors/generate-message-signature-vectors.cjs
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const bitcoinMessage = require('bitcoinjs-message');
 const { Signer: Bip322Signer, Verifier: Bip322Verifier } = require('bip322-js');
 const bitcoin = require('bitcoinjs-lib');
@@ -12,6 +17,10 @@ const { Ed25519Keypair } = require('@mysten/sui/keypairs/ed25519');
 const { Keyring } = require('@polkadot/keyring');
 const { cryptoWaitReady } = require('@polkadot/util-crypto');
 const { u8aWrapBytes, u8aToHex } = require('@polkadot/util');
+const msg = require('@emurgo/cardano-message-signing-nodejs');
+const csl = require('@emurgo/cardano-serialization-lib-nodejs');
+const kaspa = require('kaspa-wasm');
+const monero = require('monero-ts');
 
 bitcoin.initEccLib(ecc);
 const ECPair = ECPairFactory(ecc);
@@ -19,6 +28,8 @@ const ECPair = ECPairFactory(ecc);
 // A fixed key per label, so the fixtures do not change between runs.
 const key = (label) => crypto.createHash('sha256').update('spectra-message-' + label).digest();
 const MESSAGES = ['', 'Hello World', 'Spectra 署名 ✓\nline two'];
+const witness = JSON.parse(fs.readFileSync('core/tests/fixtures/cardano-emurgo-witness.json', 'utf8'));
+const MONERO_SEED = 'syndrome portents apex vivid flippant dizzy bumper duplex enjoy deodorant bunch pigment wolf muppet tuition wept ailments kiwi roles against today morsel eternal excess wolf';
 
 // Each network's signed-message magic, as its own node writes it, and the
 // Base58Check P2PKH version and WIF version its addresses and keys carry.
@@ -38,11 +49,42 @@ const LEGACY = {
 // signing options and falls back to Bitcoin's prefix.
 const prefix = (magic) => String.fromCharCode(magic.length) + magic;
 
+function cardano(message) {
+  const key = csl.PrivateKey.from_extended_bytes(Buffer.from(witness.privateKey, 'hex'));
+  const headers = msg.HeaderMap.new();
+  headers.set_algorithm_id(msg.Label.from_algorithm_id(msg.AlgorithmId.EdDSA));
+  headers.set_header(msg.Label.new_text('address'), msg.CBORValue.new_bytes(Buffer.from(witness.addressBytes, 'hex')));
+  const unprotected = msg.HeaderMap.new();
+  unprotected.set_header(msg.Label.new_text('hashed'), msg.CBORValue.new_special(msg.CBORSpecial.new_bool(false)));
+  const builder = msg.COSESign1Builder.new(
+    msg.Headers.new(msg.ProtectedHeaderMap.new(headers), unprotected), Buffer.from(message, 'utf8'), false);
+  const signature = key.sign(builder.make_data_to_sign().to_bytes());
+  const sign1 = builder.build(signature.to_bytes());
+  const cose = msg.COSEKey.new(msg.Label.from_key_type(msg.KeyType.OKP));
+  cose.set_algorithm_id(msg.Label.from_algorithm_id(msg.AlgorithmId.EdDSA));
+  cose.set_header(msg.Label.new_int(msg.Int.new_negative(msg.BigNum.from_str('1'))), msg.CBORValue.new_int(msg.Int.new_i32(6)));
+  cose.set_header(msg.Label.new_int(msg.Int.new_negative(msg.BigNum.from_str('2'))), msg.CBORValue.new_bytes(key.to_public().as_bytes()));
+  return {
+    address: witness.address, key: witness.privateKey, message,
+    signature: JSON.stringify({ signature: Buffer.from(sign1.to_bytes()).toString('hex'), key: Buffer.from(cose.to_bytes()).toString('hex') }),
+  };
+}
+
+function kaspaVector(message) {
+  const privateKey = new kaspa.PrivateKey('01'.repeat(32));
+  const address = privateKey.toKeypair().toAddress('mainnet').toString();
+  const signature = kaspa.signMessage({ message, privateKey });
+  if (!kaspa.verifyMessage({ message, signature, publicKey: privateKey.toKeypair().publicKey })) throw new Error('kaspa verify');
+  return { address, key: '01'.repeat(32), message, signature };
+}
+
 async function main() {
   await cryptoWaitReady();
   const out = {
     provenance:
-      'bitcoinjs-message 2.2.0, bip322-js 2.0.0, ethers 6.17.0, tronweb 6.0.4, @mysten/sui 1.45.2, @polkadot/keyring 14.0.3, node:crypto ed25519',
+      'bitcoinjs-message 2.2.0, bip322-js 2.0.0, ethers 6.17.0, tronweb 6.0.4, @mysten/sui 1.45.2, @polkadot/keyring 14.0.3, node:crypto ed25519, '
+      + '@emurgo/cardano-message-signing-nodejs 1.1.0, @emurgo/cardano-serialization-lib-nodejs 17.0.0, '
+      + 'kaspa-wasm 0.13.0, monero-ts 0.11.20',
     messages: MESSAGES,
     legacy: [],
     bip322: [],
@@ -145,7 +187,20 @@ async function main() {
     }
   }
 
-  process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+  out.cardano = MESSAGES.map(cardano);
+  out.kaspa = MESSAGES.map(kaspaVector);
+  const wallet = await monero.createWalletFull({ path: '', password: 'x', networkType: monero.MoneroNetworkType.MAINNET,
+    seed: MONERO_SEED, restoreHeight: 0, proxyToWorker: false });
+  const address = await wallet.getPrimaryAddress();
+  const spendAndView = (await wallet.getPrivateSpendKey()) + (await wallet.getPrivateViewKey());
+  out.monero = [];
+  for (const message of MESSAGES) {
+    const signature = await wallet.signMessage(message, monero.MoneroMessageSignatureType.SIGN_WITH_SPEND_KEY, 0, 0);
+    out.monero.push({ address, key: spendAndView, message, signature });
+  }
+  fs.writeFileSync('core/tests/fixtures/message-signatures.json', JSON.stringify(out, null, 2) + '\n');
+  // monero-ts keeps its worker alive.
+  process.exit(0);
 }
 
-main();
+main().catch((error) => { console.error(error); process.exit(1); });
